@@ -610,13 +610,13 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
   defp history_group_class(:expansive),
     do:
-      "group min-w-0 overflow-hidden rounded-sm border border-stone-200/80 bg-white px-3 pb-1.5 pt-3 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/70"
+      "group min-w-0 overflow-hidden rounded-sm border border-stone-200/80 bg-white shadow-sm dark:border-stone-800/80 dark:bg-stone-900/70"
 
   defp history_group_class(_variant), do: "space-y-0.5"
 
   defp history_group_header_class(:expansive),
     do:
-      "flex cursor-pointer list-none items-center gap-2 px-0 pb-2 transition-colors hover:text-stone-700 dark:hover:text-stone-200 [&::-webkit-details-marker]:hidden"
+      "flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 transition-colors hover:bg-stone-50 dark:hover:bg-stone-800/60 [&::-webkit-details-marker]:hidden"
 
   defp history_group_header_class(_variant), do: "flex items-center gap-2 py-1"
 
@@ -627,7 +627,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
     do: "min-w-0 flex-1 truncate font-sans text-sm text-stone-800 dark:text-stone-100"
 
   defp history_entries_class(:expansive),
-    do: "divide-y divide-stone-200/90 bg-white dark:divide-stone-800 dark:bg-stone-900"
+    do: "border-t border-stone-200/80 bg-white dark:border-stone-800 dark:bg-stone-900"
 
   defp history_entries_class(_variant), do: "space-y-0.5"
 
