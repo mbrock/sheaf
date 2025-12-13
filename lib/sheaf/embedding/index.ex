@@ -1061,7 +1061,7 @@ defmodule Sheaf.Embedding.Index do
   defp document_kind(%Description{} = description) do
     cond do
       Description.include?(description, {RDF.type(), RDF.iri(DOC.Thesis)}) -> :thesis
-      Description.include?(description, {RDF.type(), RDF.iri(DOC.Paper)}) -> :paper
+      Description.include?(description, {RDF.type(), RDF.iri(DOC.Paper)}) -> :literature
       Description.include?(description, {RDF.type(), RDF.iri(DOC.Transcript)}) -> :transcript
       Description.include?(description, {RDF.type(), RDF.iri(DOC.Spreadsheet)}) -> :spreadsheet
       true -> :document
@@ -1077,7 +1077,14 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp normalize_kind(kind) when is_atom(kind), do: kind |> Atom.to_string() |> normalize_kind()
-  defp normalize_kind(kind) when is_binary(kind), do: kind |> String.trim() |> String.downcase()
+
+  defp normalize_kind(kind) when is_binary(kind) do
+    case kind |> String.trim() |> String.downcase() do
+      "paper" -> "literature"
+      kind -> kind
+    end
+  end
+
   defp normalize_kind(kind), do: kind |> to_string() |> normalize_kind()
 
   defp excluded_documents(dataset) do

@@ -78,7 +78,7 @@ defmodule Sheaf.Assistant.CorpusTools do
         description:
           "Hybrid exact and semantic search over paragraph, extracted-block, and RDF row " <>
             "text. Searches the RDF document corpus; pass document_id to scope to one " <>
-            "document or document_kind to scope to a document type such as thesis, paper, " <>
+            "document or document_kind to scope to a document type such as thesis, literature, " <>
             "spreadsheet, transcript, or document. " <>
             "Exact text matches contribute to ranking alongside embedding similarity. " <>
             "Returns hits with their document id, block id, kind, and full text.",
@@ -92,7 +92,7 @@ defmodule Sheaf.Assistant.CorpusTools do
           document_id: [type: :string, doc: "Optional: scope to one document"],
           document_kind: [
             type: :string,
-            doc: "Optional: scope to one document kind, e.g. thesis, paper, spreadsheet."
+            doc: "Optional: scope to one document kind, e.g. thesis, literature, spreadsheet."
           ],
           limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits per category"]
         ],

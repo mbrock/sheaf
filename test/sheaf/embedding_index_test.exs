@@ -193,9 +193,11 @@ defmodule Sheaf.Embedding.IndexTest do
     end)
 
     thesis = RDF.iri("https://sheaf.less.rest/THESIS")
+    paper = RDF.iri("https://sheaf.less.rest/PAPER")
     spreadsheet = RDF.iri("https://sheaf.less.rest/SHEET1")
     paragraph_block = RDF.iri("https://sheaf.less.rest/PARA-BLOCK")
     paragraph = RDF.iri("https://sheaf.less.rest/PARA-TEXT")
+    paper_block = RDF.iri("https://sheaf.less.rest/PAPER-BLOCK")
     row = RDF.iri("https://sheaf.less.rest/ROW-BLOCK")
 
     assert :ok =
@@ -207,6 +209,17 @@ defmodule Sheaf.Embedding.IndexTest do
                    {paragraph, Sheaf.NS.DOC.text(), "Shared search phrase in thesis."}
                  ],
                  name: thesis
+               )
+             )
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {paper, RDF.type(), Sheaf.NS.DOC.Paper},
+                   {paper_block, Sheaf.NS.DOC.sourceHtml(), "Shared search phrase in literature."}
+                 ],
+                 name: paper
                )
              )
 
@@ -232,6 +245,15 @@ defmodule Sheaf.Embedding.IndexTest do
 
     assert hit.iri == "https://sheaf.less.rest/ROW-BLOCK"
     assert hit.doc_kind == :spreadsheet
+
+    assert {:ok, [hit]} =
+             Index.exact_search("shared search phrase",
+               db_path: db_path,
+               document_kind: "literature"
+             )
+
+    assert hit.iri == "https://sheaf.less.rest/PAPER-BLOCK"
+    assert hit.doc_kind == :literature
   end
 
   test "importing an async batch skips units whose documents are now excluded" do

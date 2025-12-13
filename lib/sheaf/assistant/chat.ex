@@ -615,7 +615,8 @@ defmodule Sheaf.Assistant.Chat do
       * Use search_text to find where a concept or phrase appears. It combines
         exact text matching with embedding search over the RDF document corpus,
         including imported coded rows; pass document_id to scope to one
-        document or document_kind to scope to a document type.
+        document or document_kind to scope to a document type such as thesis,
+        literature, or spreadsheet.
     #{note_tool_prompt(allow_notes?)}
 
     How to help:

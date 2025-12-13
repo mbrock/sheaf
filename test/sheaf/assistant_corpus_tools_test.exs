@@ -52,7 +52,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              Tool.execute(tool, %{
                "query" => "plastic",
                "document_id" => "DOC123",
-               "document_kind" => "paper",
+               "document_kind" => "literature",
                "limit" => 5
              })
 
@@ -69,14 +69,14 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert_received {:search_args, "plastic", opts}
     assert Keyword.get(opts, :limit) == 5
     assert Keyword.get(opts, :document_id) == "DOC123"
-    assert Keyword.get(opts, :document_kind) == "paper"
+    assert Keyword.get(opts, :document_kind) == "literature"
     assert Keyword.get(opts, :kinds) == ["paragraph", "sourceHtml", "row"]
     assert Keyword.get(opts, :exact_limit) == 0
 
     assert_received {:exact_search_args, "plastic", exact_opts}
     assert Keyword.get(exact_opts, :limit) == 5
     assert Keyword.get(exact_opts, :document_id) == "DOC123"
-    assert Keyword.get(exact_opts, :document_kind) == "paper"
+    assert Keyword.get(exact_opts, :document_kind) == "literature"
     assert Keyword.get(exact_opts, :kinds) == ["paragraph", "sourceHtml", "row"]
 
     assert exact_hit == %ToolResults.SearchHit{
