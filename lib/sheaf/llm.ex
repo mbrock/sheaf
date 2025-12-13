@@ -142,6 +142,7 @@ defmodule Sheaf.LLM do
   def text_request_options(opts) do
     opts
     |> request_options()
+    |> put_default_context_cache_options(Keyword.get(opts, :model, @default_model))
     |> Keyword.merge(text_passthrough_options(opts))
     |> Keyword.update!(:provider_options, &Keyword.delete(&1, :temperature))
     |> Keyword.delete(:temperature)
@@ -168,6 +169,14 @@ defmodule Sheaf.LLM do
   defp anthropic_adaptive_model?("claude-opus-4-7"), do: true
   defp anthropic_adaptive_model?(_model), do: false
 
+  defp anthropic_model?(model) when is_binary(model) do
+    String.starts_with?(model, "anthropic:") or String.starts_with?(model, "claude-")
+  end
+
+  defp anthropic_model?({:anthropic, _opts}), do: true
+  defp anthropic_model?(%{provider: :anthropic}), do: true
+  defp anthropic_model?(_model), do: false
+
   defp model_provider_options(model, caller_opts) do
     cond do
       Keyword.has_key?(caller_opts, :thinking) ->
@@ -183,6 +192,19 @@ defmodule Sheaf.LLM do
 
   defp provider_thinking_options(thinking) when thinking in [nil, false], do: []
   defp provider_thinking_options(thinking), do: [thinking: thinking]
+
+  defp put_default_context_cache_options(opts, model) do
+    if anthropic_model?(model) do
+      Keyword.update!(opts, :provider_options, fn provider_options ->
+        provider_options
+        |> List.wrap()
+        |> Keyword.put_new(:anthropic_prompt_cache, true)
+        |> Keyword.put_new(:anthropic_cache_messages, true)
+      end)
+    else
+      opts
+    end
+  end
 
   defp put_optional(opts, _key, value) when value in [nil, false], do: opts
   defp put_optional(opts, key, value), do: Keyword.put(opts, key, value)

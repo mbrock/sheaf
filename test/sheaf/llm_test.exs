@@ -104,6 +104,27 @@ defmodule Sheaf.LLMTest do
     refute Keyword.has_key?(opts[:provider_options], :temperature)
   end
 
+  test "text request options enable Anthropic context caching by default" do
+    opts = LLM.text_request_options(model: "anthropic:claude-sonnet-4-6")
+
+    assert opts[:provider_options][:anthropic_prompt_cache] == true
+    assert opts[:provider_options][:anthropic_cache_messages] == true
+  end
+
+  test "text request options preserve explicit Anthropic context cache overrides" do
+    opts =
+      LLM.text_request_options(
+        model: "anthropic:claude-sonnet-4-6",
+        provider_options: [
+          anthropic_prompt_cache: false,
+          anthropic_cache_messages: -2
+        ]
+      )
+
+    assert opts[:provider_options][:anthropic_prompt_cache] == false
+    assert opts[:provider_options][:anthropic_cache_messages] == -2
+  end
+
   test "text request options only apply Opus adaptive thinking to Opus" do
     sonnet_opts = LLM.text_request_options(model: "anthropic:claude-sonnet-4-6")
     opus_opts = LLM.text_request_options(model: "anthropic:claude-opus-4-7")
