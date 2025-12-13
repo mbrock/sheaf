@@ -609,13 +609,14 @@ defmodule SheafWeb.AssistantHistoryComponents do
   defp history_group_list_class(_variant), do: "space-y-3"
 
   defp history_group_class(:expansive),
-    do: "group min-w-0 overflow-hidden rounded-sm bg-white shadow-sm dark:bg-stone-900"
+    do:
+      "group min-w-0 overflow-hidden rounded-sm border border-stone-200/80 bg-white px-3 py-3 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/70"
 
   defp history_group_class(_variant), do: "space-y-0.5"
 
   defp history_group_header_class(:expansive),
     do:
-      "flex cursor-pointer list-none items-center gap-2 bg-stone-100/80 px-2.5 py-2 transition-colors hover:bg-stone-200/70 dark:bg-stone-950/70 dark:hover:bg-stone-800/80 [&::-webkit-details-marker]:hidden"
+      "flex cursor-pointer list-none items-center gap-2 px-0 pb-2 transition-colors hover:text-stone-700 dark:hover:text-stone-200 [&::-webkit-details-marker]:hidden"
 
   defp history_group_header_class(_variant), do: "flex items-center gap-2 py-1"
 
