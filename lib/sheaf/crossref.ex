@@ -93,7 +93,8 @@ defmodule Sheaf.Crossref do
            metadata_options(metadata_graph, doi, opts)
            |> Keyword.put(:crossref_work, crossref_work),
          merged_graph = merge_metadata_graph(metadata_graph, crossref_graph, doi, opts),
-         :ok <- Sheaf.put_graph(graph_name, merged_graph) do
+         additions = metadata_additions(metadata_graph, merged_graph, graph_name),
+         :ok <- put_metadata_additions(graph_name, additions) do
       {:ok,
        %{
          graph: graph_name,
@@ -102,6 +103,7 @@ defmodule Sheaf.Crossref do
          expression: opts[:expression],
          work: opts[:work],
          crossref_statements: statement_count(crossref_graph),
+         added_statements: statement_count(additions),
          statements: statement_count(merged_graph)
        }}
     end
@@ -119,10 +121,28 @@ defmodule Sheaf.Crossref do
     |> RDF.Graph.add(local_metadata(expression, crossref_graph, crossref_work, doi, opts))
   end
 
+  @doc false
+  def metadata_additions(metadata_graph, merged_graph, graph_name \\ @default_metadata_graph) do
+    graph_name = RDF.iri(graph_name)
+
+    merged_graph
+    |> RDF.Graph.triples()
+    |> Enum.reject(&RDF.Data.include?(metadata_graph, &1))
+    |> RDF.Graph.new(name: graph_name)
+  end
+
   defp get(path, accept, opts, params \\ []) do
     client(opts)
     |> Req.get(url: path, headers: [accept: accept], params: params)
     |> handle_response()
+  end
+
+  defp put_metadata_additions(_graph_name, additions) do
+    if statement_count(additions) == 0 do
+      :ok
+    else
+      Sheaf.Repo.assert("crossref metadata import", additions)
+    end
   end
 
   defp client(opts) do

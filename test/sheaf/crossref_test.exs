@@ -245,6 +245,23 @@ defmodule Sheaf.CrossrefTest do
     assert RDF.Data.include?(graph, {expression, FABIO.hasDOI(), "10.1177/1749975520923521"})
   end
 
+  test "calculates metadata additions without rewriting existing triples" do
+    graph_name = ~I<https://less.rest/sheaf/metadata>
+    existing = {~I<https://example.com/article>, DCTERMS.title(), "Existing title"}
+    added = {~I<https://example.com/article>, BIBO.doi(), "10.1000/example"}
+
+    additions =
+      Crossref.metadata_additions(
+        RDF.Graph.new(existing, name: graph_name),
+        RDF.Graph.new([existing, added], name: graph_name),
+        graph_name
+      )
+
+    refute RDF.Data.include?(additions, existing)
+    assert RDF.Data.include?(additions, added)
+    assert RDF.Data.statement_count(additions) == 1
+  end
+
   test "returns API errors without raising" do
     Req.Test.expect(__MODULE__, fn conn ->
       conn
