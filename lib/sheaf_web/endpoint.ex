@@ -28,6 +28,7 @@ defmodule SheafWeb.Endpoint do
     at: "/",
     from: :sheaf,
     gzip: not code_reloading?,
+    cache_control_for_etags: if(code_reloading?, do: "no-store", else: "public"),
     only: SheafWeb.static_paths(),
     raise_on_missing_only: code_reloading?
 
