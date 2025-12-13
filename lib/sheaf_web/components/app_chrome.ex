@@ -56,10 +56,10 @@ defmodule SheafWeb.AppChrome do
         <.link
           navigate={~p"/history"}
           class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
-          title="History"
-          aria-label="History"
+          title="Assistant"
+          aria-label="Assistant"
         >
-          <.icon name="hero-clock" class="size-4" />
+          <.icon name="hero-sparkles" class="size-4" />
         </.link>
 
         <button

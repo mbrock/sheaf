@@ -89,6 +89,11 @@ defmodule SheafWeb.AssistantChatComponent do
     {:noreply, socket |> assign(:mode, mode) |> assign(:form, chat_form(mode))}
   end
 
+  def handle_event("new_chat", %{"mode" => mode}, socket) do
+    mode = normalize_mode(mode)
+    {:noreply, start_blank_chat(socket, mode)}
+  end
+
   def handle_event("send", %{"chat" => %{"message" => message} = chat_params}, socket) do
     mode = Map.get(chat_params, "mode", socket.assigns.mode)
     message = String.trim(message)
@@ -138,6 +143,49 @@ defmodule SheafWeb.AssistantChatComponent do
   def render(assigns) do
     ~H"""
     <section class={assistant_section_class(@variant, @selected_chat_id)}>
+      <div :if={not inline?(@variant)} class="mb-3 space-y-2">
+        <div class="flex items-center gap-2">
+          <div class="min-w-0 flex-1">
+            <div class="font-sans text-[11px] uppercase text-stone-500 dark:text-stone-400">
+              Current
+            </div>
+            <div class="truncate font-sans text-sm font-medium text-stone-800 dark:text-stone-100">
+              {current_chat_title(@chat, @selected_chat_id)}
+            </div>
+          </div>
+          <button
+            type="button"
+            phx-click="new_chat"
+            phx-value-mode={@mode}
+            phx-target={@myself}
+            class="grid size-8 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+            title="New conversation"
+            aria-label="New conversation"
+          >
+            <.icon name="hero-plus" class="size-4" />
+          </button>
+        </div>
+
+        <div
+          :if={@chats != []}
+          class="flex gap-1 overflow-x-auto pb-1 font-sans text-xs"
+          aria-label="Assistant conversations"
+        >
+          <button
+            :for={chat <- @chats}
+            type="button"
+            phx-click="select_chat"
+            phx-value-id={chat.id}
+            phx-target={@myself}
+            class={chat_tab_class(@selected_chat_id, chat)}
+            title={chat.title}
+          >
+            <.icon name={chat_kind_icon(chat)} class="size-3.5 shrink-0" />
+            <span class="min-w-0 truncate">{chat.title}</span>
+          </button>
+        </div>
+      </div>
+
       <.form
         for={@form}
         phx-change="set_mode"
@@ -456,6 +504,16 @@ defmodule SheafWeb.AssistantChatComponent do
     |> assign(:chats_subscribed?, true)
   end
 
+  defp start_blank_chat(socket, mode) do
+    socket
+    |> unsubscribe_from_previous_chat(nil)
+    |> assign(:selected_chat_id, nil)
+    |> assign(:subscribed_chat_id, nil)
+    |> assign(:chat, empty_chat())
+    |> assign(:mode, mode)
+    |> assign(:form, chat_form(mode))
+  end
+
   defp ensure_sendable_chat(%{assigns: %{selected_chat_id: id}} = socket, _mode)
        when is_binary(id),
        do: socket
@@ -561,6 +619,27 @@ defmodule SheafWeb.AssistantChatComponent do
       selected_mode != mode &&
         "text-stone-500 hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
     ]
+  end
+
+  defp current_chat_title(_chat, nil), do: "New conversation"
+  defp current_chat_title(%{title: title}, _id) when is_binary(title), do: title
+  defp current_chat_title(_chat, _id), do: "Assistant conversation"
+
+  defp chat_tab_class(selected_chat_id, chat) do
+    [
+      "inline-flex h-8 max-w-44 shrink-0 items-center gap-1.5 rounded-sm px-2 transition-colors",
+      selected_chat_id == chat.id &&
+        "bg-stone-900 text-stone-50 dark:bg-stone-100 dark:text-stone-950",
+      selected_chat_id != chat.id &&
+        "text-stone-500 hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+    ]
+  end
+
+  defp chat_kind_icon(chat) do
+    case chat_kind(chat) do
+      :research -> "hero-beaker"
+      _kind -> "hero-chat-bubble-left-ellipsis"
+    end
   end
 
   defp chat_listed?(chats, id), do: Enum.any?(chats, &(&1.id == id))
