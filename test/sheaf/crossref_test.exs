@@ -4,7 +4,7 @@ defmodule Sheaf.CrossrefTest do
 
   alias RDF.NS.OWL
   alias Sheaf.Crossref
-  alias Sheaf.NS.{DCTERMS, DOI, FABIO, FOAF, FRBR}
+  alias Sheaf.NS.{BIBO, DCTERMS, DOI, FABIO, FOAF, FRBR}
 
   setup do
     Req.Test.verify_on_exit!()
@@ -133,6 +133,7 @@ defmodule Sheaf.CrossrefTest do
         },
         expression: expression,
         paper: paper,
+        page_count: 17,
         work: work,
         work_type: FABIO.ResearchPaper
       )
@@ -147,6 +148,12 @@ defmodule Sheaf.CrossrefTest do
              paper,
              FABIO.isRepresentationOf(),
              expression
+           })
+
+    assert RDF.Data.include?(graph, {
+             expression,
+             BIBO.numPages(),
+             17
            })
 
     assert RDF.Data.include?(graph, {

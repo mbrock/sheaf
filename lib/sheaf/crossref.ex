@@ -77,6 +77,8 @@ defmodule Sheaf.Crossref do
       is minted.
     * `:work_type` - an optional type, such as `fabio:ResearchPaper`, for `:work`.
       When a work is present and no type is provided, `fabio:ScholarlyWork` is used.
+    * `:page_count` - optional integer page count to assert on the local
+      expression with `bibo:numPages`.
     * `:same_as` - additional local IRIs to link to the DOI resource with
       `owl:sameAs`.
   """
@@ -195,6 +197,7 @@ defmodule Sheaf.Crossref do
     volume = volume(crossref_work, crossref_graph, doi_iri)
     issue = issue(crossref_work)
     page_range = page_range(crossref_work, crossref_graph, doi_iri)
+    page_count = Keyword.get(opts, :page_count)
     creators = objects(crossref_graph, doi_iri, DCTERMS.creator())
     parts = objects(crossref_graph, doi_iri, DCTERMS.isPartOf())
     publishers = publisher(crossref_work, crossref_graph, doi_iri)
@@ -209,6 +212,7 @@ defmodule Sheaf.Crossref do
                     volume: volume,
                     issue: issue,
                     page_range: page_range,
+                    page_count: page_count,
                     creators: creators,
                     parts: parts,
                     publishers: publishers,
@@ -223,6 +227,7 @@ defmodule Sheaf.Crossref do
       |> FABIO.hasVolumeIdentifier(volume)
       |> FABIO.hasIssueIdentifier(issue)
       |> FABIO.hasPageRange(page_range)
+      |> BIBO.numPages(page_count)
       |> DCTERMS.creator(creators)
       |> DCTERMS.isPartOf(parts)
       |> DCTERMS.publisher(publishers)

@@ -9,7 +9,7 @@ defmodule Sheaf.MetadataResolver do
   """
 
   alias RDF.Description
-  alias Sheaf.NS.{DOC, FABIO}
+  alias Sheaf.NS.{BIBO, DOC, FABIO}
   alias RDF.NS.RDFS
 
   @metadata_graph "https://less.rest/sheaf/metadata"
@@ -276,6 +276,7 @@ defmodule Sheaf.MetadataResolver do
       |> Keyword.take([:base_url, :req_options])
       |> Keyword.put(:metadata_graph, Keyword.get(opts, :metadata_graph, @metadata_graph))
       |> Keyword.put(:paper, candidate.document)
+      |> put_if_present(:page_count, document_page_count(candidate.document))
 
     with {:ok, crossref} <- Sheaf.Crossref.import_metadata(doi, crossref_opts) do
       {:ok,
@@ -290,6 +291,40 @@ defmodule Sheaf.MetadataResolver do
   defp clean_match(match), do: Map.delete(match, :work)
 
   defp crossref_lookup_opts(opts), do: Keyword.take(opts, [:base_url, :req_options])
+
+  defp document_page_count(document) do
+    with {:ok, graph} <- Sheaf.fetch_graph(document) do
+      document_page_count(graph, RDF.iri(document))
+    else
+      _error -> nil
+    end
+  end
+
+  defp document_page_count(graph, document) do
+    description = RDF.Graph.description(graph, document) || Description.new(document)
+
+    case description |> Description.first(BIBO.numPages()) |> integer_value() do
+      count when is_integer(count) ->
+        count
+
+      _other ->
+        source_page = DOC.sourcePage()
+
+        graph
+        |> RDF.Graph.triples()
+        |> Enum.flat_map(fn
+          {_subject, ^source_page, object} ->
+            case integer_value(object) do
+              page when is_integer(page) -> [page]
+              _other -> []
+            end
+
+          _triple ->
+            []
+        end)
+        |> page_count()
+    end
+  end
 
   defp extract_metadata(candidate, opts) do
     extract_metadata = Keyword.get(opts, :extract_metadata, &default_extract_metadata/2)
@@ -422,6 +457,19 @@ defmodule Sheaf.MetadataResolver do
     |> Description.first(property)
     |> value()
   end
+
+  defp integer_value(%RDF.Literal{} = literal), do: RDF.Literal.value(literal)
+  defp integer_value(value) when is_integer(value), do: value
+  defp integer_value(_value), do: nil
+
+  defp page_count([]), do: nil
+
+  defp page_count(pages) do
+    Enum.max(pages) - Enum.min(pages) + 1
+  end
+
+  defp put_if_present(opts, _key, nil), do: opts
+  defp put_if_present(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp document?(graph, doc) do
     case RDF.Graph.description(graph, doc) do
