@@ -98,7 +98,7 @@ defmodule SheafWeb.DocumentLive do
         class="min-h-0 min-w-0 overflow-y-auto px-4 pb-4 lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
-        <div class="mx-auto w-full max-w-[112ch] pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:shadow-sm lg:dark:border-stone-800 lg:dark:bg-stone-900">
+        <div class="mx-auto w-full max-w-[112ch] pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:dark:border-stone-800 lg:dark:bg-stone-900">
           <.reader_blocks
             graph={@graph}
             blocks={@blocks}

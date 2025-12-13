@@ -165,7 +165,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
       phx-target={@myself}
     >
       <form phx-submit="search" phx-target={@myself}>
-        <div class="flex h-9 w-full min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-2 shadow-sm sm:w-[min(22rem,42vw)] sm:gap-2 dark:border-stone-700 dark:bg-stone-900">
+        <div class="flex h-9 w-full min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-2 sm:w-[min(22rem,42vw)] sm:gap-2 dark:border-stone-700 dark:bg-stone-900">
           <input
             id={"#{@id}-input"}
             type="search"
@@ -188,7 +188,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
       <div
         :if={@open?}
         id={"#{@id}-results"}
-        class="absolute right-0 top-full z-[100] w-[min(32rem,calc(100vw-2rem))] rounded-b-sm border-x border-b border-stone-300 bg-white p-1 text-stone-950 shadow-xl ring-1 ring-black/5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:ring-white/10"
+        class="absolute right-0 top-full z-[100] w-[min(32rem,calc(100vw-2rem))] rounded-b-sm border-x border-b border-stone-300 bg-white p-1 text-stone-950 ring-1 ring-black/5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:ring-white/10"
       >
         <.search_results
           query={@query}

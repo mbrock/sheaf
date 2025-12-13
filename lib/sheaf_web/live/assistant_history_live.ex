@@ -35,7 +35,7 @@ defmodule SheafWeb.AssistantHistoryLive do
 
       <div class="min-h-0 overflow-y-auto px-2 py-2 sm:px-3">
         <div class="mx-auto grid w-full max-w-7xl gap-3 lg:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
-          <section class="min-w-0 rounded-sm border border-stone-200/80 bg-white px-3 py-3 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/70">
+          <section class="min-w-0 rounded-sm border border-stone-200/80 bg-white px-3 py-3 dark:border-stone-800/80 dark:bg-stone-900/70">
             <.live_component
               module={AssistantChatComponent}
               id="assistant-page-agent"
