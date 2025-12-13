@@ -196,7 +196,7 @@ defmodule SheafWeb.AssistantChatComponent do
         <textarea
           name="chat[message]"
           rows="1"
-          class="block max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-2 text-sm leading-5 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
+          class="block max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-2 text-base leading-6 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:text-sm sm:leading-5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
           placeholder={input_placeholder(@mode)}
           disabled={@chat.pending}
         ></textarea>

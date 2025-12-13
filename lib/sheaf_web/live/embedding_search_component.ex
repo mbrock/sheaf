@@ -173,7 +173,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
             value={@query}
             autocomplete="off"
             placeholder="Search"
-            class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-sm leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 dark:text-stone-50 dark:placeholder:text-stone-500"
+            class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-base leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 sm:text-sm dark:text-stone-50 dark:placeholder:text-stone-500"
           />
           <button
             type="submit"
@@ -238,7 +238,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
             value={@query}
             autocomplete="off"
             placeholder="Search concepts, passages, or cases"
-            class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-sm leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 dark:text-stone-50 dark:placeholder:text-stone-500"
+            class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-base leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 sm:text-sm dark:text-stone-50 dark:placeholder:text-stone-500"
           />
           <button
             type="submit"
