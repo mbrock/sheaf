@@ -147,7 +147,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <section>
+    <section class={if @variant == :toolbar, do: "min-w-0 flex-1 sm:flex-none", else: nil}>
       <.toolbar_search :if={@variant == :toolbar} {assigns} />
       <.full_search :if={@variant != :toolbar} {assigns} />
     </section>
@@ -160,12 +160,12 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
     ~H"""
     <div
-      class="relative z-20 shrink-0"
+      class="relative z-20 min-w-0"
       phx-click-away="reset"
       phx-target={@myself}
     >
       <form phx-submit="search" phx-target={@myself}>
-        <div class="flex w-[min(22rem,42vw)] items-center gap-2 rounded-sm border border-stone-300 bg-white px-2 py-1.5 dark:border-stone-700 dark:bg-stone-900">
+        <div class="flex h-9 w-full min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-2 shadow-sm sm:w-[min(22rem,42vw)] sm:gap-2 dark:border-stone-700 dark:bg-stone-900">
           <input
             id={"#{@id}-input"}
             type="search"
@@ -178,7 +178,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
           <button
             type="submit"
             title="Search"
-            class="grid size-6 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
+            class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
           >
             <.icon name="hero-magnifying-glass" class="size-4" />
           </button>

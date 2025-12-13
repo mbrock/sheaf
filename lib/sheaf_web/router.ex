@@ -55,6 +55,7 @@ defmodule SheafWeb.Router do
     get "/b/:block_id", BlockController, :show
     live "/", DocumentIndexLive
     live "/search", SearchLive
+    live "/history", AssistantHistoryLive
     live "/:id", DocumentLive
   end
 

@@ -15,9 +15,9 @@ defmodule SheafWeb.AppChrome do
     ~H"""
     <div
       id={@id}
-      class="relative z-50 col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-4 py-2 backdrop-blur dark:border-stone-800/80 dark:bg-stone-950/90"
+      class="relative z-50 col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-2 py-2 backdrop-blur sm:px-4 dark:border-stone-800/80 dark:bg-stone-950/90"
     >
-      <div class="flex min-h-8 w-full items-center gap-3 overflow-visible">
+      <div class="flex min-h-8 w-full items-center gap-2 overflow-visible sm:gap-3">
         <.link
           :if={@section == :document}
           navigate={~p"/"}
@@ -30,9 +30,11 @@ defmodule SheafWeb.AppChrome do
         <.link
           :if={@section != :document}
           navigate={~p"/"}
-          class="inline-flex h-8 shrink-0 items-center rounded-sm px-2 font-sans text-sm font-semibold text-stone-700 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          class="grid size-8 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          title="Home"
+          aria-label="Home"
         >
-          Sheaf
+          <.icon name="hero-home" class="size-4" />
         </.link>
 
         <span
@@ -42,7 +44,7 @@ defmodule SheafWeb.AppChrome do
         >
         </span>
 
-        <div :if={!@breadcrumb_id} class="min-w-0 flex-1"></div>
+        <div :if={!@breadcrumb_id} class="hidden min-w-0 flex-1 sm:block"></div>
 
         <.live_component
           :if={@search?}
@@ -50,6 +52,15 @@ defmodule SheafWeb.AppChrome do
           id="toolbar-search"
           variant={:toolbar}
         />
+
+        <.link
+          navigate={~p"/history"}
+          class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          title="History"
+          aria-label="History"
+        >
+          <.icon name="hero-clock" class="size-4" />
+        </.link>
 
         <button
           :if={@copy_markdown?}
