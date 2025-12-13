@@ -10,17 +10,6 @@ defmodule Sheaf.Admin.Datalab do
   @default_output_dir "var/datalab"
   @default_await_interval 5_000
   @execution_page_size 100
-  @imported_sources_query """
-  PREFIX sheaf: <https://less.rest/sheaf/>
-
-  SELECT ?file WHERE {
-    GRAPH ?doc {
-      ?doc a sheaf:Document ;
-        sheaf:sourceFile ?file .
-    }
-  }
-  """
-
   def run(args) do
     {command, args} = command(args)
 
@@ -492,12 +481,20 @@ defmodule Sheaf.Admin.Datalab do
   end
 
   defp imported_source_files do
-    with {:ok, result} <- Sheaf.select("datalab imported sources select", @imported_sources_query) do
+    with {:ok, dataset} <- Sheaf.fetch_dataset() do
+      source_file = DOC.sourceFile()
+
       source_files =
-        result.results
-        |> Enum.map(&Map.fetch!(&1, "file"))
-        |> Enum.map(&RDF.Term.value/1)
-        |> Enum.map(&RDF.iri/1)
+        dataset
+        |> RDF.Dataset.graphs()
+        |> Enum.flat_map(fn graph ->
+          graph
+          |> RDF.Graph.triples()
+          |> Enum.flat_map(fn
+            {_doc, ^source_file, file} -> [file]
+            _triple -> []
+          end)
+        end)
         |> MapSet.new()
 
       {:ok, source_files}

@@ -52,6 +52,22 @@ defmodule Sheaf.Repo do
     end
   end
 
+  def match(pattern) do
+    Tracer.with_span "sheaf.repo.match", %{
+      kind: :internal,
+      attributes: pattern_attributes("match", pattern)
+    } do
+      case Quadlog.match(__MODULE__, pattern) do
+        {:ok, dataset} = ok ->
+          Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(dataset))
+          ok
+
+        error ->
+          error
+      end
+    end
+  end
+
   def load(pattern) do
     Tracer.with_span "sheaf.repo.load", %{
       kind: :internal,

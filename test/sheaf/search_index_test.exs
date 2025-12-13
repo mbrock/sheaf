@@ -1,5 +1,5 @@
 defmodule Sheaf.Search.IndexTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Sheaf.Search.Index
 
@@ -16,49 +16,49 @@ defmodule Sheaf.Search.IndexTest do
       File.rm(path <> "-wal")
     end)
 
+    repo_path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-search-repo-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    start_supervised!({Sheaf.Repo, path: repo_path})
+
     {:ok, db_path: path}
   end
 
   test "sync mirrors RDF text units into SQLite FTS", %{db_path: db_path} do
-    select = fn label, sparql ->
-      assert label in [
-               "search text units paragraph select",
-               "search text units sourceHtml select"
-             ]
+    doc1 = RDF.iri("https://sheaf.less.rest/DOC1")
+    doc2 = RDF.iri("https://sheaf.less.rest/DOC2")
+    block1 = RDF.iri("https://sheaf.less.rest/BLOCK1")
+    block2 = RDF.iri("https://sheaf.less.rest/BLOCK2")
+    para = RDF.iri("https://sheaf.less.rest/PARA1")
 
-      refute sparql =~ "UNION"
-      refute sparql =~ "ORDER BY"
-      assert sparql =~ "sheaf:excludesDocument"
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {doc1, RDF.type(), Sheaf.NS.DOC.Document},
+                   {block1, Sheaf.NS.DOC.paragraph(), para},
+                   {para, Sheaf.NS.DOC.text(), "Circular economy practices matter."}
+                 ],
+                 name: doc1
+               )
+             )
 
-      cond do
-        sparql =~ "sheaf:paragraph" ->
-          {:ok,
-           %{
-             results: [
-               %{
-                 "iri" => RDF.iri("https://sheaf.less.rest/BLOCK1"),
-                 "text" => RDF.literal("Circular economy practices matter."),
-                 "doc" => RDF.iri("https://sheaf.less.rest/DOC1")
-               }
-             ]
-           }}
-
-        sparql =~ "sheaf:sourceHtml" ->
-          {:ok,
-           %{
-             results: [
-               %{
-                 "iri" => RDF.iri("https://sheaf.less.rest/BLOCK2"),
-                 "text" => RDF.literal("<p>Repair and maintenance work.</p>"),
-                 "doc" => RDF.iri("https://sheaf.less.rest/DOC2")
-               }
-             ]
-           }}
-      end
-    end
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {doc2, RDF.type(), Sheaf.NS.DOC.Document},
+                   {block2, Sheaf.NS.DOC.sourceHtml(), "<p>Repair and maintenance work.</p>"}
+                 ],
+                 name: doc2
+               )
+             )
 
     assert {:ok, %{count: 2, kinds: %{"paragraph" => 1, "sourceHtml" => 1}}} =
-             Index.sync(db_path: db_path, select: select)
+             Index.sync(db_path: db_path)
 
     assert {:ok, [hit]} = Index.search("circular economy", db_path: db_path)
     assert hit.iri == "https://sheaf.less.rest/BLOCK1"

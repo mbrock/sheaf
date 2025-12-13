@@ -8,155 +8,9 @@ defmodule Sheaf.Documents do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias Sheaf.Id
-  alias Sheaf.NS.{BIBO, CITO, DCTERMS, FABIO, FOAF, FRBR, DOC}
+  alias Sheaf.NS.{BIBO, BIRO, CITO, DCTERMS, FABIO, FOAF, FRBR, DOC}
   alias RDF.{Description, Graph, Literal}
   alias RDF.NS.RDFS
-
-  @reference_query """
-  PREFIX sheaf: <https://less.rest/sheaf/>
-  PREFIX biro: <http://purl.org/spar/biro/>
-  PREFIX cito: <http://purl.org/spar/cito/>
-  PREFIX dcterms: <http://purl.org/dc/terms/>
-  PREFIX fabio: <http://purl.org/spar/fabio/>
-  PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-  PREFIX frbr: <http://purl.org/vocab/frbr/core#>
-  PREFIX bibo: <http://purl.org/ontology/bibo/>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-  SELECT ?block ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages ?pageCount ?metadataPageCount ?status ?statusLabel ?cited ?metadataOnly WHERE {
-    GRAPH <__DOCUMENT_IRI__> {
-      ?block biro:references ?doc .
-      BIND("true" AS ?cited)
-    }
-
-    {
-      GRAPH ?doc {
-        {
-          ?doc a ?kind .
-          FILTER(?kind IN (sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
-        } UNION {
-          ?doc a sheaf:Document .
-          FILTER NOT EXISTS {
-            ?doc a ?specificKind .
-            FILTER(?specificKind IN (sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
-          }
-          BIND(sheaf:Document AS ?kind)
-        }
-        OPTIONAL { ?doc rdfs:label ?title }
-      }
-      OPTIONAL {
-        SELECT ?doc ((MAX(?sp) - MIN(?sp) + 1) AS ?pageCount) WHERE {
-          GRAPH ?doc { ?node sheaf:sourcePage ?sp }
-        }
-        GROUP BY ?doc
-      }
-      OPTIONAL {
-        GRAPH <https://less.rest/sheaf/metadata> {
-          ?doc fabio:isRepresentationOf ?expression .
-
-          OPTIONAL { ?expression dcterms:title ?metadataTitle }
-          OPTIONAL { ?expression a ?metadataKind }
-          OPTIONAL {
-            ?expression dcterms:creator ?author .
-            OPTIONAL { ?author foaf:name ?authorResourceName }
-            BIND(
-              IF(
-                isLiteral(?author),
-                STR(?author),
-                IF(BOUND(?authorResourceName), STR(?authorResourceName), "")
-              ) AS ?authorName
-            )
-            FILTER(?authorName != "")
-          }
-          OPTIONAL { ?expression fabio:hasPublicationYear ?year }
-          OPTIONAL {
-            ?expression dcterms:isPartOf ?venue .
-            OPTIONAL { ?venue dcterms:title ?venueTitle }
-          }
-          OPTIONAL {
-            ?expression dcterms:publisher ?publisher .
-            OPTIONAL { ?publisher dcterms:title ?publisherResourceTitle }
-            BIND(
-              IF(
-                BOUND(?publisherResourceTitle),
-                STR(?publisherResourceTitle),
-                IF(isLiteral(?publisher), STR(?publisher), "")
-              ) AS ?publisherTitle
-            )
-            FILTER(?publisherTitle != "")
-          }
-          OPTIONAL { ?expression fabio:hasDOI ?doi }
-          OPTIONAL { ?expression fabio:hasVolumeIdentifier ?volume }
-          OPTIONAL { ?expression fabio:hasIssueIdentifier ?issue }
-          OPTIONAL { ?expression fabio:hasPageRange ?pages }
-          OPTIONAL { ?expression bibo:numPages ?metadataPageCount }
-          OPTIONAL {
-            ?expression bibo:status ?status .
-            OPTIONAL { ?status rdfs:label ?statusLabel }
-          }
-        }
-      }
-    } UNION {
-      FILTER NOT EXISTS { GRAPH ?documentGraph { ?doc a sheaf:Document } }
-      BIND("true" AS ?metadataOnly)
-      BIND(fabio:ScholarlyWork AS ?kind)
-      GRAPH <https://less.rest/sheaf/metadata> {
-        OPTIONAL { ?doc rdfs:label ?resourceTitle }
-        OPTIONAL { ?doc dcterms:title ?workTitle }
-        OPTIONAL {
-          ?expression frbr:realizationOf ?doc .
-          OPTIONAL { ?expression dcterms:title ?metadataTitle }
-          OPTIONAL { ?expression a ?metadataKind }
-          OPTIONAL {
-            ?expression dcterms:creator ?author .
-            OPTIONAL { ?author foaf:name ?authorResourceName }
-            BIND(
-              IF(
-                isLiteral(?author),
-                STR(?author),
-                IF(BOUND(?authorResourceName), STR(?authorResourceName), "")
-              ) AS ?authorName
-            )
-            FILTER(?authorName != "")
-          }
-          OPTIONAL { ?expression fabio:hasPublicationYear ?year }
-          OPTIONAL {
-            ?expression dcterms:isPartOf ?venue .
-            OPTIONAL { ?venue dcterms:title ?venueTitle }
-          }
-          OPTIONAL {
-            ?expression dcterms:publisher ?publisher .
-            OPTIONAL { ?publisher dcterms:title ?publisherResourceTitle }
-            BIND(
-              IF(
-                BOUND(?publisherResourceTitle),
-                STR(?publisherResourceTitle),
-                IF(isLiteral(?publisher), STR(?publisher), "")
-              ) AS ?publisherTitle
-            )
-            FILTER(?publisherTitle != "")
-          }
-          OPTIONAL { ?expression fabio:hasDOI ?doi }
-          OPTIONAL { ?expression fabio:hasVolumeIdentifier ?volume }
-          OPTIONAL { ?expression fabio:hasIssueIdentifier ?issue }
-          OPTIONAL { ?expression fabio:hasPageRange ?pages }
-          OPTIONAL { ?expression bibo:numPages ?metadataPageCount }
-          OPTIONAL {
-            ?expression bibo:status ?expressionStatus .
-            OPTIONAL { ?expressionStatus rdfs:label ?expressionStatusLabel }
-          }
-        }
-        OPTIONAL {
-          ?doc bibo:status ?workStatus .
-          OPTIONAL { ?workStatus rdfs:label ?workStatusLabel }
-        }
-        BIND(COALESCE(?expressionStatus, ?workStatus) AS ?status)
-        BIND(COALESCE(?expressionStatusLabel, ?workStatusLabel) AS ?statusLabel)
-        BIND(COALESCE(?resourceTitle, ?workTitle, ?metadataTitle) AS ?title)
-      }
-    }
-  }
-  """
 
   def list(opts \\ []) do
     Tracer.with_span "Sheaf.Documents.list", %{
@@ -176,10 +30,36 @@ defmodule Sheaf.Documents do
 
   def references_for_document(document_iri) do
     document_iri = RDF.iri(document_iri)
-    query = String.replace(@reference_query, "__DOCUMENT_IRI__", to_string(document_iri))
 
-    with {:ok, result} <- Sheaf.select("document references select", query) do
-      {:ok, references_from_rows(result.results)}
+    with :ok <- Sheaf.Repo.load_once({nil, BIRO.references(), nil, document_iri}),
+         :ok <- load_document_index_cache() do
+      rows =
+        Sheaf.Repo.ask(fn dataset ->
+          references = BIRO.references()
+          metadata = dataset |> RDF.Dataset.graph(Sheaf.Repo.metadata_graph()) |> graph_index()
+          workspace = dataset |> RDF.Dataset.graph(Sheaf.Repo.workspace_graph()) |> graph_index()
+          cited_docs = cited_documents(dataset)
+          graph = RDF.Dataset.graph(dataset, document_iri) || Graph.new(name: document_iri)
+
+          graph
+          |> Graph.triples()
+          |> Enum.flat_map(fn
+            {block, ^references, doc} ->
+              case document_description(dataset, doc) do
+                nil ->
+                  rows_for_metadata_only_document(metadata, workspace, doc)
+
+                description ->
+                  rows_for_document(dataset, metadata, workspace, cited_docs, doc, description)
+              end
+              |> Enum.map(&Map.put(&1, "block", block))
+
+            _triple ->
+              []
+          end)
+        end)
+
+      {:ok, references_from_rows(rows)}
     end
   end
 
@@ -322,6 +202,15 @@ defmodule Sheaf.Documents do
       Tracer.set_attribute("sheaf.document_description_count", length(descriptions))
       descriptions
     end
+  end
+
+  defp document_description(dataset, doc) do
+    dataset
+    |> RDF.Dataset.graphs()
+    |> Enum.find_value(fn graph ->
+      description = Graph.description(graph, doc)
+      if description && document_description?(description), do: description
+    end)
   end
 
   defp document_description?(description) do

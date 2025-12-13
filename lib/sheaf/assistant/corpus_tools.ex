@@ -633,6 +633,8 @@ defmodule Sheaf.Assistant.CorpusTools do
       end
     rescue
       _error -> hits
+    catch
+      :exit, _reason -> hits
     end
   end
 

@@ -8,8 +8,6 @@
 #   sheaf block DOC BLOCK            show one block (drill-down)
 #   sheaf read DOC                   full text of a document as chunks
 #   sheaf text DOC [BLOCK]           flattened plain text, optionally from one section
-#   sheaf sparql 'QUERY'             run a SPARQL query, print rows as TSV
-#   sheaf sparql-json 'QUERY'        run a SPARQL query, print raw JSON
 #   sheaf open ID                    print the reader URL for a document/block
 #
 # Env:
@@ -137,27 +135,6 @@ case "$cmd" in
         if .text then .text else
           .children | map("\(.title // .id)") | join("\n") end'
     fi
-    ;;
-
-  sparql)
-    q="${1:?usage: sheaf sparql QUERY}"
-    json="$(get /api/sparql --data-urlencode "query=$q")"
-    if (( RAW )); then echo "$json"; exit; fi
-    if echo "$json" | jq -e 'has("boolean")' >/dev/null; then
-      echo "$json" | jq -r '.boolean'
-    else
-      echo "$json" | jq -r '
-        .head.vars as $vars
-        | ([$vars | .[] | "\u001b[1m\(.)\u001b[0m"] | join("\t")),
-          (.results.bindings[] |
-            [$vars[] as $v | (.[$v].value // "")] | join("\t"))
-      '
-    fi
-    ;;
-
-  sparql-json)
-    q="${1:?usage: sheaf sparql-json QUERY}"
-    get /api/sparql --data-urlencode "query=$q" | jq .
     ;;
 
   open)

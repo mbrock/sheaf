@@ -40,9 +40,6 @@ defmodule SheafWeb.Router do
     get "/documents/:id", DocumentController, :show
     get "/documents/:id/chunks", DocumentController, :chunks
     get "/documents/:id/blocks/:block_id", DocumentController, :block
-
-    get "/sparql", SparqlController, :query
-    post "/sparql", SparqlController, :query
   end
 
   scope "/rdf", SheafRDFBrowserWeb do

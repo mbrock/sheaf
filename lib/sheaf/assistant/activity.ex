@@ -2,7 +2,7 @@ defmodule Sheaf.Assistant.Activity do
   @moduledoc """
   Persistent ActivityStreams records for assistant chat turns.
 
-  Chat state is still process-local for the live UI, but the semantic trace of a
+  Chat state is still process-local for the live UI, but the semantic trace of an
   assistant conversation is appended to RDF: messages, contextual actors, and the
   session collection that groups them.
   """
@@ -104,13 +104,14 @@ defmodule Sheaf.Assistant.Activity do
   end
 
   defp persist(%Graph{} = graph, opts) do
-    update = Keyword.get(opts, :update, &Sheaf.update/2)
+    graph = Graph.change_name(graph, Sheaf.Workspace.graph())
+    persist = Keyword.get(opts, :persist, &Sheaf.Repo.assert/1)
 
-    case update.("assistant activity insert", insert_data(graph)) do
+    case persist.(graph) do
       :ok -> :ok
       {:ok, _result} -> :ok
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_update_result, other}}
+      other -> {:error, {:unexpected_persist_result, other}}
     end
   end
 

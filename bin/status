@@ -24,23 +24,8 @@ http_status() {
   fi
 }
 
-json_value() {
-  if command -v jq >/dev/null 2>&1; then
-    jq -r "$1"
-  else
-    cat >/dev/null
-    printf 'unavailable: jq not installed'
-  fi
-}
-
-curl_auth=()
-if [ -n "${SHEAF_SPARQL_USERNAME:-}" ] && [ -n "${SHEAF_SPARQL_PASSWORD:-}" ]; then
-  curl_auth=(-u "$SHEAF_SPARQL_USERNAME:$SHEAF_SPARQL_PASSWORD")
-fi
-
 HEALTH_URL="http://$SHEAF_HTTP_IP:$PORT/health"
-DATASET="$SHEAF_SPARQL_DATASET"
-SERVER="${DATASET%/*}"
+QUADLOG_DB="${SHEAF_QUADLOG_DB:-var/sheaf-quadlog.sqlite3}"
 
 print_kv "App root" "$APP_ROOT"
 print_kv "Service mode" "$SHEAF_SERVICE_MODE"
@@ -50,21 +35,15 @@ print_kv "Phoenix HTTP" "http://$SHEAF_HTTP_IP:$PORT/"
 print_kv "Resource base" "${SHEAF_RESOURCE_BASE:-https://${PHX_HOST%/}/}"
 print_kv "Ontology base" "${SHEAF_ONTOLOGY_BASE:-https://less.rest/sheaf/}"
 print_kv "Health check" "$(http_status "$HEALTH_URL") $HEALTH_URL"
-print_kv "Dataset" "$DATASET"
-print_kv "Query endpoint" "${SHEAF_SPARQL_QUERY_ENDPOINT:-$DATASET/sparql}"
-print_kv "Update endpoint" "${SHEAF_SPARQL_UPDATE_ENDPOINT:-$DATASET/update}"
-print_kv "Data endpoint" "${SHEAF_SPARQL_DATA_ENDPOINT:-$DATASET/data}"
-print_kv "SPARQL user" "${SHEAF_SPARQL_USERNAME:-none}"
+print_kv "Quadlog DB" "$QUADLOG_DB"
 
-if server_json="$(curl -fsS --max-time 3 "${curl_auth[@]}" "$SERVER/$/server" 2>/dev/null)"; then
-  print_kv "Fuseki server" "reachable $SERVER"
-  print_kv "Fuseki version" "$(printf '%s' "$server_json" | json_value '.version // "unknown"')"
+if [ -s "$QUADLOG_DB" ] && command -v sqlite3 >/dev/null 2>&1; then
+  print_kv "Quadlog quads" "$(sqlite3 "$QUADLOG_DB" 'select count(*) from quads' 2>/dev/null || printf unknown)"
+  print_kv "Quadlog changes" "$(sqlite3 "$QUADLOG_DB" 'select count(*) from changes' 2>/dev/null || printf unknown)"
+elif [ -e "$QUADLOG_DB" ]; then
+  print_kv "Quadlog state" "empty or sqlite3 unavailable"
 else
-  print_kv "Fuseki server" "unreachable $SERVER"
-fi
-
-if datasets_json="$(curl -fsS --max-time 3 "${curl_auth[@]}" "$SERVER/$/datasets" 2>/dev/null)"; then
-  print_kv "Datasets" "$(printf '%s' "$datasets_json" | json_value '[.datasets[]."ds.name"] | join(", ")')"
+  print_kv "Quadlog state" "missing"
 fi
 
 case "$SHEAF_SERVICE_MODE" in

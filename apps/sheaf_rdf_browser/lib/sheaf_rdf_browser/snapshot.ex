@@ -2,163 +2,14 @@ defmodule SheafRDFBrowser.Snapshot do
   @moduledoc """
   Keeps a broad, dataset-shaped RDF browser snapshot in memory.
 
-  The snapshot is intentionally generic: it fetches small SPARQL result tables
-  for ontology/index predicates and derives display indexes from those rows. It
-  is not meant to be the live source of truth.
+  The snapshot is intentionally generic: it reads the current RDF dataset and
+  derives display indexes from simple graph walks. It is not meant to be the
+  live source of truth.
   """
 
   use GenServer
 
   alias SheafRDFBrowser.Index
-
-  @label_query """
-  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-  PREFIX dc: <http://purl.org/dc/elements/1.1/>
-  PREFIX dcterms: <http://purl.org/dc/terms/>
-
-  SELECT ?g ?s ?p ?o
-  WHERE {
-    GRAPH ?g {
-      ?s ?p ?o .
-      VALUES ?p {
-        rdfs:label skos:prefLabel dc:title dcterms:title
-      }
-    }
-  }
-  """
-
-  @comment_query """
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-  PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-  PREFIX dc: <http://purl.org/dc/elements/1.1/>
-  PREFIX dcterms: <http://purl.org/dc/terms/>
-  PREFIX prov: <http://www.w3.org/ns/prov#>
-
-  SELECT ?g ?s ?p ?o
-  WHERE {
-    GRAPH ?g {
-      ?s ?p ?o .
-      VALUES ?p {
-        rdfs:comment skos:definition skos:scopeNote skos:editorialNote
-        dc:description dcterms:description
-        prov:definition prov:editorsDefinition
-      }
-    }
-  }
-  """
-
-  @class_counts_query """
-  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-  SELECT ?class (COUNT(*) AS ?count)
-  WHERE {
-    GRAPH ?g { ?s rdf:type ?class }
-  }
-  GROUP BY ?class
-  """
-
-  @predicate_counts_query """
-  SELECT ?p (COUNT(*) AS ?count)
-  WHERE {
-    GRAPH ?g { ?s ?p ?o }
-  }
-  GROUP BY ?p
-  """
-
-  @graph_counts_query """
-  SELECT ?g (COUNT(*) AS ?count)
-  WHERE {
-    GRAPH ?g { ?s ?p ?o }
-  }
-  GROUP BY ?g
-  """
-
-  @ontology_types_query """
-  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-  PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
-  SELECT ?s ?class
-  WHERE {
-    GRAPH ?g {
-      ?s rdf:type ?class .
-      VALUES ?class {
-        rdfs:Class owl:Class
-        rdf:Property owl:ObjectProperty owl:DatatypeProperty owl:AnnotationProperty
-      }
-    }
-  }
-  """
-
-  @subclass_query """
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-  SELECT ?child ?parent
-  WHERE {
-    GRAPH ?g { ?child rdfs:subClassOf ?parent }
-  }
-  """
-
-  @subproperty_query """
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-  SELECT ?child ?parent
-  WHERE {
-    GRAPH ?g { ?child rdfs:subPropertyOf ?parent }
-  }
-  """
-
-  @domain_query """
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-  SELECT ?s ?o
-  WHERE {
-    GRAPH ?g { ?s rdfs:domain ?o }
-  }
-  """
-
-  @range_query """
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-  SELECT ?s ?o
-  WHERE {
-    GRAPH ?g { ?s rdfs:range ?o }
-  }
-  """
-
-  @ontology_query """
-  PREFIX owl: <http://www.w3.org/2002/07/owl#>
-
-  SELECT ?ontology ?p ?o
-  WHERE {
-    GRAPH ?g {
-      ?ontology a owl:Ontology ;
-        ?p ?o .
-    }
-  }
-  """
-
-  @class_property_usage_query """
-  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-  SELECT ?class ?p ?role (COUNT(*) AS ?count)
-  WHERE {
-    {
-      GRAPH ?typeGraph { ?resource rdf:type ?class . }
-      GRAPH ?dataGraph { ?resource ?p ?o . }
-      BIND("subject" AS ?role)
-    }
-    UNION
-    {
-      GRAPH ?typeGraph { ?resource rdf:type ?class . }
-      GRAPH ?dataGraph { ?s ?p ?resource . }
-      BIND("object" AS ?role)
-    }
-  }
-  GROUP BY ?class ?p ?role
-  """
 
   defstruct status: :empty,
             dataset: nil,
@@ -302,138 +153,163 @@ defmodule SheafRDFBrowser.Snapshot do
   end
 
   defp fetch_rows do
-    with {:ok, results, query_ms} <- fetch_selects() do
-      {:ok,
-       %{
-         labels: rows(bindings(results, :labels), [:g, :s, :p, :o]),
-         comments: rows(bindings(results, :comments), [:g, :s, :p, :o]),
-         class_counts: counts(bindings(results, :class_counts), "class"),
-         predicate_counts: counts(bindings(results, :predicate_counts), "p"),
-         graph_counts: counts(bindings(results, :graph_counts), "g"),
-         ontologies: rows(bindings(results, :ontologies), ontology: "ontology", p: "p", o: "o"),
-         ontology_types: rows(bindings(results, :ontology_types), [:s, {:class, "class"}]),
-         subclass_edges:
-           rows(bindings(results, :subclass_edges), child: "child", parent: "parent"),
-         subproperty_edges:
-           rows(bindings(results, :subproperty_edges), child: "child", parent: "parent"),
-         domains: rows(bindings(results, :domains), [:s, :o]),
-         ranges: rows(bindings(results, :ranges), [:s, :o]),
-         class_property_usage:
-           rows(bindings(results, :class_property_usage),
-             class: "class",
-             property: "p",
-             role: "role",
-             count: "count"
-           )
-       }, query_ms, query_ms(results, :predicate_counts)}
-    end
-  end
-
-  defp fetch_selects do
     {result, query_ms} =
       timed(fn ->
-        query_specs()
-        |> Task.async_stream(&fetch_named_select/1,
-          max_concurrency: config()[:refresh_max_concurrency] || 2,
-          ordered: false,
-          timeout: 120_000
-        )
-        |> Enum.reduce({:ok, %{}}, fn
-          {:ok, {:ok, name, bindings, query_ms}}, {:ok, acc} ->
-            {:ok, Map.put(acc, name, %{bindings: bindings, query_ms: query_ms})}
-
-          {:ok, {:error, reason}}, {:ok, _acc} ->
-            {:error, reason}
-
-          {:exit, reason}, {:ok, _acc} ->
-            {:error, reason}
-
-          _result, {:error, reason} ->
-            {:error, reason}
-        end)
+        with {:ok, dataset} <- fetch_dataset() do
+          {:ok, rows_from_dataset(dataset)}
+        end
       end)
 
     case result do
-      {:ok, results} -> {:ok, results, query_ms}
+      {:ok, rows} -> {:ok, rows, query_ms, query_ms}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp fetch_named_select({name, query}) do
-    with {:ok, bindings, query_ms} <- fetch_select(query) do
-      {:ok, name, bindings, query_ms}
+  defp fetch_dataset do
+    try do
+      case config()[:dataset] do
+        {module, function, args} -> apply(module, function, args)
+        fun when is_function(fun, 0) -> fun.()
+        nil -> {:error, :missing_dataset_source}
+      end
+    catch
+      :exit, reason -> {:error, reason}
     end
   end
 
-  defp query_specs do
-    [
-      labels: @label_query,
-      comments: @comment_query,
-      class_counts: @class_counts_query,
-      predicate_counts: @predicate_counts_query,
-      graph_counts: @graph_counts_query,
-      ontologies: @ontology_query,
-      ontology_types: @ontology_types_query,
-      subclass_edges: @subclass_query,
-      subproperty_edges: @subproperty_query,
-      domains: @domain_query,
-      ranges: @range_query,
-      class_property_usage: @class_property_usage_query
+  defp rows_from_dataset(dataset) do
+    quads = quads(dataset)
+
+    %{
+      labels: simple_rows(quads, &label?/1),
+      comments: simple_rows(quads, &comment?/1),
+      class_counts: count_by(for({_g, _s, p, o} <- quads, p == rdf_type(), do: term(o))),
+      predicate_counts: count_by(for({_g, _s, p, _o} <- quads, do: term(p))),
+      graph_counts: count_by(for({g, _s, _p, _o} <- quads, do: g)),
+      ontologies: ontology_rows(quads),
+      ontology_types: ontology_type_rows(quads),
+      subclass_edges: edge_rows(quads, rdfs("subClassOf"), :child, :parent),
+      subproperty_edges: edge_rows(quads, rdfs("subPropertyOf"), :child, :parent),
+      domains: subject_object_rows(quads, rdfs("domain")),
+      ranges: subject_object_rows(quads, rdfs("range")),
+      class_property_usage: class_property_usage_binding_rows(quads)
+    }
+  end
+
+  defp quads(dataset) do
+    dataset
+    |> RDF.Dataset.graphs()
+    |> Enum.flat_map(fn graph ->
+      Enum.map(RDF.Graph.triples(graph), fn {s, p, o} -> {term(graph.name), s, p, o} end)
+    end)
+  end
+
+  defp simple_rows(quads, predicate?) do
+    for {g, s, p, o} <- quads, predicate?.(p), do: %{g: g, s: term(s), p: term(p), o: term(o)}
+  end
+
+  defp label?(predicate) do
+    term(predicate) in [
+      rdfs("label"),
+      "http://www.w3.org/2004/02/skos/core#prefLabel",
+      "http://purl.org/dc/elements/1.1/title",
+      "http://purl.org/dc/terms/title"
     ]
   end
 
-  defp bindings(results, name), do: get_in(results, [name, :bindings])
-  defp query_ms(results, name), do: get_in(results, [name, :query_ms])
+  defp comment?(predicate) do
+    term(predicate) in [
+      rdfs("comment"),
+      "http://www.w3.org/2004/02/skos/core#definition",
+      "http://www.w3.org/2004/02/skos/core#scopeNote",
+      "http://www.w3.org/2004/02/skos/core#editorialNote",
+      "http://purl.org/dc/elements/1.1/description",
+      "http://purl.org/dc/terms/description",
+      "http://www.w3.org/ns/prov#definition",
+      "http://www.w3.org/ns/prov#editorsDefinition"
+    ]
+  end
 
-  defp fetch_select(query) do
-    conf = config()
+  defp count_by(values) do
+    values
+    |> Enum.frequencies()
+    |> Map.delete(nil)
+  end
 
-    request =
-      Req.new(
-        url: Keyword.fetch!(conf, :query_endpoint),
-        auth: conf[:sparql_auth],
-        headers: [accept: "application/sparql-results+json"],
-        form: [query: query],
-        http_errors: :raise
-      )
+  defp ontology_rows(quads) do
+    ontologies =
+      for {_g, s, p, o} <- quads,
+          p == rdf_type(),
+          term(o) == "http://www.w3.org/2002/07/owl#Ontology",
+          into: MapSet.new(),
+          do: s
 
-    try do
-      {response, ms} = timed(fn -> Req.post!(request) end)
-      {:ok, decode_bindings(response.body), ms}
-    rescue
-      error -> {:error, error}
+    for {_g, s, p, o} <- quads, MapSet.member?(ontologies, s) do
+      %{ontology: term(s), p: term(p), o: term(o)}
     end
   end
 
-  defp decode_bindings(body) when is_binary(body) do
-    body
-    |> Jason.decode!()
-    |> get_in(["results", "bindings"])
+  defp ontology_type_rows(quads) do
+    classes =
+      MapSet.new([
+        rdfs("Class"),
+        "http://www.w3.org/2002/07/owl#Class",
+        rdf("Property"),
+        "http://www.w3.org/2002/07/owl#ObjectProperty",
+        "http://www.w3.org/2002/07/owl#DatatypeProperty",
+        "http://www.w3.org/2002/07/owl#AnnotationProperty"
+      ])
+
+    for {_g, s, p, o} <- quads,
+        p == rdf_type(),
+        MapSet.member?(classes, term(o)),
+        do: %{s: term(s), class: term(o)}
   end
 
-  defp decode_bindings(%{"results" => %{"bindings" => bindings}}), do: bindings
-
-  defp counts(bindings, key) do
-    Map.new(bindings, fn binding ->
-      {value(binding, key), value(binding, "count") |> String.to_integer()}
-    end)
+  defp edge_rows(quads, predicate, child_key, parent_key) do
+    for {_g, s, p, o} <- quads, term(p) == predicate do
+      %{child_key => term(s), parent_key => term(o)}
+    end
   end
 
-  defp rows(bindings, fields) do
-    Enum.map(bindings, fn binding ->
-      Map.new(fields, fn
-        field when is_atom(field) -> {field, value(binding, Atom.to_string(field))}
-        {field, sparql_name} -> {field, value(binding, sparql_name)}
+  defp subject_object_rows(quads, predicate) do
+    for {_g, s, p, o} <- quads, term(p) == predicate, do: %{s: term(s), o: term(o)}
+  end
+
+  defp class_property_usage_binding_rows(quads) do
+    rdf_type = rdf_type()
+
+    types =
+      quads
+      |> Enum.flat_map(fn
+        {_g, resource, ^rdf_type, class} -> [{resource, term(class)}]
+        _quad -> []
       end)
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+    subject_rows =
+      for {_g, resource, p, _o} <- quads,
+          class <- Map.get(types, resource, []),
+          do: {class, term(p), "subject"}
+
+    object_rows =
+      for {_g, _s, p, resource} <- quads,
+          class <- Map.get(types, resource, []),
+          do: {class, term(p), "object"}
+
+    (subject_rows ++ object_rows)
+    |> Enum.frequencies()
+    |> Enum.map(fn {{class, property, role}, count} ->
+      %{class: class, property: property, role: role, count: Integer.to_string(count)}
     end)
   end
 
-  defp value(binding, name) do
-    case Map.fetch!(binding, name) do
-      %{"type" => "bnode", "value" => value} -> "_:" <> value
-      %{"value" => value} -> value
-    end
-  end
+  defp rdf_type, do: RDF.type()
+  defp rdf(local), do: "http://www.w3.org/1999/02/22-rdf-syntax-ns##{local}"
+  defp rdfs(local), do: "http://www.w3.org/2000/01/rdf-schema##{local}"
+  defp term(nil), do: nil
+  defp term(value), do: RDF.Term.value(value) |> to_string()
 
   defp class_property_cache(rows) do
     rows

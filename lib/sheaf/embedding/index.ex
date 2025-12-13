@@ -7,6 +7,8 @@ defmodule Sheaf.Embedding.Index do
 
   alias RDF.{Description, Graph}
   alias Sheaf.Embedding.Store
+  alias Sheaf.NS.{DCTERMS, DOC, FABIO, FOAF}
+  alias RDF.NS.RDFS
 
   @default_dimensions 768
   @default_max_concurrency 8
@@ -99,33 +101,21 @@ defmodule Sheaf.Embedding.Index do
   """
   @spec text_units(keyword()) :: {:ok, [text_unit()]} | {:error, term()}
   def text_units(opts \\ []) do
-    select = Keyword.get(opts, :select, &Sheaf.select/2)
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
 
-    kinds
-    |> Enum.reduce_while({:ok, []}, fn kind, {:ok, acc} ->
-      case select.("embedding text units #{kind} select", text_units_sparql(kind, opts)) do
-        {:ok, result} -> {:cont, {:ok, acc ++ result.results}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, rows} ->
-        model = Keyword.get(opts, :model, Sheaf.Embedding.model())
-        dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
-        source = source(opts)
+    with {:ok, rows} <- Sheaf.TextUnits.fetch_rows(kinds: kinds) do
+      model = Keyword.get(opts, :model, Sheaf.Embedding.model())
+      dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
+      source = source(opts)
 
-        units =
-          rows
-          |> Enum.map(&unit_from_row(&1, model, dimensions, source))
-          |> Enum.reject(&(&1.text == ""))
-          |> Enum.sort_by(& &1.iri)
-          |> maybe_limit_units(opts)
+      units =
+        rows
+        |> Enum.map(&unit_from_row(&1, model, dimensions, source))
+        |> Enum.reject(&(&1.text == ""))
+        |> Enum.sort_by(& &1.iri)
+        |> maybe_limit_units(opts)
 
-        {:ok, units}
-
-      {:error, reason} ->
-        {:error, reason}
+      {:ok, units}
     end
   end
 
@@ -632,50 +622,6 @@ defmodule Sheaf.Embedding.Index do
     batch_api_mode?(opts) and Sheaf.Embedding.provider(opts) == :gemini
   end
 
-  defp text_units_sparql(kind, opts) when kind in @valid_kinds do
-    limit = Keyword.get(opts, :limit)
-
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-    PREFIX prov: <http://www.w3.org/ns/prov#>
-
-    SELECT DISTINCT ?iri ?kind ?text ?doc ?docTitle ?sourcePage ?sourceBlockType ?spreadsheetRow ?spreadsheetSource ?codeCategoryTitle WHERE {
-      GRAPH ?doc {
-        ?doc a ?docKind .
-        FILTER(?docKind IN (sheaf:Document, sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
-        OPTIONAL { ?doc <http://www.w3.org/2000/01/rdf-schema#label> ?docTitle }
-        #{text_unit_pattern(kind)}
-      }
-      #{Sheaf.Workspace.exclusion_filter("?doc")}
-    }
-    ORDER BY ?iri
-    #{if limit, do: "LIMIT #{limit}", else: ""}
-    """
-  end
-
-  defp text_unit_pattern("paragraph") do
-    """
-    ?iri sheaf:paragraph ?para .
-    ?para sheaf:text ?text .
-    FILTER NOT EXISTS { ?para prov:wasInvalidatedBy ?_inv }
-    BIND("paragraph" AS ?kind)
-    """
-    |> String.trim()
-  end
-
-  defp text_unit_pattern("sourceHtml") do
-    """
-    ?iri sheaf:sourceHtml ?text .
-    OPTIONAL { ?iri sheaf:sourcePage ?sourcePage }
-    OPTIONAL { ?iri sheaf:sourceBlockType ?sourceBlockType }
-    FILTER(!BOUND(?sourceBlockType) || STR(?sourceBlockType) = "Text")
-    FILTER(!CONTAINS(STR(?text), ";base64,"))
-    FILTER(!CONTAINS(STR(?text), "data:image/"))
-    BIND("sourceHtml" AS ?kind)
-    """
-    |> String.trim()
-  end
-
   defp maybe_limit_units(units, opts) do
     case Keyword.get(opts, :limit) do
       limit when is_integer(limit) and limit > 0 -> Enum.take(units, limit)
@@ -713,12 +659,10 @@ defmodule Sheaf.Embedding.Index do
   def descriptions_for_iris([], _opts), do: {:ok, %{}}
 
   def descriptions_for_iris(iris, opts) when is_list(iris) do
-    select = Keyword.get(opts, :select, &Sheaf.select/2)
-
-    with {:ok, result} <- select.("embedding descriptions select", descriptions_sparql(iris)),
+    with {:ok, dataset} <- Sheaf.fetch_dataset(),
          {:ok, documents} <- document_metadata(opts) do
-      graph = graph_from_description_rows(result.results)
-      docs_by_iri = docs_by_iri(result.results)
+      graph = graph_for_iris(dataset, iris)
+      docs_by_iri = docs_by_iri(dataset, iris)
 
       {:ok,
        iris
@@ -730,31 +674,49 @@ defmodule Sheaf.Embedding.Index do
   end
 
   @doc false
-  def document_metadata(opts \\ []) do
-    select = Keyword.get(opts, :select, &Sheaf.select/2)
+  def document_metadata(_opts \\ []) do
+    with {:ok, dataset} <- Sheaf.fetch_dataset() do
+      metadata = RDF.Dataset.graph(dataset, Sheaf.Repo.metadata_graph()) || Graph.new()
+      excluded = excluded_documents(dataset)
 
-    case select.("embedding document metadata select", document_metadata_sparql()) do
-      {:ok, result} ->
-        {:ok,
-         result.results
-         |> Enum.group_by(&(Map.fetch!(&1, "doc") |> term_value()))
-         |> Map.new(fn {doc, rows} ->
-           {doc,
-            %{
-              title: rows |> Enum.find_value(&(Map.get(&1, "title") && term_value(&1["title"]))),
-              excluded?: Enum.any?(rows, &Map.has_key?(&1, "excluded")),
-              authors:
-                rows
-                |> Enum.map(&Map.get(&1, "authorName"))
-                |> Enum.reject(&is_nil/1)
-                |> Enum.map(&term_value/1)
-                |> Enum.uniq()
-                |> Enum.sort()
-            }}
-         end)}
+      documents =
+        dataset
+        |> RDF.Dataset.graphs()
+        |> Enum.flat_map(fn graph ->
+          graph
+          |> Graph.descriptions()
+          |> Enum.filter(&document_description?/1)
+          |> Enum.map(fn description ->
+            doc = description.subject |> term_value()
+            expression = Description.first(description, FABIO.isRepresentationOf())
 
-      {:error, reason} ->
-        {:error, reason}
+            expression =
+              expression ||
+                first_object(metadata, RDF.iri(doc), FABIO.isRepresentationOf())
+
+            authors =
+              metadata
+              |> objects_for(expression, DCTERMS.creator())
+              |> Enum.flat_map(fn
+                %RDF.Literal{} = literal -> [RDF.Literal.lexical(literal)]
+                author -> first_object(metadata, author, FOAF.name()) |> List.wrap()
+              end)
+              |> Enum.reject(&is_nil/1)
+              |> Enum.map(&term_value/1)
+              |> Enum.uniq()
+              |> Enum.sort()
+
+            {doc,
+             %{
+               title: description |> Description.first(RDFS.label()) |> term_value(),
+               excluded?: MapSet.member?(excluded, RDF.iri(doc)),
+               authors: authors
+             }}
+          end)
+        end)
+        |> Map.new()
+
+      {:ok, documents}
     end
   end
 
@@ -966,78 +928,42 @@ defmodule Sheaf.Embedding.Index do
   defp match_sort(%{match: :exact}), do: 1
   defp match_sort(_result), do: 2
 
-  defp descriptions_sparql(iris) do
-    values =
-      iris
-      |> Enum.uniq()
-      |> Enum.map(&"<#{&1}>")
-      |> Enum.join(" ")
+  defp graph_for_iris(dataset, iris) do
+    wanted = iris |> Enum.map(&RDF.iri/1) |> MapSet.new()
 
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-
-    SELECT ?iri ?doc ?s ?p ?o WHERE {
-      VALUES ?iri { #{values} }
-      GRAPH ?doc {
-        {
-          ?iri ?p ?o .
-          BIND(?iri AS ?s)
-        } UNION {
-          ?iri sheaf:paragraph ?para .
-          ?para ?p ?o .
-          BIND(?para AS ?s)
-        }
-      }
-    }
-    """
-  end
-
-  defp document_metadata_sparql do
-    """
-    PREFIX dcterms: <http://purl.org/dc/terms/>
-    PREFIX fabio: <http://purl.org/spar/fabio/>
-    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX sheaf: <https://less.rest/sheaf/>
-
-    SELECT ?doc ?title ?authorName ?excluded WHERE {
-      GRAPH ?doc {
-        ?doc a ?kind ;
-          rdfs:label ?title .
-        FILTER(?kind IN (sheaf:Document, sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
-      }
-      OPTIONAL {
-        GRAPH <https://less.rest/sheaf/metadata> {
-          ?doc fabio:isRepresentationOf ?expression .
-          ?expression dcterms:creator ?author .
-          OPTIONAL { ?author foaf:name ?authorName }
-        }
-      }
-      OPTIONAL {
-        GRAPH <https://less.rest/sheaf/workspace> {
-          ?workspace a sheaf:Workspace ;
-            sheaf:excludesDocument ?doc .
-          BIND("true" AS ?excluded)
-        }
-      }
-    }
-    """
-  end
-
-  defp graph_from_description_rows(rows) do
-    Enum.reduce(rows, Graph.new(), fn row, graph ->
-      iri = Map.get(row, "s") || Map.fetch!(row, "iri")
-      predicate = Map.fetch!(row, "p")
-      object = Map.fetch!(row, "o")
-
-      Graph.add(graph, {iri, predicate, object})
+    dataset
+    |> RDF.Dataset.graphs()
+    |> Enum.reduce(Graph.new(), fn graph, acc ->
+      graph
+      |> Graph.triples()
+      |> Enum.reduce(acc, fn
+        {subject, _predicate, _object} = triple, acc ->
+          if MapSet.member?(wanted, subject) or paragraph_owner?(graph, wanted, subject) do
+            Graph.add(acc, triple)
+          else
+            acc
+          end
+      end)
     end)
   end
 
-  defp docs_by_iri(rows) do
-    Map.new(rows, fn row ->
-      {row |> Map.fetch!("iri") |> term_value(), row |> Map.fetch!("doc") |> term_value()}
+  defp docs_by_iri(dataset, iris) do
+    wanted = iris |> Enum.map(&RDF.iri/1) |> MapSet.new()
+
+    dataset
+    |> RDF.Dataset.graphs()
+    |> Enum.flat_map(fn graph ->
+      graph
+      |> Graph.triples()
+      |> Enum.flat_map(fn {subject, _predicate, _object} ->
+        if MapSet.member?(wanted, subject) do
+          [{term_value(subject), term_value(graph.name)}]
+        else
+          []
+        end
+      end)
     end)
+    |> Map.new()
   end
 
   defp unit_from_graph(%Graph{} = graph, iri, docs_by_iri, documents) do
@@ -1094,6 +1020,68 @@ defmodule Sheaf.Embedding.Index do
     description
     |> Description.first(predicate)
     |> term_value()
+  end
+
+  defp paragraph_owner?(graph, wanted, paragraph) do
+    graph
+    |> Graph.triples()
+    |> Enum.any?(fn
+      {subject, predicate, ^paragraph} ->
+        predicate == DOC.paragraph() and MapSet.member?(wanted, subject)
+
+      _triple ->
+        false
+    end)
+  end
+
+  defp document_description?(%Description{} = description) do
+    Enum.any?(
+      [
+        DOC.Document,
+        DOC.Paper,
+        DOC.Thesis,
+        DOC.Transcript,
+        DOC.Spreadsheet
+      ],
+      &Description.include?(description, {RDF.type(), RDF.iri(&1)})
+    )
+  end
+
+  defp excluded_documents(dataset) do
+    workspace = RDF.Dataset.graph(dataset, Sheaf.Repo.workspace_graph()) || Graph.new()
+    excludes_document = DOC.excludesDocument()
+
+    workspace
+    |> Graph.triples()
+    |> Enum.flat_map(fn
+      {_workspace, ^excludes_document, doc} -> [doc]
+      _triple -> []
+    end)
+    |> MapSet.new()
+  end
+
+  defp first_object(nil, _subject, _predicate), do: nil
+  defp first_object(_graph, nil, _predicate), do: nil
+
+  defp first_object(graph, subject, predicate) do
+    graph
+    |> Graph.triples()
+    |> Enum.find_value(fn
+      {^subject, ^predicate, object} -> object
+      _triple -> nil
+    end)
+  end
+
+  defp objects_for(nil, _subject, _predicate), do: []
+  defp objects_for(_graph, nil, _predicate), do: []
+
+  defp objects_for(graph, subject, predicate) do
+    graph
+    |> Graph.triples()
+    |> Enum.flat_map(fn
+      {^subject, ^predicate, object} -> [object]
+      _triple -> []
+    end)
   end
 
   defp term_value(nil), do: nil

@@ -33,9 +33,6 @@ http_ip =
 
 http_port = String.to_integer(System.get_env("PORT", "4000"))
 
-sparql_receive_timeout =
-  String.to_integer(System.get_env("SHEAF_SPARQL_RECEIVE_TIMEOUT", "30000"))
-
 ontology_base =
   System.get_env("SHEAF_ONTOLOGY_BASE", "https://less.rest/sheaf/")
   |> String.trim()
@@ -53,19 +50,6 @@ resource_base =
   resource_base
   |> String.trim()
   |> then(fn value -> if String.ends_with?(value, "/"), do: value, else: value <> "/" end)
-
-sparql_dataset =
-  System.get_env("SHEAF_SPARQL_DATASET", "http://localhost:3030/sheaf")
-  |> String.trim()
-  |> String.trim_trailing("/")
-
-sparql_username = System.get_env("SHEAF_SPARQL_USERNAME", "admin")
-sparql_password = System.get_env("SHEAF_SPARQL_PASSWORD", "admin")
-
-sparql_auth =
-  if sparql_username != "" and sparql_password != "" do
-    {:basic, "#{sparql_username}:#{sparql_password}"}
-  end
 
 gemini_api_key =
   ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
@@ -118,25 +102,8 @@ end
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
 config :sheaf, :resource_base, resource_base
 
-config :sheaf, Sheaf,
-  query_endpoint:
-    System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", sparql_dataset <> "/sparql")
-    |> String.trim(),
-  update_endpoint:
-    System.get_env("SHEAF_SPARQL_UPDATE_ENDPOINT", sparql_dataset <> "/update")
-    |> String.trim(),
-  data_endpoint:
-    System.get_env("SHEAF_SPARQL_DATA_ENDPOINT", sparql_dataset <> "/data")
-    |> String.trim(),
-  sparql_auth: sparql_auth,
-  data_auth: sparql_auth
-
 config :sheaf_rdf_browser, SheafRDFBrowser.Snapshot,
-  query_endpoint:
-    (System.get_env("SHEAF_RDF_BROWSER_QUERY_ENDPOINT") ||
-       System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", sparql_dataset <> "/sparql"))
-    |> String.trim(),
-  sparql_auth: sparql_auth,
+  dataset: {Sheaf, :fetch_dataset, []},
   load_on_start:
     System.get_env("SHEAF_RDF_BROWSER_LOAD_ON_START", "true")
     |> String.downcase()
@@ -150,11 +117,6 @@ config :sheaf, Datalab,
   api_key: System.get_env("DATALAB_API_KEY"),
   pipeline_id: System.get_env("DATALAB_PIPELINE_ID", "pl_QWhrjJhpUUoo"),
   base_url: System.get_env("DATALAB_BASE_URL", "https://www.datalab.to/api/v1")
-
-config :sparql_client,
-  query_request_method: :post,
-  update_request_method: :url_encoded,
-  tesla_request_opts: [adapter: [receive_timeout: sparql_receive_timeout]]
 
 # OpenTelemetry is opt-in: it only turns on when `SHEAF_OTEL_REDIS_URL` is set
 # in the environment. When enabled, every ended span is shipped to a Redis

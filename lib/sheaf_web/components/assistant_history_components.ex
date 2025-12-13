@@ -325,105 +325,58 @@ defmodule SheafWeb.AssistantHistoryComponents do
   end
 
   defp history_graph(opts) do
-    result =
-      opts
-      |> Keyword.get(:limit, @default_history_limit)
-      |> normalize_limit()
-      |> history_query()
-      |> then(&Sheaf.query("assistant history construct", &1))
+    limit = opts |> Keyword.get(:limit, @default_history_limit) |> normalize_limit()
 
-    case result do
-      {:ok, graph} ->
-        {:ok, graph}
+    with :ok <- Sheaf.Repo.load_once({nil, nil, nil, RDF.iri(Sheaf.Workspace.graph())}) do
+      graph =
+        Sheaf.Repo.ask(fn dataset ->
+          workspace = RDF.Dataset.graph(dataset, Sheaf.Workspace.graph()) || Graph.new()
+          limit_history_graph(workspace, limit)
+        end)
 
-      {:error, reason} ->
-        if fuseki_empty_result_error?(reason) do
-          {:ok, Graph.new()}
-        else
-          {:error, reason}
-        end
+      {:ok, graph}
     end
-  end
-
-  defp history_query(limit) do
-    """
-    PREFIX as: <https://www.w3.org/ns/activitystreams#>
-    PREFIX prov: <http://www.w3.org/ns/prov#>
-    PREFIX sheaf: <https://less.rest/sheaf/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    CONSTRUCT {
-      ?session a sheaf:AssistantConversation ;
-        a as:OrderedCollection ;
-        a ?sessionExtraType ;
-        rdfs:label ?sessionLabel ;
-        as:name ?sessionName ;
-        sheaf:conversationMode ?sessionMode ;
-        as:items ?item .
-
-      ?item a ?itemType ;
-        rdfs:label ?itemLabel ;
-        as:content ?content ;
-        as:published ?published ;
-        as:attributedTo ?actor ;
-        as:context ?session ;
-        as:inReplyTo ?replyTarget ;
-        sheaf:mentions ?mention .
-
-      ?actor a ?actorType ;
-        rdfs:label ?actorLabel ;
-        sheaf:assistantModelName ?modelName .
-    }
-    WHERE {
-      {
-        SELECT ?session (MAX(?itemPublished) AS ?lastPublished) WHERE {
-          GRAPH <#{Sheaf.Workspace.graph()}> {
-            ?session a sheaf:AssistantConversation .
-            OPTIONAL {
-              ?item as:context ?session .
-              OPTIONAL { ?item as:published ?itemPublished }
-            }
-          }
-        }
-        GROUP BY ?session
-        ORDER BY DESC(?lastPublished)
-        LIMIT #{limit}
-      }
-
-      GRAPH <#{Sheaf.Workspace.graph()}> {
-        ?session a sheaf:AssistantConversation .
-        OPTIONAL { ?session a ?sessionExtraType . }
-        OPTIONAL { ?session rdfs:label ?sessionLabel . }
-        OPTIONAL { ?session as:name ?sessionName . }
-        OPTIONAL { ?session sheaf:conversationMode ?sessionMode . }
-
-        ?item as:context ?session ;
-          a ?itemType .
-        FILTER(?itemType IN (sheaf:Message, as:Note, sheaf:ResearchNote))
-        OPTIONAL { ?session as:items ?item . }
-        OPTIONAL { ?item rdfs:label ?itemLabel . }
-        OPTIONAL { ?item as:content ?content . }
-        OPTIONAL { ?item as:published ?published . }
-        OPTIONAL { ?item as:inReplyTo ?replyTarget . }
-        OPTIONAL { ?item sheaf:mentions ?mention . }
-        OPTIONAL {
-          ?item as:attributedTo ?actor .
-          OPTIONAL { ?actor a ?actorType . }
-          OPTIONAL { ?actor rdfs:label ?actorLabel . }
-          OPTIONAL { ?actor sheaf:assistantModelName ?modelName . }
-        }
-      }
-    }
-    """
   end
 
   defp normalize_limit(limit) when is_integer(limit) and limit > 0, do: min(limit, 100)
   defp normalize_limit(_limit), do: @default_history_limit
 
-  defp fuseki_empty_result_error?(reason) do
-    reason
-    |> inspect()
-    |> String.contains?("Peek iterator is already empty")
+  defp limit_history_graph(%Graph{} = graph, limit) do
+    sessions =
+      graph
+      |> RDF.Data.descriptions()
+      |> Enum.filter(&Description.include?(&1, {RDF.type(), Sheaf.NS.DOC.AssistantConversation}))
+      |> Enum.sort_by(&session_sort_key(graph, &1), :desc)
+      |> Enum.take(limit)
+      |> Enum.map(& &1.subject)
+      |> MapSet.new()
+
+    graph
+    |> RDF.Data.descriptions()
+    |> Enum.filter(fn description ->
+      MapSet.member?(sessions, description.subject) ||
+        description
+        |> Description.first(Sheaf.NS.AS.context())
+        |> then(&MapSet.member?(sessions, &1))
+    end)
+    |> Graph.new()
+  end
+
+  defp session_sort_key(graph, session) do
+    graph
+    |> RDF.Data.descriptions()
+    |> Enum.filter(&(Description.first(&1, Sheaf.NS.AS.context()) == session.subject))
+    |> Enum.map(fn item ->
+      item
+      |> Description.first(Sheaf.NS.AS.published())
+      |> rdf_value()
+      |> case do
+        %DateTime{} = published_at -> DateTime.to_unix(published_at)
+        nil -> 0
+        published_at -> to_string(published_at)
+      end
+    end)
+    |> Enum.max(fn -> 0 end)
   end
 
   defp research_question_content(_graph, nil), do: nil

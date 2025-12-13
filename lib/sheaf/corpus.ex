@@ -22,28 +22,24 @@ defmodule Sheaf.Corpus do
   @doc """
   Returns the containing document id for a block id, or `nil` if unknown.
 
-  One SPARQL query against Fuseki. This is how `#BLOCKID` links resolve.
+  This is how `#BLOCKID` links resolve.
   """
   @spec find_document(String.t()) :: String.t() | nil
   def find_document(block_id) when is_binary(block_id) do
-    iri = Id.iri(block_id) |> to_string()
+    block = Id.iri(block_id)
 
-    sparql = """
-    SELECT ?g WHERE {
-      GRAPH ?g { <#{iri}> ?p ?o }
-    } LIMIT 1
-    """
-
-    case Sheaf.select("block document lookup select", sparql) do
-      {:ok, %{results: [row | _]}} ->
-        row
-        |> Map.fetch!("g")
-        |> RDF.Term.value()
-        |> to_string()
-        |> Id.id_from_iri()
-
-      _ ->
-        nil
+    with :ok <- Sheaf.Repo.load_once({block, nil, nil, nil}) do
+      Sheaf.Repo.ask(fn dataset ->
+        dataset
+        |> RDF.Dataset.graphs()
+        |> Enum.find_value(fn graph ->
+          if Graph.describes?(graph, block) and graph.name do
+            Id.id_from_iri(graph.name)
+          end
+        end)
+      end)
+    else
+      _ -> nil
     end
   end
 

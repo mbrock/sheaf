@@ -51,12 +51,11 @@ defmodule Sheaf.Assistant.NotesTest do
     assert RDF.Data.include?(graph, {note, Sheaf.NS.DOC.mentions(), Id.iri("BLK444")})
   end
 
-  test "write persists an INSERT DATA update in the workspace graph" do
+  test "write persists a note graph in the workspace graph" do
     test_pid = self()
 
-    update = fn label, sparql ->
-      assert label == "assistant note insert"
-      send(test_pid, {:sparql_update, sparql})
+    persist = fn graph ->
+      send(test_pid, {:persist, graph})
       :ok
     end
 
@@ -69,17 +68,15 @@ defmodule Sheaf.Assistant.NotesTest do
                },
                note_iri: Id.iri("NOTE02"),
                published_at: ~U[2026-04-24 13:00:00Z],
-               update: update
+               persist: persist
              )
 
     assert note == Id.iri("NOTE02")
 
-    assert_receive {:sparql_update, sparql}
-    assert sparql =~ "INSERT DATA"
-    assert sparql =~ "GRAPH <#{Sheaf.Workspace.graph()}>"
-    assert sparql =~ "<https://www.w3.org/ns/activitystreams#Note>"
-    assert sparql =~ "<https://less.rest/sheaf/mentions>"
-    assert sparql =~ "<#{Id.iri("ABC123")}>"
+    assert_receive {:persist, graph}
+    assert graph.name == RDF.iri(Sheaf.Workspace.graph())
+    assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.AS.Note})
+    assert RDF.Data.include?(graph, {note, Sheaf.NS.DOC.mentions(), Id.iri("ABC123")})
   end
 
   test "descriptions returns note descriptions newest first" do

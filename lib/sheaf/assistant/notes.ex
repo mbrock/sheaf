@@ -3,9 +3,8 @@ defmodule Sheaf.Assistant.Notes do
   Persistent assistant-authored research notes.
 
   Notes are stored as RDF facts with ActivityStreams vocabulary for the note
-  shape and Sheaf vocabulary for block mentions. The writer appends facts with
-  SPARQL `INSERT DATA` in the workspace graph; it does not revise or delete
-  older notes.
+  shape and Sheaf vocabulary for block mentions. The writer appends facts to
+  the workspace graph; it does not revise or delete older notes.
   """
 
   alias RDF.{Description, Graph}
@@ -72,7 +71,7 @@ defmodule Sheaf.Assistant.Notes do
 
     * `:note_iri` - deterministic note IRI for tests/imports
     * `:published_at` - deterministic timestamp
-    * `:update` - function called with a query label and SPARQL update text
+    * `:persist` - function called with the built workspace graph
   """
   def write(attrs, opts \\ []) when is_map(attrs) do
     with {:ok, graph} <- build(attrs, opts),
@@ -158,13 +157,14 @@ defmodule Sheaf.Assistant.Notes do
   end
 
   defp persist(%Graph{} = graph, opts) do
-    update = Keyword.get(opts, :update, &Sheaf.update/2)
+    graph = Graph.change_name(graph, Sheaf.Workspace.graph())
+    persist = Keyword.get(opts, :persist, &Sheaf.Repo.assert/1)
 
-    case update.("assistant note insert", insert_data(graph)) do
+    case persist.(graph) do
       :ok -> :ok
       {:ok, _result} -> :ok
       {:error, reason} -> {:error, reason}
-      other -> {:error, {:unexpected_update_result, other}}
+      other -> {:error, {:unexpected_persist_result, other}}
     end
   end
 

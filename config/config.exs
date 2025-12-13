@@ -50,10 +50,6 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-# SPARQL.Client uses Tesla for HTTP requests. Keep it on Finch so it shares the
-# same transport stack already running in the app.
-config :tesla, :adapter, {Tesla.Adapter.Finch, name: Sheaf.Finch}
-
 # OpenTelemetry is opt-in. The compile-time defaults are a no-op SDK (no
 # exporter, no processors). Set `SHEAF_OTEL_REDIS_URL` in the environment to
 # wire up the Redis Streams sink at runtime — see `config/runtime.exs`.

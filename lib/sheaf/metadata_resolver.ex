@@ -9,7 +9,8 @@ defmodule Sheaf.MetadataResolver do
   """
 
   alias RDF.Description
-  alias Sheaf.NS.DOC
+  alias Sheaf.NS.{DOC, FABIO}
+  alias RDF.NS.RDFS
 
   @metadata_graph "https://less.rest/sheaf/metadata"
 
@@ -179,12 +180,30 @@ defmodule Sheaf.MetadataResolver do
   def metadata_graph, do: @metadata_graph
 
   defp select_candidates(opts) do
-    select = Keyword.get(opts, :select, &Sheaf.select/2)
+    metadata_graph = Keyword.get(opts, :metadata_graph, @metadata_graph)
 
-    select.(
-      "metadata candidates select",
-      candidate_query(Keyword.get(opts, :metadata_graph, @metadata_graph))
-    )
+    with {:ok, dataset} <- Sheaf.fetch_dataset() do
+      metadata = RDF.Dataset.graph(dataset, metadata_graph) || RDF.Graph.new()
+
+      rows =
+        dataset
+        |> RDF.Dataset.graphs()
+        |> Enum.flat_map(fn graph ->
+          for {doc, predicate, file} <- RDF.Graph.triples(graph),
+              predicate == DOC.sourceFile(),
+              document?(graph, doc) do
+            %{
+              "doc" => doc,
+              "file" => file,
+              "label" => first_object(graph, doc, RDFS.label()),
+              "expression" => first_object(metadata, doc, FABIO.isRepresentationOf())
+            }
+          end
+        end)
+        |> Enum.sort_by(&(Map.fetch!(&1, "doc") |> to_string()))
+
+      {:ok, %{results: rows}}
+    end
   end
 
   defp files_graph(opts) do
@@ -192,28 +211,6 @@ defmodule Sheaf.MetadataResolver do
       {:ok, graph} -> {:ok, graph}
       :error -> Sheaf.Files.list_graph()
     end
-  end
-
-  defp candidate_query(metadata_graph) do
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-    PREFIX fabio: <http://purl.org/spar/fabio/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    SELECT ?doc ?file ?label ?expression WHERE {
-      GRAPH ?doc {
-        ?doc a sheaf:Document ;
-          sheaf:sourceFile ?file .
-        OPTIONAL { ?doc rdfs:label ?label }
-      }
-      OPTIONAL {
-        GRAPH <#{metadata_graph}> {
-          ?doc fabio:isRepresentationOf ?expression .
-        }
-      }
-    }
-    ORDER BY ?doc
-    """
   end
 
   defp candidate_from_row(row, files, opts) do
@@ -424,6 +421,24 @@ defmodule Sheaf.MetadataResolver do
     description
     |> Description.first(property)
     |> value()
+  end
+
+  defp document?(graph, doc) do
+    case RDF.Graph.description(graph, doc) do
+      nil -> false
+      description -> Description.include?(description, {RDF.type(), DOC.Document})
+    end
+  end
+
+  defp first_object(nil, _subject, _predicate), do: nil
+
+  defp first_object(graph, subject, predicate) do
+    graph
+    |> RDF.Graph.triples()
+    |> Enum.find_value(fn
+      {^subject, ^predicate, object} -> object
+      _triple -> nil
+    end)
   end
 
   defp value(nil), do: nil

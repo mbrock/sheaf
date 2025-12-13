@@ -3,7 +3,7 @@ defmodule Sheaf.Search.Index do
   SQLite-backed full-text mirror for searchable RDF text units.
 
   RDF remains the source of truth. This module owns a derived sidecar table
-  that can be rebuilt from Fuseki and queried with SQLite FTS5.
+  that can be rebuilt from Quadlog and queried with SQLite FTS5.
   """
 
   require Logger
@@ -23,7 +23,7 @@ defmodule Sheaf.Search.Index do
   @spec sync(keyword()) :: {:ok, map()} | {:error, term()}
   def sync(opts \\ []) do
     db_path = path(opts)
-    Logger.info("Search sync: reading RDF text units from Fuseki")
+    Logger.info("Search sync: reading RDF text units from Quadlog")
 
     with {:ok, units} <- text_units(opts),
          {:ok, conn} <- open(opts) do
@@ -45,24 +45,21 @@ defmodule Sheaf.Search.Index do
   end
 
   @doc """
-  Fetches searchable text units with intentionally simple SPARQL queries.
-
-  Keep this boring: no `UNION`, no text `FILTER`, no `ORDER BY`, no optional
-  metadata. Anything expensive or cosmetic belongs after the fetch.
+  Fetches searchable text units from the current RDF dataset.
   """
   @spec text_units(keyword()) :: {:ok, [map()]} | {:error, term()}
   def text_units(opts \\ []) do
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
-    select = Keyword.get(opts, :select, &Sheaf.select/2)
 
-    @valid_kinds
-    |> Enum.filter(&(&1 in kinds))
-    |> Enum.reduce_while({:ok, []}, fn kind, {:ok, units} ->
-      case fetch_kind(kind, select, opts) do
-        {:ok, fetched} -> {:cont, {:ok, units ++ fetched}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
+    with {:ok, rows} <- Sheaf.TextUnits.fetch_rows(kinds: kinds) do
+      units =
+        rows
+        |> Enum.map(&unit_from_row(&1))
+        |> Enum.reject(&reject_unit?/1)
+        |> maybe_limit_units(opts)
+
+      {:ok, units}
+    end
   end
 
   @doc """
@@ -294,29 +291,11 @@ defmodule Sheaf.Search.Index do
     |> then(&(" (" <> &1 <> ")"))
   end
 
-  defp fetch_kind(kind, select, opts) do
-    Logger.info("Search sync: fetching #{kind} text")
-
-    case select.("search text units #{kind} select", text_units_sparql(kind, opts)) do
-      {:ok, result} ->
-        units =
-          result.results
-          |> Enum.map(&unit_from_row(&1, kind))
-          |> Enum.reject(&reject_unit?/1)
-
-        Logger.info("Search sync: fetched #{length(units)} #{kind} rows")
-        {:ok, units}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp unit_from_row(row, kind) do
+  defp unit_from_row(row) do
     %{
       iri: row |> Map.fetch!("iri") |> term_value(),
       doc_iri: row |> Map.get("doc") |> term_value(),
-      kind: kind,
+      kind: row |> Map.fetch!("kind") |> term_value(),
       text: row |> Map.fetch!("text") |> term_value()
     }
   end
@@ -331,39 +310,10 @@ defmodule Sheaf.Search.Index do
 
   defp source_html_noise?(_text), do: false
 
-  defp text_units_sparql("paragraph", opts) do
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-
-    SELECT ?doc ?iri ?text WHERE {
-      GRAPH ?doc {
-        ?iri sheaf:paragraph ?para .
-        ?para sheaf:text ?text .
-      }
-      #{Sheaf.Workspace.exclusion_filter("?doc")}
-    }
-    #{limit_clause(opts)}
-    """
-  end
-
-  defp text_units_sparql("sourceHtml", opts) do
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-
-    SELECT ?doc ?iri ?text WHERE {
-      GRAPH ?doc {
-        ?iri sheaf:sourceHtml ?text .
-      }
-      #{Sheaf.Workspace.exclusion_filter("?doc")}
-    }
-    #{limit_clause(opts)}
-    """
-  end
-
-  defp limit_clause(opts) do
+  defp maybe_limit_units(units, opts) do
     case Keyword.get(opts, :limit) do
-      limit when is_integer(limit) and limit > 0 -> "LIMIT #{limit}"
-      _ -> ""
+      limit when is_integer(limit) and limit > 0 -> Enum.take(units, limit)
+      _ -> units
     end
   end
 

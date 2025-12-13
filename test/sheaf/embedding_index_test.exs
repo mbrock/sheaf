@@ -6,52 +6,37 @@ defmodule Sheaf.Embedding.IndexTest do
   alias Sheaf.Search.Index, as: SearchIndex
 
   setup do
+    repo_path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-embedding-repo-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    start_supervised!({Sheaf.Repo, path: repo_path})
     Req.Test.verify_on_exit!()
   end
 
   test "builds text units from all text-bearing block shapes" do
-    test_pid = self()
+    doc = RDF.iri("https://sheaf.less.rest/DOC1")
+    block1 = RDF.iri("https://sheaf.less.rest/BLOCK1")
+    block2 = RDF.iri("https://sheaf.less.rest/BLOCK2")
+    para = RDF.iri("https://sheaf.less.rest/PARA1")
 
-    select = fn label, sparql ->
-      assert label in [
-               "embedding text units paragraph select",
-               "embedding text units sourceHtml select"
-             ]
-
-      send(test_pid, {:sparql, sparql})
-      assert sparql =~ "sheaf:excludesDocument"
-      refute sparql =~ " UNION "
-
-      cond do
-        sparql =~ "sheaf:paragraph" ->
-          {:ok,
-           %{
-             results: [
-               %{
-                 "iri" => RDF.iri("https://sheaf.less.rest/BLOCK1"),
-                 "kind" => RDF.literal("paragraph"),
-                 "text" => RDF.literal("Paragraph text.")
-               }
-             ]
-           }}
-
-        sparql =~ "sheaf:sourceHtml" ->
-          {:ok,
-           %{
-             results: [
-               %{
-                 "iri" => RDF.iri("https://sheaf.less.rest/BLOCK2"),
-                 "kind" => RDF.literal("sourceHtml"),
-                 "text" => RDF.literal("<p>PDF text.</p>")
-               }
-             ]
-           }}
-      end
-    end
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {doc, RDF.type(), Sheaf.NS.DOC.Document},
+                   {block1, Sheaf.NS.DOC.paragraph(), para},
+                   {para, Sheaf.NS.DOC.text(), "Paragraph text."},
+                   {block2, Sheaf.NS.DOC.sourceHtml(), "<p>PDF text.</p>"}
+                 ],
+                 name: doc
+               )
+             )
 
     assert {:ok, [paragraph, source]} =
              Index.text_units(
-               select: select,
                model: "gemini-embedding-2",
                output_dimensionality: 768
              )
@@ -59,25 +44,10 @@ defmodule Sheaf.Embedding.IndexTest do
     assert paragraph.kind == "paragraph"
     assert source.text == "<p>PDF text.</p>"
     assert String.length(source.text_hash) == 64
-
-    assert_received {:sparql, paragraph_sparql}
-    assert_received {:sparql, source_sparql}
-
-    assert paragraph_sparql =~ "sheaf:paragraph"
-    assert source_sparql =~ "sheaf:sourceHtml"
   end
 
   test "can restrict text unit kinds" do
-    select = fn label, sparql ->
-      assert label == "embedding text units sourceHtml select"
-      assert sparql =~ "sheaf:sourceHtml"
-      refute sparql =~ "sheaf:paragraph"
-      refute sparql =~ "sheaf:Row"
-
-      {:ok, %{results: []}}
-    end
-
-    assert {:ok, []} = Index.text_units(kinds: ["sourceHtml"], select: select)
+    assert {:ok, []} = Index.text_units(kinds: ["sourceHtml"])
   end
 
   test "plans missing embeddings without embedding them" do
@@ -128,21 +98,25 @@ defmodule Sheaf.Embedding.IndexTest do
       Store.close(conn)
     end
 
-    select = fn _label, sparql ->
-      cond do
-        sparql =~ "sheaf:paragraph" ->
-          {:ok,
-           %{
-             results: [
-               text_unit_row(reusable_iri, "paragraph", "Existing text."),
-               text_unit_row(missing_iri, "paragraph", "New text.")
-             ]
-           }}
+    doc = RDF.iri("https://sheaf.less.rest/DOC1")
+    reusable = RDF.iri(reusable_iri)
+    missing = RDF.iri(missing_iri)
+    reusable_para = RDF.iri("https://sheaf.less.rest/PARA-REUSABLE")
+    missing_para = RDF.iri("https://sheaf.less.rest/PARA-MISSING")
 
-        sparql =~ "sheaf:sourceHtml" ->
-          {:ok, %{results: []}}
-      end
-    end
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {doc, RDF.type(), Sheaf.NS.DOC.Document},
+                   {reusable, Sheaf.NS.DOC.paragraph(), reusable_para},
+                   {reusable_para, Sheaf.NS.DOC.text(), "Existing text."},
+                   {missing, Sheaf.NS.DOC.paragraph(), missing_para},
+                   {missing_para, Sheaf.NS.DOC.text(), "New text."}
+                 ],
+                 name: doc
+               )
+             )
 
     assert {:ok,
             %{
@@ -156,8 +130,7 @@ defmodule Sheaf.Embedding.IndexTest do
                db_path: db_path,
                model: model,
                output_dimensionality: dimensions,
-               source: source,
-               select: select
+               source: source
              )
   end
 
@@ -192,13 +165,8 @@ defmodule Sheaf.Embedding.IndexTest do
       SearchIndex.close(conn)
     end
 
-    select = fn
-      "embedding descriptions select", _sparql -> {:ok, %{results: []}}
-      "embedding document metadata select", _sparql -> {:ok, %{results: []}}
-    end
-
     assert {:ok, [%{iri: ^block_iri, match: :exact}]} =
-             Index.exact_search("signal", db_path: db_path, select: select)
+             Index.exact_search("signal", db_path: db_path)
   end
 
   test "importing an async batch skips units whose documents are now excluded" do
@@ -270,27 +238,43 @@ defmodule Sheaf.Embedding.IndexTest do
       })
     end)
 
-    select = fn _label, sparql ->
-      cond do
-        sparql =~ "VALUES ?iri" ->
-          {:ok,
-           %{
-             results: [
-               description_row(included_block, "DOC-INCLUDED"),
-               description_row(excluded_block, "DOC-EXCLUDED")
-             ]
-           }}
+    included_doc = Sheaf.Id.iri("DOC-INCLUDED")
+    excluded_doc = Sheaf.Id.iri("DOC-EXCLUDED")
 
-        sparql =~ "SELECT ?doc ?title ?authorName ?excluded" ->
-          {:ok,
-           %{
-             results: [
-               metadata_row("DOC-INCLUDED", "Included"),
-               metadata_row("DOC-EXCLUDED", "Excluded", excluded?: true)
-             ]
-           }}
-      end
-    end
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {included_doc, RDF.type(), Sheaf.NS.DOC.Document},
+                   {included_doc, RDF.NS.RDFS.label(), "Included"},
+                   {RDF.iri(included_block), Sheaf.NS.DOC.sourceHtml(), "<p>Text.</p>"}
+                 ],
+                 name: included_doc
+               )
+             )
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {excluded_doc, RDF.type(), Sheaf.NS.DOC.Document},
+                   {excluded_doc, RDF.NS.RDFS.label(), "Excluded"},
+                   {RDF.iri(excluded_block), Sheaf.NS.DOC.sourceHtml(), "<p>Text.</p>"}
+                 ],
+                 name: excluded_doc
+               )
+             )
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {RDF.iri("https://less.rest/sheaf/workspace"), Sheaf.NS.DOC.excludesDocument(),
+                    excluded_doc}
+                 ],
+                 name: Sheaf.Workspace.graph()
+               )
+             )
 
     assert {:ok,
             %{
@@ -306,8 +290,7 @@ defmodule Sheaf.Embedding.IndexTest do
                model: "gemini-embedding-2",
                output_dimensionality: 2,
                poll_interval_ms: 0,
-               req_options: [plug: {Req.Test, __MODULE__}],
-               select: select
+               req_options: [plug: {Req.Test, __MODULE__}]
              )
 
     {:ok, conn} = Store.open(db_path: db_path)
@@ -334,37 +317,6 @@ defmodule Sheaf.Embedding.IndexTest do
                )
     after
       Store.close(conn)
-    end
-  end
-
-  defp description_row(block_iri, doc_id) do
-    %{
-      "iri" => RDF.iri(block_iri),
-      "doc" => RDF.iri(Sheaf.Id.iri(doc_id)),
-      "s" => RDF.iri(block_iri),
-      "p" => Sheaf.NS.DOC.sourceHtml(),
-      "o" => RDF.literal("<p>Text.</p>")
-    }
-  end
-
-  defp text_unit_row(iri, kind, text) do
-    %{
-      "iri" => RDF.iri(iri),
-      "kind" => RDF.literal(kind),
-      "text" => RDF.literal(text)
-    }
-  end
-
-  defp metadata_row(doc_id, title, opts \\ []) do
-    row = %{
-      "doc" => RDF.iri(Sheaf.Id.iri(doc_id)),
-      "title" => RDF.literal(title)
-    }
-
-    if Keyword.get(opts, :excluded?, false) do
-      Map.put(row, "excluded", RDF.literal("true"))
-    else
-      row
     end
   end
 end

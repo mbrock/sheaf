@@ -7,43 +7,6 @@ defmodule Sheaf.Files do
   alias Sheaf.BlobStore
   require RDF.Graph
 
-  @query """
-  PREFIX fabio: <http://purl.org/spar/fabio/>
-  PREFIX prov: <http://www.w3.org/ns/prov#>
-  PREFIX sheaf: <https://less.rest/sheaf/>
-  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-  CONSTRUCT {
-    ?file a fabio:ComputerFile ;
-      rdfs:label ?label ;
-      sheaf:sha256 ?hash ;
-      sheaf:sourceKey ?key ;
-      sheaf:mimeType ?mime ;
-      sheaf:byteSize ?bytes ;
-      sheaf:originalFilename ?name ;
-      prov:generatedAtTime ?generatedAt .
-
-    ?document sheaf:sourceFile ?file ;
-      rdfs:label ?documentLabel .
-  }
-  WHERE {
-    GRAPH ?graph {
-      ?file a fabio:ComputerFile .
-      OPTIONAL { ?file rdfs:label ?label }
-      OPTIONAL { ?file sheaf:sha256 ?hash }
-      OPTIONAL { ?file sheaf:sourceKey ?key }
-      OPTIONAL { ?file sheaf:mimeType ?mime }
-      OPTIONAL { ?file sheaf:byteSize ?bytes }
-      OPTIONAL { ?file sheaf:originalFilename ?name }
-      OPTIONAL { ?file prov:generatedAtTime ?generatedAt }
-      OPTIONAL {
-        ?document sheaf:sourceFile ?file .
-        OPTIONAL { ?document rdfs:label ?documentLabel }
-      }
-    }
-  }
-  """
-
   @doc """
   Lists stored `fabio:ComputerFile` descriptions from all named graphs.
   """
@@ -56,7 +19,41 @@ defmodule Sheaf.Files do
   @doc """
   Returns a graph describing stored `fabio:ComputerFile` resources.
   """
-  def list_graph, do: Sheaf.query("files list construct", @query)
+  def list_graph do
+    with {:ok, dataset} <- Sheaf.fetch_dataset() do
+      graph =
+        dataset
+        |> RDF.Dataset.graphs()
+        |> Enum.reduce(RDF.Graph.new(), fn source_graph, acc ->
+          files =
+            source_graph
+            |> RDF.Graph.descriptions()
+            |> Enum.filter(&file?/1)
+            |> Enum.map(& &1.subject)
+            |> MapSet.new()
+
+          source_graph
+          |> RDF.Graph.triples()
+          |> Enum.reduce(acc, fn
+            {subject, predicate, object} = triple, acc ->
+              cond do
+                MapSet.member?(files, subject) ->
+                  RDF.Graph.add(acc, triple)
+
+                predicate == Sheaf.NS.DOC.sourceFile() and MapSet.member?(files, object) ->
+                  acc
+                  |> RDF.Graph.add(triple)
+                  |> add_document_label(source_graph, subject)
+
+                true ->
+                  acc
+              end
+          end)
+        end)
+
+      {:ok, graph}
+    end
+  end
 
   @doc """
   Returns file descriptions from RDF data, newest first.
@@ -183,6 +180,19 @@ defmodule Sheaf.Files do
 
   defp file?(%Description{} = description) do
     Description.include?(description, {RDF.type(), Sheaf.NS.FABIO.ComputerFile})
+  end
+
+  defp add_document_label(graph, source_graph, document) do
+    case RDF.Graph.description(source_graph, document) do
+      nil ->
+        graph
+
+      description ->
+        case Description.first(description, RDF.NS.RDFS.label()) do
+          nil -> graph
+          label -> RDF.Graph.add(graph, {document, RDF.NS.RDFS.label(), label})
+        end
+    end
   end
 
   defp blob_opts(opts) do

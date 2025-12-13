@@ -10,6 +10,7 @@ defmodule Quadlog do
 
   def dataset(pid), do: GenServer.call(pid, :dataset)
   def ask(pid, fun), do: GenServer.call(pid, {:ask, :otel_ctx.get_current(), fun})
+  def match(pid, pattern), do: GenServer.call(pid, {:match, :otel_ctx.get_current(), pattern})
   def load(pid, pattern), do: GenServer.call(pid, {:load, :otel_ctx.get_current(), pattern})
 
   def load_once(pid, pattern),
@@ -39,6 +40,15 @@ defmodule Quadlog do
 
   def handle_call({:ask, ctx, fun}, _from, state) do
     with_context(ctx, fn -> {:reply, fun.(state.dataset), state} end)
+  end
+
+  def handle_call({:match, ctx, pattern}, _from, state) do
+    with_context(ctx, fn ->
+      case load(state.conn, pattern, RDF.dataset()) do
+        {:ok, dataset} -> {:reply, {:ok, dataset}, state}
+        error -> {:reply, error, state}
+      end
+    end)
   end
 
   def handle_call({:clear_cache, ctx}, _from, state) do
