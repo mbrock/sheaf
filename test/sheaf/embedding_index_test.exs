@@ -20,6 +20,7 @@ defmodule Sheaf.Embedding.IndexTest do
     doc = RDF.iri("https://sheaf.less.rest/DOC1")
     block1 = RDF.iri("https://sheaf.less.rest/BLOCK1")
     block2 = RDF.iri("https://sheaf.less.rest/BLOCK2")
+    row = RDF.iri("https://sheaf.less.rest/ROW1")
     para = RDF.iri("https://sheaf.less.rest/PARA1")
 
     assert :ok =
@@ -29,20 +30,29 @@ defmodule Sheaf.Embedding.IndexTest do
                    {doc, RDF.type(), Sheaf.NS.DOC.Document},
                    {block1, Sheaf.NS.DOC.paragraph(), para},
                    {para, Sheaf.NS.DOC.text(), "Paragraph text."},
-                   {block2, Sheaf.NS.DOC.sourceHtml(), "<p>PDF text.</p>"}
+                   {block2, Sheaf.NS.DOC.sourceHtml(), "<p>PDF text.</p>"},
+                   {row, Sheaf.NS.DOC.text(), "Coded spreadsheet row."},
+                   {row, Sheaf.NS.DOC.spreadsheetRow(), 42}
                  ],
                  name: doc
                )
              )
 
-    assert {:ok, [paragraph, source]} =
+    assert {:ok, units} =
              Index.text_units(
                model: "gemini-embedding-2",
                output_dimensionality: 768
              )
 
+    units_by_iri = Map.new(units, &{&1.iri, &1})
+    paragraph = Map.fetch!(units_by_iri, to_string(block1))
+    source = Map.fetch!(units_by_iri, to_string(block2))
+    row_unit = Map.fetch!(units_by_iri, to_string(row))
+
     assert paragraph.kind == "paragraph"
     assert source.text == "<p>PDF text.</p>"
+    assert row_unit.kind == "row"
+    assert row_unit.spreadsheet_row == 42
     assert String.length(source.text_hash) == 64
   end
 
@@ -167,6 +177,61 @@ defmodule Sheaf.Embedding.IndexTest do
 
     assert {:ok, [%{iri: ^block_iri, match: :exact}]} =
              Index.exact_search("signal", db_path: db_path)
+  end
+
+  test "exact search can filter RDF hits by document kind" do
+    db_path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-embedding-kind-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    on_exit(fn ->
+      File.rm(db_path)
+      File.rm(db_path <> "-shm")
+      File.rm(db_path <> "-wal")
+    end)
+
+    thesis = RDF.iri("https://sheaf.less.rest/THESIS")
+    spreadsheet = RDF.iri("https://sheaf.less.rest/SHEET1")
+    paragraph_block = RDF.iri("https://sheaf.less.rest/PARA-BLOCK")
+    paragraph = RDF.iri("https://sheaf.less.rest/PARA-TEXT")
+    row = RDF.iri("https://sheaf.less.rest/ROW-BLOCK")
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {thesis, RDF.type(), Sheaf.NS.DOC.Thesis},
+                   {paragraph_block, Sheaf.NS.DOC.paragraph(), paragraph},
+                   {paragraph, Sheaf.NS.DOC.text(), "Shared search phrase in thesis."}
+                 ],
+                 name: thesis
+               )
+             )
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {spreadsheet, RDF.type(), Sheaf.NS.DOC.Spreadsheet},
+                   {row, Sheaf.NS.DOC.text(), "Shared search phrase in coded row."},
+                   {row, Sheaf.NS.DOC.spreadsheetRow(), 12}
+                 ],
+                 name: spreadsheet
+               )
+             )
+
+    assert {:ok, _summary} = SearchIndex.sync(db_path: db_path)
+
+    assert {:ok, [hit]} =
+             Index.exact_search("shared search phrase",
+               db_path: db_path,
+               document_kind: "spreadsheet"
+             )
+
+    assert hit.iri == "https://sheaf.less.rest/ROW-BLOCK"
+    assert hit.doc_kind == :spreadsheet
   end
 
   test "importing an async batch skips units whose documents are now excluded" do

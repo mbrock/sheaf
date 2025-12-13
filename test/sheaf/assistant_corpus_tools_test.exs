@@ -52,6 +52,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              Tool.execute(tool, %{
                "query" => "plastic",
                "document_id" => "DOC123",
+               "document_kind" => "paper",
                "limit" => 5
              })
 
@@ -68,13 +69,15 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert_received {:search_args, "plastic", opts}
     assert Keyword.get(opts, :limit) == 5
     assert Keyword.get(opts, :document_id) == "DOC123"
-    assert Keyword.get(opts, :kinds) == ["paragraph", "sourceHtml"]
+    assert Keyword.get(opts, :document_kind) == "paper"
+    assert Keyword.get(opts, :kinds) == ["paragraph", "sourceHtml", "row"]
     assert Keyword.get(opts, :exact_limit) == 0
 
     assert_received {:exact_search_args, "plastic", exact_opts}
     assert Keyword.get(exact_opts, :limit) == 5
     assert Keyword.get(exact_opts, :document_id) == "DOC123"
-    assert Keyword.get(exact_opts, :kinds) == ["paragraph", "sourceHtml"]
+    assert Keyword.get(exact_opts, :document_kind) == "paper"
+    assert Keyword.get(exact_opts, :kinds) == ["paragraph", "sourceHtml", "row"]
 
     assert exact_hit == %ToolResults.SearchHit{
              document_id: "DOC123",
@@ -99,6 +102,35 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              match: :both,
              score: 0.99
            }
+  end
+
+  test "sidecar spreadsheet tools are hidden when no sidecar sheets are imported" do
+    tools =
+      CorpusTools.tools(
+        include_notes?: false,
+        spreadsheet_lister: fn -> {:ok, []} end
+      )
+
+    tool_names = Enum.map(tools, & &1.name)
+
+    assert "search_text" in tool_names
+    refute "list_spreadsheets" in tool_names
+    refute "query_spreadsheets" in tool_names
+    refute "search_spreadsheets" in tool_names
+  end
+
+  test "sidecar spreadsheet tools are shown when sidecar sheets are imported" do
+    tools =
+      CorpusTools.tools(
+        include_notes?: false,
+        spreadsheet_lister: fn -> {:ok, [%{id: 1}]} end
+      )
+
+    tool_names = Enum.map(tools, & &1.name)
+
+    assert "list_spreadsheets" in tool_names
+    assert "query_spreadsheets" in tool_names
+    assert "search_spreadsheets" in tool_names
   end
 
   test "write_note tool persists through the configured note writer and emits events" do

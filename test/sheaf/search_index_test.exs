@@ -32,6 +32,7 @@ defmodule Sheaf.Search.IndexTest do
     doc2 = RDF.iri("https://sheaf.less.rest/DOC2")
     block1 = RDF.iri("https://sheaf.less.rest/BLOCK1")
     block2 = RDF.iri("https://sheaf.less.rest/BLOCK2")
+    row = RDF.iri("https://sheaf.less.rest/ROW1")
     para = RDF.iri("https://sheaf.less.rest/PARA1")
 
     assert :ok =
@@ -51,13 +52,15 @@ defmodule Sheaf.Search.IndexTest do
                RDF.Graph.new(
                  [
                    {doc2, RDF.type(), Sheaf.NS.DOC.Document},
-                   {block2, Sheaf.NS.DOC.sourceHtml(), "<p>Repair and maintenance work.</p>"}
+                   {block2, Sheaf.NS.DOC.sourceHtml(), "<p>Repair and maintenance work.</p>"},
+                   {row, Sheaf.NS.DOC.text(), "Coded row about giving things away."},
+                   {row, Sheaf.NS.DOC.spreadsheetRow(), 7}
                  ],
                  name: doc2
                )
              )
 
-    assert {:ok, %{count: 2, kinds: %{"paragraph" => 1, "sourceHtml" => 1}}} =
+    assert {:ok, %{count: 3, kinds: %{"paragraph" => 1, "sourceHtml" => 1, "row" => 1}}} =
              Index.sync(db_path: db_path)
 
     assert {:ok, [hit]} = Index.search("circular economy", db_path: db_path)
@@ -65,6 +68,10 @@ defmodule Sheaf.Search.IndexTest do
     assert hit.doc_iri == "https://sheaf.less.rest/DOC1"
     assert hit.kind == "paragraph"
     assert hit.match == :exact
+
+    assert {:ok, [row_hit]} = Index.search("giving things", db_path: db_path)
+    assert row_hit.iri == "https://sheaf.less.rest/ROW1"
+    assert row_hit.kind == "row"
   end
 
   test "search respects kind and document filters", %{db_path: db_path} do

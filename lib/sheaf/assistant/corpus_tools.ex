@@ -13,7 +13,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   alias Sheaf.Assistant.{ToolResultText, ToolResults}
 
   @search_result_limit 10
-  @default_search_kinds ~w(paragraph sourceHtml)
+  @default_search_kinds ~w(paragraph sourceHtml row)
 
   @doc """
   Builds the tool list used by corpus assistant conversations.
@@ -30,6 +30,7 @@ defmodule Sheaf.Assistant.CorpusTools do
     search = Keyword.get(opts, :search, &Sheaf.Embedding.Index.search/2)
     exact_search = Keyword.get(opts, :exact_search, &Sheaf.Embedding.Index.exact_search/2)
     include_notes? = Keyword.get(opts, :include_notes?, true)
+    spreadsheet_lister = Keyword.get(opts, :spreadsheet_lister, &Spreadsheets.list/0)
 
     tools = [
       Tool.new!(
@@ -75,9 +76,10 @@ defmodule Sheaf.Assistant.CorpusTools do
       Tool.new!(
         name: "search_text",
         description:
-          "Hybrid exact and semantic search over paragraph and extracted-block " <>
-            "text. Searches the main prose corpus; pass document_id to scope. " <>
-            "Use list_spreadsheets, query_spreadsheets, or search_spreadsheets for tabular data. " <>
+          "Hybrid exact and semantic search over paragraph, extracted-block, and RDF row " <>
+            "text. Searches the RDF document corpus; pass document_id to scope to one " <>
+            "document or document_kind to scope to a document type such as thesis, paper, " <>
+            "spreadsheet, transcript, or document. " <>
             "Exact text matches contribute to ranking alongside embedding similarity. " <>
             "Returns hits with their document id, block id, kind, and full text.",
         parameter_schema: [
@@ -88,54 +90,17 @@ defmodule Sheaf.Assistant.CorpusTools do
               "Exact phrase or space-separated keywords, for example \"circular economy\" or \"politics economy\"."
           ],
           document_id: [type: :string, doc: "Optional: scope to one document"],
+          document_kind: [
+            type: :string,
+            doc: "Optional: scope to one document kind, e.g. thesis, paper, spreadsheet."
+          ],
           limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits per category"]
         ],
         callback: instrument(notify, "search_text", &search_text_tool(&1, search, exact_search))
-      ),
-      Tool.new!(
-        name: "list_spreadsheets",
-        description:
-          "List imported spreadsheet workbooks and sheets available in the SQLite sidecar. " <>
-            "Returns SQL table names, row counts, and column names for query_spreadsheets.",
-        callback: instrument(notify, "list_spreadsheets", &list_spreadsheets_tool/1)
-      ),
-      Tool.new!(
-        name: "query_spreadsheets",
-        description:
-          "Run a read-only SQL SELECT/WITH query against imported spreadsheet sheet tables. " <>
-            "Call list_spreadsheets first to discover table and column names. " <>
-            "Use SQLite syntax; every sheet table has __row_number and __text columns.",
-        parameter_schema: [
-          sql: [
-            type: :string,
-            required: true,
-            doc:
-              "Read-only SQL SELECT or WITH query, for example: SELECT * FROM ss_xl_abc_1 LIMIT 5"
-          ],
-          limit: [
-            type: :integer,
-            default: 50,
-            doc: "Maximum rows returned by the wrapper, capped by Sheaf."
-          ]
-        ],
-        callback: instrument(notify, "query_spreadsheets", &query_spreadsheets_tool/1)
-      ),
-      Tool.new!(
-        name: "search_spreadsheets",
-        description:
-          "Exact-ish keyword search over imported spreadsheet rows. " <>
-            "Use this to find rows before writing a more precise SQL query.",
-        parameter_schema: [
-          query: [
-            type: :string,
-            required: true,
-            doc: "Words or phrase to find in spreadsheet rows."
-          ],
-          limit: [type: :integer, default: 20, doc: "Maximum matching rows returned."]
-        ],
-        callback: instrument(notify, "search_spreadsheets", &search_spreadsheets_tool/1)
       )
     ]
+
+    tools = tools ++ sidecar_spreadsheet_tools(notify, spreadsheet_lister)
 
     if include_notes? do
       note_context = Keyword.get_lazy(opts, :note_context, &default_note_context/0) |> Map.new()
@@ -148,6 +113,72 @@ defmodule Sheaf.Assistant.CorpusTools do
     else
       tools
     end
+  end
+
+  defp sidecar_spreadsheet_tools(notify, spreadsheet_lister) do
+    case spreadsheet_lister.() do
+      {:ok, [_spreadsheet | _spreadsheets]} ->
+        [
+          list_spreadsheets_tool_definition(notify),
+          query_spreadsheets_tool_definition(notify),
+          search_spreadsheets_tool_definition(notify)
+        ]
+
+      _empty_or_error ->
+        []
+    end
+  end
+
+  defp list_spreadsheets_tool_definition(notify) do
+    Tool.new!(
+      name: "list_spreadsheets",
+      description:
+        "List imported spreadsheet workbooks and sheets available in the SQLite sidecar. " <>
+          "Returns SQL table names, row counts, and column names for query_spreadsheets.",
+      callback: instrument(notify, "list_spreadsheets", &list_spreadsheets_tool/1)
+    )
+  end
+
+  defp query_spreadsheets_tool_definition(notify) do
+    Tool.new!(
+      name: "query_spreadsheets",
+      description:
+        "Run a read-only SQL SELECT/WITH query against imported spreadsheet sheet tables. " <>
+          "Call list_spreadsheets first to discover table and column names. " <>
+          "Use SQLite syntax; every sheet table has __row_number and __text columns.",
+      parameter_schema: [
+        sql: [
+          type: :string,
+          required: true,
+          doc:
+            "Read-only SQL SELECT or WITH query, for example: SELECT * FROM ss_xl_abc_1 LIMIT 5"
+        ],
+        limit: [
+          type: :integer,
+          default: 50,
+          doc: "Maximum rows returned by the wrapper, capped by Sheaf."
+        ]
+      ],
+      callback: instrument(notify, "query_spreadsheets", &query_spreadsheets_tool/1)
+    )
+  end
+
+  defp search_spreadsheets_tool_definition(notify) do
+    Tool.new!(
+      name: "search_spreadsheets",
+      description:
+        "Exact-ish keyword search over imported spreadsheet rows. " <>
+          "Use this to find rows before writing a more precise SQL query.",
+      parameter_schema: [
+        query: [
+          type: :string,
+          required: true,
+          doc: "Words or phrase to find in spreadsheet rows."
+        ],
+        limit: [type: :integer, default: 20, doc: "Maximum matching rows returned."]
+      ],
+      callback: instrument(notify, "search_spreadsheets", &search_spreadsheets_tool/1)
+    )
   end
 
   defp write_note_tool_definition(notify, note_context, note_writer) do
@@ -441,6 +472,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       opts =
         [limit: arg(args, :limit) || @search_result_limit]
         |> maybe_add_scope(args)
+        |> maybe_add_document_kind(args)
         |> Keyword.put(:kinds, @default_search_kinds)
 
       with {:ok, exact_results} <- exact_search.(query, opts),
@@ -543,6 +575,14 @@ defmodule Sheaf.Assistant.CorpusTools do
       nil -> opts
       "" -> opts
       id -> Keyword.put(opts, :document_id, id)
+    end
+  end
+
+  defp maybe_add_document_kind(opts, args) do
+    case arg(args, :document_kind) do
+      nil -> opts
+      "" -> opts
+      kind -> Keyword.put(opts, :document_kind, kind)
     end
   end
 
@@ -668,7 +708,7 @@ defmodule Sheaf.Assistant.CorpusTools do
     }
   end
 
-  defp assistant_list_document?(%{kind: kind}) when kind in [:transcript, :spreadsheet], do: false
+  defp assistant_list_document?(%{kind: :transcript}), do: false
   defp assistant_list_document?(%{has_document?: false}), do: false
   defp assistant_list_document?(_doc), do: true
 

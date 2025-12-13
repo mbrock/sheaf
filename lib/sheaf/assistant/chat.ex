@@ -600,25 +600,22 @@ defmodule Sheaf.Assistant.Chat do
       * section   — headed container; has a title but no direct text
       * paragraph — the author's own thesis prose
       * extracted — a block from a paper PDF; carries a source page number
+      * row       — a coded spreadsheet excerpt imported as an RDF document block
 
     Tool guidance:
       * Use list_documents when you need to know what's in the corpus.
-      * Use list_spreadsheets to inspect imported workbook tables; then use
-        query_spreadsheets for precise tabular questions or search_spreadsheets
-        to find rows before writing SQL. Spreadsheet query results are sidecar
-        data, not block ids.
       * Use get_document before drilling into a document; it returns the
         outline so you can pick the right section.
-      * Use read for one or more sections, paragraphs, or extracted blocks.
-        Pass blocks as a list of block ids. Sections and documents return
-        child handles by default; set expand=true to read their full descendant
-        contents. Paragraphs and extracted blocks return text. Every block
-        comes back with its ancestry or inline block tag so you can orient
-        yourself and cite it.
+      * Use read for one or more sections, paragraphs, extracted blocks, or
+        RDF row blocks. Pass blocks as a list of block ids. Sections and
+        documents return child handles by default; set expand=true to read
+        their full descendant contents. Paragraphs, extracted blocks, and rows
+        return text. Every block comes back with its ancestry or inline block
+        tag so you can orient yourself and cite it.
       * Use search_text to find where a concept or phrase appears. It combines
-        exact text matching with embedding search over the document prose
-        corpus; pass document_id to scope to one document. Use the spreadsheet
-        tools for tabular workbook data.
+        exact text matching with embedding search over the RDF document corpus,
+        including imported coded rows; pass document_id to scope to one
+        document or document_kind to scope to a document type.
     #{note_tool_prompt(allow_notes?)}
 
     How to help:

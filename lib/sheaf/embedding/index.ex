@@ -14,7 +14,7 @@ defmodule Sheaf.Embedding.Index do
   @default_max_concurrency 8
   @default_batch_size 32
   @default_source "openai-text-embedding-3-large-v1"
-  @valid_kinds ~w(paragraph sourceHtml)
+  @valid_kinds ~w(paragraph sourceHtml row)
 
   @type text_unit :: %{
           required(:iri) => String.t(),
@@ -709,6 +709,7 @@ defmodule Sheaf.Embedding.Index do
             {doc,
              %{
                title: description |> Description.first(RDFS.label()) |> term_value(),
+               kind: document_kind(description),
                excluded?: MapSet.member?(excluded, RDF.iri(doc)),
                authors: authors
              }}
@@ -721,7 +722,7 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp search_loaded(conn, query_values, model, dimensions, source, limit, opts) do
-    exact_limit = Keyword.get(opts, :exact_limit, max(limit * 4, 60))
+    exact_limit = Keyword.get(opts, :exact_limit, exact_candidate_limit(limit, opts))
 
     with {:ok, exact_results} <-
            exact_matches(
@@ -844,7 +845,7 @@ defmodule Sheaf.Embedding.Index do
 
   defp searchable_result(result, opts) do
     if kind_allowed?(result, opts) and document_allowed?(result, opts) and
-         Map.get(result, :doc_excluded?, false) != true and
+         document_kind_allowed?(result, opts) and Map.get(result, :doc_excluded?, false) != true and
          searchable_content?(result) do
       [result]
     else
@@ -861,6 +862,14 @@ defmodule Sheaf.Embedding.Index do
       nil -> true
       "" -> true
       document_id -> result.doc_iri == document_id |> Sheaf.Id.iri() |> to_string()
+    end
+  end
+
+  defp document_kind_allowed?(result, opts) do
+    case Keyword.get(opts, :document_kind) do
+      nil -> true
+      "" -> true
+      kind -> normalize_kind(Map.get(result, :doc_kind)) == normalize_kind(kind)
     end
   end
 
@@ -1018,6 +1027,7 @@ defmodule Sheaf.Embedding.Index do
       text_chars: String.length(text),
       doc_iri: doc_iri,
       doc_title: doc_title,
+      doc_kind: Map.get(doc, :kind),
       doc_authors: Map.get(doc, :authors, []),
       doc_excluded?: Map.get(doc, :excluded?, false),
       source_page: description |> Description.first(Sheaf.NS.DOC.sourcePage()) |> integer_value(),
@@ -1047,6 +1057,28 @@ defmodule Sheaf.Embedding.Index do
       &Description.include?(description, {RDF.type(), RDF.iri(&1)})
     )
   end
+
+  defp document_kind(%Description{} = description) do
+    cond do
+      Description.include?(description, {RDF.type(), RDF.iri(DOC.Thesis)}) -> :thesis
+      Description.include?(description, {RDF.type(), RDF.iri(DOC.Paper)}) -> :paper
+      Description.include?(description, {RDF.type(), RDF.iri(DOC.Transcript)}) -> :transcript
+      Description.include?(description, {RDF.type(), RDF.iri(DOC.Spreadsheet)}) -> :spreadsheet
+      true -> :document
+    end
+  end
+
+  defp exact_candidate_limit(limit, opts) do
+    if Keyword.get(opts, :document_kind) in [nil, ""] do
+      max(limit * 4, 60)
+    else
+      max(limit * 20, 500)
+    end
+  end
+
+  defp normalize_kind(kind) when is_atom(kind), do: kind |> Atom.to_string() |> normalize_kind()
+  defp normalize_kind(kind) when is_binary(kind), do: kind |> String.trim() |> String.downcase()
+  defp normalize_kind(kind), do: kind |> to_string() |> normalize_kind()
 
   defp excluded_documents(dataset) do
     workspace = RDF.Dataset.graph(dataset, Sheaf.Repo.workspace_graph()) || Graph.new()
