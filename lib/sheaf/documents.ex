@@ -131,7 +131,7 @@ defmodule Sheaf.Documents do
         {nil, RDF.type(), RDF.iri(DOC.Transcript), nil},
         {nil, RDF.type(), RDF.iri(DOC.Spreadsheet), nil},
         {nil, RDFS.label(), nil, nil},
-        {nil, DOC.sourcePage(), nil, nil},
+        {nil, BIBO.numPages(), nil, nil},
         {nil, CITO.cites(), nil, nil}
       ]
 
@@ -224,7 +224,7 @@ defmodule Sheaf.Documents do
       thesis = RDF.iri(DOC.Thesis)
       rdf_type = RDF.type()
       label = RDFS.label()
-      source_page = DOC.sourcePage()
+      page_count = BIBO.numPages()
       cites = CITO.cites()
 
       index =
@@ -249,12 +249,8 @@ defmodule Sheaf.Documents do
             {subject, ^label, object}, index ->
               update_document_index(index, subject, :labels, object)
 
-            {_subject, ^source_page, object}, index ->
-              if graph_name do
-                update_document_index(index, graph_name, :pages, page_number(object))
-              else
-                index
-              end
+            {subject, ^page_count, object}, index ->
+              update_document_index(index, subject, :page_counts, page_number(object))
 
             {subject, ^cites, object}, index ->
               if graph_name do
@@ -270,6 +266,7 @@ defmodule Sheaf.Documents do
 
       documents =
         index.documents
+        |> add_legacy_page_ranges(page_ranges_from_dataset(dataset))
         |> Enum.filter(fn {_doc, info} -> info.kinds != [] end)
         |> Map.new()
 
@@ -305,8 +302,15 @@ defmodule Sheaf.Documents do
     end)
   end
 
-  defp new_document_info(nil), do: %{kinds: [], labels: [], pages: []}
+  defp new_document_info(nil), do: %{kinds: [], labels: [], page_counts: [], pages: []}
   defp new_document_info(info), do: info
+
+  defp add_legacy_page_ranges(documents, page_ranges) do
+    Map.merge(documents, page_ranges, fn
+      _doc, %{page_counts: [_ | _]} = info, _pages -> info
+      _doc, info, pages -> %{info | pages: pages}
+    end)
+  end
 
   defp update_graph_set(index, key, graph, value) do
     update_in(index, [key, graph], fn
@@ -375,7 +379,7 @@ defmodule Sheaf.Documents do
 
   defp rows_for_document_info(metadata, workspace, cited_docs, doc, info) do
     kinds = document_row_kinds(info.kinds)
-    page_count = page_count(info.pages)
+    page_count = List.first(info.page_counts) || page_count(info.pages)
     metadata_values = document_metadata(metadata, doc)
     workspace_owner = workspace_owner(workspace)
 
@@ -540,6 +544,8 @@ defmodule Sheaf.Documents do
     end
   end
 
+  defp page_count({min, max}) when is_integer(min) and is_integer(max), do: max - min + 1
+
   defp page_number(object) do
     object
     |> term_value()
@@ -548,6 +554,32 @@ defmodule Sheaf.Documents do
       {page, _rest} -> page
       :error -> nil
     end
+  end
+
+  defp page_ranges_from_dataset(dataset) do
+    source_page = DOC.sourcePage()
+
+    dataset
+    |> RDF.Dataset.graphs()
+    |> Enum.reduce(%{}, fn graph, ranges ->
+      if graph.name do
+        pages =
+          graph
+          |> Graph.triples()
+          |> Enum.flat_map(fn
+            {_subject, ^source_page, object} -> [page_number(object)]
+            _triple -> []
+          end)
+          |> Enum.reject(&is_nil/1)
+
+        case pages do
+          [] -> ranges
+          pages -> Map.put(ranges, graph.name, {Enum.min(pages), Enum.max(pages)})
+        end
+      else
+        ranges
+      end
+    end)
   end
 
   defp first_object(nil, _subject, _predicate), do: nil

@@ -38,6 +38,7 @@ defmodule Sheaf.PDF do
     nodes = flatten_nodes(blocks)
     node_iris = node_iris(nodes, mint)
     node_summaries = node_summaries(nodes, node_iris)
+    page_count = page_count(document, node_summaries)
     child_lists = child_list_graphs(document_iri, blocks, node_iris, mint)
 
     graph =
@@ -47,9 +48,11 @@ defmodule Sheaf.PDF do
                       source_file: source_file_metadata,
                       source_file_iri: source_file_iri,
                       source_file_metadata: source_file_metadata,
+                      page_count: page_count,
                       nodes: node_summaries,
                       child_lists: child_lists do
         @prefix Sheaf.NS.DOC
+        @prefix Sheaf.NS.BIBO
         @prefix Sheaf.NS.FABIO
         @prefix RDF.NS.RDFS
 
@@ -57,6 +60,7 @@ defmodule Sheaf.PDF do
         |> a(DOC.Document)
         |> a(DOC.Paper)
         |> RDFS.label(title)
+        |> BIBO.numPages(page_count)
         |> DOC.sourceKey(source_path)
         |> DOC.sourceFile(source_file_iri)
 
@@ -99,6 +103,18 @@ defmodule Sheaf.PDF do
       byte_size: source_file_value(source_file, :byte_size)
     }
     |> Map.new(fn {key, value} -> {key, present_value(value)} end)
+  end
+
+  defp page_count(%{"children" => pages}, _nodes) when is_list(pages), do: length(pages)
+
+  defp page_count(_document, nodes) do
+    nodes
+    |> Enum.map(& &1.source_page)
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      pages -> Enum.max(pages) - Enum.min(pages) + 1
+    end
   end
 
   defp node_summaries(nodes, node_iris) do

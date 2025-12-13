@@ -2,7 +2,7 @@ defmodule Sheaf.PDFTest do
   use ExUnit.Case, async: true
 
   alias RDF.{Description, Graph}
-  alias Sheaf.NS.{DOC, FABIO}
+  alias Sheaf.NS.{BIBO, DOC, FABIO}
   alias Sheaf.{Document, PDF}
 
   test "builds a paper graph from extracted PDF section hierarchy" do
@@ -45,6 +45,7 @@ defmodule Sheaf.PDFTest do
 
     assert Document.kind(result.graph, result.document) == :paper
     assert Document.title(result.graph, result.document) == "Example Paper"
+    assert rdf_value(Graph.description(result.graph, result.document), BIBO.numPages()) == 1
 
     [intro] = Document.children(result.graph, result.document)
     assert Document.block_type(result.graph, intro) == :section

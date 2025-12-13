@@ -3,7 +3,7 @@ defmodule Sheaf.DocumentsTest do
   use RDF
 
   alias Sheaf.Documents
-  alias Sheaf.NS.{CITO, DCTERMS, DOC, FABIO, FOAF}
+  alias Sheaf.NS.{BIBO, CITO, DCTERMS, DOC, FABIO, FOAF}
   alias RDF.NS.RDFS
 
   setup do
@@ -293,5 +293,25 @@ defmodule Sheaf.DocumentsTest do
                year: "2020"
              }
            } = Enum.find(Documents.from_dataset(dataset), &(&1.id == "PAPER1"))
+  end
+
+  test "reads imported document page counts from document metadata" do
+    doc = ~I<https://example.com/sheaf/PAPER1>
+
+    document_graph =
+      RDF.Graph.new(
+        [
+          {doc, RDF.type(), DOC.Document},
+          {doc, RDF.type(), DOC.Paper},
+          {doc, RDFS.label(), "Imported PDF title"},
+          {doc, BIBO.numPages(), 18}
+        ],
+        name: doc
+      )
+
+    dataset = RDF.Dataset.new(document_graph)
+
+    assert %{metadata: %{page_count: 18}} =
+             Enum.find(Documents.from_dataset(dataset), &(&1.id == "PAPER1"))
   end
 end
