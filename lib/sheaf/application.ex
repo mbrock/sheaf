@@ -7,6 +7,7 @@ defmodule Sheaf.Application do
 
   @impl true
   def start(_type, _args) do
+    stop_optional_dev_watchers()
     if tracing_enabled?(), do: setup_opentelemetry()
 
     children =
@@ -67,6 +68,14 @@ defmodule Sheaf.Application do
     else
       []
     end
+  end
+
+  defp stop_optional_dev_watchers do
+    if System.get_env("SHEAF_PHOENIX_DEV_MODE") in ~w(steady plain stable no_reload no-reload) do
+      Application.stop(:phoenix_live_reload)
+    end
+
+    :ok
   end
 
   # Attach the OpenTelemetry span handlers for Phoenix, Bandit, and Finch. All

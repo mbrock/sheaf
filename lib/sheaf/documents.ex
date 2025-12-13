@@ -9,7 +9,7 @@ defmodule Sheaf.Documents do
 
   alias Sheaf.Id
   alias Sheaf.NS.{BIBO, BIRO, CITO, DCTERMS, FABIO, FOAF, FRBR, DOC}
-  alias RDF.{Description, Graph, Literal}
+  alias RDF.{Graph, Literal}
   alias RDF.NS.RDFS
 
   def list(opts \\ []) do
@@ -28,34 +28,44 @@ defmodule Sheaf.Documents do
     end
   end
 
-  def references_for_document(document_iri) do
-    document_iri = RDF.iri(document_iri)
+  def references_for_document(document_iri, graph \\ nil)
 
-    with :ok <- Sheaf.Repo.load_once({nil, BIRO.references(), nil, document_iri}),
-         :ok <- load_document_index_cache() do
+  def references_for_document(document_iri, nil) do
+    with {:ok, graph} <- Sheaf.fetch_graph(document_iri) do
+      references_for_document(document_iri, graph)
+    end
+  end
+
+  def references_for_document(_document_iri, %Graph{} = graph) do
+    with :ok <- load_reference_cache() do
       rows =
         Sheaf.Repo.ask(fn dataset ->
           references = BIRO.references()
           metadata = dataset |> RDF.Dataset.graph(Sheaf.Repo.metadata_graph()) |> graph_index()
           workspace = dataset |> RDF.Dataset.graph(Sheaf.Repo.workspace_graph()) |> graph_index()
-          cited_docs = cited_documents(dataset)
-          graph = RDF.Dataset.graph(dataset, document_iri) || Graph.new(name: document_iri)
 
-          graph
-          |> Graph.triples()
-          |> Enum.flat_map(fn
-            {block, ^references, doc} ->
-              case document_description(dataset, doc) do
-                nil ->
-                  rows_for_metadata_only_document(metadata, workspace, doc)
+          references =
+            graph
+            |> Graph.triples()
+            |> Enum.flat_map(fn
+              {block, ^references, doc} -> [{block, doc}]
+              _triple -> []
+            end)
 
-                description ->
-                  rows_for_document(dataset, metadata, workspace, cited_docs, doc, description)
-              end
-              |> Enum.map(&Map.put(&1, "block", block))
+          docs = references |> Enum.map(fn {_block, doc} -> doc end) |> MapSet.new()
+          document_index = referenced_document_index(dataset, docs)
+          cited_docs = docs
 
-            _triple ->
-              []
+          references
+          |> Enum.flat_map(fn {block, doc} ->
+            case Map.get(document_index, doc) do
+              nil ->
+                rows_for_metadata_only_document(metadata, workspace, doc)
+
+              info ->
+                rows_for_document_info(metadata, workspace, cited_docs, doc, info)
+            end
+            |> Enum.map(&Map.put(&1, "block", block))
           end)
         end)
 
@@ -133,6 +143,27 @@ defmodule Sheaf.Documents do
     end)
   end
 
+  defp load_reference_cache do
+    patterns =
+      [
+        {nil, nil, nil, RDF.iri(Sheaf.Repo.workspace_graph())},
+        {nil, nil, nil, RDF.iri(Sheaf.Repo.metadata_graph())},
+        {nil, RDF.type(), RDF.iri(DOC.Document), nil},
+        {nil, RDF.type(), RDF.iri(DOC.Paper), nil},
+        {nil, RDF.type(), RDF.iri(DOC.Thesis), nil},
+        {nil, RDF.type(), RDF.iri(DOC.Transcript), nil},
+        {nil, RDF.type(), RDF.iri(DOC.Spreadsheet), nil},
+        {nil, RDFS.label(), nil, nil}
+      ]
+
+    Enum.reduce_while(patterns, :ok, fn pattern, :ok ->
+      case Sheaf.Repo.load_once(pattern) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
   defp dataset_rows(dataset) do
     Tracer.with_span "Sheaf.Documents.dataset_rows", %{
       kind: :internal,
@@ -152,19 +183,19 @@ defmodule Sheaf.Documents do
           {metadata, workspace}
         end
 
-      descriptions = document_descriptions(dataset)
-      document_iris = descriptions |> Enum.map(fn {doc, _description} -> doc end) |> MapSet.new()
-      cited_docs = cited_documents(dataset)
+      index = document_index(dataset)
+      document_iris = index.documents |> Map.keys() |> MapSet.new()
+      cited_docs = index.cited_docs
 
       document_rows =
         Tracer.with_span "Sheaf.Documents.dataset_rows.document_rows", %{kind: :internal} do
           rows =
-            descriptions
-            |> Enum.flat_map(fn {doc, description} ->
-              rows_for_document(dataset, metadata, workspace, cited_docs, doc, description)
+            index.documents
+            |> Enum.flat_map(fn {doc, info} ->
+              rows_for_document_info(metadata, workspace, cited_docs, doc, info)
             end)
 
-          Tracer.set_attribute("sheaf.document_description_count", length(descriptions))
+          Tracer.set_attribute("sheaf.document_description_count", map_size(index.documents))
           Tracer.set_attribute("sheaf.row_count", length(rows))
           rows
         end
@@ -187,39 +218,164 @@ defmodule Sheaf.Documents do
     end
   end
 
-  defp document_descriptions(dataset) do
-    Tracer.with_span "Sheaf.Documents.document_descriptions", %{kind: :internal} do
-      descriptions =
-        dataset
-        |> RDF.Dataset.graphs()
-        |> Enum.flat_map(fn graph ->
-          graph
-          |> Graph.descriptions()
-          |> Enum.filter(&document_description?/1)
-          |> Enum.map(&{Description.subject(&1), &1})
+  defp document_index(dataset) do
+    Tracer.with_span "Sheaf.Documents.document_index", %{kind: :internal} do
+      kinds = document_kind_set()
+      thesis = RDF.iri(DOC.Thesis)
+      rdf_type = RDF.type()
+      label = RDFS.label()
+      source_page = DOC.sourcePage()
+      cites = CITO.cites()
+
+      index =
+        Enum.reduce(RDF.Dataset.graphs(dataset), empty_document_index(), fn graph, index ->
+          graph_name = graph.name
+
+          Enum.reduce(Graph.triples(graph), index, fn
+            {subject, ^rdf_type, object}, index ->
+              index =
+                if MapSet.member?(kinds, object) do
+                  update_document_index(index, subject, :kinds, object)
+                else
+                  index
+                end
+
+              if graph_name && object == thesis do
+                update_graph_set(index, :theses_by_graph, graph_name, subject)
+              else
+                index
+              end
+
+            {subject, ^label, object}, index ->
+              update_document_index(index, subject, :labels, object)
+
+            {_subject, ^source_page, object}, index ->
+              if graph_name do
+                update_document_index(index, graph_name, :pages, page_number(object))
+              else
+                index
+              end
+
+            {subject, ^cites, object}, index ->
+              if graph_name do
+                update_graph_list(index, :cites_by_graph, graph_name, {subject, object})
+              else
+                index
+              end
+
+            _triple, index ->
+              index
+          end)
         end)
 
-      Tracer.set_attribute("sheaf.document_description_count", length(descriptions))
-      descriptions
+      documents =
+        index.documents
+        |> Enum.filter(fn {_doc, info} -> info.kinds != [] end)
+        |> Map.new()
+
+      cited_docs =
+        index.cites_by_graph
+        |> Enum.flat_map(fn {graph, cites} ->
+          theses = Map.get(index.theses_by_graph, graph, MapSet.new())
+
+          Enum.flat_map(cites, fn {subject, object} ->
+            if MapSet.member?(theses, subject), do: [object], else: []
+          end)
+        end)
+        |> MapSet.new()
+
+      Tracer.set_attribute("sheaf.document_count", map_size(documents))
+      Tracer.set_attribute("sheaf.cited_document_count", MapSet.size(cited_docs))
+
+      %{documents: documents, cited_docs: cited_docs}
     end
   end
 
-  defp document_description(dataset, doc) do
-    dataset
-    |> RDF.Dataset.graphs()
-    |> Enum.find_value(fn graph ->
-      description = Graph.description(graph, doc)
-      if description && document_description?(description), do: description
+  defp empty_document_index do
+    %{documents: %{}, theses_by_graph: %{}, cites_by_graph: %{}}
+  end
+
+  defp update_document_index(index, _doc, _key, nil), do: index
+
+  defp update_document_index(index, doc, key, value) do
+    update_in(index, [:documents, doc], fn info ->
+      info
+      |> new_document_info()
+      |> Map.update!(key, &[value | &1])
     end)
   end
 
-  defp document_description?(description) do
-    Enum.any?(document_kinds(), &Description.include?(description, {RDF.type(), &1}))
+  defp new_document_info(nil), do: %{kinds: [], labels: [], pages: []}
+  defp new_document_info(info), do: info
+
+  defp update_graph_set(index, key, graph, value) do
+    update_in(index, [key, graph], fn
+      nil -> MapSet.new([value])
+      values -> MapSet.put(values, value)
+    end)
   end
 
-  defp rows_for_document(dataset, metadata, workspace, cited_docs, doc, description) do
-    kinds = document_row_kinds(description)
-    page_count = page_count(dataset, doc)
+  defp update_graph_list(index, key, graph, value) do
+    update_in(index, [key, graph], fn
+      nil -> [value]
+      values -> [value | values]
+    end)
+  end
+
+  defp referenced_document_index(_dataset, docs) when map_size(docs) == 0, do: %{}
+
+  defp referenced_document_index(dataset, docs) do
+    Tracer.with_span "Sheaf.Documents.referenced_document_index", %{
+      kind: :internal,
+      attributes: [{"sheaf.document_count", MapSet.size(docs)}]
+    } do
+      kinds = document_kind_set()
+      rdf_type = RDF.type()
+      label = RDFS.label()
+
+      documents =
+        Enum.reduce(RDF.Dataset.graphs(dataset), %{}, fn graph, documents ->
+          Enum.reduce(Graph.triples(graph), documents, fn
+            {subject, ^rdf_type, object}, documents ->
+              if MapSet.member?(docs, subject) and MapSet.member?(kinds, object) do
+                update_document_info(documents, subject, :kinds, object)
+              else
+                documents
+              end
+
+            {subject, ^label, object}, documents ->
+              if MapSet.member?(docs, subject) do
+                update_document_info(documents, subject, :labels, object)
+              else
+                documents
+              end
+
+            _triple, documents ->
+              documents
+          end)
+        end)
+        |> Enum.filter(fn {_doc, info} -> info.kinds != [] end)
+        |> Map.new()
+
+      Tracer.set_attribute("sheaf.document_count", map_size(documents))
+      documents
+    end
+  end
+
+  defp update_document_info(documents, doc, key, value) do
+    Map.update(
+      documents,
+      doc,
+      new_document_info(nil) |> Map.update!(key, &[value | &1]),
+      fn info ->
+        Map.update!(info, key, &[value | &1])
+      end
+    )
+  end
+
+  defp rows_for_document_info(metadata, workspace, cited_docs, doc, info) do
+    kinds = document_row_kinds(info.kinds)
+    page_count = page_count(info.pages)
     metadata_values = document_metadata(metadata, doc)
     workspace_owner = workspace_owner(workspace)
 
@@ -230,7 +386,7 @@ defmodule Sheaf.Documents do
     |> Enum.flat_map(fn kind ->
       row =
         %{"doc" => doc, "kind" => kind}
-        |> put_optional("title", Description.first(description, RDFS.label()))
+        |> put_optional("title", List.first(info.labels))
         |> put_optional("pageCount", literal_integer(page_count))
         |> put_flag("excluded", excluded?(workspace, doc))
         |> put_flag("cited", MapSet.member?(cited_docs, doc))
@@ -262,19 +418,13 @@ defmodule Sheaf.Documents do
     expand_author_rows(row, metadata_values)
   end
 
-  defp document_row_kinds(description) do
-    specific =
-      Enum.filter(specific_document_kinds(), &Description.include?(description, {RDF.type(), &1}))
+  defp document_row_kinds(kinds) when is_list(kinds) do
+    specific = Enum.filter(specific_document_kinds(), &(&1 in kinds))
 
     cond do
-      specific != [] ->
-        specific
-
-      Description.include?(description, {RDF.type(), RDF.iri(DOC.Document)}) ->
-        [RDF.iri(DOC.Document)]
-
-      true ->
-        []
+      specific != [] -> specific
+      RDF.iri(DOC.Document) in kinds -> [RDF.iri(DOC.Document)]
+      true -> []
     end
   end
 
@@ -381,67 +531,22 @@ defmodule Sheaf.Documents do
     |> Enum.any?(&(doc in objects_for(workspace, &1, DOC.excludesDocument())))
   end
 
-  defp cited_documents(dataset) do
-    Tracer.with_span "Sheaf.Documents.cited_documents", %{kind: :internal} do
-      cited_documents =
-        dataset
-        |> RDF.Dataset.graphs()
-        |> Enum.flat_map(fn graph ->
-          theses =
-            graph
-            |> Graph.descriptions()
-            |> Enum.filter(&Description.include?(&1, {RDF.type(), RDF.iri(DOC.Thesis)}))
-            |> Enum.map(&Description.subject/1)
-            |> MapSet.new()
+  defp page_count(pages) when is_list(pages) do
+    pages = Enum.reject(pages, &is_nil/1)
 
-          graph
-          |> Graph.triples()
-          |> Enum.flat_map(fn
-            {thesis, predicate, doc} ->
-              if MapSet.member?(theses, thesis) and predicate == CITO.cites(), do: [doc], else: []
-
-            _triple ->
-              []
-          end)
-        end)
-        |> MapSet.new()
-
-      Tracer.set_attribute("sheaf.cited_document_count", MapSet.size(cited_documents))
-      cited_documents
+    case pages do
+      [] -> nil
+      pages -> Enum.max(pages) - Enum.min(pages) + 1
     end
   end
 
-  defp page_count(dataset, doc) do
-    case RDF.Dataset.graph(dataset, doc) do
-      nil ->
-        nil
-
-      graph ->
-        pages =
-          graph
-          |> Graph.triples()
-          |> Enum.flat_map(fn
-            {_subject, predicate, object} ->
-              if predicate == DOC.sourcePage() do
-                object
-                |> term_value()
-                |> Integer.parse()
-                |> case do
-                  {page, _rest} -> [page]
-                  :error -> []
-                end
-              else
-                []
-              end
-
-            _triple ->
-              []
-          end)
-
-        case pages do
-          [] -> nil
-          pages -> Enum.max(pages) - Enum.min(pages) + 1
-        end
+  defp page_number(object) do
+    object
+    |> term_value()
+    |> Integer.parse()
+    |> case do
+      {page, _rest} -> page
+      :error -> nil
     end
   end
 
@@ -509,6 +614,7 @@ defmodule Sheaf.Documents do
   defp literal_integer(integer), do: RDF.literal(integer)
 
   defp document_kinds, do: [RDF.iri(DOC.Document) | specific_document_kinds()]
+  defp document_kind_set, do: document_kinds() |> MapSet.new()
 
   defp specific_document_kinds do
     [RDF.iri(DOC.Paper), RDF.iri(DOC.Thesis), RDF.iri(DOC.Transcript), RDF.iri(DOC.Spreadsheet)]

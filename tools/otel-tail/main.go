@@ -1,4 +1,4 @@
-// otel prints OpenTelemetry spans from a Redis Stream to stdout as they arrive.
+// otel prints OpenTelemetry spans from a Redis Stream.
 //
 // The stream is populated by Sheaf's custom span processor
 // (Sheaf.Tracing.RedisSinkProcessor); this tool is the consumer side.
@@ -35,6 +35,8 @@ func main() {
 	jsonOut := flag.Bool("json", false, "Output raw JSON, one object per line")
 	jsonLines := flag.Bool("jsonl", false, "Output raw JSON Lines, one span event per line")
 	tree := flag.Bool("tree", false, "Render a one-shot trace tree from backfilled spans and exit")
+	follow := flag.Bool("follow", false, "Keep reading new spans after the backfill")
+	flag.BoolVar(follow, "f", false, "Keep reading new spans after the backfill")
 	tui := flag.Bool("tui", false, "Run an interactive terminal UI")
 	noColor := flag.Bool("no-color", false, "Disable ANSI colors")
 	verbose := flag.Bool("v", false, "Print all attributes, not just promoted ones")
@@ -87,6 +89,14 @@ func main() {
 		return
 	}
 
+	if *follow {
+		err = tailer.Tail(ctx, otelstream.TailOptions{Backfill: backfill}, printer.PrintEntry)
+		if err != nil && ctx.Err() == nil {
+			log.Fatalf("otel tail: %v", err)
+		}
+		return
+	}
+
 	if len(flag.Args()) > 0 || *tree || (!*jsonOut && !*jsonLines) {
 		entries := []otelstream.Entry{}
 		err = tailer.Backfill(ctx, backfill, func(entry otelstream.Entry) error {
@@ -107,9 +117,9 @@ func main() {
 		return
 	}
 
-	err = tailer.Tail(ctx, otelstream.TailOptions{Backfill: backfill}, printer.PrintEntry)
+	err = tailer.Backfill(ctx, backfill, printer.PrintEntry)
 	if err != nil && ctx.Err() == nil {
-		log.Fatalf("otel tail: %v", err)
+		log.Fatalf("otel backfill: %v", err)
 	}
 }
 

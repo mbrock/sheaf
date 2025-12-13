@@ -479,7 +479,7 @@ defmodule SheafWeb.DocumentLive do
     root = Id.iri(id)
 
     with {:ok, graph} <- Sheaf.fetch_graph(root),
-         {:ok, references_by_block} <- Documents.references_for_document(root) do
+         {:ok, references_by_block} <- Documents.references_for_document(root, graph) do
       {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes()
 
       socket =

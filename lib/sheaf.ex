@@ -38,7 +38,11 @@ defmodule Sheaf do
       ]
     } do
       with :ok <- Sheaf.Repo.load_once({nil, nil, nil, graph_name}) do
-        graph = Dataset.graph(Sheaf.Repo.dataset(), graph_name) || Graph.new(name: graph_name)
+        graph =
+          Sheaf.Repo.ask(fn dataset ->
+            Dataset.graph(dataset, graph_name) || Graph.new(name: graph_name)
+          end)
+
         Tracer.set_attribute("sheaf.statement_count", Data.statement_count(graph))
         {:ok, graph}
       end
