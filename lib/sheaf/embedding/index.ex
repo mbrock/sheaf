@@ -934,16 +934,29 @@ defmodule Sheaf.Embedding.Index do
     dataset
     |> RDF.Dataset.graphs()
     |> Enum.reduce(Graph.new(), fn graph, acc ->
-      graph
-      |> Graph.triples()
-      |> Enum.reduce(acc, fn
+      triples = Graph.triples(graph)
+      paragraph_owners = paragraph_owners(triples, wanted)
+
+      Enum.reduce(triples, acc, fn
         {subject, _predicate, _object} = triple, acc ->
-          if MapSet.member?(wanted, subject) or paragraph_owner?(graph, wanted, subject) do
+          if MapSet.member?(wanted, subject) or MapSet.member?(paragraph_owners, subject) do
             Graph.add(acc, triple)
           else
             acc
           end
       end)
+    end)
+  end
+
+  defp paragraph_owners(triples, wanted) do
+    triples
+    |> Enum.reduce(MapSet.new(), fn
+      {subject, predicate, object}, acc ->
+        if predicate == DOC.paragraph() and MapSet.member?(wanted, object) do
+          MapSet.put(acc, subject)
+        else
+          acc
+        end
     end)
   end
 
@@ -1020,18 +1033,6 @@ defmodule Sheaf.Embedding.Index do
     description
     |> Description.first(predicate)
     |> term_value()
-  end
-
-  defp paragraph_owner?(graph, wanted, paragraph) do
-    graph
-    |> Graph.triples()
-    |> Enum.any?(fn
-      {subject, predicate, ^paragraph} ->
-        predicate == DOC.paragraph() and MapSet.member?(wanted, subject)
-
-      _triple ->
-        false
-    end)
   end
 
   defp document_description?(%Description{} = description) do
