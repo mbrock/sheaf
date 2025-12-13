@@ -610,7 +610,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
   defp history_group_class(:expansive),
     do:
-      "group min-w-0 overflow-hidden rounded-sm border border-stone-200/80 bg-white px-3 py-3 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/70"
+      "group min-w-0 overflow-hidden rounded-sm border border-stone-200/80 bg-white px-3 pb-1.5 pt-3 shadow-sm dark:border-stone-800/80 dark:bg-stone-900/70"
 
   defp history_group_class(_variant), do: "space-y-0.5"
 
