@@ -60,6 +60,7 @@ defmodule Sheaf.MixProject do
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:finch, "~> 0.21"},
+      {:req, "~> 0.5"},
       {:tesla, "~> 1.17"},
       {:rdf, "~> 2.1"},
       {:sparql_client, "~> 0.5"},

@@ -3,7 +3,6 @@ defmodule Mix.Tasks.Sheaf.Schema do
 
   @shortdoc "Uploads priv/sheaf-schema.ttl to the schema named graph"
 
-  alias Finch.Response
   alias Sheaf.NS.Sheaf, as: SheafNS
 
   @impl Mix.Task
@@ -14,20 +13,15 @@ defmodule Mix.Tasks.Sheaf.Schema do
       [] ->
         schema_graph = SheafNS.__base_iri__()
 
-        request =
-          Finch.build(
-            :put,
-            graph_endpoint(schema_graph),
-            [{"content-type", "text/turtle"} | auth_headers()],
-            File.read!(schema_path())
-          )
-
-        case Finch.request(request, Sheaf.Finch) do
-          {:ok, %Response{status: status}} when status in 200..299 ->
+        case Req.put(graph_endpoint(schema_graph),
+               headers: [{"content-type", "text/turtle"} | auth_headers()],
+               body: File.read!(schema_path())
+             ) do
+          {:ok, %{status: status}} when status in 200..299 ->
             Mix.shell().info("Uploaded schema graph #{schema_graph}")
 
-          {:ok, %Response{status: status, body: body}} ->
-            Mix.raise("Failed to upload schema graph (#{status}): #{String.trim(body)}")
+          {:ok, %{status: status, body: body}} ->
+            Mix.raise("Failed to upload schema graph (#{status}): #{response_body(body)}")
 
           {:error, reason} ->
             Mix.raise("Failed to upload schema graph: #{inspect(reason)}")
@@ -46,6 +40,9 @@ defmodule Mix.Tasks.Sheaf.Schema do
     Application.get_env(:sparql_client, :http_headers, %{})
     |> Enum.map(fn {key, value} -> {to_string(key), to_string(value)} end)
   end
+
+  defp response_body(body) when is_binary(body), do: String.trim(body)
+  defp response_body(body), do: inspect(body)
 
   defp schema_path do
     Application.app_dir(:sheaf, "priv/sheaf-schema.ttl")
