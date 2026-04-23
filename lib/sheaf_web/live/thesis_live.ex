@@ -223,15 +223,15 @@ defmodule SheafWeb.ThesisLive do
   defp section_open?(level), do: level < 2
 
   defp section_heading_class(0) do
-    "sheaf-reading text-[1.55rem] leading-[1.15] font-bold tracking-[-0.018em] text-[var(--sheaf-ink)]"
+    "sheaf-heading text-[1.55rem] leading-[1.15] font-bold tracking-[-0.018em] text-[var(--sheaf-ink)]"
   end
 
   defp section_heading_class(1) do
-    "sheaf-reading text-[1.22rem] leading-[1.22] font-semibold tracking-[-0.012em] text-[var(--sheaf-ink)]"
+    "sheaf-heading text-[1.22rem] leading-[1.22] font-semibold tracking-[-0.012em] text-[var(--sheaf-ink)]"
   end
 
   defp section_heading_class(_level) do
-    "sheaf-reading text-[1.02rem] leading-[1.28] font-semibold text-[var(--sheaf-ink)]"
+    "sheaf-heading text-[1.02rem] leading-[1.28] font-semibold text-[var(--sheaf-ink)]"
   end
 
   defp toc_padding_class(0), do: "pl-4"

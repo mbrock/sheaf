@@ -188,10 +188,14 @@
     font-family: "Equity", "Iowan Old Style", Georgia, serif;
   }
 
+  .sheaf-heading {
+    font-family: system-ui, sans-serif;
+  }
+
   .sheaf-prose {
     font-family: "Equity", "Iowan Old Style", Georgia, serif;
     font-size: 1rem;
-    line-height: 1.72;
+    line-height: 1.5;
     color: var(--sheaf-ink);
     text-wrap: pretty;
   }
