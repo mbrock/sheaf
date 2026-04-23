@@ -60,11 +60,9 @@ sparql_dataset =
 sparql_username = System.get_env("SHEAF_SPARQL_USERNAME", "admin")
 sparql_password = System.get_env("SHEAF_SPARQL_PASSWORD", "admin")
 
-sparql_http_headers =
+sparql_auth =
   if sparql_username != "" and sparql_password != "" do
-    %{"Authorization" => "Basic " <> Base.encode64("#{sparql_username}:#{sparql_password}")}
-  else
-    %{}
+    {:basic, "#{sparql_username}:#{sparql_password}"}
   end
 
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
@@ -76,13 +74,13 @@ config :sheaf, Sheaf,
     |> String.trim(),
   data_endpoint:
     System.get_env("SHEAF_SPARQL_DATA_ENDPOINT", sparql_dataset <> "/data")
-    |> String.trim()
+    |> String.trim(),
+  data_auth: sparql_auth
 
 config :sparql_client,
   query_request_method: :post,
   update_request_method: :url_encoded,
-  tesla_request_opts: [adapter: [receive_timeout: sparql_receive_timeout]],
-  http_headers: sparql_http_headers
+  tesla_request_opts: [timeout: sparql_receive_timeout]
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.

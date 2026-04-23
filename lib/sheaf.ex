@@ -1,11 +1,12 @@
 defmodule Sheaf do
   @moduledoc """
+  Core helpers for minting resource IRIs and working with the Graph Store.
   """
 
-  alias RDF.{Dataset, Graph, TriG, Turtle}
+  alias RDF.{Dataset, Graph, Serialization}
 
-  @dataset_media_type "application/trig"
-  @graph_media_type "text/turtle"
+  @dataset_media_type "application/n-quads"
+  @graph_media_type "application/n-triples"
 
   @doc """
   Generates a new unique IRI for a resource.
@@ -19,7 +20,7 @@ defmodule Sheaf do
   """
   def fetch_graph do
     with {:ok, dataset} <- fetch_dataset() do
-      {:ok, RDF.Dataset.default_graph(dataset)}
+      {:ok, Dataset.default_graph(dataset)}
     end
   end
 
@@ -27,19 +28,40 @@ defmodule Sheaf do
   Fetches a named graph through the Graph Store endpoint.
   """
   def fetch_graph(graph_name) do
-    data_endpoint()
-    |> Req.get!(
-      finch: Sheaf.Finch,
-      params: [graph: RDF.IRI.to_string(graph_name)],
-      headers: [{"accept", @graph_media_type} | auth_headers()]
-    )
-    |> case do
-      %{status: status, body: body} when status in 200..299 ->
-        {:ok, body |> Turtle.read_string!() |> ensure_graph(graph_name)}
+    graph =
+      data_client()
+      |> Req.get!(
+        headers: [accept: @graph_media_type],
+        params: [graph: to_string(graph_name)],
+        into: :self
+      )
+      |> read_graph()
 
-      %{status: status, body: body} ->
-        {:error, "Failed to fetch graph #{graph_name} (#{status}): #{body}"}
-    end
+    {:ok, graph}
+  end
+
+  @doc """
+  Replaces a named graph through the Graph Store endpoint.
+  """
+  def put_graph(graph_name, %Graph{} = graph) do
+    Req.put!(
+      data_client(),
+      headers: [content_type: @graph_media_type],
+      params: [graph: to_string(graph_name)],
+      body: write_graph(graph)
+    )
+
+    :ok
+  end
+
+  def data_client do
+    config = Application.fetch_env!(:sheaf, __MODULE__)
+
+    Req.new(
+      url: config[:data_endpoint],
+      auth: config[:data_auth],
+      http_errors: :raise
+    )
   end
 
   @doc """
@@ -48,8 +70,8 @@ defmodule Sheaf do
   """
   def migrate(fun) when is_function(fun, 1) do
     with {:ok, dataset} <- fetch_dataset(),
-         {:ok, migrated_dataset} <- dataset |> fun.() |> normalize_dataset(),
-         {:ok, _response} <- put_dataset(migrated_dataset) do
+         migrated_dataset = fun.(dataset),
+         :ok <- put_dataset(migrated_dataset) do
       {:ok, migrated_dataset}
     end
   end
@@ -58,53 +80,57 @@ defmodule Sheaf do
   Fetches the whole dataset through the Graph Store endpoint.
   """
   def fetch_dataset do
-    data_endpoint()
-    |> Req.get!(
-      finch: Sheaf.Finch,
-      headers: [{"accept", @dataset_media_type} | auth_headers()]
-    )
-    |> case do
-      %{status: status, body: body} when status in 200..299 ->
-        {:ok, body |> TriG.read_string!() |> ensure_dataset()}
+    dataset =
+      data_client()
+      |> Req.get!(headers: [accept: @dataset_media_type], into: :self)
+      |> read_dataset()
 
-      %{status: status, body: body} ->
-        {:error, "Failed to fetch dataset (#{status}): #{body}"}
-    end
+    {:ok, dataset}
   end
 
   defp put_dataset(%Dataset{} = dataset) do
-    data_endpoint()
-    |> Req.put!(
-      finch: Sheaf.Finch,
-      headers: [{"content-type", @dataset_media_type} | auth_headers()],
-      body: TriG.write_string!(dataset)
+    Req.put!(
+      data_client(),
+      headers: [content_type: @dataset_media_type],
+      body: write_dataset(dataset)
     )
-    |> case do
-      %{status: status} = response when status in 200..299 ->
-        {:ok, response}
 
-      %{status: status, body: body} ->
-        {:error, "Failed to replace dataset (#{status}): #{body}"}
-    end
+    :ok
   end
 
-  defp normalize_dataset(%Dataset{} = dataset), do: {:ok, dataset}
-  defp normalize_dataset(%Graph{} = graph), do: {:ok, Dataset.new(graph)}
-
-  defp normalize_dataset(other) do
-    {:error, "Migration must return an RDF.Dataset or RDF.Graph, got: #{inspect(other)}"}
+  defp read_dataset(response) do
+    response
+    |> Map.fetch!(:body)
+    |> lines()
+    |> Serialization.read_stream!(media_type: @dataset_media_type)
   end
 
-  defp ensure_dataset(%Dataset{} = dataset), do: dataset
-  defp ensure_dataset(%Graph{} = graph), do: Dataset.new(graph)
-
-  defp ensure_graph(%Graph{} = graph, graph_name), do: Graph.new(graph, name: graph_name)
-  defp ensure_graph(%Dataset{} = dataset, graph_name), do: Dataset.graph(dataset, graph_name)
-
-  defp auth_headers do
-    Application.get_env(:sparql_client, :http_headers, %{})
-    |> Enum.map(fn {key, value} -> {String.downcase(to_string(key)), value} end)
+  defp read_graph(response) do
+    response
+    |> Map.fetch!(:body)
+    |> lines()
+    |> Serialization.read_stream!(media_type: @graph_media_type)
   end
 
-  defp data_endpoint, do: Application.get_env(:sheaf, __MODULE__, [])[:data_endpoint]
+  defp write_dataset(dataset),
+    do: Serialization.write_stream(dataset, media_type: @dataset_media_type)
+
+  defp write_graph(graph),
+    do: Serialization.write_stream(graph, media_type: @graph_media_type)
+
+  # RDF.ex's N-Triples/N-Quads stream decoders expect one statement per item,
+  # while Req emits arbitrary network chunks.
+  defp lines(chunks) do
+    Stream.transform(chunks, fn -> "" end, &split_lines/2, fn
+      "" -> []
+      line -> [line]
+    end)
+  end
+
+  defp split_lines(chunk, rest) do
+    lines = :binary.split(rest <> chunk, "\n", [:global])
+    {complete, [rest]} = Enum.split(lines, -1)
+
+    {Enum.map(complete, &(&1 <> "\n")), rest}
+  end
 end

@@ -11,7 +11,6 @@ defmodule Sheaf.Application do
       SheafWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:sheaf, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Sheaf.PubSub},
-      {Finch, name: Sheaf.Finch},
       # Start a worker by calling: Sheaf.Worker.start_link(arg)
       # {Sheaf.Worker, arg},
       # Start to serve requests, typically the last entry
