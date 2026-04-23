@@ -19,17 +19,15 @@ Useful graph commands:
 mix sheaf.backup
 ```
 
-`mix sheaf.backup` writes Turtle backups for the configured named graphs under `output/backups/`.
-Pass `--graph GRAPH_NAME` to limit the backup set, or repeat `--graph` to back up a specific list.
+`mix sheaf.backup` writes a Turtle backup of the configured dataset default graph under `output/backups/`.
 
 ## Storage
 
 Default Fuseki configuration:
 
-* Query endpoint: `http://localhost:3030/kg/sparql`
-* Update endpoint: `http://localhost:3030/kg/update`
-* Named graph: `https://less.rest/sheaf/graph/main`
-* Interview graph: `https://less.rest/sheaf/graph/interviews`
+* Dataset: `http://localhost:3030/sheaf`
+* Query endpoint: `http://localhost:3030/sheaf/sparql`
+* Graph used by Sheaf: Fuseki dataset default graph
 
 The vocabulary namespace is `https://less.rest/sheaf/`.
 Block IRIs use the configured resource base, which defaults to `https://example.com/sheaf/` outside production.

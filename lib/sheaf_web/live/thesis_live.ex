@@ -5,10 +5,8 @@ defmodule SheafWeb.ThesisLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    graph_name = Application.get_env(:sheaf, Sheaf)[:graph]
-
     socket =
-      case Thesis.fetch_outline(graph_name) do
+      case Thesis.fetch_outline() do
         {:ok, thesis} ->
           socket
           |> assign(:page_title, page_title(thesis))
@@ -77,7 +75,7 @@ defmodule SheafWeb.ThesisLive do
               :if={is_nil(@error) and is_nil(@thesis)}
               class="mx-auto max-w-[72ch] border border-[var(--sheaf-line)] bg-[var(--sheaf-raised)] px-5 py-5 text-sm leading-7 text-[var(--sheaf-ink-soft)]"
             >
-              No thesis document is present in the configured named graph yet.
+              No thesis document is present in the configured dataset yet.
             </div>
 
             <article :if={@thesis} id="document-start" class="mx-auto max-w-[74ch] scroll-mt-20">

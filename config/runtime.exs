@@ -52,13 +52,10 @@ resource_base =
   |> String.trim()
   |> then(fn value -> if String.ends_with?(value, "/"), do: value, else: value <> "/" end)
 
-default_graph =
-  System.get_env("SHEAF_GRAPH", ontology_base <> "graph/main")
+sparql_dataset =
+  System.get_env("SHEAF_SPARQL_DATASET", "http://localhost:3030/sheaf")
   |> String.trim()
-
-interview_graph =
-  System.get_env("SHEAF_INTERVIEW_GRAPH", ontology_base <> "graph/interviews")
-  |> String.trim()
+  |> String.trim_trailing("/")
 
 sparql_username = System.get_env("SHEAF_SPARQL_USERNAME", "admin")
 sparql_password = System.get_env("SHEAF_SPARQL_PASSWORD", "admin")
@@ -75,12 +72,8 @@ config :sheaf, :resource_base, resource_base
 
 config :sheaf, Sheaf,
   query_endpoint:
-    System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", "http://localhost:3030/kg/sparql"),
-  graph: default_graph,
-  backup_graphs:
-    [default_graph, interview_graph]
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.uniq()
+    System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", sparql_dataset <> "/sparql")
+    |> String.trim()
 
 config :sparql_client,
   query_request_method: :post,

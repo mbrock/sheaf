@@ -1,6 +1,6 @@
 defmodule Sheaf.Thesis do
   @moduledoc """
-  Reads the thesis outline from the configured named graph.
+  Reads the thesis outline from the configured dataset default graph.
   """
 
   alias RDF.{Description, Graph}
@@ -18,8 +18,8 @@ defmodule Sheaf.Thesis do
 
   @rdf_membership_prefix "http://www.w3.org/1999/02/22-rdf-syntax-ns#_"
 
-  def fetch_outline(graph_name) do
-    with {:ok, graph} <- Sheaf.fetch_graph(graph_name) do
+  def fetch_outline do
+    with {:ok, graph} <- Sheaf.fetch_graph() do
       {:ok, from_graph(graph)}
     end
   end
