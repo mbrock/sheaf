@@ -73,6 +73,9 @@ config :sheaf, :resource_base, resource_base
 config :sheaf, Sheaf,
   query_endpoint:
     System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", sparql_dataset <> "/sparql")
+    |> String.trim(),
+  update_endpoint:
+    System.get_env("SHEAF_SPARQL_UPDATE_ENDPOINT", sparql_dataset <> "/update")
     |> String.trim()
 
 config :sparql_client,

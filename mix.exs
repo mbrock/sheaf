@@ -84,7 +84,13 @@ defmodule Sheaf.MixProject do
         "esbuild sheaf --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "sheaf.schema",
+        "test"
+      ]
     ]
   end
 end

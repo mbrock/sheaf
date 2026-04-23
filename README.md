@@ -17,9 +17,13 @@ Useful graph commands:
 
 ```bash
 mix sheaf.backup
+mix sheaf.schema
+mix sheaf.schema --sync
 ```
 
 `mix sheaf.backup` writes a Turtle backup of the configured dataset default graph under `output/backups/`.
+`mix sheaf.schema` verifies that the schema named graph matches `priv/sheaf-schema.ttl`.
+`mix sheaf.schema --sync` replaces the schema named graph with the contents of `priv/sheaf-schema.ttl`.
 
 ## Storage
 
@@ -27,7 +31,9 @@ Default Fuseki configuration:
 
 * Dataset: `http://localhost:3030/sheaf`
 * Query endpoint: `http://localhost:3030/sheaf/sparql`
+* Update endpoint: `http://localhost:3030/sheaf/update`
 * Graph used by Sheaf: Fuseki dataset default graph
+* Schema named graph: `https://less.rest/sheaf/`
 
 The vocabulary namespace is `https://less.rest/sheaf/`.
 Block IRIs use the configured resource base, which defaults to `https://example.com/sheaf/` outside production.
