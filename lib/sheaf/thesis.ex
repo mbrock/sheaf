@@ -3,10 +3,12 @@ defmodule Sheaf.Thesis do
   Reads the thesis outline from the configured named graph.
   """
 
-  alias SPARQL.Query.Result
+  alias RDF.{Description, Graph}
   alias Sheaf.Fuseki
+  alias Sheaf.GraphStore
   alias Sheaf.Id
   alias Sheaf.NS.Sheaf, as: SheafNS
+  alias Sheaf.Prov
 
   defmodule Document do
     defstruct [:id, :iri, :kind, :title, children: []]
@@ -19,94 +21,64 @@ defmodule Sheaf.Thesis do
   @rdf_membership_prefix "http://www.w3.org/1999/02/22-rdf-syntax-ns#_"
 
   def fetch_outline do
-    with {:ok, %Result{results: rows}} <- Fuseki.select(graph_query()) do
-      {:ok, from_rows(rows)}
+    with {:ok, graph} <- GraphStore.fetch_graph(Fuseki.graph()) do
+      {:ok, from_graph(graph)}
     end
   end
 
   def from_rows(rows) when is_list(rows) do
-    index = build_index(rows)
+    rows
+    |> GraphStore.graph_from_rows()
+    |> from_graph()
+  end
 
-    case root_document_iri(index) do
+  def from_graph(%Graph{} = graph) do
+    case root_document_iri(graph) do
       nil -> nil
-      iri -> build_document(iri, index)
+      iri -> build_document(graph, iri)
     end
   end
 
-  defp graph_query do
-    """
-    SELECT ?s ?p ?o
-    WHERE {
-      GRAPH #{Fuseki.graph_ref()} {
-        ?s ?p ?o .
-      }
-    }
-    ORDER BY STR(?s) STR(?p) STR(?o)
-    """
-  end
+  defp build_document(%Graph{} = graph, iri) do
+    description = Graph.description(graph, iri)
 
-  defp build_index(rows) do
-    Enum.reduce(rows, %{types: %{}, literals: %{}, refs: %{}}, fn row, acc ->
-      subject = term_key(row["s"])
-      predicate = term_key(row["p"])
-      object = row["o"]
-
-      cond do
-        predicate == rdf_type_iri() ->
-          type = term_key(object)
-          %{acc | types: put_type(acc.types, subject, type)}
-
-        match?(%RDF.Literal{}, object) ->
-          value = RDF.Term.value(object)
-          %{acc | literals: put_value(acc.literals, subject, predicate, to_string(value))}
-
-        true ->
-          %{acc | refs: put_value(acc.refs, subject, predicate, term_key(object))}
-      end
-    end)
-  end
-
-  defp root_document_iri(index) do
-    find_typed_subject(index, thesis_iri()) ||
-      find_typed_subject(index, transcript_iri()) ||
-      find_typed_subject(index, document_iri())
-  end
-
-  defp find_typed_subject(index, type_iri) do
-    index.types
-    |> Enum.filter(fn {_subject, types} -> MapSet.member?(types, type_iri) end)
-    |> Enum.map(&elem(&1, 0))
-    |> Enum.sort()
-    |> List.first()
-  end
-
-  defp build_document(iri, index) do
     %Document{
       id: Id.id_from_iri(iri),
       iri: iri,
-      kind: document_kind(iri, index),
-      title: first_literal(index, iri, title_iri()) || "Untitled thesis",
-      children: build_children(iri, index)
+      kind: document_kind(graph, iri),
+      title: literal_value(Description.first(description, SheafNS.title())) || "Untitled thesis",
+      children: build_children(graph, iri)
     }
   end
 
-  defp build_block(iri, index) do
+  defp build_block(%Graph{} = graph, iri) do
+    description = Graph.description(graph, iri)
+
     cond do
-      typed?(index, iri, section_iri()) ->
+      typed?(description, SheafNS.Section) ->
         %Block{
           id: Id.id_from_iri(iri),
           iri: iri,
           type: :section,
-          heading: first_literal(index, iri, heading_iri()) || "Untitled section",
-          children: build_children(iri, index)
+          heading:
+            literal_value(Description.first(description, SheafNS.heading())) || "Untitled section",
+          children: build_children(graph, iri)
         }
 
-      typed?(index, iri, paragraph_iri()) ->
+      typed?(description, SheafNS.ParagraphBlock) ->
         %Block{
           id: Id.id_from_iri(iri),
           iri: iri,
           type: :paragraph,
-          text: first_literal(index, iri, text_iri()) || ""
+          text: current_paragraph_text(graph, description) || ""
+        }
+
+      typed?(description, SheafNS.Paragraph) ->
+        %Block{
+          id: Id.id_from_iri(iri),
+          iri: iri,
+          type: :paragraph,
+          text: literal_value(Description.first(description, SheafNS.text())) || ""
         }
 
       true ->
@@ -119,22 +91,59 @@ defmodule Sheaf.Thesis do
     end
   end
 
-  defp build_children(container_iri, index) do
-    index
-    |> first_ref(container_iri, children_iri())
-    |> sequence_members(index)
-    |> Enum.map(&build_block(&1, index))
+  defp build_children(%Graph{} = graph, container_iri) do
+    graph
+    |> Graph.description(container_iri)
+    |> Description.first(SheafNS.children())
+    |> case do
+      nil -> []
+      sequence_iri -> sequence_members(graph, sequence_iri) |> Enum.map(&build_block(graph, &1))
+    end
   end
 
-  defp sequence_members(nil, _index), do: []
+  defp current_paragraph_text(%Graph{} = graph, %Description{} = description) do
+    case active_paragraph_iri(graph, description) do
+      nil ->
+        nil
 
-  defp sequence_members(sequence_iri, index) do
-    index.refs
-    |> Map.get(sequence_iri, %{})
-    |> Enum.flat_map(fn {predicate, values} ->
+      paragraph_iri ->
+        graph
+        |> Graph.description(paragraph_iri)
+        |> Description.first(SheafNS.text())
+        |> literal_value()
+    end
+  end
+
+  defp active_paragraph_iri(%Graph{} = graph, %Description{} = description) do
+    revisions = Description.get(description, SheafNS.paragraph(), [])
+
+    Enum.find(revisions, &(not invalidated?(graph, &1))) || List.last(revisions)
+  end
+
+  defp invalidated?(%Graph{} = graph, paragraph_iri) do
+    graph
+    |> Graph.description(paragraph_iri)
+    |> Description.get(Prov.was_invalidated_by(), [])
+    |> case do
+      [] -> false
+      _ -> true
+    end
+  end
+
+  defp sequence_members(%Graph{} = graph, sequence_iri) do
+    graph
+    |> Graph.description(sequence_iri)
+    |> Description.predicates()
+    |> Enum.flat_map(fn predicate ->
       case membership_position(predicate) do
-        nil -> []
-        position -> Enum.map(values, &{position, &1})
+        nil ->
+          []
+
+        position ->
+          graph
+          |> Graph.description(sequence_iri)
+          |> Description.get(predicate, [])
+          |> Enum.map(&{position, &1})
       end
     end)
     |> Enum.sort_by(fn {position, iri} -> {position, iri} end)
@@ -142,7 +151,7 @@ defmodule Sheaf.Thesis do
   end
 
   defp membership_position(predicate) do
-    case predicate do
+    case to_string(predicate) do
       <<@rdf_membership_prefix::binary, suffix::binary>> ->
         case Integer.parse(suffix) do
           {position, ""} -> position
@@ -154,60 +163,35 @@ defmodule Sheaf.Thesis do
     end
   end
 
-  defp typed?(index, iri, type_iri) do
-    index.types
-    |> Map.get(iri, MapSet.new())
-    |> MapSet.member?(type_iri)
+  defp root_document_iri(%Graph{} = graph) do
+    find_typed_subject(graph, SheafNS.Thesis) ||
+      find_typed_subject(graph, SheafNS.Transcript) ||
+      find_typed_subject(graph, SheafNS.Document)
   end
 
-  defp document_kind(iri, index) do
+  defp find_typed_subject(%Graph{} = graph, type) do
+    graph
+    |> Graph.subjects()
+    |> Enum.filter(&typed?(Graph.description(graph, &1), type))
+    |> Enum.sort_by(&to_string/1)
+    |> List.first()
+  end
+
+  defp typed?(%Description{} = description, type) do
+    Description.include?(description, {RDF.type(), type})
+  end
+
+  defp document_kind(%Graph{} = graph, iri) do
+    description = Graph.description(graph, iri)
+
     cond do
-      typed?(index, iri, thesis_iri()) -> :thesis
-      typed?(index, iri, transcript_iri()) -> :transcript
+      typed?(description, SheafNS.Thesis) -> :thesis
+      typed?(description, SheafNS.Transcript) -> :transcript
       true -> :document
     end
   end
 
-  defp first_literal(index, subject, predicate) do
-    index.literals
-    |> Map.get(subject, %{})
-    |> Map.get(predicate, [])
-    |> Enum.reverse()
-    |> List.first()
-  end
-
-  defp first_ref(index, subject, predicate) do
-    index.refs
-    |> Map.get(subject, %{})
-    |> Map.get(predicate, [])
-    |> Enum.reverse()
-    |> List.first()
-  end
-
-  defp term_key(%RDF.IRI{} = iri), do: to_string(iri)
-  defp term_key(%RDF.BlankNode{} = bnode), do: to_string(bnode)
-  defp term_key(value) when is_atom(value), do: value |> RDF.Namespace.resolve_term!() |> to_string()
-  defp term_key(value) when is_binary(value), do: value
-
-  defp put_type(types, subject, type) do
-    Map.update(types, subject, MapSet.new([type]), &MapSet.put(&1, type))
-  end
-
-  defp put_value(values, subject, predicate, object) do
-    subject_values = Map.get(values, subject, %{})
-    predicate_values = Map.get(subject_values, predicate, [])
-
-    Map.put(values, subject, Map.put(subject_values, predicate, [object | predicate_values]))
-  end
-
-  defp rdf_type_iri, do: to_string(RDF.type())
-  defp document_iri, do: SheafNS.Document |> RDF.Namespace.resolve_term!() |> to_string()
-  defp thesis_iri, do: SheafNS.Thesis |> RDF.Namespace.resolve_term!() |> to_string()
-  defp transcript_iri, do: SheafNS.Transcript |> RDF.Namespace.resolve_term!() |> to_string()
-  defp section_iri, do: SheafNS.Section |> RDF.Namespace.resolve_term!() |> to_string()
-  defp paragraph_iri, do: SheafNS.Paragraph |> RDF.Namespace.resolve_term!() |> to_string()
-  defp children_iri, do: to_string(SheafNS.children())
-  defp heading_iri, do: to_string(SheafNS.heading())
-  defp text_iri, do: to_string(SheafNS.text())
-  defp title_iri, do: to_string(SheafNS.title())
+  defp literal_value(nil), do: nil
+  defp literal_value(%RDF.Literal{} = literal), do: literal |> RDF.Term.value() |> to_string()
+  defp literal_value(value) when is_binary(value), do: value
 end

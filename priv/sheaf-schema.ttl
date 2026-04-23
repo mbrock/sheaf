@@ -1,0 +1,131 @@
+@prefix sheaf: <https://example.com/sheaf/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+sheaf:Document a rdfs:Class ;
+  rdfs:label "Document" ;
+  rdfs:comment "A top-level Sheaf resource rendered as a reader document." .
+
+sheaf:Thesis a rdfs:Class ;
+  rdfs:label "Thesis" ;
+  rdfs:subClassOf sheaf:Document ;
+  rdfs:comment "A thesis document imported from the XML source files." .
+
+sheaf:Transcript a rdfs:Class ;
+  rdfs:label "Transcript" ;
+  rdfs:subClassOf sheaf:Document ;
+  rdfs:comment "A document whose ordered children describe transcript structure." .
+
+sheaf:Interview a rdfs:Class ;
+  rdfs:label "Interview" ;
+  rdfs:subClassOf sheaf:Transcript ;
+  rdfs:comment "A recorded interview imported from the IEVA transcript system." .
+
+sheaf:Section a rdfs:Class ;
+  rdfs:label "Section" ;
+  rdfs:comment "A headed container block inside a document." .
+
+sheaf:ParagraphBlock a rdfs:Class ;
+  rdfs:label "Paragraph block" ;
+  rdfs:comment "A stable structural block whose text lives on one or more paragraph revision entities." .
+
+sheaf:Paragraph a rdfs:Class ;
+  rdfs:label "Paragraph" ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "A versioned paragraph entity carrying the text for a block or utterance revision." .
+
+sheaf:Segment a rdfs:Class ;
+  rdfs:label "Segment" ;
+  rdfs:comment "A contiguous time slice of an interview with ordered utterance children." .
+
+sheaf:Utterance a rdfs:Class ;
+  rdfs:label "Utterance" ;
+  rdfs:subClassOf sheaf:ParagraphBlock ;
+  rdfs:comment "A speaker-attributed transcript unit inside a segment." .
+
+sheaf:AudioBlob a rdfs:Class ;
+  rdfs:label "Audio blob" ;
+  rdfs:comment "A content-addressed audio payload identified by its SHA-256 hash." .
+
+sheaf:children a rdf:Property ;
+  rdfs:label "children" ;
+  rdfs:range rdf:Seq ;
+  rdfs:comment "Links a container resource to an rdf:Seq that preserves the order of its child blocks." .
+
+sheaf:title a rdf:Property ;
+  rdfs:label "title" ;
+  rdfs:domain sheaf:Document ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Display title for a top-level document resource." .
+
+sheaf:heading a rdf:Property ;
+  rdfs:label "heading" ;
+  rdfs:domain sheaf:Section ;
+  rdfs:range xsd:string .
+
+sheaf:paragraph a rdf:Property ;
+  rdfs:label "paragraph" ;
+  rdfs:range sheaf:Paragraph ;
+  rdfs:comment "Links a stable text-bearing resource to a paragraph revision entity. Revision chains use prov:wasRevisionOf and superseded revisions use prov:wasInvalidatedBy." .
+
+sheaf:text a rdf:Property ;
+  rdfs:label "text" ;
+  rdfs:domain sheaf:Paragraph ;
+  rdfs:range xsd:string .
+
+sheaf:audio a rdf:Property ;
+  rdfs:label "audio" ;
+  rdfs:range sheaf:AudioBlob ;
+  rdfs:comment "Links an interview, segment, or utterance to a content-addressed audio blob." .
+
+sheaf:filename a rdf:Property ;
+  rdfs:label "filename" ;
+  rdfs:domain sheaf:Interview ;
+  rdfs:range xsd:string .
+
+sheaf:duration a rdf:Property ;
+  rdfs:label "duration" ;
+  rdfs:domain sheaf:Interview ;
+  rdfs:range xsd:string .
+
+sheaf:currentPosition a rdf:Property ;
+  rdfs:label "current position" ;
+  rdfs:domain sheaf:Interview ;
+  rdfs:range xsd:string .
+
+sheaf:contextSegments a rdf:Property ;
+  rdfs:label "context segments" ;
+  rdfs:domain sheaf:Interview ;
+  rdfs:range xsd:integer .
+
+sheaf:modelName a rdf:Property ;
+  rdfs:label "model name" ;
+  rdfs:domain sheaf:Interview ;
+  rdfs:range xsd:string .
+
+sheaf:sourceKey a rdf:Property ;
+  rdfs:label "source key" ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Stable key from the source SQLite store or blob hash registry." .
+
+sheaf:startTime a rdf:Property ;
+  rdfs:label "start time" ;
+  rdfs:domain sheaf:Segment ;
+  rdfs:range xsd:string .
+
+sheaf:endTime a rdf:Property ;
+  rdfs:label "end time" ;
+  rdfs:domain sheaf:Segment ;
+  rdfs:range xsd:string .
+
+sheaf:speaker a rdf:Property ;
+  rdfs:label "speaker" ;
+  rdfs:domain sheaf:Utterance ;
+  rdfs:range xsd:string .
+
+sheaf:mimeType a rdf:Property ;
+  rdfs:label "MIME type" ;
+  rdfs:domain sheaf:AudioBlob ;
+  rdfs:range xsd:string .

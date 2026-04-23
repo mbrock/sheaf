@@ -15,7 +15,7 @@ defmodule Sheaf.Id do
   end
 
   def iri(id) when is_binary(id) do
-    RDF.IRI.new!(@base_iri <> id)
+    RDF.iri(@base_iri <> id)
   end
 
   def id_from_iri(iri) when is_binary(iri) do
@@ -24,4 +24,6 @@ defmodule Sheaf.Id do
     |> String.split("/")
     |> List.last()
   end
+
+  def id_from_iri(%RDF.IRI{} = iri), do: iri |> to_string() |> id_from_iri()
 end

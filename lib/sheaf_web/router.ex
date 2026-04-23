@@ -15,6 +15,10 @@ defmodule SheafWeb.Router do
   end
 
   scope "/", SheafWeb do
+    get "/sheaf-schema.ttl", SchemaController, :show
+  end
+
+  scope "/", SheafWeb do
     pipe_through :browser
 
     live "/", ThesisLive

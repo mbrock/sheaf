@@ -43,6 +43,9 @@ config :sheaf, Sheaf.Fuseki,
   graph: System.get_env("SHEAF_GRAPH", "https://example.com/sheaf/graph/main"),
   receive_timeout: 30_000
 
+config :sheaf, Sheaf.Interviews,
+  graph: System.get_env("SHEAF_INTERVIEWS_GRAPH", "https://example.com/sheaf/graph/interviews")
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

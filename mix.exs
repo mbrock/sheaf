@@ -60,6 +60,7 @@ defmodule Sheaf.MixProject do
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:finch, "~> 0.21"},
+      {:exqlite, "~> 0.36.0"},
       {:rdf, "~> 2.1"},
       {:sparql, "~> 0.3.11"},
       {:dns_cluster, "~> 0.2.0"},

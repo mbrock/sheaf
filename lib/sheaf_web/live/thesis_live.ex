@@ -52,6 +52,14 @@ defmodule SheafWeb.ThesisLive do
               <span class="text-[var(--sheaf-ink-soft)]">{document_kind(@thesis)}</span>
               <span class="text-[var(--sheaf-ink-faint)]">›</span>
               <span class="text-[var(--sheaf-ink)]">full text</span>
+              <.link
+                href={~p"/sheaf-schema.ttl"}
+                class="sheaf-ui ml-auto text-[10px] uppercase tracking-[0.08em] text-[var(--sheaf-ink-faint)] transition hover:text-[var(--sheaf-ink-soft)]"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                schema.ttl
+              </.link>
             </div>
           </div>
 

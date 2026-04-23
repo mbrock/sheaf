@@ -7,12 +7,12 @@ defmodule Sheaf.SampleData do
   alias Sheaf.Fuseki
   alias Sheaf.Id
   alias Sheaf.NS.Sheaf, as: SheafNS
+  alias Sheaf.Prov
 
   @sample_outline [
     {:section, "Introduction",
      [
-       {:paragraph,
-        "This workspace is for a master's thesis drafted as addressable blocks."},
+       {:paragraph, "This workspace is for a master's thesis drafted as addressable blocks."},
        {:section, "Research Questions",
         [
           {:paragraph,
@@ -28,8 +28,7 @@ defmodule Sheaf.SampleData do
      ]},
     {:section, "Working Notes",
      [
-       {:paragraph,
-        "This sample document only exists to prove the rendering path end to end."}
+       {:paragraph, "This sample document only exists to prove the rendering path end to end."}
      ]}
   ]
 
@@ -96,12 +95,17 @@ defmodule Sheaf.SampleData do
   end
 
   defp materialize_block({:paragraph, text}) do
+    block_iri = Id.iri(Id.generate())
     paragraph_iri = Id.iri(Id.generate())
 
-    {paragraph_iri,
+    {block_iri,
      [
+       statement(block_iri, [
+         {"a", [term(SheafNS.ParagraphBlock)]},
+         {term(SheafNS.paragraph()), [Fuseki.iri_ref(paragraph_iri)]}
+       ]),
        statement(paragraph_iri, [
-         {"a", [term(SheafNS.Paragraph)]},
+         {"a", [term(SheafNS.Paragraph), term(Prov.entity())]},
          {term(SheafNS.text()), [Fuseki.literal(text)]}
        ])
      ]}
