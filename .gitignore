@@ -27,6 +27,10 @@ sheaf-*.tar
 
 # Ignore assets that are produced by build tools.
 /priv/static/assets/
+/priv/static/*.gz
+/priv/static/*-[0-9a-f]*.*
+/priv/static/images/*.gz
+/priv/static/images/*-[0-9a-f]*.*
 
 # Ignore digested assets cache.
 /priv/static/cache_manifest.json
@@ -34,4 +38,3 @@ sheaf-*.tar
 # In case you use Node.js/npm, you want to ignore these.
 npm-debug.log
 /assets/node_modules/
-
