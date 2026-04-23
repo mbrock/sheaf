@@ -18,12 +18,10 @@ Useful graph commands:
 ```bash
 mix sheaf.backup
 mix sheaf.schema
-mix sheaf.schema --sync
 ```
 
 `mix sheaf.backup` writes a Turtle backup of the configured dataset default graph under `output/backups/`.
-`mix sheaf.schema` verifies that the schema named graph matches `priv/sheaf-schema.ttl`.
-`mix sheaf.schema --sync` replaces the schema named graph with the contents of `priv/sheaf-schema.ttl`.
+`mix sheaf.schema` uploads `priv/sheaf-schema.ttl` to the schema named graph.
 
 ## Storage
 
@@ -31,7 +29,7 @@ Default Fuseki configuration:
 
 * Dataset: `http://localhost:3030/sheaf`
 * Query endpoint: `http://localhost:3030/sheaf/sparql`
-* Update endpoint: `http://localhost:3030/sheaf/update`
+* Graph Store endpoint: `http://localhost:3030/sheaf/data`
 * Graph used by Sheaf: Fuseki dataset default graph
 * Schema named graph: `https://less.rest/sheaf/`
 

@@ -1,105 +1,57 @@
 defmodule Mix.Tasks.Sheaf.Schema do
   use Mix.Task
 
-  @shortdoc "Verifies or syncs the schema named graph"
+  @shortdoc "Uploads priv/sheaf-schema.ttl to the schema named graph"
 
-  alias RDF.Graph
+  alias Finch.Response
   alias Sheaf.NS.Sheaf, as: SheafNS
 
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, _positional, invalid} = OptionParser.parse(args, strict: [sync: :boolean])
-
-    case invalid do
+    case args do
       [] ->
-        sync? = Keyword.get(opts, :sync, false)
         schema_graph = SheafNS.__base_iri__()
-        local_schema = local_schema()
-        remote_schema = remote_schema(schema_graph)
 
-        cond do
-          Graph.isomorphic?(local_schema, remote_schema) ->
-            Mix.shell().info("Schema graph #{schema_graph} is in sync")
+        request =
+          Finch.build(
+            :put,
+            graph_endpoint(schema_graph),
+            [{"content-type", "text/turtle"} | auth_headers()],
+            File.read!(schema_path())
+          )
 
-          sync? ->
-            sync_schema(schema_graph, local_schema)
-            verify_synced!(schema_graph, local_schema)
-            Mix.shell().info("Synced schema graph #{schema_graph}")
+        case Finch.request(request, Sheaf.Finch) do
+          {:ok, %Response{status: status}} when status in 200..299 ->
+            Mix.shell().info("Uploaded schema graph #{schema_graph}")
 
-          true ->
-            Mix.raise("""
-            Schema graph #{schema_graph} does not match priv/sheaf-schema.ttl
-            Run `mix sheaf.schema --sync` to replace it.
-            """)
+          {:ok, %Response{status: status, body: body}} ->
+            Mix.raise("Failed to upload schema graph (#{status}): #{String.trim(body)}")
+
+          {:error, reason} ->
+            Mix.raise("Failed to upload schema graph: #{inspect(reason)}")
         end
 
       _ ->
-        Mix.raise("Unrecognized arguments: #{inspect(invalid)}")
+        Mix.raise("mix sheaf.schema takes no arguments")
     end
   end
 
-  defp verify_synced!(schema_graph, local_schema) do
-    if Graph.isomorphic?(local_schema, remote_schema(schema_graph)) do
-      :ok
-    else
-      Mix.raise(
-        "Schema graph #{schema_graph} still does not match priv/sheaf-schema.ttl after sync"
-      )
-    end
+  defp graph_endpoint(schema_graph) do
+    data_endpoint() <> "?" <> URI.encode_query(%{"graph" => schema_graph})
   end
 
-  defp sync_schema(schema_graph, local_schema) do
-    case SPARQL.Client.clear(update_endpoint(), graph: schema_graph, silent: true) do
-      :ok ->
-        dataset =
-          local_schema
-          |> Graph.new(name: schema_graph)
-          |> RDF.Dataset.new()
-
-        case SPARQL.Client.insert_data(dataset, update_endpoint()) do
-          :ok -> :ok
-          {:error, reason} -> Mix.raise("Failed to insert schema graph: #{inspect(reason)}")
-        end
-
-      {:error, reason} ->
-        Mix.raise("Failed to clear schema graph: #{inspect(reason)}")
-    end
+  defp auth_headers do
+    Application.get_env(:sparql_client, :http_headers, %{})
+    |> Enum.map(fn {key, value} -> {to_string(key), to_string(value)} end)
   end
 
-  defp remote_schema(schema_graph) do
-    """
-    CONSTRUCT { ?s ?p ?o }
-    WHERE {
-      GRAPH <#{schema_graph}> {
-        ?s ?p ?o .
-      }
-    }
-    """
-    |> SPARQL.Client.construct(query_endpoint())
-    |> case do
-      {:ok, %Graph{} = graph} ->
-        graph
-
-      {:error, reason} ->
-        Mix.raise("Failed to fetch schema graph: #{inspect(reason)}")
-
-      other ->
-        Mix.raise("Unexpected schema graph response: #{inspect(other)}")
-    end
-  end
-
-  defp local_schema do
+  defp schema_path do
     Application.app_dir(:sheaf, "priv/sheaf-schema.ttl")
-    |> RDF.Turtle.read_file!()
   end
 
-  defp query_endpoint do
-    Application.get_env(:sheaf, Sheaf, [])[:query_endpoint]
-  end
-
-  defp update_endpoint do
-    Application.get_env(:sheaf, Sheaf, [])[:update_endpoint]
+  defp data_endpoint do
+    Application.get_env(:sheaf, Sheaf, [])[:data_endpoint]
   end
 end
