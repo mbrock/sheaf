@@ -54,4 +54,13 @@ defmodule Sheaf.GraphStoreTest do
 
     assert GraphStore.backup_graphs() == ["https://less.rest/sheaf/graph/main"]
   end
+
+  test "backup_graphs falls back to the default graph when configured list is empty" do
+    Application.put_env(:sheaf, Sheaf.GraphStore,
+      graph: "https://less.rest/sheaf/graph/main",
+      backup_graphs: []
+    )
+
+    assert GraphStore.backup_graphs() == ["https://less.rest/sheaf/graph/main"]
+  end
 end
