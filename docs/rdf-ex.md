@@ -228,7 +228,7 @@ RDF.Graph.add(graph, %{EX.S => %{name: "Alice"}}, context: context)
 
 ## Graph Builder DSL
 
-Use this when the RDF is mostly static or declarative.
+Use this when you want to build a graph in one place, including data that comes from runtime values, loops, helper functions, or conditionals.
 
 ```elixir
 use RDF
@@ -245,13 +245,36 @@ RDF.Graph.build do
 end
 ```
 
+For non-static data, pass the values you need as bindings and return RDF from normal Elixir expressions inside the block:
+
+```elixir
+RDF.Graph.build user: user, tags: tags do
+  @base EX
+  @prefix ex: EX
+
+  ~i<#user-#{user.id}>
+  |> a(EX.Person)
+  |> EX.name(user.name)
+
+  Enum.map(tags, fn tag ->
+    {~i<#user-#{user.id}>, EX.tag, tag}
+  end)
+
+  if user.nickname do
+    {~i<#user-#{user.id}>, EX.nickname, user.nickname}
+  end
+end
+```
+
 Inside `RDF.Graph.build`:
 
 - `a(...)` is shorthand for `rdf:type`
 - `@prefix` defines aliases and graph prefixes
 - `@base` sets the base IRI
+- pass runtime values in the binding list before `do`; caller variables are not otherwise available
 - arbitrary Elixir expressions are allowed as long as they return RDF data
 - `nil` and `:ok` results are ignored, which makes conditionals convenient
+- assignments are not added to the graph unless you evaluate the assigned variable explicitly
 
 ## Querying Graphs
 
@@ -370,7 +393,7 @@ RDF.Data.map(graph, fn {s, p, _o} -> {s, p, EX.NewObject} end)
 ## Rules Of Thumb
 
 - Prefer vocab modules and namespace terms over raw IRI strings.
-- Use the description DSL for one subject and `RDF.Graph.build` for declarative graph literals.
+- Use the description DSL for one subject and `RDF.Graph.build` when you want graph construction inline with loops, conditionals, and runtime inputs.
 - Use `RDF.Data.*` when you want generic code across descriptions, graphs, and datasets.
 - Use `put_properties` when you want to overwrite one predicate without blowing away the rest of a subject.
 - Use `context:` with `RDF.PropertyMap`s to keep inputs short and readable.
