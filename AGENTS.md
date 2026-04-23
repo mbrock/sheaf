@@ -4,6 +4,8 @@ When the repo is coherent and tests pass, commit and push.
 
 Run `mix precommit` to run tests and format code before committing.
 
+Before changing code that uses RDF.ex heavily, read `docs/rdf-ex.md`.
+
 Keep deployment-specific hosts and secrets out of tracked files.
 
 The ontology namespace is `https://less.rest/sheaf/`.
