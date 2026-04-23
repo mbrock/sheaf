@@ -4,7 +4,6 @@ defmodule Sheaf.Thesis do
   """
 
   alias RDF.{Description, Graph}
-  alias Sheaf.GraphStore
   alias Sheaf.Id
   alias Sheaf.NS.Sheaf, as: SheafNS
   alias Sheaf.Prov
@@ -19,8 +18,8 @@ defmodule Sheaf.Thesis do
 
   @rdf_membership_prefix "http://www.w3.org/1999/02/22-rdf-syntax-ns#_"
 
-  def fetch_outline do
-    with {:ok, graph} <- GraphStore.fetch_graph() do
+  def fetch_outline(graph_name) do
+    with {:ok, graph} <- Sheaf.fetch_graph(graph_name) do
       {:ok, from_graph(graph)}
     end
   end

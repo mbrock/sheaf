@@ -4,7 +4,6 @@ defmodule Mix.Tasks.Sheaf.Backup do
   @shortdoc "Backs up configured named graphs to Turtle files"
 
   alias RDF.Turtle
-  alias Sheaf.GraphStore
 
   @impl Mix.Task
   def run(args) do
@@ -49,7 +48,7 @@ defmodule Mix.Tasks.Sheaf.Backup do
   defp output_path(_opts, graph_name, _index), do: default_backup_path(graph_name)
 
   defp backup_graph(graph_name, output_path) do
-    with {:ok, graph} <- GraphStore.fetch_graph(graph_name) do
+    with {:ok, graph} <- Sheaf.fetch_graph(graph_name) do
       File.mkdir_p!(Path.dirname(output_path))
       File.write!(output_path, Turtle.write_string!(graph))
       {:ok, output_path}
@@ -93,6 +92,6 @@ defmodule Mix.Tasks.Sheaf.Backup do
   end
 
   defp graph_store_config do
-    Application.get_env(:sheaf, Sheaf.GraphStore, [])
+    Application.get_env(:sheaf, Sheaf, [])
   end
 end

@@ -73,7 +73,7 @@ sparql_http_headers =
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
 config :sheaf, :resource_base, resource_base
 
-config :sheaf, Sheaf.GraphStore,
+config :sheaf, Sheaf,
   query_endpoint:
     System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", "http://localhost:3030/kg/sparql"),
   graph: default_graph,

@@ -5,8 +5,10 @@ defmodule SheafWeb.ThesisLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    graph_name = Application.get_env(:sheaf, Sheaf)[:graph]
+
     socket =
-      case Thesis.fetch_outline() do
+      case Thesis.fetch_outline(graph_name) do
         {:ok, thesis} ->
           socket
           |> assign(:page_title, page_title(thesis))
