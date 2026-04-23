@@ -17,20 +17,12 @@ Useful graph commands:
 
 ```bash
 mix sheaf.smoke
-mix sheaf.backup_graph --all
-mix sheaf.migrate_paragraphs
-mix sheaf.seed_sample
-mix sheaf.import_xml
-mix sheaf.import_interviews
+mix sheaf.backup
 ```
 
 `mix sheaf.smoke` verifies read/write access to the configured named graph.
-`mix sheaf.backup_graph --all` writes Turtle backups for the configured named graphs under `output/backups/`.
-`mix sheaf.migrate_paragraphs` rewrites inline text blocks into append-only paragraph revision entities.
-`mix sheaf.seed_sample` inserts a minimal thesis outline when the graph has no thesis yet.
-`mix sheaf.import_xml` imports local thesis XML files into the main thesis graph.
-With no explicit arguments it loads `priv/thesis-*.xml` in sorted order.
-`mix sheaf.import_interviews` imports the IEVA interview transcript export into a separate named graph.
+`mix sheaf.backup` writes Turtle backups for the configured named graphs under `output/backups/`.
+Pass `--graph GRAPH_NAME` to limit the backup set, or repeat `--graph` to back up a specific list.
 
 ## Storage
 
@@ -38,16 +30,11 @@ Default Fuseki configuration:
 
 * Query endpoint: `http://localhost:3030/kg/sparql`
 * Update endpoint: `http://localhost:3030/kg/update`
-* Named graph: `https://example.com/sheaf/graph/main`
-* Interview graph: `https://example.com/sheaf/graph/interviews`
+* Named graph: `https://less.rest/sheaf/graph/main`
+* Interview graph: `https://less.rest/sheaf/graph/interviews`
 
-The vocabulary namespace is `https://example.com/sheaf/`.
-Block IRIs use `https://example.com/sheaf/<id>`.
-
-Interview import expects `priv/ieva_data/interviews.db` and uses stable IRIs under:
-
-* `https://example.com/sheaf/interviews/<id>`
-* `https://example.com/sheaf/audio/<sha256>`
+The vocabulary namespace is `https://less.rest/sheaf/`.
+Block IRIs use the configured resource base, which defaults to `https://example.com/sheaf/` outside production.
 
 The tracked RDF vocabulary lives in `priv/sheaf-schema.ttl` and is served at `/sheaf-schema.ttl`.
 

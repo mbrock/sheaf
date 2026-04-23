@@ -1,4 +1,4 @@
-defmodule Mix.Tasks.Sheaf.BackupGraph do
+defmodule Mix.Tasks.Sheaf.Backup do
   use Mix.Task
 
   @shortdoc "Backs up configured named graphs to Turtle files"
@@ -10,7 +10,7 @@ defmodule Mix.Tasks.Sheaf.BackupGraph do
     Mix.Task.run("app.start")
 
     {opts, _positional, invalid} =
-      OptionParser.parse(args, switches: [all: :boolean, graph: :string, output: :string])
+      OptionParser.parse(args, strict: [graph: :string, output: :string])
 
     case invalid do
       [] ->
@@ -35,12 +35,9 @@ defmodule Mix.Tasks.Sheaf.BackupGraph do
   end
 
   defp target_graphs(opts) do
-    cond do
-      graph_name = Keyword.get(opts, :graph) ->
-        [graph_name]
-
-      true ->
-        [GraphStore.default_graph()]
+    case Keyword.get_values(opts, :graph) do
+      [] -> GraphStore.backup_graphs()
+      graph_names -> graph_names
     end
   end
 

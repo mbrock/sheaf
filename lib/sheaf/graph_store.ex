@@ -1,6 +1,6 @@
 defmodule Sheaf.GraphStore do
   @moduledoc """
-  Reads and writes the configured Sheaf graph via `SPARQL.Client`.
+  Reads and writes configured Sheaf graphs via `SPARQL.Client`.
   """
 
   alias RDF.{Dataset, Graph}
@@ -25,6 +25,13 @@ defmodule Sheaf.GraphStore do
 
   def default_graph do
     config()[:graph]
+  end
+
+  def backup_graphs do
+    case normalize_graph_names(config()[:backup_graphs]) do
+      [] -> normalize_graph_names([default_graph()])
+      graph_names -> graph_names
+    end
   end
 
   def fetch_graph(graph_name \\ default_graph(), opts \\ []) when is_binary(graph_name) do
@@ -110,6 +117,15 @@ defmodule Sheaf.GraphStore do
     |> String.replace(~r/[^A-Za-z0-9]+/, "-")
     |> String.trim("-")
     |> String.downcase()
+  end
+
+  defp normalize_graph_names(graph_names) do
+    graph_names
+    |> List.wrap()
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
   end
 
   defp insert_batches([], _graph_name, _max_update_bytes), do: {:ok, 0}

@@ -52,6 +52,14 @@ resource_base =
   |> String.trim()
   |> then(fn value -> if String.ends_with?(value, "/"), do: value, else: value <> "/" end)
 
+default_graph =
+  System.get_env("SHEAF_GRAPH", ontology_base <> "graph/main")
+  |> String.trim()
+
+interview_graph =
+  System.get_env("SHEAF_INTERVIEW_GRAPH", ontology_base <> "graph/interviews")
+  |> String.trim()
+
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
 config :sheaf, :resource_base, resource_base
 
@@ -62,7 +70,11 @@ config :sheaf, Sheaf.GraphStore,
     System.get_env("SHEAF_SPARQL_UPDATE_ENDPOINT", "http://localhost:3030/kg/update"),
   username: System.get_env("SHEAF_SPARQL_USERNAME", "admin"),
   password: System.get_env("SHEAF_SPARQL_PASSWORD", "admin"),
-  graph: System.get_env("SHEAF_GRAPH", ontology_base <> "graph/main"),
+  graph: default_graph,
+  backup_graphs:
+    [default_graph, interview_graph]
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq(),
   receive_timeout: sparql_receive_timeout
 
 config :sparql_client,
