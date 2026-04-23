@@ -1,38 +1,46 @@
 defmodule Sheaf.GraphStore do
   @moduledoc """
-  Fetches, serializes, and replaces named graphs in Fuseki.
+  Reads and writes the configured Sheaf graph via `SPARQL.Client`.
   """
 
-  alias SPARQL.Query.Result
-  alias Sheaf.Fuseki
+  alias RDF.{Dataset, Graph}
+  alias SPARQL.Client
+  alias SPARQL.Client.HTTPError
 
   @default_max_update_bytes 200_000
+  @construct_graph_query """
+  CONSTRUCT { ?s ?p ?o }
+  WHERE {
+    ?s ?p ?o .
+  }
+  """
 
-  def fetch_rows(graph_name) when is_binary(graph_name) do
-    query = """
-    SELECT ?s ?p ?o
-    WHERE {
-      GRAPH #{Fuseki.iri_ref(graph_name)} {
-        ?s ?p ?o .
-      }
-    }
-    ORDER BY STR(?s) STR(?p) STR(?o)
-    """
-
-    case Fuseki.select(query) do
-      {:ok, %Result{results: rows}} -> {:ok, rows}
-      error -> error
-    end
+  def query_endpoint do
+    config()[:query_endpoint]
   end
 
-  def fetch_graph(graph_name) when is_binary(graph_name) do
-    with {:ok, rows} <- fetch_rows(graph_name) do
-      {:ok, graph_from_rows(rows)}
-    end
+  def update_endpoint do
+    config()[:update_endpoint]
   end
 
-  def graph_from_rows(rows) when is_list(rows) do
-    RDF.Graph.new(Enum.map(rows, &row_to_triple/1), prefixes: prefixes())
+  def default_graph do
+    config()[:graph]
+  end
+
+  def fetch_graph(graph_name \\ default_graph(), opts \\ []) when is_binary(graph_name) do
+    @construct_graph_query
+    |> Client.construct(query_endpoint(), query_options(graph_name, opts))
+    |> normalize_result()
+    |> case do
+      {:ok, %Graph{} = graph} ->
+        {:ok, Graph.add_prefixes(graph, prefixes())}
+
+      {:ok, %Dataset{} = dataset} ->
+        {:ok, dataset |> RDF.Dataset.default_graph() |> Graph.add_prefixes(prefixes())}
+
+      other ->
+        other
+    end
   end
 
   def backup_graph(graph_name, output_path)
@@ -44,11 +52,31 @@ defmodule Sheaf.GraphStore do
     end
   end
 
+  def insert_graph(graph_name, %Graph{} = graph, opts \\ []) when is_binary(graph_name) do
+    graph_name
+    |> named_graph(graph)
+    |> Client.insert_data(update_endpoint(), update_options(opts))
+    |> normalize_result()
+  end
+
+  def delete_graph_data(graph_name, %Graph{} = graph, opts \\ []) when is_binary(graph_name) do
+    graph_name
+    |> named_graph(graph)
+    |> Client.delete_data(update_endpoint(), update_options(opts))
+    |> normalize_result()
+  end
+
+  def clear_graph(graph_name \\ default_graph(), opts \\ []) when is_binary(graph_name) do
+    update_endpoint()
+    |> Client.clear(Keyword.merge(update_request_options(opts), graph: graph_name, silent: true))
+    |> normalize_result()
+  end
+
   def replace_graph(graph_name, %RDF.Graph{} = graph, opts \\ []) when is_binary(graph_name) do
     max_update_bytes = Keyword.get(opts, :max_update_bytes, @default_max_update_bytes)
-    statements = graph |> RDF.NTriples.write_string!() |> String.split("\n", trim: true)
+    statements = Enum.to_list(graph)
 
-    with :ok <- Fuseki.update("CLEAR SILENT GRAPH #{Fuseki.iri_ref(graph_name)}") do
+    with :ok <- clear_graph(graph_name, opts) do
       insert_batches(statements, graph_name, max_update_bytes)
     end
   end
@@ -73,6 +101,10 @@ defmodule Sheaf.GraphStore do
     }
   end
 
+  def default_http_headers(_request, _headers) do
+    auth_header_map(config()[:username], config()[:password])
+  end
+
   defp graph_slug(graph_name) do
     graph_name
     |> String.replace(~r/[^A-Za-z0-9]+/, "-")
@@ -80,24 +112,15 @@ defmodule Sheaf.GraphStore do
     |> String.downcase()
   end
 
-  defp row_to_triple(%{"s" => subject, "p" => predicate, "o" => object}),
-    do: {subject, predicate, object}
-
   defp insert_batches([], _graph_name, _max_update_bytes), do: {:ok, 0}
 
   defp insert_batches(statements, graph_name, max_update_bytes) do
     statements
     |> chunk_statements(max_update_bytes)
     |> Enum.reduce_while({:ok, 0}, fn chunk, {:ok, inserted} ->
-      update = """
-      INSERT DATA {
-        GRAPH #{Fuseki.iri_ref(graph_name)} {
-          #{Enum.join(chunk, "\n")}
-        }
-      }
-      """
+      chunk_graph = Graph.new(chunk, name: graph_name, prefixes: prefixes())
 
-      case Fuseki.update(update) do
+      case insert_graph(graph_name, chunk_graph) do
         :ok -> {:cont, {:ok, inserted + length(chunk)}}
         {:error, _message} = error -> {:halt, error}
       end
@@ -107,7 +130,7 @@ defmodule Sheaf.GraphStore do
   defp chunk_statements(statements, max_update_bytes) do
     {chunks, current_chunk, _current_size} =
       Enum.reduce(statements, {[], [], 0}, fn statement, {chunks, current_chunk, current_size} ->
-        statement_size = byte_size(statement) + 1
+        statement_size = statement_size(statement)
 
         if current_chunk != [] and current_size + statement_size > max_update_bytes do
           {[Enum.reverse(current_chunk) | chunks], [statement], statement_size}
@@ -124,5 +147,99 @@ defmodule Sheaf.GraphStore do
       end
 
     Enum.reverse(chunks)
+  end
+
+  defp statement_size(statement) do
+    statement
+    |> List.wrap()
+    |> Graph.new()
+    |> RDF.NTriples.write_string!()
+    |> byte_size()
+  end
+
+  defp named_graph(graph_name, %Graph{} = graph) do
+    Graph.new(Enum.to_list(graph), name: graph_name, prefixes: prefixes())
+  end
+
+  defp query_options(graph_name, opts) do
+    Keyword.merge(request_options(opts), default_graph: graph_name)
+  end
+
+  defp update_options(opts) do
+    Keyword.merge(request_options(opts), prefixes: prefixes())
+  end
+
+  defp update_request_options(opts) do
+    request_options(opts)
+  end
+
+  defp request_options(opts) do
+    []
+    |> maybe_put_headers(opts)
+    |> maybe_put_request_opts(opts)
+  end
+
+  defp maybe_put_headers(request_opts, opts) do
+    if auth_override?(opts) do
+      Keyword.put(
+        request_opts,
+        :headers,
+        auth_header_map(
+          Keyword.get(opts, :username, config()[:username]),
+          Keyword.get(opts, :password, config()[:password])
+        )
+      )
+    else
+      request_opts
+    end
+  end
+
+  defp maybe_put_request_opts(request_opts, opts) do
+    case Keyword.fetch(opts, :receive_timeout) do
+      {:ok, timeout} ->
+        Keyword.put(request_opts, :request_opts, adapter: [receive_timeout: timeout])
+
+      :error ->
+        request_opts
+    end
+  end
+
+  defp auth_override?(opts) do
+    Keyword.has_key?(opts, :username) or Keyword.has_key?(opts, :password)
+  end
+
+  defp normalize_result(:ok), do: :ok
+  defp normalize_result({:ok, %Graph{} = graph}), do: {:ok, graph}
+  defp normalize_result({:ok, %Dataset{} = dataset}), do: {:ok, dataset}
+
+  defp normalize_result({:error, %HTTPError{request: request, status: status}}) do
+    body =
+      request.http_response_body
+      |> Kernel.||("")
+      |> String.trim()
+
+    if body == "" do
+      {:error, "SPARQL request failed (#{status})"}
+    else
+      {:error, "SPARQL request failed (#{status}): #{body}"}
+    end
+  end
+
+  defp normalize_result({:error, reason}), do: {:error, format_error(reason)}
+  defp normalize_result(other), do: other
+
+  defp auth_header_map(username, password)
+       when is_binary(username) and is_binary(password) do
+    %{"Authorization" => "Basic " <> Base.encode64("#{username}:#{password}")}
+  end
+
+  defp auth_header_map(_, _), do: %{}
+
+  defp format_error(%{reason: reason}), do: format_error(reason)
+  defp format_error(reason) when is_binary(reason), do: reason
+  defp format_error(reason), do: inspect(reason)
+
+  defp config do
+    Application.get_env(:sheaf, __MODULE__, [])
   end
 end

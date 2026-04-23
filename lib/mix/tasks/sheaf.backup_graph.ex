@@ -3,9 +3,7 @@ defmodule Mix.Tasks.Sheaf.BackupGraph do
 
   @shortdoc "Backs up configured named graphs to Turtle files"
 
-  alias Sheaf.Fuseki
   alias Sheaf.GraphStore
-  alias Sheaf.Interviews
 
   @impl Mix.Task
   def run(args) do
@@ -38,14 +36,11 @@ defmodule Mix.Tasks.Sheaf.BackupGraph do
 
   defp target_graphs(opts) do
     cond do
-      Keyword.get(opts, :all, false) ->
-        [Fuseki.graph(), Interviews.graph()] |> Enum.uniq()
-
       graph_name = Keyword.get(opts, :graph) ->
         [graph_name]
 
       true ->
-        [Fuseki.graph()]
+        [GraphStore.default_graph()]
     end
   end
 

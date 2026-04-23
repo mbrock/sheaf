@@ -1,10 +1,10 @@
 defmodule Mix.Tasks.Sheaf.Smoke do
   use Mix.Task
 
-  @shortdoc "Verifies named-graph read/write access against Fuseki"
+  @shortdoc "Verifies named-graph read/write access against the configured SPARQL store"
 
-  alias SPARQL.Query.Result
-  alias Sheaf.Fuseki
+  alias RDF.Graph
+  alias Sheaf.GraphStore
   alias Sheaf.Id
   alias Sheaf.NS.Sheaf, as: SheafNS
 
@@ -19,7 +19,7 @@ defmodule Mix.Tasks.Sheaf.Smoke do
     with :ok <- insert_probe(probe_iri, probe_value),
          {:ok, true} <- read_probe(probe_iri, probe_value),
          :ok <- delete_probe(probe_iri) do
-      Mix.shell().info("Fuseki named-graph smoke test passed for #{Fuseki.graph()}")
+      Mix.shell().info("Named-graph smoke test passed for #{GraphStore.default_graph()}")
     else
       {:ok, false} ->
         Mix.raise("Probe triple was not visible after insert")
@@ -33,48 +33,31 @@ defmodule Mix.Tasks.Sheaf.Smoke do
   end
 
   defp insert_probe(probe_iri, probe_value) do
-    update = """
-    INSERT DATA {
-      GRAPH #{Fuseki.graph_ref()} {
-        #{Fuseki.iri_ref(probe_iri)} #{Fuseki.iri_ref(SheafNS.title())} #{Fuseki.literal(probe_value)} .
-      }
-    }
-    """
-
-    Fuseki.update(update)
+    GraphStore.insert_graph(
+      GraphStore.default_graph(),
+      Graph.new({probe_iri, SheafNS.title(), probe_value}, name: GraphStore.default_graph())
+    )
   end
 
   defp read_probe(probe_iri, probe_value) do
-    query = """
-    SELECT ?value
-    WHERE {
-      GRAPH #{Fuseki.graph_ref()} {
-        #{Fuseki.iri_ref(probe_iri)} #{Fuseki.iri_ref(SheafNS.title())} ?value .
-      }
-    }
-    """
+    with {:ok, graph} <- GraphStore.fetch_graph() do
+      value =
+        graph
+        |> Graph.description(probe_iri)
+        |> RDF.Description.first(SheafNS.title())
 
-    case Fuseki.select(query) do
-      {:ok, %Result{results: [%{"value" => %RDF.Literal{} = literal} | _]}} ->
-        {:ok, to_string(RDF.Term.value(literal)) == probe_value}
-
-      {:ok, %Result{results: []}} ->
-        {:ok, false}
-
-      error ->
-        error
+      {:ok, match?(%RDF.Literal{}, value) and to_string(RDF.Term.value(value)) == probe_value}
     end
   end
 
   defp delete_probe(probe_iri) do
-    update = """
-    DELETE WHERE {
-      GRAPH #{Fuseki.graph_ref()} {
-        #{Fuseki.iri_ref(probe_iri)} ?predicate ?object .
-      }
-    }
-    """
-
-    Fuseki.update(update)
+    GraphStore.delete_graph_data(
+      GraphStore.default_graph(),
+      Graph.new({probe_iri, SheafNS.title(), probe_value(probe_iri)},
+        name: GraphStore.default_graph()
+      )
+    )
   end
+
+  defp probe_value(probe_iri), do: "smoke " <> Id.id_from_iri(probe_iri)
 end

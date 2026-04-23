@@ -61,9 +61,7 @@ defmodule Sheaf.MixProject do
       {:jason, "~> 1.2"},
       {:finch, "~> 0.21"},
       {:tesla, "~> 1.17"},
-      {:exqlite, "~> 0.36.0"},
       {:rdf, "~> 2.1"},
-      {:sparql, "~> 0.3.11"},
       {:sparql_client, "~> 0.5"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"}

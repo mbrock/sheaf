@@ -55,7 +55,7 @@ resource_base =
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
 config :sheaf, :resource_base, resource_base
 
-config :sheaf, Sheaf.Fuseki,
+config :sheaf, Sheaf.GraphStore,
   query_endpoint:
     System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", "http://localhost:3030/kg/sparql"),
   update_endpoint:
@@ -69,10 +69,7 @@ config :sparql_client,
   query_request_method: :post,
   update_request_method: :url_encoded,
   tesla_request_opts: [adapter: [receive_timeout: sparql_receive_timeout]],
-  http_headers: &Sheaf.Fuseki.default_http_headers/2
-
-config :sheaf, Sheaf.Interviews,
-  graph: System.get_env("SHEAF_INTERVIEWS_GRAPH", ontology_base <> "graph/interviews")
+  http_headers: &Sheaf.GraphStore.default_http_headers/2
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.

@@ -75,11 +75,7 @@ defmodule SheafWeb.ThesisLive do
               :if={is_nil(@error) and is_nil(@thesis)}
               class="mx-auto max-w-[72ch] border border-[var(--sheaf-line)] bg-[var(--sheaf-raised)] px-5 py-5 text-sm leading-7 text-[var(--sheaf-ink-soft)]"
             >
-              No thesis document is present in the named graph yet. Run
-              <code class="sheaf-ui rounded bg-[var(--sheaf-paper)] px-1.5 py-0.5 text-[var(--sheaf-ink)]">
-                mix sheaf.seed_sample
-              </code>
-              to load a minimal sample.
+              No thesis document is present in the configured named graph yet.
             </div>
 
             <article :if={@thesis} id="document-start" class="mx-auto max-w-[74ch] scroll-mt-20">
