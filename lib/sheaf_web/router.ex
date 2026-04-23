@@ -17,7 +17,7 @@ defmodule SheafWeb.Router do
   scope "/", SheafWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", ThesisLive
   end
 
   # Other scopes may use custom stacks.

@@ -20,7 +20,28 @@ if System.get_env("PHX_SERVER") do
   config :sheaf, SheafWeb.Endpoint, server: true
 end
 
-config :sheaf, SheafWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+http_ip =
+  case System.get_env("SHEAF_HTTP_IP", "127.0.0.1")
+       |> String.trim()
+       |> String.split(".", trim: true)
+       |> Enum.map(&Integer.parse/1) do
+    [{a, ""}, {b, ""}, {c, ""}, {d, ""}] -> {a, b, c, d}
+    _ -> {127, 0, 0, 1}
+  end
+
+http_port = String.to_integer(System.get_env("PORT", "4000"))
+
+config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
+
+config :sheaf, Sheaf.Fuseki,
+  query_endpoint:
+    System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", "http://localhost:3030/kg/sparql"),
+  update_endpoint:
+    System.get_env("SHEAF_SPARQL_UPDATE_ENDPOINT", "http://localhost:3030/kg/update"),
+  username: System.get_env("SHEAF_SPARQL_USERNAME", "admin"),
+  password: System.get_env("SHEAF_SPARQL_PASSWORD", "admin"),
+  graph: System.get_env("SHEAF_GRAPH", "https://example.com/sheaf/graph/main"),
+  receive_timeout: 30_000
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
@@ -41,13 +62,7 @@ if config_env() == :prod do
 
   config :sheaf, SheafWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
-    http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0}
-    ],
+    http: [ip: http_ip, port: http_port],
     secret_key_base: secret_key_base
 
   # ## SSL Support
