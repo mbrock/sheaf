@@ -31,6 +31,9 @@ http_ip =
 
 http_port = String.to_integer(System.get_env("PORT", "4000"))
 
+sparql_receive_timeout =
+  String.to_integer(System.get_env("SHEAF_SPARQL_RECEIVE_TIMEOUT", "30000"))
+
 ontology_base =
   System.get_env("SHEAF_ONTOLOGY_BASE", "https://less.rest/sheaf/")
   |> String.trim()
@@ -60,7 +63,13 @@ config :sheaf, Sheaf.Fuseki,
   username: System.get_env("SHEAF_SPARQL_USERNAME", "admin"),
   password: System.get_env("SHEAF_SPARQL_PASSWORD", "admin"),
   graph: System.get_env("SHEAF_GRAPH", ontology_base <> "graph/main"),
-  receive_timeout: 30_000
+  receive_timeout: sparql_receive_timeout
+
+config :sparql_client,
+  query_request_method: :post,
+  update_request_method: :url_encoded,
+  tesla_request_opts: [adapter: [receive_timeout: sparql_receive_timeout]],
+  http_headers: &Sheaf.Fuseki.default_http_headers/2
 
 config :sheaf, Sheaf.Interviews,
   graph: System.get_env("SHEAF_INTERVIEWS_GRAPH", ontology_base <> "graph/interviews")

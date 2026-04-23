@@ -1,17 +1,11 @@
 defmodule Sheaf.Fuseki do
   @moduledoc """
-  Thin SPARQL client for the project's named graph in Fuseki.
+  Thin wrapper around `SPARQL.Client` for the project's named graph in Fuseki.
   """
 
-  alias Finch.Response
+  alias SPARQL.Client
+  alias SPARQL.Client.HTTPError
   alias SPARQL.Query.Result
-  alias SPARQL.Query.Result.JSON.Decoder, as: ResultJSON
-
-  @query_headers [
-    {"accept", "application/sparql-results+json"},
-    {"content-type", "application/x-www-form-urlencoded"}
-  ]
-  @update_headers [{"content-type", "application/x-www-form-urlencoded"}]
 
   def query_endpoint do
     config()[:query_endpoint]
@@ -26,15 +20,21 @@ defmodule Sheaf.Fuseki do
   end
 
   def select(query, opts \\ []) when is_binary(query) do
-    run(:select, query, query_endpoint(), opts)
+    query
+    |> Client.select(query_endpoint(), request_options(opts))
+    |> normalize_result()
   end
 
   def ask(query, opts \\ []) when is_binary(query) do
-    run(:ask, query, query_endpoint(), opts)
+    query
+    |> Client.ask(query_endpoint(), request_options(opts))
+    |> normalize_result()
   end
 
   def update(query, opts \\ []) when is_binary(query) do
-    run(:update, query, update_endpoint(), opts)
+    query
+    |> Client.update(update_endpoint(), request_options(opts))
+    |> normalize_result()
   end
 
   def graph_ref do
@@ -66,69 +66,70 @@ defmodule Sheaf.Fuseki do
 
   def ok_boolean?(_), do: false
 
-  defp run(:select, query, _endpoint, opts), do: run_query(query, opts)
-  defp run(:ask, query, _endpoint, opts), do: run_query(query, opts)
-  defp run(:update, query, _endpoint, opts), do: run_update(query, opts)
+  def default_http_headers(_request, _headers) do
+    auth_header_map(config()[:username], config()[:password])
+  end
 
-  defp run_query(query, opts) do
-    request =
-      Finch.build(
-        :post,
-        query_endpoint(),
-        headers(@query_headers, opts),
-        URI.encode_query(query: query)
+  defp request_options(opts) do
+    [raw_mode: true]
+    |> maybe_put_headers(opts)
+    |> maybe_put_request_opts(opts)
+  end
+
+  defp maybe_put_headers(request_opts, opts) do
+    if auth_override?(opts) do
+      Keyword.put(
+        request_opts,
+        :headers,
+        auth_header_map(
+          Keyword.get(opts, :username, config()[:username]),
+          Keyword.get(opts, :password, config()[:password])
+        )
       )
-
-    with {:ok, body} <- request(request, opts) do
-      ResultJSON.decode(body)
+    else
+      request_opts
     end
   end
 
-  defp run_update(query, opts) do
-    request =
-      Finch.build(
-        :post,
-        update_endpoint(),
-        headers(@update_headers, opts),
-        URI.encode_query(update: query)
-      )
+  defp maybe_put_request_opts(request_opts, opts) do
+    case Keyword.fetch(opts, :receive_timeout) do
+      {:ok, timeout} ->
+        Keyword.put(request_opts, :request_opts, adapter: [receive_timeout: timeout])
 
-    with {:ok, _body} <- request(request, opts) do
-      :ok
+      :error ->
+        request_opts
     end
   end
 
-  defp request(request, opts) do
-    timeout = Keyword.get(opts, :receive_timeout, config()[:receive_timeout] || 30_000)
+  defp auth_override?(opts) do
+    Keyword.has_key?(opts, :username) or Keyword.has_key?(opts, :password)
+  end
 
-    case Finch.request(request, Sheaf.Finch, receive_timeout: timeout) do
-      {:ok, %Response{status: status, body: body}} when status in 200..299 ->
-        {:ok, body}
+  defp normalize_result({:ok, %Result{} = result}), do: {:ok, result}
+  defp normalize_result(:ok), do: :ok
 
-      {:ok, %Response{status: status, body: body}} ->
-        {:error, "Fuseki request failed (#{status}): #{String.trim(body)}"}
+  defp normalize_result({:error, %HTTPError{request: request, status: status}}) do
+    body =
+      request.http_response_body
+      |> Kernel.||("")
+      |> String.trim()
 
-      {:error, reason} ->
-        {:error, format_error(reason)}
+    if body == "" do
+      {:error, "Fuseki request failed (#{status})"}
+    else
+      {:error, "Fuseki request failed (#{status}): #{body}"}
     end
   end
 
-  defp headers(base_headers, opts) do
-    base_headers ++ auth_headers(opts)
+  defp normalize_result({:error, reason}), do: {:error, format_error(reason)}
+  defp normalize_result(other), do: other
+
+  defp auth_header_map(username, password)
+       when is_binary(username) and is_binary(password) do
+    %{"Authorization" => "Basic " <> Base.encode64("#{username}:#{password}")}
   end
 
-  defp auth_headers(opts) do
-    case {
-      Keyword.get(opts, :username, config()[:username]),
-      Keyword.get(opts, :password, config()[:password])
-    } do
-      {username, password} when is_binary(username) and is_binary(password) ->
-        [{"authorization", "Basic " <> Base.encode64("#{username}:#{password}")}]
-
-      _ ->
-        []
-    end
-  end
+  defp auth_header_map(_, _), do: %{}
 
   defp format_error(%{reason: reason}), do: format_error(reason)
   defp format_error(reason) when is_binary(reason), do: reason
