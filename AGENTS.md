@@ -1,7 +1,5 @@
 # Sheaf Agent Notes
 
-When the repo is coherent and tests pass, commit and push.
-
 Run `mix precommit` to run tests and format code before committing.
 
 Before changing code that uses RDF.ex heavily, read `docs/rdf-ex.md`.
@@ -28,6 +26,8 @@ I am making it to help my wife with her thesis work, and to develop
 a delightful, novel, useful system that could become useful to others, later.
 
 Therefore, do not add complexity in the name of performance.
+
+KEEP IT SIMPLE, STUPID.
 
 This codebase must remain aligned with the ideal of short, simple, supple code.
 
