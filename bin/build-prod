@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export HOME="${HOME:-$(eval echo ~$(whoami))}"
+export PATH="$HOME/.local/bin:/usr/local/bin:$HOME/.asdf/shims:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+. "$HOME/.asdf/asdf.sh"
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
+
+cd "$APP_ROOT"
+export MIX_ENV=prod
+
+mix deps.get
+mix compile
+mix assets.deploy

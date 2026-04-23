@@ -1,18 +1,52 @@
 # Sheaf
 
-To start your Phoenix server:
+Small Phoenix LiveView app for thesis work with block-addressable structure stored in Fuseki.
 
-* Run `mix setup` to install and setup dependencies
-* Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+## Development
 
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+Install dependencies and start the app:
 
-Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
+```bash
+mix setup
+mix phx.server
+```
 
-## Learn more
+The local route is `http://localhost:4000/`.
 
-* Official website: https://www.phoenixframework.org/
-* Guides: https://hexdocs.pm/phoenix/overview.html
-* Docs: https://hexdocs.pm/phoenix
-* Forum: https://elixirforum.com/c/phoenix-forum
-* Source: https://github.com/phoenixframework/phoenix
+Useful graph commands:
+
+```bash
+mix sheaf.smoke
+mix sheaf.seed_sample
+```
+
+`mix sheaf.smoke` verifies read/write access to the configured named graph.
+`mix sheaf.seed_sample` inserts a minimal thesis outline when the graph has no thesis yet.
+
+## Storage
+
+Default Fuseki configuration:
+
+* Query endpoint: `http://localhost:3030/kg/sparql`
+* Update endpoint: `http://localhost:3030/kg/update`
+* Named graph: `https://example.com/sheaf/graph/main`
+
+The vocabulary namespace is `https://example.com/sheaf/`.
+Block IRIs use `https://example.com/sheaf/<id>`.
+
+## Deployment
+
+Production build:
+
+```bash
+bin/build-prod
+```
+
+Installed service and proxy layout on this machine:
+
+* User service file: [ops/systemd/sheaf.service](/home/mbrock/sheaf/ops/systemd/sheaf.service)
+* User env file: `~/.config/sheaf/sheaf.env`
+* Service entrypoint: [bin/serve](/home/mbrock/sheaf/bin/serve)
+* Caddy snippet in repo: [ops/caddy/sheaf.example.test.caddy](/home/mbrock/sheaf/ops/caddy/sheaf.example.test.caddy)
+
+The live service listens on `127.0.0.1:4041` and Caddy terminates TLS for `https://sheaf.example.test`.

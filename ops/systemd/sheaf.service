@@ -1,0 +1,15 @@
+[Unit]
+Description=Sheaf thesis app
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/mbrock/sheaf
+EnvironmentFile=%h/.config/sheaf/sheaf.env
+ExecStart=/home/mbrock/sheaf/bin/serve
+Restart=always
+RestartSec=3
+SyslogIdentifier=sheaf
+
+[Install]
+WantedBy=default.target
