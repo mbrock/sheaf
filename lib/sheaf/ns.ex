@@ -5,6 +5,7 @@ defmodule Sheaf.NS do
     base_iri: "https://less.rest/sheaf/",
     terms: [
       :AudioBlob,
+      :Block,
       :Document,
       :Interview,
       :ParagraphBlock,

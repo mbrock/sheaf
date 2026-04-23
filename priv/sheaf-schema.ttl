@@ -23,12 +23,18 @@ sheaf:Interview a rdfs:Class ;
   rdfs:subClassOf sheaf:Transcript ;
   rdfs:comment "A recorded interview imported from the IEVA transcript system." .
 
+sheaf:Block a rdfs:Class ;
+  rdfs:label "Block" ;
+  rdfs:comment "A structural block inside a document." .
+
 sheaf:Section a rdfs:Class ;
   rdfs:label "Section" ;
+  rdfs:subClassOf sheaf:Block ;
   rdfs:comment "A headed container block inside a document." .
 
 sheaf:ParagraphBlock a rdfs:Class ;
   rdfs:label "Paragraph block" ;
+  rdfs:subClassOf sheaf:Block ;
   rdfs:comment "A stable structural block whose text lives on one or more paragraph revision entities." .
 
 sheaf:Paragraph a rdfs:Class ;
@@ -42,7 +48,6 @@ sheaf:Segment a rdfs:Class ;
 
 sheaf:Utterance a rdfs:Class ;
   rdfs:label "Utterance" ;
-  rdfs:subClassOf sheaf:ParagraphBlock ;
   rdfs:comment "A speaker-attributed transcript unit inside a segment." .
 
 sheaf:AudioBlob a rdfs:Class ;
@@ -52,7 +57,7 @@ sheaf:AudioBlob a rdfs:Class ;
 sheaf:children a rdf:Property ;
   rdfs:label "children" ;
   rdfs:range rdf:Seq ;
-  rdfs:comment "Links a container resource to an rdf:Seq that preserves the order of its child blocks." .
+  rdfs:comment "Links a container resource to an rdf:Seq that preserves the order of its child resources." .
 
 sheaf:title a rdf:Property ;
   rdfs:label "title" ;
