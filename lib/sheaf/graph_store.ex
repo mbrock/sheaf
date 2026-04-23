@@ -1,6 +1,6 @@
 defmodule Sheaf.GraphStore do
   @moduledoc """
-  Reads and writes configured Sheaf graphs via `SPARQL.Client`.
+  Reads and backs up configured Sheaf graphs via `SPARQL.Client`.
   """
 
   alias RDF.{Dataset, Graph}
@@ -20,8 +20,6 @@ defmodule Sheaf.GraphStore do
     sheaf: Sheaf.NS.Sheaf.__base_iri__(),
     xsd: "http://www.w3.org/2001/XMLSchema#"
   }
-
-  def default_graph, do: config()[:graph]
 
   def backup_graphs do
     case normalize_graph_names(config()[:backup_graphs]) do
@@ -43,26 +41,6 @@ defmodule Sheaf.GraphStore do
       File.write!(output_path, RDF.Turtle.write_string!(graph, prefixes: @prefixes))
       {:ok, output_path}
     end
-  end
-
-  def insert_graph(graph_name, %Graph{} = graph) when is_binary(graph_name) do
-    graph_name
-    |> named_graph(graph)
-    |> Client.insert_data(update_endpoint(), prefixes: @prefixes)
-    |> normalize_result()
-  end
-
-  def delete_graph_data(graph_name, %Graph{} = graph) when is_binary(graph_name) do
-    graph_name
-    |> named_graph(graph)
-    |> Client.delete_data(update_endpoint(), prefixes: @prefixes)
-    |> normalize_result()
-  end
-
-  def clear_graph(graph_name \\ default_graph()) when is_binary(graph_name) do
-    update_endpoint()
-    |> Client.clear(graph: graph_name, silent: true)
-    |> normalize_result()
   end
 
   def default_backup_path(graph_name) when is_binary(graph_name) do
@@ -95,10 +73,6 @@ defmodule Sheaf.GraphStore do
     |> Enum.uniq()
   end
 
-  defp named_graph(graph_name, %Graph{} = graph) do
-    Graph.new(graph, name: graph_name, prefixes: @prefixes)
-  end
-
   defp normalize_result(:ok), do: :ok
   defp normalize_result({:ok, %Graph{} = graph}), do: {:ok, Graph.add_prefixes(graph, @prefixes)}
 
@@ -122,8 +96,8 @@ defmodule Sheaf.GraphStore do
   defp normalize_result({:error, reason}), do: {:error, format_error(reason)}
   defp normalize_result(other), do: other
 
+  defp default_graph, do: config()[:graph]
   defp query_endpoint, do: config()[:query_endpoint]
-  defp update_endpoint, do: config()[:update_endpoint]
 
   defp auth_header_map(username, password)
        when is_binary(username) and is_binary(password) do

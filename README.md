@@ -16,11 +16,9 @@ The local route is `http://localhost:4000/`.
 Useful graph commands:
 
 ```bash
-mix sheaf.smoke
 mix sheaf.backup
 ```
 
-`mix sheaf.smoke` verifies read/write access to the configured named graph.
 `mix sheaf.backup` writes Turtle backups for the configured named graphs under `output/backups/`.
 Pass `--graph GRAPH_NAME` to limit the backup set, or repeat `--graph` to back up a specific list.
 
