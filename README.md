@@ -65,4 +65,4 @@ Installed service and proxy layout on this machine:
 * Service entrypoint: [bin/serve](/home/mbrock/sheaf/bin/serve)
 * Caddy snippet in repo: [ops/caddy/sheaf.example.test.caddy](/home/mbrock/sheaf/ops/caddy/sheaf.example.test.caddy)
 
-The live service listens on `127.0.0.1:4041` and Caddy terminates TLS for `https://sheaf.example.test`.
+The live service listens on `127.0.0.1:4041` and Caddy terminates TLS for your configured host.

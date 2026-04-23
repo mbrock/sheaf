@@ -56,7 +56,11 @@ defmodule Sheaf.InterviewsTest do
     assert String.contains?(joined, "<https://example.com/sheaf/interviews/1>")
     assert String.contains?(joined, "<https://example.com/sheaf/interviews/1/children>")
     assert String.contains?(joined, "rdf:_1 <https://example.com/sheaf/interviews/1/segments/1>")
-    assert String.contains?(joined, "<https://example.com/sheaf/interviews/1/segments/1/children>")
+
+    assert String.contains?(
+             joined,
+             "<https://example.com/sheaf/interviews/1/segments/1/children>"
+           )
 
     assert String.contains?(
              joined,
