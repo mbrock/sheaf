@@ -31,7 +31,26 @@ http_ip =
 
 http_port = String.to_integer(System.get_env("PORT", "4000"))
 
+ontology_base =
+  System.get_env("SHEAF_ONTOLOGY_BASE", "https://less.rest/sheaf/")
+  |> String.trim()
+  |> then(fn value -> if String.ends_with?(value, "/"), do: value, else: value <> "/" end)
+
+resource_base =
+  System.get_env("SHEAF_RESOURCE_BASE") ||
+    case System.get_env("PHX_HOST") do
+      nil -> "https://example.com/sheaf/"
+      "" -> "https://example.com/sheaf/"
+      host -> "https://#{String.trim(host, "/")}/"
+    end
+
+resource_base =
+  resource_base
+  |> String.trim()
+  |> then(fn value -> if String.ends_with?(value, "/"), do: value, else: value <> "/" end)
+
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
+config :sheaf, :resource_base, resource_base
 
 config :sheaf, Sheaf.Fuseki,
   query_endpoint:
@@ -40,11 +59,11 @@ config :sheaf, Sheaf.Fuseki,
     System.get_env("SHEAF_SPARQL_UPDATE_ENDPOINT", "http://localhost:3030/kg/update"),
   username: System.get_env("SHEAF_SPARQL_USERNAME", "admin"),
   password: System.get_env("SHEAF_SPARQL_PASSWORD", "admin"),
-  graph: System.get_env("SHEAF_GRAPH", "https://example.com/sheaf/graph/main"),
+  graph: System.get_env("SHEAF_GRAPH", ontology_base <> "graph/main"),
   receive_timeout: 30_000
 
 config :sheaf, Sheaf.Interviews,
-  graph: System.get_env("SHEAF_INTERVIEWS_GRAPH", "https://example.com/sheaf/graph/interviews")
+  graph: System.get_env("SHEAF_INTERVIEWS_GRAPH", ontology_base <> "graph/interviews")
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.

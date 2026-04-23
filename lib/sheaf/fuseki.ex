@@ -119,9 +119,9 @@ defmodule Sheaf.Fuseki do
 
   defp auth_headers(opts) do
     case {
-           Keyword.get(opts, :username, config()[:username]),
-           Keyword.get(opts, :password, config()[:password])
-         } do
+      Keyword.get(opts, :username, config()[:username]),
+      Keyword.get(opts, :password, config()[:password])
+    } do
       {username, password} when is_binary(username) and is_binary(password) ->
         [{"authorization", "Basic " <> Base.encode64("#{username}:#{password}")}]
 

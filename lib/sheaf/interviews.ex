@@ -17,9 +17,8 @@ defmodule Sheaf.Interviews do
   alias Sheaf.NS.Sheaf, as: SheafNS
   alias Sheaf.Prov
 
-  @default_graph "https://example.com/sheaf/graph/interviews"
+  @default_graph "https://less.rest/sheaf/graph/interviews"
   @default_max_update_bytes 200_000
-  @resource_base "https://example.com/sheaf/"
   @xsd_integer "http://www.w3.org/2001/XMLSchema#integer"
 
   defmodule Interview do
@@ -397,14 +396,17 @@ defmodule Sheaf.Interviews do
 
   defp integer_literal(value) when is_integer(value), do: ~s("#{value}"^^<#{@xsd_integer}>)
 
-  defp interview_iri(id), do: RDF.IRI.new!(@resource_base <> "interviews/" <> URI.encode(id))
+  defp interview_iri(id), do: RDF.iri(resource_base() <> "interviews/" <> URI.encode(id))
   defp segment_iri(id, index), do: RDF.IRI.new!("#{interview_iri(id)}/segments/#{index}")
 
   defp utterance_iri(id, segment_index, index),
     do: RDF.IRI.new!("#{segment_iri(id, segment_index)}/utterances/#{index}")
 
   defp children_iri(iri), do: RDF.IRI.new!("#{iri}/children")
-  defp audio_iri(hash), do: RDF.IRI.new!(@resource_base <> "audio/" <> hash)
+  defp audio_iri(hash), do: RDF.iri(resource_base() <> "audio/" <> hash)
+
+  defp resource_base, do: Id.base_iri()
+
   defp term(iri), do: Fuseki.iri_ref(iri)
 
   defp count_segments(interviews) do

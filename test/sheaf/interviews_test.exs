@@ -69,9 +69,9 @@ defmodule Sheaf.InterviewsTest do
 
     assert String.contains?(joined, ~s("Opening line."))
     assert String.contains?(joined, ~s("S2"))
-    assert String.contains?(joined, "https://example.com/sheaf/Interview")
-    assert String.contains?(joined, "https://example.com/sheaf/Utterance")
-    assert String.contains?(joined, "https://example.com/sheaf/ParagraphBlock")
-    assert String.contains?(joined, "https://example.com/sheaf/paragraph")
+    assert String.contains?(joined, "https://less.rest/sheaf/Interview")
+    assert String.contains?(joined, "https://less.rest/sheaf/Utterance")
+    assert String.contains?(joined, "https://less.rest/sheaf/ParagraphBlock")
+    assert String.contains?(joined, "https://less.rest/sheaf/paragraph")
   end
 end

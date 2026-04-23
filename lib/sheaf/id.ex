@@ -6,7 +6,6 @@ defmodule Sheaf.Id do
   @alphabet ~c"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
   @alphabet_size length(@alphabet)
   @length 6
-  @base_iri "https://example.com/sheaf/"
 
   def generate do
     for _ <- 1..@length, into: "" do
@@ -15,7 +14,7 @@ defmodule Sheaf.Id do
   end
 
   def iri(id) when is_binary(id) do
-    RDF.iri(@base_iri <> id)
+    RDF.iri(base_iri() <> id)
   end
 
   def id_from_iri(iri) when is_binary(iri) do
@@ -26,4 +25,8 @@ defmodule Sheaf.Id do
   end
 
   def id_from_iri(%RDF.IRI{} = iri), do: iri |> to_string() |> id_from_iri()
+
+  def base_iri do
+    Application.get_env(:sheaf, :resource_base, "https://example.com/sheaf/")
+  end
 end

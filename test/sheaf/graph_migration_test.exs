@@ -26,18 +26,18 @@ defmodule Sheaf.GraphMigrationTest do
     serialized = RDF.NTriples.write_string!(result.graph)
 
     assert result.migrated_blocks == 2
-    assert String.contains?(serialized, "https://example.com/sheaf/ParagraphBlock")
-    assert String.contains?(serialized, "https://example.com/sheaf/paragraph")
+    assert String.contains?(serialized, "https://less.rest/sheaf/ParagraphBlock")
+    assert String.contains?(serialized, "https://less.rest/sheaf/paragraph")
     assert String.contains?(serialized, "http://www.w3.org/ns/prov#Entity")
 
     refute String.contains?(
              serialized,
-             "<https://example.com/sheaf/PAR111> <https://example.com/sheaf/text>"
+             "<https://example.com/sheaf/PAR111> <https://less.rest/sheaf/text>"
            )
 
     refute String.contains?(
              serialized,
-             "<https://example.com/sheaf/UTT111> <https://example.com/sheaf/text>"
+             "<https://example.com/sheaf/UTT111> <https://less.rest/sheaf/text>"
            )
   end
 
