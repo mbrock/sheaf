@@ -143,7 +143,7 @@ defmodule SheafWeb.ThesisLive do
 
   defp reader_children(assigns) do
     ~H"""
-    <div class={reader_stack_class(@level)}>
+    <div class={[reader_stack_class(@level), reader_indent_class(@level)]}>
       <.reader_block :for={block <- @children} block={block} level={@level} />
     </div>
     """
@@ -154,23 +154,25 @@ defmodule SheafWeb.ThesisLive do
 
   defp reader_block(%{block: %{type: :section}} = assigns) do
     ~H"""
-    <section id={"block-#{@block.id}"} class="scroll-mt-20">
-      <div class="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
-        <div class="sheaf-ui pr-1.5 pt-2.5 text-right text-[10px] tracking-[0.08em] text-[var(--sheaf-ink-faint)] select-none">
-          {@block.id}
-        </div>
+    <details id={"block-#{@block.id}"} class="scroll-mt-20" open={section_open?(@level)}>
+      <summary class="cursor-pointer py-1.5 text-[var(--sheaf-ink)] hover:text-[var(--sheaf-ink)]">
+        <div class="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
+          <div class="sheaf-ui pr-1.5 pt-2.5 text-right text-[10px] tracking-[0.08em] text-[var(--sheaf-ink-faint)] select-none">
+            {@block.id}
+          </div>
 
-        <div class={section_heading_container_class(@level)}>
-          <h2 class={section_heading_class(@level)}>
-            {@block.heading}
-          </h2>
+          <div class={section_heading_container_class(@level)}>
+            <h2 class={section_heading_class(@level)}>
+              {@block.heading}
+            </h2>
+          </div>
         </div>
-      </div>
+      </summary>
 
-      <div class="mt-3">
+      <div class="mt-2">
         <.reader_children children={@block.children} level={@level + 1} />
       </div>
-    </section>
+    </details>
     """
   end
 
@@ -208,9 +210,16 @@ defmodule SheafWeb.ThesisLive do
   defp reader_stack_class(1), do: "space-y-6"
   defp reader_stack_class(_level), do: "space-y-4"
 
+  defp reader_indent_class(0), do: nil
+  defp reader_indent_class(1), do: "ml-3"
+  defp reader_indent_class(2), do: "ml-6"
+  defp reader_indent_class(_level), do: "ml-9"
+
   defp section_heading_container_class(0), do: "border-b border-[var(--sheaf-line)] pb-3.5"
   defp section_heading_container_class(1), do: "pb-1"
   defp section_heading_container_class(_level), do: "pb-0.5"
+
+  defp section_open?(level), do: level < 2
 
   defp section_heading_class(0) do
     "sheaf-reading text-[2rem] leading-[1.12] font-bold tracking-[-0.02em] text-[var(--sheaf-ink)]"
