@@ -37,6 +37,7 @@ sheaf-*.tar
 /priv/thesis-*.xml
 /priv/designprototype/
 /output/
+/.env
 
 # Ignore digested assets cache.
 /priv/static/cache_manifest.json

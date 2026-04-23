@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/mbrock/sheaf
-EnvironmentFile=%h/.config/sheaf/sheaf.env
+EnvironmentFile=/home/mbrock/sheaf/.env
 Environment=MIX_ENV=dev
 ExecStart=/home/mbrock/sheaf/bin/serve
 Restart=always

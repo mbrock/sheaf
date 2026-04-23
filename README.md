@@ -45,7 +45,7 @@ bin/build-prod
 Installed service and proxy layout on this machine:
 
 * User service file: [ops/systemd/sheaf.service](/home/mbrock/sheaf/ops/systemd/sheaf.service)
-* User env file: `~/.config/sheaf/sheaf.env`
+* Repo env file: [.env](/home/mbrock/sheaf/.env)
 * Service entrypoint: [bin/serve](/home/mbrock/sheaf/bin/serve)
 * Caddy snippet in repo: [ops/caddy/sheaf.example.test.caddy](/home/mbrock/sheaf/ops/caddy/sheaf.example.test.caddy)
 

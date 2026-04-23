@@ -9,4 +9,12 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
 
 cd "$APP_ROOT"
+
+if [ -f "$APP_ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$APP_ROOT/.env"
+  set +a
+fi
+
 exec mix phx.server
