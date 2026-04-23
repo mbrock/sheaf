@@ -1,7 +1,7 @@
 defmodule Mix.Tasks.Sheaf.ImportXml do
   use Mix.Task
 
-  @shortdoc "Imports thesis XML files from priv into the main Sheaf graph"
+  @shortdoc "Imports local thesis XML files into the main Sheaf graph"
 
   alias Sheaf.ThesisXml
 

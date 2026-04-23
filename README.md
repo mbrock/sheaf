@@ -28,7 +28,8 @@ mix sheaf.import_interviews
 `mix sheaf.backup_graph --all` writes Turtle backups for the configured named graphs under `output/backups/`.
 `mix sheaf.migrate_paragraphs` rewrites inline text blocks into append-only paragraph revision entities.
 `mix sheaf.seed_sample` inserts a minimal thesis outline when the graph has no thesis yet.
-`mix sheaf.import_xml` imports the thesis XML files in `priv/` into the main thesis graph.
+`mix sheaf.import_xml` imports local thesis XML files into the main thesis graph.
+With no explicit arguments it loads `priv/thesis-*.xml` in sorted order.
 `mix sheaf.import_interviews` imports the IEVA interview transcript export into a separate named graph.
 
 ## Storage

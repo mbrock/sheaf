@@ -1,7 +1,7 @@
 defmodule Sheaf.ThesisXml do
   @moduledoc """
-  Imports thesis XML files from `priv/` into the main Sheaf graph using the
-  block vocabulary already expected by the UI.
+  Imports local thesis XML files into the main Sheaf graph using the block
+  vocabulary already expected by the UI.
   """
 
   import SweetXml
@@ -18,11 +18,9 @@ defmodule Sheaf.ThesisXml do
   end
 
   def default_paths do
-    [
-      Application.app_dir(:sheaf, "priv/thesis-text-1.xml"),
-      Application.app_dir(:sheaf, "priv/thesis-meanings-and-materialities.xml"),
-      Application.app_dir(:sheaf, "priv/thesis-skills-and-consumption-work.xml")
-    ]
+    Application.app_dir(:sheaf, "priv/thesis-*.xml")
+    |> Path.wildcard()
+    |> Enum.sort()
   end
 
   def import(opts \\ []) do
@@ -195,9 +193,7 @@ defmodule Sheaf.ThesisXml do
   defp thesis_title([first | _rest]), do: first.title
 
   def root_blocks_for_documents(documents) when is_list(documents) do
-    primary = source_document_by_suffix(documents, "thesis-text-1.xml")
-    meanings = source_document_by_suffix(documents, "thesis-meanings-and-materialities.xml")
-    skills = source_document_by_suffix(documents, "thesis-skills-and-consumption-work.xml")
+    [primary, meanings, skills | _rest] = documents ++ [nil, nil, nil]
 
     primary_sections = restructure_primary_document(primary)
 
@@ -211,12 +207,6 @@ defmodule Sheaf.ThesisXml do
       primary_sections[:literature]
     ]
     |> Enum.reject(&is_nil/1)
-  end
-
-  defp source_document_by_suffix(documents, suffix) do
-    Enum.find(documents, fn document ->
-      String.ends_with?(document.path, suffix)
-    end)
   end
 
   defp restructure_primary_document(nil), do: %{}
