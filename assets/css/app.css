@@ -190,9 +190,26 @@
 
   .sheaf-prose {
     font-family: "Equity", "Iowan Old Style", Georgia, serif;
-    font-size: 1.0625rem;
-    line-height: 1.75;
+    font-size: 1rem;
+    line-height: 1.72;
     color: var(--sheaf-ink);
     text-wrap: pretty;
+  }
+
+  .sheaf-summary {
+    list-style: none;
+  }
+
+  .sheaf-summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .sheaf-disclosure {
+    transform-origin: 50% 55%;
+    transition: transform 140ms ease;
+  }
+
+  .sheaf-section[open] .sheaf-disclosure {
+    transform: rotate(90deg);
   }
 }

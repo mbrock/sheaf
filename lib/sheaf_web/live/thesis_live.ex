@@ -74,17 +74,7 @@ defmodule SheafWeb.ThesisLive do
               to load a minimal sample.
             </div>
 
-            <article :if={@thesis} class="mx-auto max-w-[72ch]">
-              <header
-                id="document-start"
-                class="mb-8 scroll-mt-20 border-b border-[var(--sheaf-line)] pb-4"
-              >
-                <div class="text-[13px] text-[var(--sheaf-ink-soft)]">{document_kind(@thesis)}</div>
-                <h1 class="sheaf-reading mt-3 text-[2.35rem] leading-[1.06] font-bold tracking-[-0.02em] text-[var(--sheaf-ink)]">
-                  {thesis_title(@thesis)}
-                </h1>
-              </header>
-
+            <article :if={@thesis} id="document-start" class="mx-auto max-w-[74ch] scroll-mt-20">
               <.reader_children children={@thesis.children} level={0} />
             </article>
           </div>
@@ -154,10 +144,20 @@ defmodule SheafWeb.ThesisLive do
 
   defp reader_block(%{block: %{type: :section}} = assigns) do
     ~H"""
-    <details id={"block-#{@block.id}"} class="scroll-mt-20" open={section_open?(@level)}>
-      <summary class="cursor-pointer py-1.5 text-[var(--sheaf-ink)] hover:text-[var(--sheaf-ink)]">
-        <div class="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
-          <div class="sheaf-ui pr-1.5 pt-2.5 text-right text-[10px] tracking-[0.08em] text-[var(--sheaf-ink-faint)] select-none">
+    <details
+      id={"block-#{@block.id}"}
+      class="sheaf-section scroll-mt-20"
+      open={section_open?(@level)}
+    >
+      <summary class="sheaf-summary cursor-pointer rounded-sm py-1 text-[var(--sheaf-ink)] hover:bg-[color-mix(in_oklab,var(--sheaf-glow)_45%,transparent)]">
+        <div class="grid grid-cols-[18px_56px_minmax(0,1fr)] gap-3">
+          <div class="pt-[0.4rem] text-center">
+            <span class="sheaf-disclosure inline-block text-[11px] text-[var(--sheaf-ink-faint)]">
+              ▸
+            </span>
+          </div>
+
+          <div class="sheaf-ui pr-1 pt-[0.42rem] text-right text-[10px] tracking-[0.08em] text-[var(--sheaf-ink-faint)] select-none">
             {@block.id}
           </div>
 
@@ -169,7 +169,7 @@ defmodule SheafWeb.ThesisLive do
         </div>
       </summary>
 
-      <div class="mt-2">
+      <div class="mt-1.5">
         <.reader_children children={@block.children} level={@level + 1} />
       </div>
     </details>
@@ -180,9 +180,10 @@ defmodule SheafWeb.ThesisLive do
     ~H"""
     <div
       id={"block-#{@block.id}"}
-      class="scroll-mt-20 grid grid-cols-[64px_minmax(0,1fr)] gap-2 py-1.5 -ml-2.5 pl-2 border-l-2 border-transparent hover:bg-[color-mix(in_oklab,var(--sheaf-glow)_60%,transparent)]"
+      class="scroll-mt-20 grid grid-cols-[18px_56px_minmax(0,1fr)] gap-3 rounded-sm py-1 pl-0.5 hover:bg-[color-mix(in_oklab,var(--sheaf-glow)_45%,transparent)]"
     >
-      <div class="sheaf-ui pr-1.5 pt-2.5 text-right text-[10px] tracking-[0.08em] text-[var(--sheaf-ink-faint)] select-none">
+      <div></div>
+      <div class="sheaf-ui pr-1 pt-[0.45rem] text-right text-[10px] tracking-[0.08em] text-[var(--sheaf-ink-faint)] select-none">
         {@block.id}
       </div>
       <p class="sheaf-prose whitespace-pre-wrap">{@block.text}</p>
@@ -206,31 +207,31 @@ defmodule SheafWeb.ThesisLive do
     end)
   end
 
-  defp reader_stack_class(0), do: "space-y-10"
-  defp reader_stack_class(1), do: "space-y-6"
-  defp reader_stack_class(_level), do: "space-y-4"
+  defp reader_stack_class(0), do: "space-y-7"
+  defp reader_stack_class(1), do: "space-y-4"
+  defp reader_stack_class(_level), do: "space-y-3"
 
   defp reader_indent_class(0), do: nil
-  defp reader_indent_class(1), do: "ml-3"
-  defp reader_indent_class(2), do: "ml-6"
-  defp reader_indent_class(_level), do: "ml-9"
+  defp reader_indent_class(1), do: "ml-4"
+  defp reader_indent_class(2), do: "ml-7"
+  defp reader_indent_class(_level), do: "ml-10"
 
-  defp section_heading_container_class(0), do: "border-b border-[var(--sheaf-line)] pb-3.5"
-  defp section_heading_container_class(1), do: "pb-1"
-  defp section_heading_container_class(_level), do: "pb-0.5"
+  defp section_heading_container_class(0), do: "border-b border-[var(--sheaf-line)] pb-2.5"
+  defp section_heading_container_class(1), do: "pb-0.5"
+  defp section_heading_container_class(_level), do: nil
 
   defp section_open?(level), do: level < 2
 
   defp section_heading_class(0) do
-    "sheaf-reading text-[2rem] leading-[1.12] font-bold tracking-[-0.02em] text-[var(--sheaf-ink)]"
+    "sheaf-reading text-[1.55rem] leading-[1.15] font-bold tracking-[-0.018em] text-[var(--sheaf-ink)]"
   end
 
   defp section_heading_class(1) do
-    "sheaf-reading text-[1.45rem] leading-[1.18] font-bold tracking-[-0.015em] text-[var(--sheaf-ink)]"
+    "sheaf-reading text-[1.22rem] leading-[1.22] font-semibold tracking-[-0.012em] text-[var(--sheaf-ink)]"
   end
 
   defp section_heading_class(_level) do
-    "sheaf-reading text-[1.2rem] leading-[1.25] font-bold text-[var(--sheaf-ink)]"
+    "sheaf-reading text-[1.02rem] leading-[1.28] font-semibold text-[var(--sheaf-ink)]"
   end
 
   defp toc_padding_class(0), do: "pl-4"
