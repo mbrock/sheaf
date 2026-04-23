@@ -8,8 +8,5 @@ export PATH="$HOME/.local/bin:/usr/local/bin:$HOME/.asdf/shims:${PATH:-/usr/bin:
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
 
-export MIX_ENV="${MIX_ENV:-prod}"
-export PHX_SERVER="${PHX_SERVER:-true}"
-
 cd "$APP_ROOT"
 exec mix phx.server
