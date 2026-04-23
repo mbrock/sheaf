@@ -29,8 +29,7 @@ sheaf-*.tar
 /priv/static/assets/
 /priv/static/*.gz
 /priv/static/*-[0-9a-f]*.*
-/priv/static/fonts/*.gz
-/priv/static/fonts/*-[0-9a-f]*.*
+/priv/static/fonts/
 /priv/static/images/*.gz
 /priv/static/images/*-[0-9a-f]*.*
 
