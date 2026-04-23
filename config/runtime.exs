@@ -60,28 +60,33 @@ interview_graph =
   System.get_env("SHEAF_INTERVIEW_GRAPH", ontology_base <> "graph/interviews")
   |> String.trim()
 
+sparql_username = System.get_env("SHEAF_SPARQL_USERNAME", "admin")
+sparql_password = System.get_env("SHEAF_SPARQL_PASSWORD", "admin")
+
+sparql_http_headers =
+  if sparql_username != "" and sparql_password != "" do
+    %{"Authorization" => "Basic " <> Base.encode64("#{sparql_username}:#{sparql_password}")}
+  else
+    %{}
+  end
+
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
 config :sheaf, :resource_base, resource_base
 
 config :sheaf, Sheaf.GraphStore,
   query_endpoint:
     System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", "http://localhost:3030/kg/sparql"),
-  update_endpoint:
-    System.get_env("SHEAF_SPARQL_UPDATE_ENDPOINT", "http://localhost:3030/kg/update"),
-  username: System.get_env("SHEAF_SPARQL_USERNAME", "admin"),
-  password: System.get_env("SHEAF_SPARQL_PASSWORD", "admin"),
   graph: default_graph,
   backup_graphs:
     [default_graph, interview_graph]
     |> Enum.reject(&(&1 == ""))
-    |> Enum.uniq(),
-  receive_timeout: sparql_receive_timeout
+    |> Enum.uniq()
 
 config :sparql_client,
   query_request_method: :post,
   update_request_method: :url_encoded,
   tesla_request_opts: [adapter: [receive_timeout: sparql_receive_timeout]],
-  http_headers: &Sheaf.GraphStore.default_http_headers/2
+  http_headers: sparql_http_headers
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
