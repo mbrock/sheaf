@@ -1,0 +1,33 @@
+{
+  "private": true,
+  "version": "1.0.0",
+  "name": "website",
+  "description": "Website for the RDF projects in Elixir",
+  "scripts": {
+    "dev": "vuepress dev content",
+    "build": "vuepress build content",
+    "view-info": "vuepress view-info content",
+    "show-help": "vuepress --help"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rdf-elixir/website.git"
+  },
+  "keywords": [
+    "documentation",
+    "rdf",
+    "sparql"
+  ],
+  "author": "Marcel Otto",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/rdf-elixir/website/issues"
+  },
+  "homepage": "https://github.com/rdf-elixir/website#readme",
+  "devDependencies": {
+    "@vuepress/plugin-active-header-links": "^1.9.3",
+    "@vuepress/plugin-back-to-top": "^1.9.3",
+    "@vuepress/plugin-pwa": "^1.9.3",
+    "vuepress": "^1.9.3"
+  }
+}
