@@ -3,20 +3,21 @@ defmodule Mix.Tasks.Sheaf.Schema do
 
   @shortdoc "Uploads priv/sheaf-schema.ttl to the schema named graph"
 
-  alias Sheaf.NS.Sheaf, as: SHEAF
+  alias Sheaf.NS.SHEAF
 
   @impl Mix.Task
   def run(_args) do
     Mix.Task.run("app.start")
 
     Req.put!(data_endpoint(),
-      params: [graph: RDF.IRI.to_string(SHEAF)],
+      finch: Sheaf.Finch,
+      params: [graph: SHEAF.__base_iri__()],
       headers: [{"content-type", "text/turtle"} | auth_headers()],
       body: File.read!(schema_path())
     )
     |> case do
       %{status: status} when status in 200..299 ->
-        Mix.shell().info("Uploaded schema graph #{SHEAF}")
+        Mix.shell().info("Uploaded schema graph #{SHEAF.__base_iri__()}")
 
       %{status: status, body: body} ->
         Mix.raise("Failed to upload schema graph (#{status}): #{body}")
@@ -25,6 +26,7 @@ defmodule Mix.Tasks.Sheaf.Schema do
 
   defp auth_headers do
     Application.get_env(:sparql_client, :http_headers, %{})
+    |> Enum.map(fn {key, value} -> {String.downcase(to_string(key)), value} end)
   end
 
   defp schema_path do

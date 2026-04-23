@@ -1,6 +1,6 @@
 defmodule Sheaf.Thesis do
   @moduledoc """
-  Reads the thesis outline from the configured dataset default graph.
+  Reads a thesis outline from a named graph.
   """
 
   alias RDF.{Description, Graph}
@@ -16,22 +16,20 @@ defmodule Sheaf.Thesis do
     defstruct [:id, :iri, :type, :heading, :text, children: []]
   end
 
-  @rdf_membership_prefix "http://www.w3.org/1999/02/22-rdf-syntax-ns#_"
-
-  def fetch_outline do
-    with {:ok, graph} <- Sheaf.fetch_graph() do
+  def fetch_outline(id) do
+    with {:ok, graph} <- Sheaf.fetch_graph(Id.iri(id)) do
       {:ok, from_graph(graph)}
     end
   end
 
-  def from_graph(%Graph{} = graph) do
+  def from_graph(graph) do
     case root_document_iri(graph) do
       nil -> nil
       iri -> build_document(graph, iri)
     end
   end
 
-  defp build_document(%Graph{} = graph, iri) do
+  defp build_document(graph, iri) do
     description = Graph.description(graph, iri)
 
     %Document{
@@ -89,7 +87,7 @@ defmodule Sheaf.Thesis do
     |> Description.first(SHEAF.children())
     |> case do
       nil -> []
-      sequence_iri -> sequence_members(graph, sequence_iri) |> Enum.map(&build_block(graph, &1))
+      list_iri -> list_members(graph, list_iri) |> Enum.map(&build_block(graph, &1))
     end
   end
 
@@ -122,36 +120,13 @@ defmodule Sheaf.Thesis do
     end
   end
 
-  defp sequence_members(%Graph{} = graph, sequence_iri) do
-    graph
-    |> Graph.description(sequence_iri)
-    |> Description.predicates()
-    |> Enum.flat_map(fn predicate ->
-      case membership_position(predicate) do
-        nil ->
-          []
+  defp list_members(%Graph{} = graph, list_iri) do
+    case RDF.List.new(list_iri, graph) do
+      %RDF.List{} = list ->
+        RDF.List.values(list)
 
-        position ->
-          graph
-          |> Graph.description(sequence_iri)
-          |> Description.get(predicate, [])
-          |> Enum.map(&{position, &1})
-      end
-    end)
-    |> Enum.sort_by(fn {position, iri} -> {position, iri} end)
-    |> Enum.map(&elem(&1, 1))
-  end
-
-  defp membership_position(predicate) do
-    case to_string(predicate) do
-      <<@rdf_membership_prefix::binary, suffix::binary>> ->
-        case Integer.parse(suffix) do
-          {position, ""} -> position
-          _ -> nil
-        end
-
-      _ ->
-        nil
+      nil ->
+        raise ArgumentError, "expected #{inspect(list_iri)} to be an RDF list"
     end
   end
 

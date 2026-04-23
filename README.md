@@ -20,7 +20,7 @@ mix sheaf.backup
 mix sheaf.schema
 ```
 
-`mix sheaf.backup` writes a Turtle backup of the configured dataset default graph under `output/backups/`.
+`mix sheaf.backup` writes a TriG backup of the configured dataset under `output/backups/`.
 `mix sheaf.schema` uploads `priv/sheaf-schema.ttl` to the schema named graph.
 
 ## Storage

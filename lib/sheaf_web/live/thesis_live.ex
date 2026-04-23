@@ -4,9 +4,9 @@ defmodule SheafWeb.ThesisLive do
   alias Sheaf.Thesis
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(%{"id" => id}, _session, socket) do
     socket =
-      case Thesis.fetch_outline() do
+      case Thesis.fetch_outline(id) do
         {:ok, thesis} ->
           socket
           |> assign(:page_title, page_title(thesis))

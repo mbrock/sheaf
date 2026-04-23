@@ -56,8 +56,8 @@ sheaf:AudioBlob a rdfs:Class ;
 
 sheaf:children a rdf:Property ;
   rdfs:label "children" ;
-  rdfs:range rdf:Seq ;
-  rdfs:comment "Links a container resource to an rdf:Seq that preserves the order of its child resources." .
+  rdfs:range rdf:List ;
+  rdfs:comment "Links a container resource to an RDF list that preserves the order of its child resources." .
 
 sheaf:title a rdf:Property ;
   rdfs:label "title" ;

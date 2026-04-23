@@ -1,9 +1,9 @@
 defmodule Mix.Tasks.Sheaf.Backup do
   use Mix.Task
 
-  @shortdoc "Backs up the configured dataset default graph to a Turtle file"
+  @shortdoc "Backs up the configured dataset to a TriG file"
 
-  alias RDF.Turtle
+  alias RDF.TriG
 
   @impl Mix.Task
   def run(args) do
@@ -16,9 +16,9 @@ defmodule Mix.Tasks.Sheaf.Backup do
       [] ->
         output_path = output_path(opts)
 
-        case backup_graph(output_path) do
+        case backup_dataset(output_path) do
           {:ok, path} ->
-            Mix.shell().info("Backed up the default graph to #{path}")
+            Mix.shell().info("Backed up the dataset to #{path}")
 
           {:error, message} ->
             Mix.raise(message)
@@ -33,10 +33,10 @@ defmodule Mix.Tasks.Sheaf.Backup do
     Keyword.get_lazy(opts, :output, &default_backup_path/0)
   end
 
-  defp backup_graph(output_path) do
-    with {:ok, graph} <- Sheaf.fetch_graph() do
+  defp backup_dataset(output_path) do
+    with {:ok, dataset} <- Sheaf.fetch_dataset() do
       File.mkdir_p!(Path.dirname(output_path))
-      File.write!(output_path, Turtle.write_string!(graph))
+      File.write!(output_path, TriG.write_string!(dataset))
       {:ok, output_path}
     end
   end
@@ -48,6 +48,6 @@ defmodule Mix.Tasks.Sheaf.Backup do
       |> NaiveDateTime.to_iso8601()
       |> String.replace(":", "-")
 
-    Path.join(["output", "backups", "default-#{timestamp}.ttl"])
+    Path.join(["output", "backups", "default-#{timestamp}.trig"])
   end
 end
