@@ -5,7 +5,7 @@ defmodule Sheaf.Thesis do
 
   alias RDF.{Description, Graph}
   alias Sheaf.Id
-  alias Sheaf.NS.Sheaf, as: SheafNS
+  alias Sheaf.NS.SHEAF
   alias Sheaf.Prov
 
   defmodule Document do
@@ -38,7 +38,7 @@ defmodule Sheaf.Thesis do
       id: Id.id_from_iri(iri),
       iri: iri,
       kind: document_kind(graph, iri),
-      title: literal_value(Description.first(description, SheafNS.title())) || "Untitled thesis",
+      title: literal_value(Description.first(description, SHEAF.title())) || "Untitled thesis",
       children: build_children(graph, iri)
     }
   end
@@ -47,17 +47,17 @@ defmodule Sheaf.Thesis do
     description = Graph.description(graph, iri)
 
     cond do
-      typed?(description, SheafNS.Section) ->
+      typed?(description, SHEAF.Section) ->
         %Block{
           id: Id.id_from_iri(iri),
           iri: iri,
           type: :section,
           heading:
-            literal_value(Description.first(description, SheafNS.heading())) || "Untitled section",
+            literal_value(Description.first(description, SHEAF.heading())) || "Untitled section",
           children: build_children(graph, iri)
         }
 
-      typed?(description, SheafNS.ParagraphBlock) ->
+      typed?(description, SHEAF.ParagraphBlock) ->
         %Block{
           id: Id.id_from_iri(iri),
           iri: iri,
@@ -65,12 +65,12 @@ defmodule Sheaf.Thesis do
           text: current_paragraph_text(graph, description) || ""
         }
 
-      typed?(description, SheafNS.Paragraph) ->
+      typed?(description, SHEAF.Paragraph) ->
         %Block{
           id: Id.id_from_iri(iri),
           iri: iri,
           type: :paragraph,
-          text: literal_value(Description.first(description, SheafNS.text())) || ""
+          text: literal_value(Description.first(description, SHEAF.text())) || ""
         }
 
       true ->
@@ -86,7 +86,7 @@ defmodule Sheaf.Thesis do
   defp build_children(%Graph{} = graph, container_iri) do
     graph
     |> Graph.description(container_iri)
-    |> Description.first(SheafNS.children())
+    |> Description.first(SHEAF.children())
     |> case do
       nil -> []
       sequence_iri -> sequence_members(graph, sequence_iri) |> Enum.map(&build_block(graph, &1))
@@ -101,13 +101,13 @@ defmodule Sheaf.Thesis do
       paragraph_iri ->
         graph
         |> Graph.description(paragraph_iri)
-        |> Description.first(SheafNS.text())
+        |> Description.first(SHEAF.text())
         |> literal_value()
     end
   end
 
   defp active_paragraph_iri(%Graph{} = graph, %Description{} = description) do
-    revisions = Description.get(description, SheafNS.paragraph(), [])
+    revisions = Description.get(description, SHEAF.paragraph(), [])
 
     Enum.find(revisions, &(not invalidated?(graph, &1))) || List.last(revisions)
   end
@@ -156,9 +156,9 @@ defmodule Sheaf.Thesis do
   end
 
   defp root_document_iri(%Graph{} = graph) do
-    find_typed_subject(graph, SheafNS.Thesis) ||
-      find_typed_subject(graph, SheafNS.Transcript) ||
-      find_typed_subject(graph, SheafNS.Document)
+    find_typed_subject(graph, SHEAF.Thesis) ||
+      find_typed_subject(graph, SHEAF.Transcript) ||
+      find_typed_subject(graph, SHEAF.Document)
   end
 
   defp find_typed_subject(%Graph{} = graph, type) do
@@ -177,8 +177,8 @@ defmodule Sheaf.Thesis do
     description = Graph.description(graph, iri)
 
     cond do
-      typed?(description, SheafNS.Thesis) -> :thesis
-      typed?(description, SheafNS.Transcript) -> :transcript
+      typed?(description, SHEAF.Thesis) -> :thesis
+      typed?(description, SHEAF.Transcript) -> :transcript
       true -> :document
     end
   end

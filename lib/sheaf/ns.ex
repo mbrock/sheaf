@@ -1,7 +1,7 @@
 defmodule Sheaf.NS do
   use RDF.Vocabulary.Namespace
 
-  defvocab(Sheaf,
+  defvocab(SHEAF,
     base_iri: "https://less.rest/sheaf/",
     terms: [
       :AudioBlob,
