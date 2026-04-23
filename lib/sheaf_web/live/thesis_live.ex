@@ -26,30 +26,64 @@ defmodule SheafWeb.ThesisLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-8 sm:px-6 lg:px-8">
-      <header class="border-b border-stone-200 pb-6">
-        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">Sheaf</p>
-        <h1 class="mt-3 text-3xl font-semibold tracking-tight text-stone-950 sm:text-4xl">
-          {thesis_title(@thesis)}
-        </h1>
-        <p class="mt-2 text-sm text-stone-600">
-          Structured thesis blocks loaded from Fuseki.
-        </p>
-      </header>
+    <div class="min-h-screen bg-[var(--sheaf-paper)]">
+      <div class="mx-auto grid min-h-screen max-w-[1440px] grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside class="border-b border-[var(--sheaf-line)] px-4 py-5 lg:border-r lg:border-b-0 lg:px-5 lg:py-6">
+          <div class="lg:sticky lg:top-0">
+            <p class="sheaf-ui text-[11px] uppercase text-[var(--sheaf-amber)]">Sheaf</p>
+            <h1 class="sheaf-reading mt-2.5 text-[1.9rem] leading-[1.1] font-bold tracking-[-0.02em] text-[var(--sheaf-ink)]">
+              {thesis_title(@thesis)}
+            </h1>
+            <p class="mt-3 max-w-[26ch] text-[13px] leading-6 text-[var(--sheaf-ink-soft)]">
+              Structured, block-addressable thesis text loaded from Fuseki and rendered as a nested outline.
+            </p>
 
-      <main class="flex-1 py-8">
-        <div :if={@error} class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {render_error(@error)}
-        </div>
+            <div class="mt-5 border-t border-[var(--sheaf-line)] pt-3">
+              <div class="sheaf-ui text-[10px] uppercase text-[var(--sheaf-ink-muted)]">Document</div>
+              <div class="mt-1.5 text-[13px] leading-6 text-[var(--sheaf-ink-soft)]">
+                <p>{document_kind(@thesis)}</p>
+                <p :if={@thesis} class="sheaf-ui mt-2 text-[11px] text-[var(--sheaf-ink-muted)]">
+                  {@thesis.id}
+                </p>
+              </div>
+            </div>
+          </div>
+        </aside>
 
-        <div :if={is_nil(@error) and is_nil(@thesis)} class="rounded-xl border border-stone-200 bg-white px-4 py-5 text-sm text-stone-600">
-          No thesis document is present in the named graph yet. Run <code class="rounded bg-stone-100 px-1 py-0.5 text-stone-950">mix sheaf.seed_sample</code> to load a minimal sample.
-        </div>
+        <main class="min-w-0 border-t border-[var(--sheaf-line)] lg:border-t-0">
+          <div class="border-b border-[var(--sheaf-line)] px-5 py-3 sm:px-7">
+            <div class="flex flex-wrap items-center gap-2 text-[13px]">
+              <span class="text-[var(--sheaf-ink-soft)]">{document_kind(@thesis)}</span>
+              <span class="text-[var(--sheaf-ink-faint)]">›</span>
+              <span class="text-[var(--sheaf-ink)]">outline</span>
+            </div>
+          </div>
 
-        <div :if={@thesis} class="space-y-4">
-          <.outline_children children={@thesis.children} level={0} />
-        </div>
-      </main>
+          <div class="px-3 py-6 sm:px-7 sm:py-7">
+            <div
+              :if={@error}
+              class="max-w-4xl border-l-2 border-rose-400 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+            >
+              {render_error(@error)}
+            </div>
+
+            <div
+              :if={is_nil(@error) and is_nil(@thesis)}
+              class="max-w-4xl border border-[var(--sheaf-line)] bg-[var(--sheaf-raised)] px-5 py-5 text-sm leading-7 text-[var(--sheaf-ink-soft)]"
+            >
+              No thesis document is present in the named graph yet. Run
+              <code class="sheaf-ui rounded bg-[var(--sheaf-paper)] px-1.5 py-0.5 text-[var(--sheaf-ink)]">
+                mix sheaf.seed_sample
+              </code>
+              to load a minimal sample.
+            </div>
+
+            <div :if={@thesis} class="mx-auto max-w-[74ch] space-y-3">
+              <.outline_children children={@thesis.children} level={0} />
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
     """
   end
@@ -59,7 +93,7 @@ defmodule SheafWeb.ThesisLive do
 
   defp outline_children(assigns) do
     ~H"""
-    <div class="space-y-4">
+    <div class="space-y-2.5">
       <.outline_block :for={block <- @children} block={block} level={@level} />
     </div>
     """
@@ -72,21 +106,26 @@ defmodule SheafWeb.ThesisLive do
     ~H"""
     <details
       class={[
-        "overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm",
+        "overflow-hidden border border-[var(--sheaf-line)] bg-[color-mix(in_oklab,var(--sheaf-raised)_55%,white)]",
         indentation_class(@level)
       ]}
       open={@level < 2}
     >
-      <summary class="cursor-pointer px-4 py-3">
-        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-stone-500">
-          Section
-        </p>
-        <h2 class="mt-1 inline text-lg font-medium text-stone-950">
-          {@block.heading}
-        </h2>
+      <summary class="cursor-pointer list-none border-l-2 border-transparent px-3 py-2.5 hover:bg-[var(--sheaf-glow)]">
+        <div class="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
+          <div class="sheaf-ui pt-1 text-right text-[10px] text-[var(--sheaf-ink-faint)]">
+            {@block.id}
+          </div>
+          <div>
+            <p class="sheaf-ui text-[10px] uppercase text-[var(--sheaf-amber)]">Section</p>
+            <h2 class="sheaf-reading mt-0.5 text-[1.2rem] leading-[1.2] font-bold text-[var(--sheaf-ink)]">
+              {@block.heading}
+            </h2>
+          </div>
+        </div>
       </summary>
 
-      <div class="border-t border-stone-200 px-4 py-4">
+      <div class="border-t border-[var(--sheaf-line)] px-3 py-2.5">
         <.outline_children children={@block.children} level={@level + 1} />
       </div>
     </details>
@@ -95,22 +134,31 @@ defmodule SheafWeb.ThesisLive do
 
   defp outline_block(%{block: %{type: :paragraph}} = assigns) do
     ~H"""
-    <div class={["border-l border-stone-200 pl-4 text-base leading-7 text-stone-700", indentation_class(@level)]}>
-      <p class="max-w-none whitespace-pre-wrap">{@block.text}</p>
+    <div class={[
+      "grid grid-cols-[64px_minmax(0,1fr)] gap-2 border-l-2 border-transparent pl-2 pr-1 py-1.5 hover:bg-[color-mix(in_oklab,var(--sheaf-glow)_60%,transparent)]",
+      indentation_class(@level)
+    ]}>
+      <div class="sheaf-ui pr-1.5 pt-2 text-right text-[10px] text-[var(--sheaf-ink-faint)]">
+        {@block.id}
+      </div>
+      <p class="sheaf-prose max-w-none whitespace-pre-wrap">{@block.text}</p>
     </div>
     """
   end
 
   defp indentation_class(0), do: nil
-  defp indentation_class(1), do: "ml-4"
-  defp indentation_class(2), do: "ml-8"
-  defp indentation_class(_level), do: "ml-12"
+  defp indentation_class(1), do: "ml-3"
+  defp indentation_class(2), do: "ml-6"
+  defp indentation_class(_level), do: "ml-9"
 
   defp page_title(nil), do: "Sheaf"
   defp page_title(thesis), do: thesis_title(thesis)
 
   defp thesis_title(nil), do: "Sheaf"
   defp thesis_title(thesis), do: thesis.title
+
+  defp document_kind(nil), do: "document"
+  defp document_kind(thesis), do: thesis.kind |> Atom.to_string() |> String.replace("_", " ")
 
   defp render_error(reason) when is_binary(reason), do: reason
   defp render_error(reason), do: inspect(reason)

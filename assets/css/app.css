@@ -103,3 +103,96 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+@font-face {
+  font-family: "Equity";
+  src: url("/fonts/EquityOTA-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Equity";
+  src: url("/fonts/EquityOTA-Italic.otf") format("opentype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Equity";
+  src: url("/fonts/EquityOTA-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("/fonts/BerkeleyMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("/fonts/BerkeleyMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --sheaf-paper: #f4f0e6;
+    --sheaf-raised: #ece7d9;
+    --sheaf-glow: #e5dfcb;
+    --sheaf-pick: #e7dfb8;
+    --sheaf-line: #d6cfbb;
+    --sheaf-line-faint: #e4ddca;
+    --sheaf-line-strong: #bab2a0;
+    --sheaf-ink: #1a1814;
+    --sheaf-ink-soft: #53504a;
+    --sheaf-ink-muted: #8a8679;
+    --sheaf-ink-faint: #b4ad9c;
+    --sheaf-amber: #8a5a12;
+    --sheaf-amber-soft: #c29a52;
+    --sheaf-teal: #1e6b75;
+  }
+
+  html,
+  body {
+    min-height: 100%;
+    background: var(--sheaf-paper);
+    color: var(--sheaf-ink);
+  }
+
+  body {
+    font-family: system-ui, sans-serif;
+  }
+
+  ::selection {
+    background: var(--sheaf-pick);
+    color: var(--sheaf-ink);
+  }
+}
+
+@layer components {
+  .sheaf-ui {
+    font-family: "Berkeley Mono", ui-monospace, monospace;
+    letter-spacing: 0.03em;
+  }
+
+  .sheaf-reading {
+    font-family: "Equity", "Iowan Old Style", Georgia, serif;
+  }
+
+  .sheaf-prose {
+    font-family: "Equity", "Iowan Old Style", Georgia, serif;
+    font-size: 1.0625rem;
+    line-height: 1.75;
+    color: var(--sheaf-ink);
+    text-wrap: pretty;
+  }
+}
