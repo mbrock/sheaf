@@ -4,14 +4,14 @@ defmodule Mix.Tasks.Sheaf.Schema do
   @shortdoc "Uploads priv/sheaf-schema.ttl to the schema named graph"
 
   alias RDF.Serialization
-  alias Sheaf.NS.SHEAF
+  alias Sheaf.DOC
 
   @impl Mix.Task
   def run(_args) do
     Mix.Task.run("app.start")
 
-    Sheaf.put_graph(SHEAF.__base_iri__(), Serialization.read_file!(schema_path()))
-    Mix.shell().info("Uploaded schema graph #{SHEAF.__base_iri__()}")
+    Sheaf.put_graph(DOC.__base_iri__(), Serialization.read_file!(schema_path()))
+    Mix.shell().info("Uploaded schema graph #{DOC.__base_iri__()}")
   end
 
   defp schema_path do

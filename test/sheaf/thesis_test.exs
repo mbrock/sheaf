@@ -2,7 +2,7 @@ defmodule Sheaf.ThesisTest do
   use ExUnit.Case, async: true
 
   alias Sheaf.Thesis
-  alias Sheaf.NS.SHEAF
+  alias Sheaf.DOC
 
   test "from_graph reconstructs nested blocks in RDF list order" do
     thesis = RDF.IRI.new!("https://example.com/sheaf/DOC123")
@@ -20,28 +20,28 @@ defmodule Sheaf.ThesisTest do
 
     graph =
       RDF.Graph.new([
-        {thesis, RDF.type(), SHEAF.Document},
-        {thesis, RDF.type(), SHEAF.Thesis},
-        {thesis, SHEAF.title(), RDF.literal("Example Thesis")},
-        {thesis, SHEAF.children(), root_list},
-        {intro, RDF.type(), SHEAF.Section},
-        {intro, SHEAF.heading(), RDF.literal("Introduction")},
-        {intro, SHEAF.children(), intro_list},
-        {first_paragraph, RDF.type(), SHEAF.ParagraphBlock},
-        {first_paragraph, SHEAF.paragraph(), first_paragraph_revision},
-        {first_paragraph_revision, RDF.type(), SHEAF.Paragraph},
-        {first_paragraph_revision, SHEAF.text(), RDF.literal("Opening paragraph.")},
-        {nested_section, RDF.type(), SHEAF.Section},
-        {nested_section, SHEAF.heading(), RDF.literal("Research Questions")},
-        {nested_section, SHEAF.children(), nested_list},
-        {nested_paragraph, RDF.type(), SHEAF.ParagraphBlock},
-        {nested_paragraph, SHEAF.paragraph(), nested_paragraph_revision},
-        {nested_paragraph_revision, RDF.type(), SHEAF.Paragraph},
-        {nested_paragraph_revision, SHEAF.text(), RDF.literal("Nested paragraph.")},
-        {tail_paragraph, RDF.type(), SHEAF.ParagraphBlock},
-        {tail_paragraph, SHEAF.paragraph(), tail_paragraph_revision},
-        {tail_paragraph_revision, RDF.type(), SHEAF.Paragraph},
-        {tail_paragraph_revision, SHEAF.text(), RDF.literal("Trailing paragraph.")}
+        {thesis, RDF.type(), DOC.Document},
+        {thesis, RDF.type(), DOC.Thesis},
+        {thesis, DOC.title(), RDF.literal("Example Thesis")},
+        {thesis, DOC.children(), root_list},
+        {intro, RDF.type(), DOC.Section},
+        {intro, DOC.heading(), RDF.literal("Introduction")},
+        {intro, DOC.children(), intro_list},
+        {first_paragraph, RDF.type(), DOC.ParagraphBlock},
+        {first_paragraph, DOC.paragraph(), first_paragraph_revision},
+        {first_paragraph_revision, RDF.type(), DOC.Paragraph},
+        {first_paragraph_revision, DOC.text(), RDF.literal("Opening paragraph.")},
+        {nested_section, RDF.type(), DOC.Section},
+        {nested_section, DOC.heading(), RDF.literal("Research Questions")},
+        {nested_section, DOC.children(), nested_list},
+        {nested_paragraph, RDF.type(), DOC.ParagraphBlock},
+        {nested_paragraph, DOC.paragraph(), nested_paragraph_revision},
+        {nested_paragraph_revision, RDF.type(), DOC.Paragraph},
+        {nested_paragraph_revision, DOC.text(), RDF.literal("Nested paragraph.")},
+        {tail_paragraph, RDF.type(), DOC.ParagraphBlock},
+        {tail_paragraph, DOC.paragraph(), tail_paragraph_revision},
+        {tail_paragraph_revision, RDF.type(), DOC.Paragraph},
+        {tail_paragraph_revision, DOC.text(), RDF.literal("Trailing paragraph.")}
       ])
       |> then(fn graph ->
         RDF.list([intro, tail_paragraph], graph: graph, head: root_list).graph
