@@ -1,9 +1,9 @@
-export const ThesisBreadcrumb = {
+export const DocumentBreadcrumb = {
   mounted() {
     this.article = this.el.querySelector("#document-start")
     this.document = this.article?.firstElementChild
     this.toc = this.el.querySelector("aside")
-    this.output = this.el.querySelector("#thesis-breadcrumb")
+    this.output = this.el.querySelector("#document-breadcrumb")
     this.copyButton = this.el.querySelector("#copy-markdown")
     this.activeSections = new Set()
     this.tocLinks = new Map()

@@ -15,7 +15,7 @@ defmodule Sheaf.Documents do
   PREFIX foaf: <http://xmlns.com/foaf/0.1/>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-  SELECT ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages WHERE {
+  SELECT ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages ?pageCount WHERE {
     GRAPH ?graph {
       ?doc a sheaf:Document .
       OPTIONAL { ?doc rdfs:label ?title }
@@ -23,6 +23,12 @@ defmodule Sheaf.Documents do
         ?doc a ?kind .
         FILTER(?kind IN (sheaf:Paper, sheaf:Thesis, sheaf:Transcript))
       }
+    }
+    OPTIONAL {
+      SELECT ?doc ((MAX(?sp) - MIN(?sp) + 1) AS ?pageCount) WHERE {
+        GRAPH ?doc { ?node sheaf:sourcePage ?sp }
+      }
+      GROUP BY ?doc
     }
     OPTIONAL {
       GRAPH <https://less.rest/sheaf/metadata> {
@@ -100,6 +106,7 @@ defmodule Sheaf.Documents do
       doi: value(rows, "doi"),
       issue: value(rows, "issue"),
       kind: value(rows, "metadataKind") |> kind_name(),
+      page_count: integer_value(rows, "pageCount"),
       pages: value(rows, "pages"),
       publisher: value(rows, "publisherTitle"),
       title: value(rows, "metadataTitle"),
@@ -117,6 +124,19 @@ defmodule Sheaf.Documents do
       {_key, nil} -> true
       {_key, _value} -> false
     end)
+  end
+
+  defp integer_value(rows, key) do
+    case value(rows, key) do
+      nil ->
+        nil
+
+      string ->
+        case Integer.parse(string) do
+          {int, _} -> int
+          :error -> nil
+        end
+    end
   end
 
   defp values(rows, key) do

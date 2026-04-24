@@ -5,12 +5,20 @@ defmodule Sheaf.PaperImport do
 
   alias RDF.Graph
   alias RDF.NS.RDFS
-  alias Sheaf.DatalabJSON
-  alias Sheaf.NS.DOC
+  alias Sheaf.{BlobStore, DatalabJSON}
+  alias Sheaf.NS.{DOC, FABIO}
 
   def import_file(path, opts \\ []) do
-    with {:ok, document} <- DatalabJSON.read_file(path) do
-      result = build_graph(document, Keyword.put_new(opts, :source_path, path))
+    with {:ok, document} <- DatalabJSON.read_file(path),
+         {:ok, source_file} <- source_file_for(path, opts) do
+      result =
+        document
+        |> build_graph(
+          opts
+          |> Keyword.put_new(:source_path, path)
+          |> put_source_file(source_file)
+        )
+
       :ok = Sheaf.put_graph(result.document, result.graph)
       {:ok, result}
     end
@@ -21,16 +29,19 @@ defmodule Sheaf.PaperImport do
     document_iri = Keyword.get_lazy(opts, :document, mint)
     title = Keyword.get(opts, :title) || title(document)
     source_path = Keyword.get(opts, :source_path)
+    source_file = Keyword.get(opts, :source_file)
+    source_file_iri = source_file && Keyword.get_lazy(opts, :source_file_iri, mint)
 
     blocks = DatalabJSON.document_blocks(document)
     node_iris = node_iris(blocks, mint)
 
     graph =
       Graph.new(document_triples(document_iri, title, source_path))
+      |> add_source_file(document_iri, source_file, source_file_iri)
       |> add_children(document_iri, blocks, node_iris, mint)
       |> add_nodes(blocks, node_iris, mint)
 
-    %{document: document_iri, graph: graph, title: title}
+    %{document: document_iri, graph: graph, source_file: source_file, title: title}
   end
 
   defp document_triples(document_iri, title, source_path) do
@@ -40,6 +51,37 @@ defmodule Sheaf.PaperImport do
       {document_iri, RDFS.label(), RDF.literal(title)}
     ]
     |> maybe_add(source_path, fn path -> {document_iri, DOC.sourceKey(), RDF.literal(path)} end)
+  end
+
+  defp add_source_file(graph, _document_iri, nil, _source_file_iri), do: graph
+
+  defp add_source_file(graph, document_iri, source_file, source_file_iri) do
+    Graph.add(graph, source_file_triples(document_iri, source_file, source_file_iri))
+  end
+
+  defp source_file_triples(document_iri, source_file, source_file_iri) do
+    [
+      {document_iri, DOC.sourceFile(), source_file_iri},
+      {source_file_iri, RDF.type(), FABIO.ComputerFile}
+    ]
+    |> maybe_add(source_file_value(source_file, :original_filename), fn filename ->
+      {source_file_iri, RDFS.label(), RDF.literal(filename)}
+    end)
+    |> maybe_add(source_file_value(source_file, :hash), fn hash ->
+      {source_file_iri, DOC.sha256(), RDF.literal(hash)}
+    end)
+    |> maybe_add(source_file_value(source_file, :storage_key), fn key ->
+      {source_file_iri, DOC.sourceKey(), RDF.literal(key)}
+    end)
+    |> maybe_add(source_file_value(source_file, :mime_type), fn mime_type ->
+      {source_file_iri, DOC.mimeType(), RDF.literal(mime_type)}
+    end)
+    |> maybe_add(source_file_value(source_file, :byte_size), fn byte_size ->
+      {source_file_iri, DOC.byteSize(), RDF.literal(byte_size)}
+    end)
+    |> maybe_add(source_file_value(source_file, :original_filename), fn filename ->
+      {source_file_iri, DOC.originalFilename(), RDF.literal(filename)}
+    end)
   end
 
   defp add_nodes(graph, blocks, node_iris, mint) do
@@ -102,6 +144,51 @@ defmodule Sheaf.PaperImport do
 
   defp flatten_nodes(nodes) do
     Enum.flat_map(nodes, fn node -> [node | flatten_nodes(Map.get(node, :children, []))] end)
+  end
+
+  defp source_file_for(path, opts) do
+    cond do
+      Keyword.has_key?(opts, :source_file) ->
+        {:ok, Keyword.fetch!(opts, :source_file)}
+
+      pdf_path = Keyword.get(opts, :pdf_path) ->
+        BlobStore.put_file(pdf_path, blob_store_opts(opts))
+
+      pdf_path = default_pdf_path(path) ->
+        BlobStore.put_file(pdf_path, blob_store_opts(opts))
+
+      true ->
+        {:ok, nil}
+    end
+  end
+
+  defp put_source_file(opts, nil), do: opts
+  defp put_source_file(opts, source_file), do: Keyword.put(opts, :source_file, source_file)
+
+  defp default_pdf_path(path) do
+    pdf_path =
+      cond do
+        String.ends_with?(path, ".datalab.hq.json") ->
+          String.replace_suffix(path, ".datalab.hq.json", ".pdf")
+
+        String.ends_with?(path, ".datalab.json") ->
+          String.replace_suffix(path, ".datalab.json", ".pdf")
+
+        true ->
+          Path.rootname(path) <> ".pdf"
+      end
+
+    if File.exists?(pdf_path), do: pdf_path
+  end
+
+  defp blob_store_opts(opts) do
+    opts
+    |> Keyword.take([:blob_root])
+    |> Keyword.new(fn {:blob_root, root} -> {:root, root} end)
+  end
+
+  defp source_file_value(source_file, key) do
+    Map.get(source_file, key) || Map.get(source_file, to_string(key))
   end
 
   defp maybe_add(triples, nil, _fun), do: triples

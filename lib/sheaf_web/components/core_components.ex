@@ -32,6 +32,90 @@ defmodule SheafWeb.CoreComponents do
   alias Phoenix.LiveView.JS
 
   @doc """
+  Renders a nested block outline (table of contents).
+
+  Expects `entries` shaped like `Sheaf.Document.toc/2` output —
+  each entry is `%{id, title, number, children}` where `number` is a list
+  of integers (e.g. `[2, 1]` for section "2.1"), and `children` is a list
+  of the same shape.
+
+  ## Options
+
+    * `:base_path` — prepended to the `#block-<id>` anchor. When nil (the
+      default), links are same-page anchors; when a string like `/abc`,
+      links navigate to `/abc#block-<id>`.
+    * `:emit_active_data` — when true, emits `data-toc-link` attributes so a
+      scroll-tracking hook can toggle `data-current=true` on the active entry.
+
+  ## Example
+
+      <.block_outline entries={@toc} emit_active_data />
+      <.block_outline entries={@toc} base_path={~p"/\#{@doc_id}"} />
+
+  """
+  attr :entries, :list, required: true
+  attr :base_path, :string, default: nil
+  attr :emit_active_data, :boolean, default: false
+  attr :class, :string, default: "text-sm"
+
+  def block_outline(assigns) do
+    ~H"""
+    <nav class={@class}>
+      <.block_outline_list
+        entries={@entries}
+        base_path={@base_path}
+        emit_active_data={@emit_active_data}
+        depth={0}
+      />
+    </nav>
+    """
+  end
+
+  attr :entries, :list, required: true
+  attr :base_path, :string, default: nil
+  attr :emit_active_data, :boolean, default: false
+  attr :depth, :integer, default: 0
+
+  defp block_outline_list(assigns) do
+    ~H"""
+    <ol class={[@depth == 0 && "space-y-1", @depth > 0 && "ml-4 mt-1 space-y-1"]}>
+      <li :for={entry <- @entries}>
+        <a
+          href={"#{@base_path || ""}#block-#{entry.id}"}
+          data-toc-link={@emit_active_data && "block-#{entry.id}"}
+          class={[
+            "-mx-1 flex items-baseline rounded-sm border-l-2 border-transparent py-0.5 pl-2 pr-1 transition-colors",
+            "hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
+            "data-[current=true]:border-stone-950 data-[current=true]:bg-stone-200/70 data-[current=true]:text-stone-950",
+            "dark:data-[current=true]:border-stone-100 dark:data-[current=true]:bg-stone-800/80 dark:data-[current=true]:text-stone-50",
+            if(length(entry.number) == 1,
+              do: "text-stone-950 dark:text-stone-50",
+              else: "text-stone-600 dark:text-stone-400"
+            )
+          ]}
+        >
+          <span class="min-w-0 flex-1 text-balance leading-5">
+            {section_title(entry.number, entry.title)}
+          </span>
+        </a>
+
+        <.block_outline_list
+          :if={entry.children != []}
+          entries={entry.children}
+          base_path={@base_path}
+          emit_active_data={@emit_active_data}
+          depth={@depth + 1}
+        />
+      </li>
+    </ol>
+    """
+  end
+
+  defp section_title(number, title) do
+    "#{Enum.join(number, ".")}. #{title}"
+  end
+
+  @doc """
   Renders flash notices.
 
   ## Examples

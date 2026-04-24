@@ -1,6 +1,8 @@
 defmodule SheafWeb.DocumentIndexLive do
   use SheafWeb, :live_view
 
+  alias Sheaf.Document
+
   @impl true
   def mount(_params, _session, socket) do
     socket =
@@ -18,42 +20,72 @@ defmodule SheafWeb.DocumentIndexLive do
           |> assign(:error, inspect(reason))
       end
 
+    socket =
+      socket
+      |> assign(:expanded, MapSet.new())
+      |> assign(:tocs, %{})
+
     {:ok, socket}
+  end
+
+  @impl true
+  def handle_event("toggle_toc", %{"id" => id}, socket) do
+    expanded = socket.assigns.expanded
+    tocs = socket.assigns.tocs
+
+    if MapSet.member?(expanded, id) do
+      {:noreply, assign(socket, :expanded, MapSet.delete(expanded, id))}
+    else
+      document = Enum.find(socket.assigns.documents, &(&1.id == id))
+
+      tocs =
+        if document && not Map.has_key?(tocs, id) do
+          Map.put(tocs, id, fetch_toc(document))
+        else
+          tocs
+        end
+
+      {:noreply,
+       socket
+       |> assign(:expanded, MapSet.put(expanded, id))
+       |> assign(:tocs, tocs)}
+    end
+  end
+
+  defp fetch_toc(document) do
+    case Sheaf.fetch_graph(document.iri) do
+      {:ok, graph} -> Document.toc(graph, document.iri)
+      _ -> []
+    end
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-dvh bg-stone-50 px-6 py-8 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
+    <main class="min-h-dvh bg-stone-50 px-6 py-6 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
       <div class="mx-auto max-w-5xl">
-        <header class="mb-8">
+        <header class="mb-5">
           <h1 class="font-sans text-2xl font-bold">Sheaf</h1>
-          <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">Documents in the dataset</p>
+          <p class="mt-0.5 text-sm text-stone-500 dark:text-stone-400">Documents in the dataset</p>
         </header>
 
         <p :if={@error} class="border-l-2 border-rose-500 py-2 pl-3 text-sm text-rose-700">
           {@error}
         </p>
 
-        <div :if={@documents != []} class="space-y-8">
+        <div :if={@documents != []} class="space-y-5">
           <section :for={{kind, documents} <- grouped_documents(@documents)}>
-            <h2 class="mb-2 font-sans text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
+            <h2 class="mb-1 font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
               {kind_label(kind)}
             </h2>
 
             <ul class="divide-y divide-stone-200/80 border-y border-stone-200/80 dark:divide-stone-800/80 dark:border-stone-800/80">
-              <li :for={document <- documents} class="py-3">
-                <.link
-                  :if={document.path}
-                  navigate={document.path}
-                  class="block rounded-sm transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80"
-                >
-                  <.document_row document={document} />
-                </.link>
-
-                <div :if={is_nil(document.path)}>
-                  <.document_row document={document} />
-                </div>
+              <li :for={document <- documents}>
+                <.document_entry
+                  document={document}
+                  expanded={MapSet.member?(@expanded, document.id)}
+                  toc={Map.get(@tocs, document.id, [])}
+                />
               </li>
             </ul>
           </section>
@@ -64,78 +96,108 @@ defmodule SheafWeb.DocumentIndexLive do
   end
 
   attr :document, :map, required: true
+  attr :expanded, :boolean, default: false
+  attr :toc, :list, default: []
 
-  defp document_row(assigns) do
+  defp document_entry(assigns) do
     ~H"""
-    <div class="space-y-1 px-1">
-      <div class="flex min-w-0 items-baseline gap-3">
-        <span class="min-w-0 flex-1 truncate font-serif text-lg">{@document.title}</span>
-        <span class="shrink-0 font-mono text-xs text-stone-500 dark:text-stone-400">
-          {@document.id}
+    <div class="flex items-stretch gap-0">
+      <button
+        type="button"
+        phx-click="toggle_toc"
+        phx-value-id={@document.id}
+        aria-expanded={@expanded}
+        aria-label={if(@expanded, do: "Collapse outline", else: "Expand outline")}
+        class="shrink-0 px-2 py-1.5 text-stone-400 transition-colors hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-500 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+      >
+        <span class={[
+          "block w-3 text-center font-mono text-xs leading-snug transition-transform",
+          @expanded && "rotate-90"
+        ]}>
+          ▸
         </span>
-      </div>
+      </button>
 
-      <div
-        :if={metadata_byline(@document)}
-        class="truncate font-serif [font-variant-caps:small-caps]  text-stone-600 dark:text-stone-300"
-      >
-        {metadata_byline(@document)}
-      </div>
+      <div class="min-w-0 flex-1">
+        <.link
+          :if={@document.path}
+          navigate={@document.path}
+          class="block transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80"
+        >
+          <.document_row document={@document} />
+        </.link>
 
-      <div
-        :if={metadata_publication(@document)}
-        class="truncate text-xs text-stone-500 dark:text-stone-500"
-      >
-        {metadata_publication(@document)}
+        <div :if={is_nil(@document.path)}>
+          <.document_row document={@document} />
+        </div>
+
+        <div
+          :if={@expanded}
+          class="border-l-2 border-stone-200 py-2 pl-2 pr-2 dark:border-stone-800"
+        >
+          <.block_outline
+            :if={@toc != []}
+            entries={@toc}
+            base_path={@document.path}
+            class="text-xs"
+          />
+          <p :if={@toc == []} class="px-2 text-xs italic text-stone-500 dark:text-stone-400">
+            No outline available.
+          </p>
+        </div>
       </div>
     </div>
     """
   end
 
-  defp metadata_byline(document) do
-    metadata = Map.get(document, :metadata, %{})
-    authors = Map.get(metadata, :authors, [])
-    year = Map.get(metadata, :year)
+  attr :document, :map, required: true
 
-    case {authors, year} do
-      {[], nil} -> nil
-      {[], year} -> year
-      {authors, nil} -> Enum.join(authors, ", ")
-      {authors, year} -> "#{Enum.join(authors, ", ")} (#{year})"
-    end
+  defp document_row(assigns) do
+    ~H"""
+    <div class="px-2 py-1.5 text-sm leading-snug">
+      <div class="truncate font-serif">{@document.title}</div>
+
+      <div
+        :if={subline?(@document)}
+        class="flex min-w-0 items-baseline gap-3 text-xs text-stone-500 dark:text-stone-400"
+      >
+        <span class="w-10 shrink-0 tabular-nums">{year_str(@document)}</span>
+
+        <span class="min-w-0 flex-1 truncate font-serif text-stone-600 [font-variant-caps:small-caps] dark:text-stone-300">
+          {authors_str(@document) || ""}
+        </span>
+
+        <span class="shrink-0 tabular-nums">{page_count_str(@document)}</span>
+      </div>
+    </div>
+    """
   end
 
-  defp metadata_publication(document) do
-    metadata = Map.get(document, :metadata, %{})
+  defp subline?(document) do
+    authors_str(document) != nil or year_str(document) != "" or
+      page_count_str(document) != ""
+  end
 
-    [
-      Map.get(metadata, :kind),
-      Map.get(metadata, :venue) || Map.get(metadata, :publisher),
-      volume_issue(metadata),
-      pages(metadata),
-      doi(metadata)
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> case do
+  defp authors_str(document) do
+    case document |> Map.get(:metadata, %{}) |> Map.get(:authors, []) do
       [] -> nil
-      parts -> Enum.join(parts, " · ")
+      authors -> Enum.join(authors, ", ")
     end
   end
 
-  defp volume_issue(metadata) do
-    case {Map.get(metadata, :volume), Map.get(metadata, :issue)} do
-      {nil, nil} -> nil
-      {volume, nil} -> "vol. #{volume}"
-      {nil, issue} -> "issue #{issue}"
-      {volume, issue} -> "#{volume}(#{issue})"
+  defp year_str(document) do
+    case document |> Map.get(:metadata, %{}) |> Map.get(:year) do
+      nil -> ""
+      year -> to_string(year)
     end
   end
 
-  defp pages(%{pages: pages}) when is_binary(pages) and pages != "", do: "pp. #{pages}"
-  defp pages(_metadata), do: nil
-
-  defp doi(%{doi: doi}) when is_binary(doi) and doi != "", do: "doi: #{doi}"
-  defp doi(_metadata), do: nil
+  defp page_count_str(document) do
+    case document |> Map.get(:metadata, %{}) |> Map.get(:page_count) do
+      nil -> ""
+      count -> "#{count} pp."
+    end
+  end
 
   defp grouped_documents(documents) do
     documents

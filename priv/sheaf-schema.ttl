@@ -1,4 +1,5 @@
 @prefix sheaf: <https://less.rest/sheaf/> .
+@prefix fabio: <http://purl.org/spar/fabio/> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -84,6 +85,11 @@ sheaf:audio a rdf:Property ;
   rdfs:range sheaf:AudioBlob ;
   rdfs:comment "Links an interview, segment, or utterance to a content-addressed audio blob." .
 
+sheaf:sourceFile a rdf:Property ;
+  rdfs:label "source file" ;
+  rdfs:range fabio:ComputerFile ;
+  rdfs:comment "Links an imported document to the concrete source file it was extracted from." .
+
 sheaf:filename a rdf:Property ;
   rdfs:label "filename" ;
   rdfs:domain sheaf:Interview ;
@@ -129,6 +135,19 @@ sheaf:sourceHtml a rdf:Property ;
   rdfs:range xsd:string ;
   rdfs:comment "A renderable HTML fragment extracted from the source document block." .
 
+sheaf:sha256 a rdf:Property ;
+  rdfs:label "SHA-256" ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Lowercase hexadecimal SHA-256 digest of a content-addressed file." .
+
+sheaf:byteSize a rdf:Property ;
+  rdfs:label "byte size" ;
+  rdfs:range xsd:integer .
+
+sheaf:originalFilename a rdf:Property ;
+  rdfs:label "original filename" ;
+  rdfs:range xsd:string .
+
 sheaf:startTime a rdf:Property ;
   rdfs:label "start time" ;
   rdfs:domain sheaf:Segment ;
@@ -146,5 +165,4 @@ sheaf:speaker a rdf:Property ;
 
 sheaf:mimeType a rdf:Property ;
   rdfs:label "MIME type" ;
-  rdfs:domain sheaf:AudioBlob ;
   rdfs:range xsd:string .

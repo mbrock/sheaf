@@ -2,8 +2,8 @@ defmodule Sheaf.PaperImportTest do
   use ExUnit.Case, async: true
 
   alias RDF.{Description, Graph}
-  alias Sheaf.NS.DOC
-  alias Sheaf.{PaperImport, Thesis}
+  alias Sheaf.NS.{DOC, FABIO}
+  alias Sheaf.{Document, PaperImport}
 
   test "builds a paper graph from Datalab JSON section hierarchy" do
     document = %{
@@ -43,26 +43,55 @@ defmodule Sheaf.PaperImportTest do
 
     result = PaperImport.build_graph(document, title: "Example Paper", mint: mint())
 
-    assert Thesis.kind(result.graph, result.document) == :paper
-    assert Thesis.title(result.graph, result.document) == "Example Paper"
+    assert Document.kind(result.graph, result.document) == :paper
+    assert Document.title(result.graph, result.document) == "Example Paper"
 
-    [intro] = Thesis.children(result.graph, result.document)
-    assert Thesis.block_type(result.graph, intro) == :section
-    assert Thesis.heading(result.graph, intro) == "Intro"
+    [intro] = Document.children(result.graph, result.document)
+    assert Document.block_type(result.graph, intro) == :section
+    assert Document.heading(result.graph, intro) == "Intro"
 
-    [background] = Thesis.children(result.graph, intro)
-    assert Thesis.block_type(result.graph, background) == :section
-    assert Thesis.heading(result.graph, background) == "Background"
+    [background] = Document.children(result.graph, intro)
+    assert Document.block_type(result.graph, background) == :section
+    assert Document.heading(result.graph, background) == "Background"
 
-    [picture] = Thesis.children(result.graph, background)
-    assert Thesis.block_type(result.graph, picture) == :extracted
-    assert Thesis.source_page(result.graph, picture) == 0
-    assert Thesis.source_html(result.graph, picture) =~ "data:image/png;base64,QUJD"
+    [picture] = Document.children(result.graph, background)
+    assert Document.block_type(result.graph, picture) == :extracted
+    assert Document.source_page(result.graph, picture) == 0
+    assert Document.source_html(result.graph, picture) =~ "data:image/png;base64,QUJD"
 
     picture_description = Graph.description(result.graph, picture)
 
     assert rdf_value(picture_description, DOC.sourceKey()) == "/page/0/Picture/2"
     assert rdf_value(picture_description, DOC.sourceBlockType()) == "Picture"
+  end
+
+  test "links imported papers to a content-addressed PDF computer file" do
+    document = %{"children" => [], "metadata" => %{}}
+
+    result =
+      PaperImport.build_graph(document,
+        title: "Example Paper",
+        source_file: %{
+          byte_size: 123,
+          hash: "abc123",
+          mime_type: "application/pdf",
+          original_filename: "paper.pdf",
+          storage_key: "sha256:abc123"
+        },
+        mint: mint(~w(DOC111 FILE111))
+      )
+
+    document = result.document
+    file = RDF.IRI.new!("https://example.com/sheaf/FILE111")
+    file_description = Graph.description(result.graph, file)
+
+    assert RDF.Data.include?(result.graph, {document, DOC.sourceFile(), file})
+    assert Description.include?(file_description, {RDF.type(), FABIO.ComputerFile})
+    assert rdf_value(file_description, DOC.sha256()) == "abc123"
+    assert rdf_value(file_description, DOC.mimeType()) == "application/pdf"
+    assert rdf_value(file_description, DOC.byteSize()) == 123
+    assert rdf_value(file_description, DOC.originalFilename()) == "paper.pdf"
+    assert rdf_value(file_description, DOC.sourceKey()) == "sha256:abc123"
   end
 
   defp rdf_value(%Description{} = description, property) do
@@ -71,10 +100,10 @@ defmodule Sheaf.PaperImportTest do
     |> RDF.Term.value()
   end
 
-  defp mint do
+  defp mint(ids \\ ~w(DOC111 SEC111 SEC222 BLK111 LST111 LST222 LST333)) do
     {:ok, agent} =
       Agent.start_link(fn ->
-        ~w(DOC111 SEC111 SEC222 BLK111 LST111 LST222 LST333)
+        ids
         |> Enum.map(&RDF.IRI.new!("https://example.com/sheaf/#{&1}"))
       end)
 

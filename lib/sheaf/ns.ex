@@ -56,6 +56,7 @@ defmodule Sheaf.NS do
     terms: ~w[
       Book
       BookChapter
+      ComputerFile
       DoctoralThesis
       JournalArticle
       PositionPaper

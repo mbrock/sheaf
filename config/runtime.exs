@@ -65,6 +65,15 @@ sparql_auth =
     {:basic, "#{sparql_username}:#{sparql_password}"}
   end
 
+gemini_api_key =
+  ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
+  |> Enum.map(&System.get_env/1)
+  |> Enum.find(&(is_binary(&1) and String.trim(&1) != ""))
+
+if gemini_api_key do
+  config :req_llm, google_api_key: gemini_api_key
+end
+
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
 config :sheaf, :resource_base, resource_base
 

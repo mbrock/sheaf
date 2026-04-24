@@ -1,9 +1,9 @@
-defmodule SheafWeb.ThesisLiveTest do
+defmodule SheafWeb.DocumentLiveTest do
   use ExUnit.Case, async: true
 
   alias RDF.NS.RDFS
   alias Sheaf.NS.DOC
-  alias SheafWeb.ThesisLive
+  alias SheafWeb.DocumentLive
 
   test "numbers paragraphs within their surrounding section" do
     thesis = RDF.IRI.new!("https://example.com/sheaf/DOC123")
@@ -76,7 +76,7 @@ defmodule SheafWeb.ThesisLiveTest do
           %{type: :section, number: [2], children: second_children}
         ]
       }
-    ] = ThesisLive.document_blocks(graph, thesis)
+    ] = DocumentLive.document_blocks(graph, thesis)
 
     [
       %{type: :paragraph, number: 1},
@@ -135,7 +135,7 @@ defmodule SheafWeb.ThesisLiveTest do
           }
         ]
       }
-    ] = ThesisLive.document_blocks(graph, paper)
+    ] = DocumentLive.document_blocks(graph, paper)
 
     refute Map.has_key?(picture_block, :number)
   end

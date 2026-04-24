@@ -25,13 +25,13 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/sheaf"
 import topbar from "../vendor/topbar"
 import {PretextParagraph} from "./pretext_paragraphs"
-import {ThesisBreadcrumb} from "./thesis_breadcrumb"
+import {DocumentBreadcrumb} from "./document_breadcrumb"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PretextParagraph, ThesisBreadcrumb},
+  hooks: {...colocatedHooks, PretextParagraph, DocumentBreadcrumb},
 })
 
 // Show progress bar on live navigation and form submits
