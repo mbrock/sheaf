@@ -50,9 +50,59 @@ defmodule Sheaf.DocumentsTest do
   end
 
   test "falls back to the short id for untitled documents" do
-    assert [%{title: "UNTITLED", kind: :document, path: "/UNTITLED"}] =
+    assert [%{title: "UNTITLED", kind: :document, metadata: %{}, path: "/UNTITLED"}] =
              Documents.from_rows([
                %{"doc" => ~I<https://example.com/sheaf/UNTITLED>}
              ])
+  end
+
+  test "aggregates bibliographic metadata from repeated document rows" do
+    rows = [
+      %{
+        "doc" => ~I<https://example.com/sheaf/PAPER1>,
+        "title" => RDF.literal("Imported PDF title"),
+        "kind" => RDF.iri(DOC.Paper),
+        "metadataTitle" => RDF.literal("Article title"),
+        "metadataKind" => ~I<http://purl.org/spar/fabio/JournalArticle>,
+        "authorName" => RDF.literal("Beta Author"),
+        "year" => RDF.literal("2020"),
+        "venueTitle" => RDF.literal("Example Journal"),
+        "doi" => RDF.literal("10.123/example"),
+        "volume" => RDF.literal("14"),
+        "issue" => RDF.literal("4"),
+        "pages" => RDF.literal("340-356")
+      },
+      %{
+        "doc" => ~I<https://example.com/sheaf/PAPER1>,
+        "title" => RDF.literal("Imported PDF title"),
+        "kind" => RDF.iri(DOC.Paper),
+        "metadataTitle" => RDF.literal("Article title"),
+        "metadataKind" => ~I<http://purl.org/spar/fabio/JournalArticle>,
+        "authorName" => RDF.literal("Alpha Author"),
+        "year" => RDF.literal("2020"),
+        "venueTitle" => RDF.literal("Example Journal"),
+        "doi" => RDF.literal("10.123/example"),
+        "volume" => RDF.literal("14"),
+        "issue" => RDF.literal("4"),
+        "pages" => RDF.literal("340-356")
+      }
+    ]
+
+    assert [
+             %{
+               metadata: %{
+                 authors: ["Alpha Author", "Beta Author"],
+                 doi: "10.123/example",
+                 issue: "4",
+                 kind: "Journal article",
+                 pages: "340-356",
+                 title: "Article title",
+                 venue: "Example Journal",
+                 volume: "14",
+                 year: "2020"
+               },
+               title: "Article title"
+             }
+           ] = Documents.from_rows(rows)
   end
 end

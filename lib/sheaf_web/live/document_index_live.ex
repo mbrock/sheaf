@@ -67,17 +67,75 @@ defmodule SheafWeb.DocumentIndexLive do
 
   defp document_row(assigns) do
     ~H"""
-    <div class="flex min-w-0 items-baseline gap-3 px-1">
-      <span class="min-w-0 flex-1 truncate font-serif text-lg">{@document.title}</span>
-      <span class="shrink-0 font-mono text-xs text-stone-500 dark:text-stone-400">
-        {@document.id}
-      </span>
-    </div>
-    <div class="mt-1 truncate px-1 font-mono text-xs text-stone-500 dark:text-stone-500">
-      {@document.iri}
+    <div class="space-y-1 px-1">
+      <div class="flex min-w-0 items-baseline gap-3">
+        <span class="min-w-0 flex-1 truncate font-serif text-lg">{@document.title}</span>
+        <span class="shrink-0 font-mono text-xs text-stone-500 dark:text-stone-400">
+          {@document.id}
+        </span>
+      </div>
+
+      <div
+        :if={metadata_byline(@document)}
+        class="truncate text-sm text-stone-600 dark:text-stone-300"
+      >
+        {metadata_byline(@document)}
+      </div>
+
+      <div
+        :if={metadata_publication(@document)}
+        class="truncate text-xs text-stone-500 dark:text-stone-500"
+      >
+        {metadata_publication(@document)}
+      </div>
     </div>
     """
   end
+
+  defp metadata_byline(document) do
+    metadata = Map.get(document, :metadata, %{})
+    authors = Map.get(metadata, :authors, [])
+    year = Map.get(metadata, :year)
+
+    case {authors, year} do
+      {[], nil} -> nil
+      {[], year} -> year
+      {authors, nil} -> Enum.join(authors, ", ")
+      {authors, year} -> "#{Enum.join(authors, ", ")} (#{year})"
+    end
+  end
+
+  defp metadata_publication(document) do
+    metadata = Map.get(document, :metadata, %{})
+
+    [
+      Map.get(metadata, :kind),
+      Map.get(metadata, :venue) || Map.get(metadata, :publisher),
+      volume_issue(metadata),
+      pages(metadata),
+      doi(metadata)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      parts -> Enum.join(parts, " · ")
+    end
+  end
+
+  defp volume_issue(metadata) do
+    case {Map.get(metadata, :volume), Map.get(metadata, :issue)} do
+      {nil, nil} -> nil
+      {volume, nil} -> "vol. #{volume}"
+      {nil, issue} -> "issue #{issue}"
+      {volume, issue} -> "#{volume}(#{issue})"
+    end
+  end
+
+  defp pages(%{pages: pages}) when is_binary(pages) and pages != "", do: "pp. #{pages}"
+  defp pages(_metadata), do: nil
+
+  defp doi(%{doi: doi}) when is_binary(doi) and doi != "", do: "doi: #{doi}"
+  defp doi(_metadata), do: nil
 
   defp grouped_documents(documents) do
     documents
