@@ -73,6 +73,13 @@ defmodule SheafWeb.DocumentLive do
 
       <aside class="hidden min-h-0 overflow-y-auto border-stone-200/80 p-4 xl:col-start-3 xl:row-span-2 xl:row-start-1 xl:block xl:border-l dark:border-stone-800/80">
         <.inspector graph={@graph} root={@root} selected_id={@selected_block_id} />
+        <.live_component
+          module={SheafWeb.AssistantChatComponent}
+          id="document-assistant"
+          graph={@graph}
+          root={@root}
+          selected_id={@selected_block_id}
+        />
       </aside>
     </div>
     """
