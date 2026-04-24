@@ -67,7 +67,7 @@ defmodule Sheaf.PDFTest do
 
   test "converts a PDF to a JSON file" do
     path = Path.join(System.tmp_dir!(), "sheaf-pdf-test.pdf")
-    output_path = Path.join(System.tmp_dir!(), "sheaf-pdf-test.datalab.json")
+    output_path = Path.join(System.tmp_dir!(), "sheaf-pdf-test.datalab.hq.json")
     File.write!(path, "%PDF-1.7\n")
     File.rm(output_path)
 
@@ -93,7 +93,7 @@ defmodule Sheaf.PDFTest do
              PDF.convert_file(path,
                api_key: "secret",
                output_format: "json",
-               output_path: output_path,
+               output_suffix: "datalab.hq",
                pipeline_id: "pl_test",
                poll_interval: 0,
                req_options: [plug: {Req.Test, __MODULE__}]

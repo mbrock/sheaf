@@ -69,5 +69,21 @@ defmodule Sheaf.ThesisTest do
 
     assert [^nested_paragraph] = Thesis.children(graph, nested_section)
     assert Thesis.paragraph_text(graph, nested_paragraph) == "Nested paragraph."
+
+    assert [
+             %{
+               id: "SEC111",
+               title: "Introduction",
+               number: [1],
+               children: [
+                 %{
+                   id: "SEC222",
+                   title: "Research Questions",
+                   number: [1, 1],
+                   children: []
+                 }
+               ]
+             }
+           ] = Thesis.toc(graph, thesis)
   end
 end

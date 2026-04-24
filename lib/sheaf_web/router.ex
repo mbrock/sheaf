@@ -21,6 +21,7 @@ defmodule SheafWeb.Router do
   scope "/", SheafWeb do
     pipe_through :browser
 
+    live "/", DocumentIndexLive
     live "/papers/kappa/datalab-json", PaperJsonLive
     live "/papers/kappa/read", PaperReadLive
     live "/:id", ThesisLive

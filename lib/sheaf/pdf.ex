@@ -55,12 +55,15 @@ defmodule Sheaf.PDF do
   Converts a local PDF and writes the normalized result next to the source file.
 
   By default this writes `basename.datalab.<format-extension>`. Pass
-  `:output_path` to choose a specific file.
+  `:output_suffix` to use another basename suffix, or `:output_path` to choose
+  a specific file.
   """
   @spec convert_file(Path.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def convert_file(path, opts \\ []) when is_binary(path) do
     output_format = output_format(opts)
-    output_path = Keyword.get_lazy(opts, :output_path, fn -> output_path(path, output_format) end)
+
+    output_path =
+      Keyword.get_lazy(opts, :output_path, fn -> output_path(path, output_format, opts) end)
 
     with {:ok, result} <- convert(path, opts),
          :ok <- write_output(output_path, result.output, output_format) do
@@ -292,8 +295,9 @@ defmodule Sheaf.PDF do
     |> to_string()
   end
 
-  defp output_path(path, output_format) do
-    Path.rootname(path) <> ".datalab." <> output_extension(output_format)
+  defp output_path(path, output_format, opts) do
+    suffix = Keyword.get(opts, :output_suffix, "datalab")
+    Path.rootname(path) <> ".#{suffix}." <> output_extension(output_format)
   end
 
   defp output_extension("markdown"), do: "md"

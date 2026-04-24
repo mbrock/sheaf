@@ -27,7 +27,10 @@ defmodule SheafWeb.ThesisLive do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :blocks, document_blocks(assigns.graph, assigns.root))
+    assigns =
+      assigns
+      |> assign(:blocks, document_blocks(assigns.graph, assigns.root))
+      |> assign(:toc, Thesis.toc(assigns.graph, assigns.root))
 
     ~H"""
     <div
@@ -37,7 +40,7 @@ defmodule SheafWeb.ThesisLive do
     >
       <aside class="min-h-0 overflow-y-auto p-4 lg:col-start-1 lg:row-span-2">
         <h1 class="font-bold text-lg">{document_title(@graph, @root)}</h1>
-        <.toc graph={@graph} blocks={toc_blocks(@blocks)} />
+        <.toc entries={@toc} />
       </aside>
 
       <div class="min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-12 py-2 backdrop-blur sm:px-8 lg:col-start-2 lg:row-start-1 dark:border-stone-800/80 dark:bg-stone-950/90">
@@ -75,48 +78,42 @@ defmodule SheafWeb.ThesisLive do
     """
   end
 
-  attr :blocks, :list, required: true
-  attr :graph, :any, required: true
+  attr :entries, :list, required: true
 
   defp toc(assigns) do
     ~H"""
     <nav class="text-sm">
-      <.toc_list graph={@graph} blocks={@blocks} />
+      <.toc_list entries={@entries} />
     </nav>
     """
   end
 
-  defp toc_blocks([%{type: :document, children: children}]), do: children
-  defp toc_blocks(blocks), do: blocks
-
-  attr :blocks, :list, required: true
-  attr :graph, :any, required: true
+  attr :entries, :list, required: true
   attr :class, :string, default: "space-y-1"
 
   defp toc_list(assigns) do
     ~H"""
     <ol class={@class}>
-      <li :for={%{type: :section} = block <- @blocks}>
+      <li :for={entry <- @entries}>
         <a
-          href={"#block-#{Thesis.id(block.iri)}"}
-          data-toc-link={"block-#{Thesis.id(block.iri)}"}
+          href={"#block-#{entry.id}"}
+          data-toc-link={"block-#{entry.id}"}
           class={[
             "-mx-1 flex items-baseline rounded-sm border-l-2 border-transparent py-0.5 pl-2 pr-1 transition-colors data-[current=true]:border-stone-950 data-[current=true]:bg-stone-200/70 data-[current=true]:text-stone-950 dark:data-[current=true]:border-stone-100 dark:data-[current=true]:bg-stone-800/80 dark:data-[current=true]:text-stone-50",
-            if(length(block.number) == 1,
+            if(length(entry.number) == 1,
               do: "text-stone-950 dark:text-stone-50",
               else: "text-stone-600 dark:text-stone-400"
             )
           ]}
         >
           <span class="min-w-0 flex-1 text-balance leading-5">
-            {section_title(block.number, Thesis.heading(@graph, block.iri))}
+            {section_title(entry.number, entry.title)}
           </span>
         </a>
 
         <.toc_list
-          :if={block.children != []}
-          graph={@graph}
-          blocks={block.children}
+          :if={entry.children != []}
+          entries={entry.children}
           class="ml-4 mt-1 space-y-1"
         />
       </li>

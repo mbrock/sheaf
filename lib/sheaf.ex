@@ -59,8 +59,25 @@ defmodule Sheaf do
   """
   def query(query, opts \\ []) do
     config = Application.fetch_env!(:sheaf, __MODULE__)
+    opts = Keyword.put_new(opts, :protocol_version, "1.1")
 
     SPARQL.Client.query(query, config[:query_endpoint], sparql_options(config, opts))
+  end
+
+  @doc """
+  Runs a SPARQL SELECT query against the configured query endpoint.
+
+  Hand-written query strings are executed in SPARQL.Client raw mode by default.
+  """
+  def select(query, opts \\ []) do
+    config = Application.fetch_env!(:sheaf, __MODULE__)
+
+    opts =
+      opts
+      |> Keyword.put_new(:protocol_version, "1.1")
+      |> Keyword.put_new(:raw_mode, true)
+
+    SPARQL.Client.select(query, config[:query_endpoint], sparql_options(config, opts))
   end
 
   @doc """

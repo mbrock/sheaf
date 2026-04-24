@@ -32,6 +32,18 @@ defmodule Sheaf.Thesis do
     end
   end
 
+  @doc """
+  Returns the section table of contents for a document graph.
+
+  Non-section blocks are ignored. Section numbering follows the rendered reader:
+  only sibling sections increment the section number.
+  """
+  def toc(%Graph{} = graph, root) do
+    graph
+    |> children(root)
+    |> toc_entries(graph, [])
+  end
+
   def block_type(%Graph{} = graph, iri) do
     description = Graph.description(graph, iri)
 
@@ -85,6 +97,34 @@ defmodule Sheaf.Thesis do
     |> Graph.description(iri)
     |> PROV.was_invalidated_by()
     |> is_list()
+  end
+
+  defp toc_entries(iris, graph, prefix) do
+    iris
+    |> Enum.reduce({[], 0}, fn iri, {entries, section_index} ->
+      case block_type(graph, iri) do
+        :section ->
+          number = prefix ++ [section_index + 1]
+          entry = toc_entry(graph, iri, number)
+
+          {[entry | entries], section_index + 1}
+
+        _other ->
+          {entries, section_index}
+      end
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
+
+  defp toc_entry(graph, iri, number) do
+    %{
+      iri: iri,
+      id: id(iri),
+      title: heading(graph, iri),
+      number: number,
+      children: graph |> children(iri) |> toc_entries(graph, number)
+    }
   end
 
   defp object(%Graph{} = graph, iri, property) do
