@@ -65,6 +65,10 @@ sheaf:AudioBlob a rdfs:Class ;
   rdfs:label "Audio blob" ;
   rdfs:comment "A content-addressed audio payload identified by its SHA-256 hash." .
 
+sheaf:ResearchSession a rdfs:Class ;
+  rdfs:label "Research session" ;
+  rdfs:comment "A durable context that groups assistant-authored research notes." .
+
 sheaf:children a rdf:Property ;
   rdfs:label "children" ;
   rdfs:range rdf:List ;
@@ -166,3 +170,8 @@ sheaf:speaker a rdf:Property ;
 sheaf:mimeType a rdf:Property ;
   rdfs:label "MIME type" ;
   rdfs:range xsd:string .
+
+sheaf:mentions a rdf:Property ;
+  rdfs:label "mentions" ;
+  rdfs:range rdfs:Resource ;
+  rdfs:comment "Links a note, annotation, or other interpretive resource to a Sheaf resource it discusses." .

@@ -72,18 +72,11 @@ defmodule SheafWeb.AssistantChatComponent do
 
   @impl true
   def handle_event("new_chat", _params, socket) do
-    socket =
-      case Chats.create(chat_options(socket)) do
-        %{id: id} ->
-          socket
-          |> assign(:chats, Chats.list())
-          |> select_chat(id)
+    {:noreply, create_chat(socket, :chat)}
+  end
 
-        {:error, reason} ->
-          put_local_error(socket, "Could not start chat: #{inspect(reason)}")
-      end
-
-    {:noreply, socket}
+  def handle_event("new_research", _params, socket) do
+    {:noreply, create_chat(socket, :research)}
   end
 
   def handle_event("select_chat", %{"id" => id}, socket) do
@@ -134,6 +127,18 @@ defmodule SheafWeb.AssistantChatComponent do
     end
   end
 
+  defp create_chat(socket, kind) do
+    case Chats.create(chat_options(socket, kind)) do
+      %{id: id} ->
+        socket
+        |> assign(:chats, Chats.list())
+        |> select_chat(id)
+
+      {:error, reason} ->
+        put_local_error(socket, "Could not start chat: #{inspect(reason)}")
+    end
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -159,6 +164,16 @@ defmodule SheafWeb.AssistantChatComponent do
           >
             <.icon name="hero-plus" class="size-4" />
           </button>
+          <button
+            type="button"
+            class="grid size-7 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+            title="New research session"
+            aria-label="New research session"
+            phx-click="new_research"
+            phx-target={@myself}
+          >
+            <.icon name="hero-beaker" class="size-4" />
+          </button>
         </div>
       </div>
 
@@ -173,9 +188,16 @@ defmodule SheafWeb.AssistantChatComponent do
           phx-click="select_chat"
           phx-value-id={chat.id}
           phx-target={@myself}
-          title={chat.title}
+          title={chat_title(chat)}
         >
-          <span class="truncate">{chat.title}</span>
+          <.icon name={chat_kind_icon(chat)} class={chat_kind_icon_class(chat)} />
+          <span class="min-w-0 flex-1 truncate">{chat.title}</span>
+          <span
+            :if={chat_kind(chat) == :research}
+            class="ml-2 shrink-0 rounded-sm border border-emerald-200 px-1.5 py-0.5 text-[0.625rem] uppercase leading-none text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"
+          >
+            Research
+          </span>
         </button>
       </nav>
 
@@ -206,7 +228,7 @@ defmodule SheafWeb.AssistantChatComponent do
           name="chat[message]"
           rows="3"
           class="block w-full resize-none rounded-sm border border-stone-300 bg-white px-3 py-2 text-sm leading-5 text-stone-950 outline-none transition-colors placeholder:text-stone-400 focus:border-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
-          placeholder="Ask about the thesis or the papers"
+          placeholder={input_placeholder(@chat)}
           disabled={@chat.pending or is_nil(@selected_chat_id)}
         ></textarea>
         <div class="flex justify-end">
@@ -262,7 +284,7 @@ defmodule SheafWeb.AssistantChatComponent do
   defp ensure_selected_chat(socket), do: select_default_chat(socket)
 
   defp select_default_chat(socket) do
-    case Chats.ensure_default(chat_options(socket)) do
+    case Chats.ensure_default(chat_options(socket, :chat)) do
       %{id: id} ->
         socket
         |> assign(:chats, Chats.list())
@@ -296,8 +318,9 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp unsubscribe_from_previous_chat(socket, _new_id), do: socket
 
-  defp chat_options(socket) do
+  defp chat_options(socket, kind) do
     [
+      kind: kind,
       model: socket.assigns.model,
       llm_options: socket.assigns.llm_options
     ]
@@ -307,12 +330,41 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_button_class(id, selected_id) do
     [
-      "flex h-8 w-full items-center rounded-sm px-2 text-left font-sans text-xs transition-colors",
+      "flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left font-sans text-xs transition-colors",
       "hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
       id == selected_id && "bg-stone-200/70 text-stone-950 dark:bg-stone-800 dark:text-stone-50",
       id != selected_id && "text-stone-600 dark:text-stone-400"
     ]
   end
+
+  defp chat_title(chat) do
+    case chat_kind(chat) do
+      :research -> "Research session: #{chat.title}"
+      _kind -> chat.title
+    end
+  end
+
+  defp chat_kind(%{kind: :research}), do: :research
+  defp chat_kind(%{kind: "research"}), do: :research
+  defp chat_kind(_chat), do: :chat
+
+  defp chat_kind_icon(chat) do
+    case chat_kind(chat) do
+      :research -> "hero-beaker"
+      _kind -> "hero-chat-bubble-left-ellipsis"
+    end
+  end
+
+  defp chat_kind_icon_class(chat) do
+    [
+      "size-3.5 shrink-0",
+      chat_kind(chat) == :research && "text-emerald-600 dark:text-emerald-300"
+    ]
+  end
+
+  defp input_placeholder(%{kind: :research}), do: "Give this research session a question"
+  defp input_placeholder(%{kind: "research"}), do: "Give this research session a question"
+  defp input_placeholder(_chat), do: "Ask about the thesis or the papers"
 
   defp turn_context(assigns) do
     %{}
@@ -355,6 +407,7 @@ defmodule SheafWeb.AssistantChatComponent do
     %{
       id: nil,
       title: "New chat",
+      kind: :chat,
       messages: [],
       pending: false,
       active_tool: nil,

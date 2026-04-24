@@ -9,6 +9,7 @@ defmodule Sheaf.Assistant.Chats do
   alias Sheaf.Id
 
   @default_title "New chat"
+  @default_kind :chat
   @supervisor Sheaf.Assistant.ChatSupervisor
 
   defstruct conversations: %{}, order: [], subscribers: %{}
@@ -100,17 +101,19 @@ defmodule Sheaf.Assistant.Chats do
 
   defp create_conversation(state, opts) do
     id = Keyword.get_lazy(opts, :id, &mint_id/0)
-    title = Keyword.get(opts, :title, @default_title)
+    kind = opts |> Keyword.get(:kind, @default_kind) |> normalize_kind()
+    title = Keyword.get_lazy(opts, :title, fn -> default_title(kind) end)
     now = timestamp()
 
     child_opts =
       opts
       |> Keyword.put(:id, id)
+      |> Keyword.put(:kind, kind)
       |> Keyword.put_new(:title, title)
 
     case DynamicSupervisor.start_child(@supervisor, {Chat, child_opts}) do
       {:ok, _pid} ->
-        conversation = %{id: id, title: title, created_at: now, updated_at: now}
+        conversation = %{id: id, title: title, kind: kind, created_at: now, updated_at: now}
 
         state =
           state
@@ -171,4 +174,11 @@ defmodule Sheaf.Assistant.Chats do
   defp timestamp do
     DateTime.utc_now() |> DateTime.truncate(:second)
   end
+
+  defp normalize_kind(:research), do: :research
+  defp normalize_kind("research"), do: :research
+  defp normalize_kind(_kind), do: :chat
+
+  defp default_title(:research), do: "Research session"
+  defp default_title(_kind), do: @default_title
 end

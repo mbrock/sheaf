@@ -12,9 +12,11 @@ defmodule Sheaf.Assistant.Chat do
   alias ReqLLM.{Context, Response}
   alias Sheaf.Assistant
   alias Sheaf.Assistant.{Chats, CorpusTools}
+  alias Sheaf.Id
 
   @registry Sheaf.Assistant.ChatRegistry
   @default_title "New chat"
+  @default_kind :chat
   @default_max_tool_rounds 500
 
   defstruct [
@@ -24,7 +26,10 @@ defmodule Sheaf.Assistant.Chat do
     :active_tool,
     :status_line,
     :error,
+    :agent_iri,
+    :session_iri,
     title: @default_title,
+    kind: @default_kind,
     messages: [],
     subscribers: %{},
     model: nil,
@@ -38,6 +43,7 @@ defmodule Sheaf.Assistant.Chat do
   @type snapshot :: %{
           id: String.t(),
           title: String.t(),
+          kind: :chat | :research,
           messages: [map()],
           pending: boolean(),
           active_tool: String.t() | nil,
@@ -88,15 +94,29 @@ defmodule Sheaf.Assistant.Chat do
   def init(opts) do
     chat = self()
     id = Keyword.fetch!(opts, :id)
+    kind = opts |> Keyword.get(:kind, @default_kind) |> normalize_kind()
+    title = Keyword.get_lazy(opts, :title, fn -> default_title(kind) end)
     model = Keyword.get(opts, :model, Sheaf.LLM.default_model())
     llm_options = Keyword.get(opts, :llm_options, [])
     max_tool_rounds = Keyword.get(opts, :max_tool_rounds, @default_max_tool_rounds)
     task_supervisor = Keyword.get(opts, :task_supervisor, Sheaf.Assistant.TaskSupervisor)
     generate_text = Keyword.get(opts, :generate_text, &ReqLLM.generate_text/3)
     titles = Keyword.get_lazy(opts, :titles, &CorpusTools.titles/0)
+    session_iri = Keyword.get_lazy(opts, :session_iri, fn -> Id.iri(id) end)
+    agent_iri = Keyword.get_lazy(opts, :agent_iri, &Sheaf.mint/0)
 
-    context = Context.new([Context.system(system_prompt())])
-    tools = CorpusTools.tools(fn event -> GenServer.cast(chat, {:assistant_event, event}) end)
+    context = Context.new([Context.system(system_prompt(kind))])
+
+    tools =
+      CorpusTools.tools(
+        notify: fn event -> GenServer.cast(chat, {:assistant_event, event}) end,
+        note_context: %{
+          agent_iri: agent_iri,
+          agent_label: "Sheaf research assistant",
+          session_iri: session_iri,
+          session_label: session_label(kind, id)
+        }
+      )
 
     case Assistant.start_link(
            model: model,
@@ -111,8 +131,11 @@ defmodule Sheaf.Assistant.Chat do
         {:ok,
          %__MODULE__{
            id: id,
-           title: Keyword.get(opts, :title, @default_title),
+           title: title,
+           kind: kind,
            assistant: assistant,
+           agent_iri: agent_iri,
+           session_iri: session_iri,
            model: model,
            llm_options: llm_options,
            max_tool_rounds: max_tool_rounds,
@@ -270,11 +293,25 @@ defmodule Sheaf.Assistant.Chat do
     %{state | messages: state.messages ++ [%{role: role, text: text}]}
   end
 
-  defp maybe_title_from(%{title: @default_title, messages: []} = state, text) do
-    %{state | title: title_from_text(text)}
+  defp maybe_title_from(%{messages: []} = state, text) do
+    if state.title == default_title(state.kind) do
+      %{state | title: title_from_text(text)}
+    else
+      state
+    end
   end
 
   defp maybe_title_from(state, _text), do: state
+
+  defp default_title(:research), do: "Research session"
+  defp default_title(_kind), do: @default_title
+
+  defp session_label(:research, id), do: "Research session #{id}"
+  defp session_label(_kind, id), do: "Assistant chat #{id}"
+
+  defp normalize_kind(:research), do: :research
+  defp normalize_kind("research"), do: :research
+  defp normalize_kind(_kind), do: :chat
 
   defp title_from_text(text) do
     text
@@ -382,6 +419,7 @@ defmodule Sheaf.Assistant.Chat do
     %{
       id: state.id,
       title: state.title,
+      kind: state.kind,
       messages: state.messages,
       pending: not is_nil(state.pending_ref),
       active_tool: state.active_tool,
@@ -393,7 +431,7 @@ defmodule Sheaf.Assistant.Chat do
   defp server_ref(pid) when is_pid(pid), do: pid
   defp server_ref(id) when is_binary(id), do: via(id)
 
-  defp system_prompt do
+  defp system_prompt(kind) do
     """
     You are a research assistant embedded in Sheaf, a reading and writing
     environment for Ieva's master's thesis in anthropology at Tallinn University.
@@ -433,6 +471,11 @@ defmodule Sheaf.Assistant.Chat do
         yourself and climb upward if you want to.
       * Use search_text to find where a concept or phrase appears. It searches
         the whole corpus by default; pass document_id to scope to one document.
+      * Use write_note to persist durable research notes when you find an
+        observation, quote candidate, conceptual link, paper summary, or
+        reading-plan decision that should survive this chat. Put every related
+        block id in block_ids, and also write those block ids inline in the
+        note text using the markdown link form.
 
     How to help:
       * Skim papers and report the argument, method, and relevance to the
@@ -443,6 +486,9 @@ defmodule Sheaf.Assistant.Chat do
       * Clarify concepts from practice theory grounded in the actual corpus
         when possible.
       * Keep answers short by default; go deeper only when she asks.
+      * Do not write a note for every ordinary answer. Write one when the
+        result is research material worth keeping, or when she explicitly asks
+        you to take notes.
       * When you cite, use the markdown link form: "(Evans 2020,
         [#4C3K1P](/b/4C3K1P))" for papers, "([#4C3K1P](/b/4C3K1P))" for her
         own prose.
@@ -450,6 +496,29 @@ defmodule Sheaf.Assistant.Chat do
     The user message may include a [context for this turn] block naming the
     document she's currently reading and any block she has selected. Treat
     this as a hint, not a scope restriction — you can navigate elsewhere.
+
+    #{mode_prompt(kind)}
+    """
+  end
+
+  defp mode_prompt(:research) do
+    """
+    Research session mode:
+      * Treat the first user message as a research question, paper-reading
+        assignment, or exploration brief.
+      * Work through the corpus with the available tools and write durable
+        notes for findings that should be kept.
+      * It is fine to make several tool calls before answering. Keep the chat
+        updated through tool status and finish with a concise progress report.
+    """
+  end
+
+  defp mode_prompt(_kind) do
+    """
+    Chat mode:
+      * Answer the user's immediate question directly.
+      * Use notes sparingly unless the user asks you to take notes or the
+        answer produces research material worth keeping.
     """
   end
 end

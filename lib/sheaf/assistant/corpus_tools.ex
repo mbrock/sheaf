@@ -8,6 +8,7 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   alias ReqLLM.Tool
   alias Sheaf.{Corpus, Document, Documents, Id}
+  alias Sheaf.Assistant.Notes
 
   @search_result_limit 10
 
@@ -17,7 +18,15 @@ defmodule Sheaf.Assistant.CorpusTools do
   `notify` receives `{:tool_started, name, args}` and
   `{:tool_finished, name, result}` events.
   """
-  def tools(notify \\ fn _event -> :ok end) when is_function(notify, 1) do
+  def tools(opts \\ [])
+
+  def tools(notify) when is_function(notify, 1), do: tools(notify: notify)
+
+  def tools(opts) when is_list(opts) do
+    notify = Keyword.get(opts, :notify, fn _event -> :ok end)
+    note_context = Keyword.get_lazy(opts, :note_context, &default_note_context/0) |> Map.new()
+    note_writer = Keyword.get(opts, :note_writer, &Notes.write/1)
+
     [
       Tool.new!(
         name: "list_documents",
@@ -60,6 +69,31 @@ defmodule Sheaf.Assistant.CorpusTools do
           limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits"]
         ],
         callback: instrument(notify, "search_text", &search_text_tool/1)
+      ),
+      Tool.new!(
+        name: "write_note",
+        description:
+          "Persist a durable research note as RDF. Use this for observations, " <>
+            "claims, quote candidates, cross-paper links, or reading-plan notes " <>
+            "that should survive the chat. Pass mentioned block ids explicitly.",
+        parameter_schema: [
+          text: [
+            type: :string,
+            required: true,
+            doc:
+              "Self-contained note text. Include block references as markdown links when relevant."
+          ],
+          block_ids: [
+            type: {:list, :string},
+            default: [],
+            doc: "Block ids mentioned or related by this note, without the leading #."
+          ],
+          title: [type: :string, doc: "Optional short title for the note."]
+        ],
+        callback:
+          instrument(notify, "write_note", fn args ->
+            write_note_tool(args, note_context, note_writer)
+          end)
       )
     ]
   end
@@ -95,6 +129,8 @@ defmodule Sheaf.Assistant.CorpusTools do
         "Searching the corpus for " <> q
     end
   end
+
+  def humanize("write_note", _args, _titles), do: "Writing a research note"
 
   def humanize(name, _args, _titles), do: name
 
@@ -199,6 +235,36 @@ defmodule Sheaf.Assistant.CorpusTools do
       end
     else
       {:error, "query is required"}
+    end
+  end
+
+  defp write_note_tool(args, note_context, note_writer) do
+    attrs =
+      note_context
+      |> Map.merge(%{
+        text: arg(args, :text),
+        block_ids: arg(args, :block_ids) || [],
+        title: arg(args, :title)
+      })
+      |> drop_nil_values()
+
+    case note_writer.(attrs) do
+      {:ok, note} ->
+        {:ok,
+         %{
+           id: Map.get(note, :id) || Map.get(note, "id"),
+           iri: Map.get(note, :iri) || Map.get(note, "iri"),
+           session_id: Map.get(note, :session_id) || Map.get(note, "session_id"),
+           agent_id: Map.get(note, :agent_id) || Map.get(note, "agent_id"),
+           block_ids: Map.get(note, :block_ids) || Map.get(note, "block_ids") || [],
+           published_at: Map.get(note, :published_at) || Map.get(note, "published_at")
+         }}
+
+      {:error, reason} ->
+        {:error, "could not write note: #{inspect(reason)}"}
+
+      other ->
+        {:error, "could not write note: unexpected result #{inspect(other)}"}
     end
   end
 
@@ -308,5 +374,18 @@ defmodule Sheaf.Assistant.CorpusTools do
     |> String.replace("&#39;", "'")
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
+  end
+
+  defp default_note_context do
+    %{
+      agent_iri: Sheaf.mint(),
+      agent_label: "Sheaf research assistant",
+      session_iri: Sheaf.mint(),
+      session_label: "Assistant research session"
+    }
+  end
+
+  defp drop_nil_values(map) do
+    Map.reject(map, fn {_key, value} -> is_nil(value) end)
   end
 end

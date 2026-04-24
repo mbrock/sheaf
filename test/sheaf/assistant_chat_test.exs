@@ -8,8 +8,9 @@ defmodule Sheaf.Assistant.ChatTest do
   test "keeps chat messages and pending state outside the LiveView process" do
     test_pid = self()
 
-    generate_text = fn _model, context, _opts ->
+    generate_text = fn _model, context, opts ->
       send(test_pid, {:inference_started, self(), context})
+      assert Enum.any?(opts[:tools], &(&1.name == "write_note"))
 
       receive do
         :finish ->
@@ -58,6 +59,53 @@ defmodule Sheaf.Assistant.ChatTest do
            } = wait_for_messages(id, 2)
   end
 
+  test "research sessions expose their kind and get research-mode prompt guidance" do
+    test_pid = self()
+
+    generate_text = fn _model, context, _opts ->
+      send(test_pid, {:research_inference_started, self(), context})
+
+      receive do
+        :finish ->
+          {:ok, response(Context.assistant("I wrote the durable notes."), finish_reason: :stop)}
+      end
+    end
+
+    id = Sheaf.Id.generate()
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       kind: :research,
+       model: "test-model",
+       titles: %{},
+       generate_text: generate_text,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    assert %{title: "Research session", kind: :research, pending: false} = Chat.snapshot(id)
+
+    assert :ok = Chat.send_user_message(id, "Read the circular economy papers.")
+
+    assert_receive {:research_inference_started, task_pid, context}
+    assert system_text(context) =~ "Research session mode:"
+    assert system_text(context) =~ "write durable"
+
+    assert %{title: "Read the circular economy papers.", kind: :research, pending: true} =
+             Chat.snapshot(id)
+
+    send(task_pid, :finish)
+
+    assert %{
+             kind: :research,
+             pending: false,
+             messages: [
+               %{role: :user, text: "Read the circular economy papers."},
+               %{role: :assistant, text: "I wrote the durable notes."}
+             ]
+           } = wait_for_messages(id, 2)
+  end
+
   defp wait_for_messages(id, count) do
     Enum.reduce_while(1..50, nil, fn _, _acc ->
       snapshot = Chat.snapshot(id)
@@ -72,8 +120,16 @@ defmodule Sheaf.Assistant.ChatTest do
   end
 
   defp user_text(%Context{} = context) do
+    message_text(context, :user)
+  end
+
+  defp system_text(%Context{} = context) do
+    message_text(context, :system)
+  end
+
+  defp message_text(%Context{} = context, role) do
     context.messages
-    |> Enum.find(&(&1.role == :user))
+    |> Enum.find(&(&1.role == role))
     |> Map.fetch!(:content)
     |> List.first()
     |> then(fn %ContentPart{text: text} -> text end)
