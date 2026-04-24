@@ -77,7 +77,7 @@ defmodule SheafWeb.DocumentIndexLive do
 
       <div
         :if={metadata_byline(@document)}
-        class="truncate text-sm text-stone-600 dark:text-stone-300"
+        class="truncate font-serif [font-variant-caps:small-caps]  text-stone-600 dark:text-stone-300"
       >
         {metadata_byline(@document)}
       </div>

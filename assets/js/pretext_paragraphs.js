@@ -1,10 +1,11 @@
-import {prepareWithSegments} from "@chenglou/pretext"
+import {clearCache, prepareWithSegments} from "@chenglou/pretext"
 
 const HUGE_BADNESS = 1e8
 const SOFT_HYPHEN = "\u00AD"
 const SHORT_LINE_RATIO = 0.6
 const MIN_SPACE_RATIO = 0.9
 const RIVER_THRESHOLD = 1.5
+const WRAP_FRAME_BUDGET_MS = 8
 const TEXT_BOUNDARY_TAGS = new Set([
   "ADDRESS",
   "ARTICLE",
@@ -44,18 +45,19 @@ const TEXT_BOUNDARY_TAGS = new Set([
 const states = new WeakMap()
 const observed = new Set()
 const pending = new Set()
+const loadedFonts = new Set()
+const fontLoadPromises = new Map()
+const fontWaitTargets = new Map()
 const resizeObserver = new ResizeObserver(entries => {
   for (const entry of entries) schedule(entry.target)
 })
 
 let raf = null
+let fontEpoch = 0
 
 export const PretextParagraph = {
   mounted() {
     refreshParagraph(this.el)
-    document.fonts?.ready.then(() => {
-      if (this.el.isConnected) refreshParagraph(this.el)
-    })
   },
   updated() {
     refreshParagraph(this.el)
@@ -65,18 +67,32 @@ export const PretextParagraph = {
     states.delete(this.el)
     observed.delete(this.el)
     pending.delete(this.el)
+    forgetFontWaitTarget(this.el)
   },
 }
 
 function schedule(target) {
   pending.add(target)
+  schedulePending()
+}
+
+function schedulePending() {
   if (raf !== null) return
 
   raf = requestAnimationFrame(() => {
     raf = null
-    const targets = Array.from(pending)
-    pending.clear()
-    for (const target of targets) wrapParagraph(target)
+    const deadline = performance.now() + WRAP_FRAME_BUDGET_MS
+
+    while (pending.size > 0) {
+      const target = pending.values().next().value
+      pending.delete(target)
+      wrapParagraph(target)
+
+      if (pending.size > 0 && performance.now() >= deadline) {
+        schedulePending()
+        return
+      }
+    }
   })
 }
 
@@ -86,10 +102,18 @@ function refreshParagraph(target) {
     resizeObserver.observe(target)
   }
 
-  const state = states.get(target)
-  const text = state?.text ?? sourceText(target)
+  let state = states.get(target)
+  const previousText = state?.text
+  const text = previousText ?? sourceText(target)
   rememberSourceText(target, text)
-  states.set(target, {text, key: state?.text === text ? state.key : null})
+
+  if (state === undefined) {
+    state = {text, key: null, fontLoadKey: null}
+    states.set(target, state)
+  } else {
+    state.text = text
+    if (previousText !== text) state.key = null
+  }
 
   schedule(target)
 }
@@ -105,7 +129,13 @@ function wrapParagraph(target) {
   const font = fontShorthand(style)
   const lineHeight = lineHeightPx(style)
   const letterSpacing = lengthPx(style.letterSpacing) ?? 0
-  const key = `${state.text}\n${font}\n${letterSpacing}\n${Math.round(width * 100) / 100}`
+
+  if (fontNeedsLoading(font, state.text)) {
+    waitForFont(target, font, state.text)
+    return
+  }
+
+  const key = `${fontEpoch}\n${state.text}\n${font}\n${letterSpacing}\n${Math.round(width * 100) / 100}`
   if (state.key === key) return
 
   state.key = key
@@ -124,12 +154,86 @@ function getState(target) {
   let state = states.get(target)
 
   if (state === undefined) {
-    state = {text: sourceText(target), key: null}
+    state = {text: sourceText(target), key: null, fontLoadKey: null}
     rememberSourceText(target, state.text)
     states.set(target, state)
   }
 
   return state
+}
+
+function fontNeedsLoading(font, text) {
+  if (document.fonts === undefined || loadedFonts.has(font)) return false
+  if (fontLoadPromises.has(font)) return true
+
+  try {
+    if (document.fonts.check(font, fontLoadSample(text))) {
+      loadedFonts.add(font)
+      return false
+    }
+
+    return true
+  } catch (_error) {
+    return false
+  }
+}
+
+function waitForFont(target, font, text) {
+  const state = getState(target)
+  if (state.fontLoadKey === font) return
+
+  state.fontLoadKey = font
+  let targets = fontWaitTargets.get(font)
+  if (targets === undefined) {
+    targets = new Set()
+    fontWaitTargets.set(font, targets)
+  }
+
+  targets.add(target)
+  ensureFontLoaded(font, text)
+}
+
+function ensureFontLoaded(font, text) {
+  const existing = fontLoadPromises.get(font)
+  if (existing !== undefined) return existing
+
+  const promise = document.fonts.load(font, fontLoadSample(text))
+    .catch(() => [])
+    .finally(() => {
+      loadedFonts.add(font)
+      fontLoadPromises.delete(font)
+      fontEpoch++
+      clearCache()
+      scheduleFontWaitTargets(font)
+    })
+
+  fontLoadPromises.set(font, promise)
+  return promise
+}
+
+function scheduleFontWaitTargets(font) {
+  const targets = fontWaitTargets.get(font)
+  if (targets === undefined) return
+
+  fontWaitTargets.delete(font)
+  for (const target of targets) {
+    const state = states.get(target)
+    if (state?.fontLoadKey === font) state.fontLoadKey = null
+    if (target.isConnected) pending.add(target)
+  }
+
+  schedulePending()
+}
+
+function forgetFontWaitTarget(target) {
+  for (const [font, targets] of fontWaitTargets) {
+    targets.delete(target)
+    if (targets.size === 0) fontWaitTargets.delete(font)
+  }
+}
+
+function fontLoadSample(text) {
+  return text.replace(/\s+/g, " ").trim().slice(0, 128) || "A"
 }
 
 function optimalLines(prepared, maxWidth, normalSpaceWidth, hyphenWidth) {
@@ -277,18 +381,33 @@ function buildLine(prepared, breaks, fromBreak, toBreak, maxWidth, normalSpaceWi
 function lineElement(line, normalSpaceWidth, lineHeight) {
   const element = document.createElement("span")
   element.dataset.pretextLine = "true"
-  element.textContent = line.text
+  element.dataset.pretextText = line.text
   element.style.display = "block"
   element.style.lineHeight = `${lineHeight}px`
+  element.style.whiteSpace = "nowrap"
 
+  let spaceWidth = normalSpaceWidth
   if (shouldJustify(line)) {
-    const justifiedSpace = Math.max(
+    spaceWidth = Math.max(
       (line.maxWidth - line.wordWidth) / line.spaceCount,
       normalSpaceWidth * MIN_SPACE_RATIO
     )
-    element.style.wordSpacing = `${justifiedSpace - normalSpaceWidth}px`
   }
 
+  for (const segment of line.segments) {
+    element.appendChild(segmentElement(segment, spaceWidth))
+  }
+
+  return element
+}
+
+function segmentElement(segment, spaceWidth) {
+  const element = document.createElement("span")
+  element.textContent = segment.text
+  element.style.display = "inline-block"
+  element.style.whiteSpace = "pre"
+  element.style.verticalAlign = "baseline"
+  element.style.width = `${segment.space ? spaceWidth : segment.width}px`
   return element
 }
 
@@ -315,7 +434,7 @@ function wrappedText(target) {
   const lines = Array.from(target.querySelectorAll(":scope > [data-pretext-line]"))
   if (lines.length === 0) return null
 
-  return lines.map(line => line.textContent ?? "").join(" ").replace(/\s+/g, " ").trim()
+  return lines.map(line => line.dataset.pretextText ?? line.textContent ?? "").join(" ").replace(/\s+/g, " ").trim()
 }
 
 function textFrom(node) {
