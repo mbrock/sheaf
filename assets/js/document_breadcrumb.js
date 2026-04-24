@@ -10,10 +10,13 @@ export const DocumentBreadcrumb = {
     this.update = () => updateCurrentHeading(this)
     this.observe = () => observeSections(this)
     this.copy = () => copyMarkdown(this)
+    this.navigateAssistantBlock = event => navigateAssistantBlock(this, event)
 
     window.addEventListener("resize", this.observe)
     this.el.addEventListener("toggle", this.observe, true)
+    this.el.addEventListener("click", this.navigateAssistantBlock)
     this.copyButton?.addEventListener("click", this.copy)
+    this.handleEvent("scroll-to-block", ({id}) => scheduleScrollToBlock(this, id))
 
     this.observe()
   },
@@ -24,8 +27,51 @@ export const DocumentBreadcrumb = {
     this.observer?.disconnect()
     window.removeEventListener("resize", this.observe)
     this.el.removeEventListener("toggle", this.observe, true)
+    this.el.removeEventListener("click", this.navigateAssistantBlock)
     this.copyButton?.removeEventListener("click", this.copy)
   },
+}
+
+function navigateAssistantBlock(hook, event) {
+  if (event.defaultPrevented || event.button !== 0) return
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement
+  const link = target?.closest('.assistant-prose a[href^="/b/"]')
+  if (!link || !hook.el.contains(link)) return
+
+  const blockId = link.pathname.split("/").filter(Boolean).pop()
+  if (!blockId) return
+
+  event.preventDefault()
+  hook.pushEvent("assistant_block_link", {id: blockId})
+}
+
+function scheduleScrollToBlock(hook, id) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => scrollToBlock(hook, id))
+  })
+}
+
+function scrollToBlock(hook, id) {
+  hook.article = hook.el.querySelector("#document-start")
+  const block = hook.el.querySelector(`#block-${cssEscape(id)}`)
+  if (!block) return
+
+  for (const details of Array.from(block.querySelectorAll("details")).reverse()) {
+    details.open = true
+  }
+
+  for (let details = block.closest("details"); details; details = details.parentElement?.closest("details")) {
+    details.open = true
+  }
+
+  block.scrollIntoView({block: "center", behavior: "smooth"})
+}
+
+function cssEscape(value) {
+  if (window.CSS?.escape) return window.CSS.escape(value)
+  return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\$&")
 }
 
 function observeSections(hook) {

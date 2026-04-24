@@ -13,6 +13,9 @@ defmodule Sheaf.Application do
       {Phoenix.PubSub, name: Sheaf.PubSub},
       {Finch, name: Sheaf.Finch},
       {Task.Supervisor, name: Sheaf.Assistant.TaskSupervisor},
+      {Registry, keys: :unique, name: Sheaf.Assistant.ChatRegistry},
+      {DynamicSupervisor, strategy: :one_for_one, name: Sheaf.Assistant.ChatSupervisor},
+      Sheaf.Assistant.Chats,
       SheafWeb.Endpoint
     ]
 

@@ -1,37 +1,57 @@
 defmodule SheafWeb.DocumentLive do
   use SheafWeb, :live_view
 
+  alias Sheaf.Corpus
   alias Sheaf.Document
   alias Sheaf.Id
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
-    root = Id.iri(id)
-
-    with {:ok, graph} <- Sheaf.fetch_graph(root) do
-      socket =
-        socket
-        |> assign(:page_title, page_title(graph, root))
-        |> assign(:graph, graph)
-        |> assign(:root, root)
-        |> assign(:selected_block_id, params["block"])
-
+    with {:ok, socket} <- load_document(socket, id, params["block"]) do
       {:ok, socket}
     end
   end
 
   @impl true
-  def handle_params(%{"block" => block_id}, _uri, socket)
-      when is_binary(block_id) and block_id != "" do
-    {:noreply, assign(socket, :selected_block_id, block_id)}
-  end
+  def handle_params(%{"id" => id} = params, _uri, socket) do
+    selected_block_id = selected_block_id(params)
 
-  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+    socket =
+      if Map.get(socket.assigns, :document_id) == id do
+        assign(socket, :selected_block_id, selected_block_id)
+      else
+        case load_document(socket, id, selected_block_id) do
+          {:ok, socket} ->
+            socket
+
+          {:error, reason} ->
+            put_flash(socket, :error, "Could not load document #{id}: #{inspect(reason)}")
+        end
+      end
+
+    {:noreply, maybe_scroll_to_selected(socket)}
+  end
 
   @impl true
   def handle_event("inspect_block", %{"id" => id}, socket) do
     {:noreply, assign(socket, :selected_block_id, id)}
   end
+
+  def handle_event("assistant_block_link", %{"id" => block_id}, socket)
+      when is_binary(block_id) and block_id != "" do
+    case target_document_id(block_id, socket) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Block #{block_id} was not found.")}
+
+      doc_id when doc_id == block_id ->
+        {:noreply, push_patch(socket, to: ~p"/#{doc_id}")}
+
+      doc_id ->
+        {:noreply, push_patch(socket, to: block_path(doc_id, block_id))}
+    end
+  end
+
+  def handle_event("assistant_block_link", _params, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
@@ -377,4 +397,52 @@ defmodule SheafWeb.DocumentLive do
   defp page_title(graph, root), do: document_title(graph, root)
 
   defp document_title(graph, root), do: Document.title(graph, root)
+
+  defp load_document(socket, id, selected_block_id) do
+    root = Id.iri(id)
+
+    with {:ok, graph} <- Sheaf.fetch_graph(root) do
+      socket =
+        socket
+        |> assign(:page_title, page_title(graph, root))
+        |> assign(:document_id, id)
+        |> assign(:graph, graph)
+        |> assign(:root, root)
+        |> assign(:selected_block_id, selected_block_id)
+
+      {:ok, socket}
+    end
+  end
+
+  defp selected_block_id(%{"block" => block_id}) when is_binary(block_id) and block_id != "" do
+    block_id
+  end
+
+  defp selected_block_id(_params), do: nil
+
+  defp maybe_scroll_to_selected(%{assigns: %{selected_block_id: block_id}} = socket)
+       when is_binary(block_id) and block_id != "" do
+    push_event(socket, "scroll-to-block", %{id: block_id})
+  end
+
+  defp maybe_scroll_to_selected(socket), do: socket
+
+  defp target_document_id(block_id, socket) do
+    iri = Id.iri(block_id)
+
+    cond do
+      Map.get(socket.assigns, :root) == iri ->
+        socket.assigns.document_id
+
+      Map.has_key?(socket.assigns, :graph) and Document.block_type(socket.assigns.graph, iri) ->
+        socket.assigns.document_id
+
+      true ->
+        Corpus.find_document(block_id)
+    end
+  end
+
+  defp block_path(doc_id, block_id) do
+    ~p"/#{doc_id}?block=#{block_id}" <> "#block-#{block_id}"
+  end
 end
