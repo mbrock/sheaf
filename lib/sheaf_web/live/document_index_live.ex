@@ -1,4 +1,8 @@
 defmodule SheafWeb.DocumentIndexLive do
+  @moduledoc """
+  Live landing page for stored documents and assistant research notes.
+  """
+
   use SheafWeb, :live_view
 
   alias Sheaf.BlockRefs

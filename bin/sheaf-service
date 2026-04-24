@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export HOME="${HOME:-$(eval echo ~$(whoami))}"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
+COMMAND="${1:-status}"
+
+cd "$APP_ROOT"
+
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/runtime_env.sh"
+load_sheaf_env "$APP_ROOT"
+
+MODE="${SHEAF_SERVICE_MODE:-tmux}"
+
+usage() {
+  printf 'Usage: %s {start|stop|restart|status|logs}\n' "$(basename "$0")" >&2
+}
+
+print_kv() {
+  printf '  %-18s %s\n' "$1:" "$2"
+}
+
+curl_auth_args() {
+  if [ -n "${SHEAF_SPARQL_USERNAME:-}" ] && [ -n "${SHEAF_SPARQL_PASSWORD:-}" ]; then
+    printf '%s\n' "-u"
+    printf '%s\n' "${SHEAF_SPARQL_USERNAME}:${SHEAF_SPARQL_PASSWORD}"
+  fi
+}
+
+json_value() {
+  local filter="$1"
+  local input="$2"
+
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$input" | jq -r "$filter"
+  else
+    printf 'unavailable: jq not installed'
+  fi
+}
+
+derived_resource_base() {
+  local value="${SHEAF_RESOURCE_BASE:-}"
+
+  if [ -z "$value" ]; then
+    value="https://${PHX_HOST:-example.com}/"
+  fi
+
+  case "$value" in
+    */) printf '%s' "$value" ;;
+    *) printf '%s/' "$value" ;;
+  esac
+}
+
+derived_ontology_base() {
+  local value="${SHEAF_ONTOLOGY_BASE:-https://less.rest/sheaf/}"
+
+  case "$value" in
+    */) printf '%s' "$value" ;;
+    *) printf '%s/' "$value" ;;
+  esac
+}
+
+print_http_status() {
+  local label="$1"
+  local url="$2"
+  local status
+
+  if status=$(curl -k -fsS -o /dev/null -w '%{http_code}' --max-time 2 "$url" 2>/dev/null); then
+    print_kv "$label" "$status $url"
+  else
+    print_kv "$label" "unreachable $url"
+  fi
+}
+
+health_url() {
+  local path="${SHEAF_HEALTH_PATH:-/health}"
+
+  case "$path" in
+    /*) ;;
+    *) path="/$path" ;;
+  esac
+
+  printf 'http://%s:%s%s' "${SHEAF_HTTP_IP:-127.0.0.1}" "${PORT:-4000}" "$path"
+}
+
+wait_for_health() {
+  local url="${1:-$(health_url)}"
+  local timeout="${SHEAF_HEALTH_TIMEOUT:-30}"
+  local start
+  local status
+
+  start="$(date +%s)"
+  printf 'Waiting for Sheaf health check: %s\n' "$url"
+
+  while true; do
+    if status=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 2 "$url" 2>/dev/null); then
+      if [ "$status" = "200" ]; then
+        printf 'Sheaf health check is ready: %s\n' "$url"
+        return 0
+      fi
+    fi
+
+    if [ "$(($(date +%s) - start))" -ge "$timeout" ]; then
+      printf 'Timed out waiting for Sheaf health check after %ss: %s\n' "$timeout" "$url" >&2
+      return 1
+    fi
+
+    sleep 1
+  done
+}
+
+print_sparql_diagnostics() {
+  local dataset="${SHEAF_SPARQL_DATASET:-http://localhost:3030/sheaf}"
+  local query_endpoint="${SHEAF_SPARQL_QUERY_ENDPOINT:-${dataset%/}/sparql}"
+  local update_endpoint="${SHEAF_SPARQL_UPDATE_ENDPOINT:-${dataset%/}/update}"
+  local data_endpoint="${SHEAF_SPARQL_DATA_ENDPOINT:-${dataset%/}/data}"
+  local server="${dataset%/*}"
+  local auth_args=()
+  local server_json datasets_json count_json
+
+  while IFS= read -r arg; do
+    auth_args+=("$arg")
+  done < <(curl_auth_args)
+
+  print_kv "Dataset" "$dataset"
+  print_kv "Query endpoint" "$query_endpoint"
+  print_kv "Update endpoint" "$update_endpoint"
+  print_kv "Data endpoint" "$data_endpoint"
+  print_kv "SPARQL user" "${SHEAF_SPARQL_USERNAME:-none}"
+
+  if server_json=$(curl -fsS --max-time 3 "${auth_args[@]}" "$server/$/server" 2>/dev/null); then
+    print_kv "Fuseki server" "reachable $server"
+    print_kv "Fuseki version" "$(json_value '.version // "unknown"' "$server_json")"
+  else
+    print_kv "Fuseki server" "unreachable $server"
+  fi
+
+  if datasets_json=$(curl -fsS --max-time 3 "${auth_args[@]}" "$server/$/datasets" 2>/dev/null); then
+    print_kv "Datasets" "$(json_value '[.datasets[]."ds.name"] | join(", ")' "$datasets_json")"
+  fi
+
+  if count_json=$(
+    curl -fsS --max-time 5 "${auth_args[@]}" \
+      -H 'Accept: application/sparql-results+json' \
+      --data-urlencode 'query=SELECT (COUNT(*) AS ?triples) WHERE { ?s ?p ?o }' \
+      "$query_endpoint" 2>/dev/null
+  ); then
+    print_kv "Triples" "$(json_value '.results.bindings[0].triples.value // "unknown"' "$count_json")"
+  else
+    print_kv "Triples" "unavailable"
+  fi
+}
+
+print_status_context() {
+  local host="${PHX_HOST:-localhost}"
+  local port="${PORT:-4000}"
+  local ip="${SHEAF_HTTP_IP:-127.0.0.1}"
+
+  printf 'Sheaf environment\n'
+  print_kv "App root" "$APP_ROOT"
+  print_kv "Service mode" "$MODE"
+  print_kv "Node" "$(sheaf_node_name)"
+  print_kv "Public URL" "https://$host/"
+  print_kv "Phoenix HTTP" "http://$ip:$port/"
+  print_kv "Resource base" "$(derived_resource_base)"
+  print_kv "Ontology base" "$(derived_ontology_base)"
+  print_http_status "Public check" "https://$host/"
+  print_http_status "Phoenix check" "http://$ip:$port/"
+  print_http_status "Health check" "$(health_url)"
+
+  printf '\nSPARQL / Fuseki\n'
+  print_sparql_diagnostics
+  printf '\nService process\n'
+}
+
+tmux_session() {
+  printf '%s' "${SHEAF_TMUX_SESSION:-sheaf-dev}"
+}
+
+tmux_command() {
+  printf '%s' "${SHEAF_TMUX_COMMAND:-./bin/serve}"
+}
+
+tmux_running() {
+  tmux has-session -t "$(tmux_session)" 2>/dev/null
+}
+
+tmux_start() {
+  if tmux_running; then
+    printf 'Sheaf tmux session already running: %s\n' "$(tmux_session)"
+    return 0
+  fi
+
+  tmux new-session -d -s "$(tmux_session)" -c "$APP_ROOT" "$(tmux_command)"
+  printf 'Started Sheaf in tmux session: %s\n' "$(tmux_session)"
+  wait_for_health
+}
+
+tmux_stop() {
+  if tmux_running; then
+    tmux kill-session -t "$(tmux_session)"
+    printf 'Stopped Sheaf tmux session: %s\n' "$(tmux_session)"
+  else
+    printf 'Sheaf tmux session is not running: %s\n' "$(tmux_session)"
+  fi
+}
+
+tmux_status() {
+  if tmux_running; then
+    printf 'Sheaf is running in tmux session: %s\n' "$(tmux_session)"
+    tmux capture-pane -t "$(tmux_session)" -p -S -20
+  else
+    printf 'Sheaf is not running in tmux session: %s\n' "$(tmux_session)"
+  fi
+}
+
+tmux_logs() {
+  if tmux_running; then
+    tmux capture-pane -t "$(tmux_session)" -p -S "-${SHEAF_TMUX_LOG_LINES:-120}"
+  else
+    printf 'Sheaf is not running in tmux session: %s\n' "$(tmux_session)" >&2
+    return 1
+  fi
+}
+
+systemd_unit() {
+  printf '%s' "${SHEAF_SYSTEMD_UNIT:-sheaf.service}"
+}
+
+systemd_action() {
+  local action="$1"
+  systemctl --user "$action" "$(systemd_unit)"
+}
+
+launchd_label() {
+  printf '%s' "${SHEAF_LAUNCHD_LABEL:-local.sheaf.dev}"
+}
+
+launchd_action() {
+  local action="$1"
+  local target="gui/$(id -u)/$(launchd_label)"
+
+  case "$action" in
+    start) launchctl kickstart "$target" ;;
+    stop) launchctl kill TERM "$target" ;;
+    restart) launchctl kickstart -k "$target" ;;
+    status) launchctl print "$target" ;;
+    *)
+      printf 'launchd mode does not support action: %s\n' "$action" >&2
+      return 2
+      ;;
+  esac
+}
+
+case "$COMMAND" in
+  start|stop|restart|status|logs) ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
+
+case "$MODE" in
+  tmux)
+    case "$COMMAND" in
+      start) tmux_start ;;
+      stop) tmux_stop ;;
+      restart)
+        tmux_stop
+        tmux_start
+        ;;
+      status)
+        print_status_context
+        tmux_status
+        ;;
+      logs) tmux_logs ;;
+    esac
+    ;;
+  systemd)
+    case "$COMMAND" in
+      start)
+        systemd_action start
+        wait_for_health
+        ;;
+      stop) systemd_action stop ;;
+      restart)
+        systemd_action restart
+        wait_for_health
+        ;;
+      status)
+        print_status_context
+        systemd_action status || true
+        ;;
+      logs) journalctl --user -u "$(systemd_unit)" -n "${SHEAF_SYSTEMD_LOG_LINES:-120}" ;;
+    esac
+    ;;
+  launchd)
+    case "$COMMAND" in
+      start)
+        launchd_action "$COMMAND"
+        wait_for_health
+        ;;
+      stop) launchd_action "$COMMAND" ;;
+      restart)
+        launchd_action "$COMMAND"
+        wait_for_health
+        ;;
+      status)
+        print_status_context
+        launchd_action status || true
+        ;;
+      logs)
+        printf 'launchd mode has no configured log command. Use Console.app or set up StandardOutPath/StandardErrorPath in the plist.\n' >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  *)
+    printf 'Unknown SHEAF_SERVICE_MODE: %s\n' "$MODE" >&2
+    printf 'Supported modes: tmux, systemd, launchd\n' >&2
+    exit 2
+    ;;
+esac

@@ -16,7 +16,8 @@ defmodule Sheaf.Application do
       {Registry, keys: :unique, name: Sheaf.Assistant.ChatRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: Sheaf.Assistant.ChatSupervisor},
       Sheaf.Assistant.Chats,
-      SheafWeb.Endpoint
+      SheafWeb.Endpoint,
+      Sheaf.Readiness
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

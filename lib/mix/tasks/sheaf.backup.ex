@@ -1,4 +1,8 @@
 defmodule Mix.Tasks.Sheaf.Backup do
+  @moduledoc """
+  Backs up the configured RDF dataset to a timestamped TriG file.
+  """
+
   use Mix.Task
 
   @shortdoc "Backs up the configured dataset to a TriG file"

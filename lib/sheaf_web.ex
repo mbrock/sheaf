@@ -1,7 +1,6 @@
 defmodule SheafWeb do
   @moduledoc """
-  The entrypoint for defining your web interface, such
-  as controllers, components, channels, and so on.
+  Shared Phoenix wiring for controllers, LiveViews, components, and routes.
 
   This can be used in your application as:
 

@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Build assets locally, then hot-reload changed and newly compiled modules on the running node.
+# Usage: bin/deploy
+set -euo pipefail
+
+echo "Building assets and compiling..."
+mix assets.build
+
+echo "Checking live node for reloadable code changes..."
+cat <<'EOF' | bin/rpc
+app = :sheaf
+ebin_dir = :code.lib_dir(app) |> List.to_string() |> Path.join("ebin")
+
+loaded_modules =
+  :code.all_loaded()
+  |> Enum.map(&elem(&1, 0))
+  |> MapSet.new()
+
+new_modules =
+  ebin_dir
+  |> Path.join("*.beam")
+  |> Path.wildcard()
+  |> Enum.map(fn beam ->
+    beam
+    |> Path.basename(".beam")
+    |> String.to_atom()
+  end)
+  |> Enum.reject(&MapSet.member?(loaded_modules, &1))
+  |> Enum.sort()
+
+reload_candidates =
+  :code.modified_modules()
+  |> Enum.uniq()
+  |> Enum.sort()
+
+reload_results =
+  Enum.map(reload_candidates, fn mod ->
+    :code.purge(mod)
+
+    case :code.load_file(mod) do
+      {:module, ^mod} ->
+        IO.puts("  reloaded #{mod}")
+        {:ok, mod}
+
+      {:error, reason} ->
+        IO.puts("  failed reload #{mod}: #{inspect(reason)}")
+        {:error, mod, reason}
+    end
+  end)
+
+load_results =
+  Enum.map(new_modules, fn mod ->
+    case :code.load_file(mod) do
+      {:module, ^mod} ->
+        IO.puts("  loaded new #{mod}")
+        {:ok, mod}
+
+      {:error, reason} ->
+        IO.puts("  failed load new #{mod}: #{inspect(reason)}")
+        {:error, mod, reason}
+    end
+  end)
+
+reload_failures = Enum.filter(reload_results, &match?({:error, _, _}, &1))
+load_failures = Enum.filter(load_results, &match?({:error, _, _}, &1))
+
+case {reload_results, load_results} do
+  {[], []} ->
+    IO.puts("No BEAM code changes to reload. Asset build completed.")
+
+  _ ->
+    IO.puts(
+      "Done. #{length(reload_results) - length(reload_failures)}/#{length(reload_results)} modified module(s) reloaded, " <>
+        "#{length(load_results) - length(load_failures)}/#{length(load_results)} new module(s) loaded."
+    )
+end
+
+if reload_failures != [] or load_failures != [] do
+  raise "hot reload failed"
+else
+  :ok
+end
+EOF

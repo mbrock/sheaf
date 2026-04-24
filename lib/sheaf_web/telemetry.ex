@@ -1,4 +1,8 @@
 defmodule SheafWeb.Telemetry do
+  @moduledoc """
+  Telemetry supervisor and metric definitions for Phoenix and VM observations.
+  """
+
   use Supervisor
   import Telemetry.Metrics
 

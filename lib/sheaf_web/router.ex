@@ -1,4 +1,8 @@
 defmodule SheafWeb.Router do
+  @moduledoc """
+  Phoenix route table for the reader UI, JSON API, schema, and health endpoints.
+  """
+
   use SheafWeb, :router
 
   pipeline :browser do
@@ -16,6 +20,7 @@ defmodule SheafWeb.Router do
 
   scope "/", SheafWeb do
     get "/sheaf-schema.ttl", SchemaController, :show
+    get "/health", HealthController, :show
   end
 
   scope "/api", SheafWeb.API do

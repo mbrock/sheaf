@@ -1,4 +1,8 @@
 defmodule Mix.Tasks.Sheaf.Schema do
+  @moduledoc """
+  Uploads `priv/sheaf-schema.ttl` to the configured schema named graph.
+  """
+
   use Mix.Task
 
   @shortdoc "Uploads priv/sheaf-schema.ttl to the schema named graph"

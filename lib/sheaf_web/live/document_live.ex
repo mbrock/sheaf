@@ -1,4 +1,8 @@
 defmodule SheafWeb.DocumentLive do
+  @moduledoc """
+  Live document reader with outline navigation, block selection, and assistant context.
+  """
+
   use SheafWeb, :live_view
 
   alias Sheaf.Corpus

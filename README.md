@@ -8,10 +8,38 @@ Install dependencies and start the app:
 
 ```bash
 mix setup
-mix phx.server
+bin/start
 ```
 
-The local route is `http://localhost:4000/`.
+The local route is `http://localhost:4000/` by default. On this machine, Caddy
+terminates TLS for `https://sheaf.localhost/` and proxies to the configured
+Phoenix port.
+
+Development service helpers:
+
+```bash
+bin/start
+bin/stop
+bin/restart
+bin/status
+bin/logs
+bin/rpc 'Process.whereis(Sheaf.Supervisor)'
+bin/docs :rdf
+bin/docs Sheaf.mint/0
+bin/deploy
+```
+
+These use `SHEAF_SERVICE_MODE` from `.env`. Supported modes are `tmux`,
+`systemd`, and `launchd`; `tmux` is the convenient local default. `bin/status`
+also prints derived app URLs, RDF base IRIs, SPARQL endpoints, Fuseki server
+metadata, dataset names, and a quick triple count before checking the configured
+service process.
+
+`bin/rpc` evaluates Elixir on the running Sheaf node. `bin/deploy` runs
+`mix assets.build`, then uses `bin/rpc` to hot-reload modified and newly compiled
+BEAM modules without starting a second application instance.
+`bin/docs` uses the running node to show app overviews, module/function docs, and
+source snippets, which is often faster than spelunking generated HTML docs.
 
 Useful graph commands:
 

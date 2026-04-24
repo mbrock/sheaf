@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Run Elixir code on the running local Sheaf node.
+# Usage: bin/rpc 'IO.puts("hello")'
+#    or: echo 'IO.puts("hello")' | bin/rpc
+set -euo pipefail
+
+export HOME="${HOME:-$(eval echo ~$(whoami))}"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
+
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/runtime_env.sh"
+load_sheaf_env "$APP_ROOT"
+
+NODE="${RPC_NODE:-$(sheaf_node_name)}"
+CLIENT_NODE="$(sheaf_rpc_client_name "$NODE")"
+set_sheaf_elixir_node_args "$CLIENT_NODE"
+COOKIE_ARGS=()
+while IFS= read -r arg; do
+  COOKIE_ARGS+=("$arg")
+done < <(sheaf_cookie_args)
+
+if [ $# -gt 0 ]; then
+  CODE="$1"
+else
+  CODE="$(cat)"
+fi
+
+CODEFILE="$(mktemp /tmp/sheaf_rpc_code_XXXXXX)"
+RUNNER="$(mktemp /tmp/sheaf_rpc_run_XXXXXX.exs)"
+cleanup() { rm -f "$CODEFILE" "$RUNNER"; }
+trap cleanup EXIT
+
+printf '%s' "$CODE" > "$CODEFILE"
+
+cat > "$RUNNER" <<ENDSCRIPT
+unless Node.connect(:"${NODE}") do
+  IO.puts(:stderr, "could not connect to ${NODE}")
+  System.halt(1)
+end
+
+code = File.read!("${CODEFILE}")
+gl = Process.group_leader()
+result = :rpc.call(:"${NODE}", Sheaf.RPC, :eval, [gl, code])
+
+case result do
+  {:badrpc, _} -> System.halt(1)
+  value when is_binary(value) -> IO.write(value)
+  value -> IO.inspect(value, limit: :infinity, printable_limit: :infinity)
+end
+ENDSCRIPT
+
+exec elixir "$SHEAF_ELIXIR_NODE_FLAG" "$SHEAF_ELIXIR_NODE_VALUE" "${COOKIE_ARGS[@]}" "$RUNNER"

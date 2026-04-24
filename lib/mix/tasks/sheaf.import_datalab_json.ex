@@ -1,4 +1,8 @@
 defmodule Mix.Tasks.Sheaf.ImportDatalabJson do
+  @moduledoc """
+  Imports Datalab JSON into the Sheaf RDF dataset as a paper graph.
+  """
+
   use Mix.Task
 
   @shortdoc "Imports Datalab JSON as a Sheaf paper graph"

@@ -1,4 +1,8 @@
 defmodule SheafWeb.Endpoint do
+  @moduledoc """
+  Phoenix endpoint for HTTP, static assets, LiveView sockets, and request plumbing.
+  """
+
   use Phoenix.Endpoint, otp_app: :sheaf
 
   # The session will be stored in the cookie and signed,

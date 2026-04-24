@@ -1,4 +1,8 @@
 defmodule SheafWeb.SchemaController do
+  @moduledoc """
+  Serves the tracked Sheaf RDF schema as Turtle.
+  """
+
   use SheafWeb, :controller
 
   def show(conn, _params) do
