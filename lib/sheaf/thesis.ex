@@ -58,6 +58,14 @@ defmodule Sheaf.Thesis do
     value(graph, iri, DOC.sourceHtml(), "")
   end
 
+  def source_key(%Graph{} = graph, iri) do
+    value(graph, iri, DOC.sourceKey(), "")
+  end
+
+  def source_block_type(%Graph{} = graph, iri) do
+    value(graph, iri, DOC.sourceBlockType(), "")
+  end
+
   def source_page(%Graph{} = graph, iri) do
     case object(graph, iri, DOC.sourcePage()) do
       nil -> nil

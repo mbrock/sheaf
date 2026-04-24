@@ -92,6 +92,9 @@ defmodule SheafWeb.ThesisLiveTest do
     section = RDF.IRI.new!("https://example.com/sheaf/SEC111")
     section_list = RDF.IRI.new!("https://example.com/sheaf/LST111")
     block = RDF.IRI.new!("https://example.com/sheaf/BLK111")
+    picture = RDF.IRI.new!("https://example.com/sheaf/PIC111")
+    paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR111")
+    paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV1111")
 
     graph =
       RDF.Graph.new([
@@ -103,18 +106,37 @@ defmodule SheafWeb.ThesisLiveTest do
         {section, RDFS.label(), RDF.literal("Introduction")},
         {section, DOC.children(), section_list},
         {block, RDF.type(), DOC.ExtractedBlock},
-        {block, DOC.sourceHtml(), RDF.literal("<p>Extracted text.</p>")}
+        {block, DOC.sourceBlockType(), RDF.literal("Text")},
+        {block, DOC.sourceHtml(), RDF.literal("<p>Extracted text.</p>")},
+        {picture, RDF.type(), DOC.ExtractedBlock},
+        {picture, DOC.sourceBlockType(), RDF.literal("Picture")},
+        {picture, DOC.sourceHtml(), RDF.literal("<p><img src=\"figure.png\"></p>")},
+        {paragraph, RDF.type(), DOC.ParagraphBlock},
+        {paragraph, DOC.paragraph(), paragraph_revision},
+        {paragraph_revision, RDF.type(), DOC.Paragraph},
+        {paragraph_revision, DOC.text(), RDF.literal("Paragraph text.")}
       ])
       |> then(fn graph -> RDF.list([section], graph: graph, head: root_list).graph end)
-      |> then(fn graph -> RDF.list([block], graph: graph, head: section_list).graph end)
+      |> then(fn graph ->
+        RDF.list([block, picture, paragraph], graph: graph, head: section_list).graph
+      end)
 
     [
       %{
         type: :document,
         children: [
-          %{type: :section, children: [%{type: :extracted}]}
+          %{
+            type: :section,
+            children: [
+              %{type: :extracted, source_type: "Text", number: 1},
+              %{type: :extracted, source_type: "Picture"} = picture_block,
+              %{type: :paragraph, number: 2}
+            ]
+          }
         ]
       }
     ] = ThesisLive.document_blocks(graph, paper)
+
+    refute Map.has_key?(picture_block, :number)
   end
 end

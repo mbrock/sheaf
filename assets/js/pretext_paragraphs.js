@@ -5,6 +5,41 @@ const SOFT_HYPHEN = "\u00AD"
 const SHORT_LINE_RATIO = 0.6
 const MIN_SPACE_RATIO = 0.9
 const RIVER_THRESHOLD = 1.5
+const TEXT_BOUNDARY_TAGS = new Set([
+  "ADDRESS",
+  "ARTICLE",
+  "ASIDE",
+  "BLOCKQUOTE",
+  "BR",
+  "DD",
+  "DIV",
+  "DL",
+  "DT",
+  "FIGCAPTION",
+  "FIGURE",
+  "FOOTER",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "HEADER",
+  "LI",
+  "MAIN",
+  "NAV",
+  "OL",
+  "P",
+  "SECTION",
+  "TABLE",
+  "TBODY",
+  "TD",
+  "TFOOT",
+  "TH",
+  "THEAD",
+  "TR",
+  "UL",
+])
 
 const states = new WeakMap()
 const observed = new Set()
@@ -52,11 +87,9 @@ function refreshParagraph(target) {
   }
 
   const state = states.get(target)
-  if (target.dataset.pretextWrapped === "true" && state !== undefined) {
-    state.key = null
-  } else {
-    states.set(target, {text: paragraphText(target), key: null})
-  }
+  const text = state?.text ?? sourceText(target)
+  rememberSourceText(target, text)
+  states.set(target, {text, key: state?.text === text ? state.key : null})
 
   schedule(target)
 }
@@ -88,11 +121,11 @@ function wrapParagraph(target) {
 }
 
 function getState(target) {
-  const wrapped = target.dataset.pretextWrapped === "true"
   let state = states.get(target)
 
-  if (state === undefined || !wrapped) {
-    state = {text: paragraphText(target), key: null}
+  if (state === undefined) {
+    state = {text: sourceText(target), key: null}
+    rememberSourceText(target, state.text)
     states.set(target, state)
   }
 
@@ -264,7 +297,35 @@ function shouldJustify(line) {
 }
 
 function paragraphText(target) {
-  return (target.textContent ?? "").trim()
+  return textFrom(target).replace(/\s+/g, " ").trim()
+}
+
+function sourceText(target) {
+  return target.pretextSourceText ?? target.dataset.pretextSourceText ?? wrappedText(target) ?? paragraphText(target)
+}
+
+function rememberSourceText(target, text) {
+  target.pretextSourceText = text
+  target.dataset.pretextSourceText = text
+}
+
+function wrappedText(target) {
+  if (target.dataset.pretextWrapped !== "true") return null
+
+  const lines = Array.from(target.querySelectorAll(":scope > [data-pretext-line]"))
+  if (lines.length === 0) return null
+
+  return lines.map(line => line.textContent ?? "").join(" ").replace(/\s+/g, " ").trim()
+}
+
+function textFrom(node) {
+  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue ?? ""
+  if (node.nodeType !== Node.ELEMENT_NODE) return ""
+  if (node.tagName === "SCRIPT" || node.tagName === "STYLE") return ""
+  if (node.tagName === "BR") return " "
+
+  const text = Array.from(node.childNodes).map(textFrom).join("")
+  return TEXT_BOUNDARY_TAGS.has(node.tagName) ? ` ${text} ` : text
 }
 
 function isSpace(text) {

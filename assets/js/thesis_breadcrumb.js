@@ -2,9 +2,11 @@ export const ThesisBreadcrumb = {
   mounted() {
     this.article = this.el.querySelector("#document-start")
     this.document = this.article?.firstElementChild
+    this.toc = this.el.querySelector("aside")
     this.output = this.el.querySelector("#thesis-breadcrumb")
     this.copyButton = this.el.querySelector("#copy-markdown")
     this.activeSections = new Set()
+    this.tocLinks = new Map()
     this.update = () => updateCurrentHeading(this)
     this.observe = () => observeSections(this)
     this.copy = () => copyMarkdown(this)
@@ -34,6 +36,8 @@ function observeSections(hook) {
 
   hook.sections = Array.from(hook.article.querySelectorAll("section[id], details[id]"))
   hook.sectionOrder = new Map(hook.sections.map((section, index) => [section, index]))
+  hook.tocLinks = tocLinks(hook)
+  clearCurrentTocLink(hook)
   hook.observer = new IntersectionObserver(entries => {
     for (const entry of entries) {
       if (entry.isIntersecting) {
@@ -54,9 +58,11 @@ function observeSections(hook) {
 }
 
 function updateCurrentHeading(hook) {
-  if (!hook.output) return
+  const section = currentSection(hook)
 
-  hook.output.textContent = blockHeading(currentSection(hook))
+  if (hook.output) hook.output.textContent = blockHeading(section)
+
+  updateCurrentTocLink(hook, section)
 }
 
 function currentSection(hook) {
@@ -144,8 +150,58 @@ function blockHeading(block) {
   return block?.querySelector(":scope > h1, :scope > summary h2")?.textContent.trim() ?? ""
 }
 
+function tocLinks(hook) {
+  return new Map(
+    Array.from(hook.el.querySelectorAll("[data-toc-link]")).map(link => [
+      link.dataset.tocLink,
+      link,
+    ])
+  )
+}
+
+function updateCurrentTocLink(hook, section) {
+  const link = tocLinkForSection(hook, section)
+  if (link === hook.currentTocLink) return
+
+  clearCurrentTocLink(hook)
+
+  hook.currentTocLink = link
+  link?.setAttribute("data-current", "true")
+  link?.setAttribute("aria-current", "location")
+  keepTocLinkVisible(hook, link)
+}
+
+function tocLinkForSection(hook, section) {
+  if (section && hook.tocLinks.has(section.id)) return hook.tocLinks.get(section.id)
+  if (hook.currentTocLink) return hook.currentTocLink
+
+  return hook.tocLinks.values().next().value
+}
+
+function clearCurrentTocLink(hook) {
+  hook.currentTocLink?.removeAttribute("data-current")
+  hook.currentTocLink?.removeAttribute("aria-current")
+  hook.currentTocLink = null
+}
+
+function keepTocLinkVisible(hook, link) {
+  if (!hook.toc || !link) return
+
+  const toc = hook.toc
+  const tocRect = toc.getBoundingClientRect()
+  const linkRect = link.getBoundingClientRect()
+  const topLimit = tocRect.top + Math.min(96, toc.clientHeight * 0.18)
+  const bottomLimit = tocRect.bottom - Math.min(160, toc.clientHeight * 0.28)
+
+  if (linkRect.top >= topLimit && linkRect.bottom <= bottomLimit) return
+
+  toc.scrollTo({
+    top: Math.max(0, toc.scrollTop + linkRect.top - tocRect.top - toc.clientHeight * 0.35),
+  })
+}
+
 function text(element) {
-  return element?.textContent.trim() ?? ""
+  return element?.dataset?.pretextSourceText ?? element?.textContent.trim() ?? ""
 }
 
 function flashCopied(button) {
