@@ -103,6 +103,17 @@ EX.Foo
 
 That returns an `RDF.Description`.
 
+Passing `nil` or `[]` as property objects adds no objects, so optional and
+repeated values can stay in the description-builder style after blank strings are
+normalized to `nil`:
+
+```elixir
+note
+|> AS.content(text)
+|> RDFS.label(optional_title)
+|> DOC.mentions(mentioned_blocks)
+```
+
 ## Core Data Structures
 
 ```elixir
@@ -158,6 +169,7 @@ RDF.Graph.delete(graph, {EX.S, EX.p, EX.O})
 ```elixir
 RDF.Description.get(desc, EX.label)
 RDF.Description.first(desc, EX.label)
+EX.label(desc)
 
 RDF.Graph.get(graph, EX.S)
 RDF.Dataset.graph(dataset, EX.Graph)
@@ -181,6 +193,9 @@ RDF.Data.subjects(graph)
 RDF.Data.predicates(graph)
 RDF.Data.objects(graph)
 RDF.Data.resources(graph, predicates: true)
+
+RDF.Data.description(graph, EX.S)
+RDF.Data.descriptions(graph)
 
 RDF.Data.include?(graph, {EX.S, EX.p, EX.O})
 RDF.Data.describes?(graph, EX.S)

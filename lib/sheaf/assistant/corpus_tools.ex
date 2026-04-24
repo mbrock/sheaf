@@ -313,16 +313,8 @@ defmodule Sheaf.Assistant.CorpusTools do
       |> drop_nil_values()
 
     case note_writer.(attrs) do
-      {:ok, note} ->
-        {:ok,
-         %{
-           id: Map.get(note, :id) || Map.get(note, "id"),
-           iri: Map.get(note, :iri) || Map.get(note, "iri"),
-           session_id: Map.get(note, :session_id) || Map.get(note, "session_id"),
-           agent_id: Map.get(note, :agent_id) || Map.get(note, "agent_id"),
-           block_ids: Map.get(note, :block_ids) || Map.get(note, "block_ids") || [],
-           published_at: Map.get(note, :published_at) || Map.get(note, "published_at")
-         }}
+      {:ok, %RDF.IRI{} = note} ->
+        {:ok, %{id: Id.id_from_iri(note), iri: to_string(note)}}
 
       {:error, reason} ->
         {:error, "could not write note: #{inspect(reason)}"}

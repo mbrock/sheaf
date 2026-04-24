@@ -12,16 +12,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     note_writer = fn attrs ->
       send(test_pid, {:note_attrs, attrs})
-
-      {:ok,
-       %{
-         id: "NOTE03",
-         iri: to_string(Id.iri("NOTE03")),
-         agent_id: "AGENT3",
-         session_id: "SESS03",
-         block_ids: attrs.block_ids,
-         published_at: "2026-04-24T13:30:00Z"
-       }}
+      {:ok, Id.iri("NOTE03")}
     end
 
     tools =
@@ -60,11 +51,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert result == %{
              id: "NOTE03",
-             iri: to_string(Id.iri("NOTE03")),
-             agent_id: "AGENT3",
-             session_id: "SESS03",
-             block_ids: ["ABC123"],
-             published_at: "2026-04-24T13:30:00Z"
+             iri: to_string(Id.iri("NOTE03"))
            }
   end
 end

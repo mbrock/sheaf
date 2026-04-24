@@ -7,11 +7,10 @@ defmodule Sheaf.Assistant.Notes do
   SPARQL `INSERT DATA`; it does not revise or delete older notes.
   """
 
-  alias RDF.Graph
-  alias RDF.NS.RDFS
+  alias RDF.{Description, Graph}
   alias Sheaf.BlockRefs
   alias Sheaf.Id
-  alias Sheaf.NS.{AS, DOC, PROV}
+  require RDF.Graph
 
   @default_limit 20
 
@@ -19,24 +18,34 @@ defmodule Sheaf.Assistant.Notes do
   Lists recently published assistant notes.
   """
   def list(opts \\ []) do
-    limit = opts |> Keyword.get(:limit, @default_limit) |> normalize_limit()
-
-    with {:ok, result} <- Sheaf.select(list_query(limit)) do
-      {:ok, from_rows(result.results)}
+    with {:ok, graph} <- list_graph(opts) do
+      {:ok, descriptions(graph)}
     end
   end
 
-  @doc false
-  def from_rows(rows) do
-    rows
-    |> Enum.group_by(&row_value(&1, "note"))
-    |> Enum.reject(fn {note_iri, _rows} -> is_nil(note_iri) end)
-    |> Enum.map(fn {_note_iri, rows} -> note_from_rows(rows) end)
+  @doc """
+  Returns a graph describing recently published assistant notes.
+  """
+  def list_graph(opts \\ []) do
+    opts
+    |> Keyword.get(:limit, @default_limit)
+    |> normalize_limit()
+    |> list_query()
+    |> Sheaf.query()
+  end
+
+  @doc """
+  Returns note descriptions from RDF data, newest first.
+  """
+  def descriptions(data) do
+    data
+    |> RDF.Data.descriptions()
+    |> Enum.filter(&note?/1)
     |> Enum.sort_by(&sort_key/1, :desc)
   end
 
   @doc """
-  Builds and persists a note.
+  Builds and persists a note, returning the note resource.
 
   Required attrs:
 
@@ -58,9 +67,13 @@ defmodule Sheaf.Assistant.Notes do
     * `:update` - function called with SPARQL update text
   """
   def write(attrs, opts \\ []) when is_map(attrs) do
-    with {:ok, note} <- build(attrs, opts),
-         :ok <- persist(note.graph, opts) do
-      {:ok, Map.drop(note, [:graph])}
+    with {:ok, graph} <- build(attrs, opts),
+         [note | _] <- descriptions(graph),
+         :ok <- persist(graph, opts) do
+      {:ok, note.subject}
+    else
+      [] -> {:error, "note graph did not contain an ActivityStreams note"}
+      error -> error
     end
   end
 
@@ -76,23 +89,39 @@ defmodule Sheaf.Assistant.Notes do
       block_ids = block_ids(attrs, text)
 
       graph =
-        note_triples(note_iri, agent_iri, session_iri, text, published_at, block_ids, attrs)
-        |> Graph.new()
+        RDF.Graph.build note: note_iri,
+                        agent: agent_iri,
+                        session: session_iri,
+                        text: text,
+                        published_at: published_at,
+                        block_ids: block_ids,
+                        title: optional_text(attrs, :title),
+                        agent_label: optional_text(attrs, :agent_label),
+                        session_label: optional_text(attrs, :session_label) do
+          @prefix Sheaf.NS.AS
+          @prefix Sheaf.NS.DOC
+          @prefix Sheaf.NS.PROV
+          @prefix RDF.NS.RDFS
 
-      {:ok,
-       %{
-         id: Id.id_from_iri(note_iri),
-         iri: to_string(note_iri),
-         agent_id: Id.id_from_iri(agent_iri),
-         agent_iri: to_string(agent_iri),
-         session_id: Id.id_from_iri(session_iri),
-         session_iri: to_string(session_iri),
-         text: text,
-         title: optional_text(attrs, :title),
-         block_ids: block_ids,
-         published_at: DateTime.to_iso8601(published_at),
-         graph: graph
-       }}
+          note
+          |> a(AS.Note)
+          |> AS.attributedTo(agent)
+          |> AS.context(session)
+          |> AS.published(published_at)
+          |> AS.content(text)
+          |> RDFS.label(title)
+          |> DOC.mentions(Enum.map(block_ids, &Sheaf.Id.iri/1))
+
+          agent
+          |> a(PROV.SoftwareAgent)
+          |> RDFS.label(agent_label)
+
+          session
+          |> a(DOC.ResearchSession)
+          |> RDFS.label(session_label)
+        end
+
+      {:ok, graph}
     end
   end
 
@@ -126,10 +155,26 @@ defmodule Sheaf.Assistant.Notes do
   defp list_query(limit) do
     """
     PREFIX as: <https://www.w3.org/ns/activitystreams#>
+    PREFIX prov: <http://www.w3.org/ns/prov#>
     PREFIX sheaf: <https://less.rest/sheaf/>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-    SELECT ?note ?title ?content ?published ?agent ?agentLabel ?context ?contextLabel ?mention WHERE {
+    CONSTRUCT {
+      ?note a as:Note ;
+        as:content ?content ;
+        as:published ?published ;
+        as:attributedTo ?agent ;
+        as:context ?context ;
+        rdfs:label ?title ;
+        sheaf:mentions ?mention .
+
+      ?agent a prov:SoftwareAgent ;
+        rdfs:label ?agentLabel .
+
+      ?context a sheaf:ResearchSession ;
+        rdfs:label ?contextLabel .
+    }
+    WHERE {
       {
         SELECT ?note ?published WHERE {
           ?note a as:Note .
@@ -139,6 +184,7 @@ defmodule Sheaf.Assistant.Notes do
         LIMIT #{limit}
       }
 
+      ?note a as:Note .
       ?note as:content ?content .
       OPTIONAL { ?note rdfs:label ?title }
       OPTIONAL {
@@ -151,53 +197,22 @@ defmodule Sheaf.Assistant.Notes do
       }
       OPTIONAL { ?note sheaf:mentions ?mention }
     }
-    ORDER BY DESC(?published)
     """
   end
 
-  defp note_from_rows([row | _] = rows) do
-    note_iri = row_value(row, "note")
-    agent_iri = row_value(row, "agent")
-    session_iri = row_value(row, "context")
-
-    %{
-      id: Id.id_from_iri(note_iri),
-      iri: note_iri,
-      title: row_value(row, "title"),
-      text: row_value(row, "content") || "",
-      published_at: row_value(row, "published"),
-      agent_id: id_or_nil(agent_iri),
-      agent_iri: agent_iri,
-      agent_label: row_value(row, "agentLabel"),
-      session_id: id_or_nil(session_iri),
-      session_iri: session_iri,
-      session_label: row_value(row, "contextLabel"),
-      mentions: mentions(rows)
-    }
+  defp note?(%Description{} = description) do
+    Description.include?(description, {RDF.type(), Sheaf.NS.AS.Note})
   end
 
-  defp mentions(rows) do
-    rows
-    |> Enum.map(&row_value(&1, "mention"))
-    |> Enum.reject(&is_nil/1)
-    |> Enum.uniq()
-    |> Enum.map(fn iri ->
-      id = Id.id_from_iri(iri)
-      %{id: id, iri: iri, path: "/b/#{id}"}
-    end)
-  end
-
-  defp sort_key(%{published_at: %DateTime{} = published_at}), do: DateTime.to_unix(published_at)
-  defp sort_key(%{published_at: nil}), do: 0
-  defp sort_key(%{published_at: published_at}), do: to_string(published_at)
-
-  defp id_or_nil(nil), do: nil
-  defp id_or_nil(iri), do: Id.id_from_iri(iri)
-
-  defp row_value(row, key) do
-    row
-    |> Map.get(key)
+  defp sort_key(%Description{} = note) do
+    note
+    |> Description.first(Sheaf.NS.AS.published())
     |> term_value()
+    |> case do
+      %DateTime{} = published_at -> DateTime.to_unix(published_at)
+      nil -> 0
+      published_at -> to_string(published_at)
+    end
   end
 
   defp term_value(nil), do: nil
@@ -208,25 +223,6 @@ defmodule Sheaf.Assistant.Notes do
       value -> to_string(value)
     end
   end
-
-  defp note_triples(note_iri, agent_iri, session_iri, text, published_at, block_ids, attrs) do
-    [
-      {note_iri, RDF.type(), AS.Note},
-      {note_iri, AS.attributedTo(), agent_iri},
-      {note_iri, AS.context(), session_iri},
-      {note_iri, AS.published(), published_at},
-      {note_iri, AS.content(), text},
-      {agent_iri, RDF.type(), PROV.SoftwareAgent},
-      {session_iri, RDF.type(), DOC.ResearchSession}
-    ]
-    |> maybe_add_label(note_iri, optional_text(attrs, :title))
-    |> maybe_add_label(agent_iri, optional_text(attrs, :agent_label))
-    |> maybe_add_label(session_iri, optional_text(attrs, :session_label))
-    |> Kernel.++(Enum.map(block_ids, &{note_iri, DOC.mentions(), Id.iri(&1)}))
-  end
-
-  defp maybe_add_label(triples, _iri, nil), do: triples
-  defp maybe_add_label(triples, iri, label), do: [{iri, RDFS.label(), label} | triples]
 
   defp required_text(attrs) do
     case optional_text(attrs, :text) do

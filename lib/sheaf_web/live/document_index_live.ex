@@ -5,9 +5,11 @@ defmodule SheafWeb.DocumentIndexLive do
 
   use SheafWeb, :live_view
 
+  alias RDF.{Description, Graph}
   alias Sheaf.BlockRefs
   alias Sheaf.Assistant.Notes
   alias Sheaf.{Document, Files}
+  alias Sheaf.Id
 
   @mdex_opts [
     extension: [
@@ -23,8 +25,8 @@ defmodule SheafWeb.DocumentIndexLive do
   @impl true
   def mount(_params, _session, socket) do
     {documents, document_error} = fetch_documents()
-    {notes, notes_error} = fetch_notes()
-    {files, file_error} = fetch_files()
+    {notes, notes_graph, notes_error} = fetch_notes()
+    {files, files_graph, file_error} = fetch_files()
 
     socket =
       socket
@@ -37,7 +39,9 @@ defmodule SheafWeb.DocumentIndexLive do
       |> assign(:page_title, "Sheaf")
       |> assign(:documents, documents)
       |> assign(:notes, notes)
+      |> assign(:notes_graph, notes_graph)
       |> assign(:files, files)
+      |> assign(:files_graph, files_graph)
       |> assign(:document_error, document_error)
       |> assign(:notes_error, notes_error)
       |> assign(:file_error, file_error)
@@ -85,11 +89,12 @@ defmodule SheafWeb.DocumentIndexLive do
       |> Enum.filter(&match?({:error, _reason}, &1))
       |> Enum.map(fn {:error, reason} -> inspect(reason) end)
 
-    {files, file_error} = fetch_files()
+    {files, files_graph, file_error} = fetch_files()
 
     {:noreply,
      socket
      |> assign(:files, files)
+     |> assign(:files_graph, files_graph)
      |> assign(:file_error, upload_error(errors, file_error))}
   end
 
@@ -101,16 +106,16 @@ defmodule SheafWeb.DocumentIndexLive do
   end
 
   defp fetch_files do
-    case Files.list() do
-      {:ok, files} -> {files, nil}
-      {:error, reason} -> {[], inspect(reason)}
+    case Files.list_graph() do
+      {:ok, graph} -> {Files.descriptions(graph), graph, nil}
+      {:error, reason} -> {[], Graph.new(), inspect(reason)}
     end
   end
 
   defp fetch_notes do
-    case Notes.list(limit: 30) do
-      {:ok, notes} -> {notes, nil}
-      {:error, reason} -> {[], inspect(reason)}
+    case Notes.list_graph(limit: 30) do
+      {:ok, graph} -> {Notes.descriptions(graph), graph, nil}
+      {:error, reason} -> {[], Graph.new(), inspect(reason)}
     end
   end
 
@@ -202,7 +207,7 @@ defmodule SheafWeb.DocumentIndexLive do
             class="divide-y divide-stone-200/80 border-y border-stone-200/80 dark:divide-stone-800/80 dark:border-stone-800/80"
           >
             <li :for={file <- @files}>
-              <.file_entry file={file} />
+              <.file_entry file={file} graph={@files_graph} />
             </li>
           </ol>
 
@@ -244,7 +249,7 @@ defmodule SheafWeb.DocumentIndexLive do
             class="divide-y divide-stone-200/80 border-y border-stone-200/80 dark:divide-stone-800/80 dark:border-stone-800/80"
           >
             <li :for={note <- @notes}>
-              <.note_entry note={note} />
+              <.note_entry note={note} graph={@notes_graph} />
             </li>
           </ol>
 
@@ -279,6 +284,7 @@ defmodule SheafWeb.DocumentIndexLive do
   end
 
   attr :file, :map, required: true
+  attr :graph, :map, required: true
 
   defp file_entry(assigns) do
     ~H"""
@@ -286,7 +292,7 @@ defmodule SheafWeb.DocumentIndexLive do
       <div class="flex min-w-0 items-baseline gap-3">
         <div class="min-w-0 flex-1 truncate font-serif">{file_title(@file)}</div>
         <span
-          :if={@file.standalone?}
+          :if={file_standalone?(@graph, @file)}
           class="shrink-0 rounded-sm border border-stone-200 px-1.5 py-0.5 font-sans text-[0.625rem] uppercase leading-none text-stone-500 dark:border-stone-800 dark:text-stone-400"
         >
           Raw
@@ -295,51 +301,52 @@ defmodule SheafWeb.DocumentIndexLive do
 
       <div class="mt-1 flex min-w-0 items-baseline gap-3 font-sans text-xs text-stone-500 dark:text-stone-400">
         <span class="shrink-0 tabular-nums">{file_size(@file)}</span>
-        <span class="shrink-0">{@file.mime_type || "application/octet-stream"}</span>
-        <span class="min-w-0 flex-1 truncate">{file_context(@file)}</span>
+        <span class="shrink-0">{file_mime_type(@file) || "application/octet-stream"}</span>
+        <span class="min-w-0 flex-1 truncate">{file_context(@graph, @file)}</span>
       </div>
     </article>
     """
   end
 
   attr :note, :map, required: true
+  attr :graph, :map, required: true
 
   defp note_entry(assigns) do
     ~H"""
     <article class="grid grid-cols-[5rem_minmax(0,1fr)] gap-3 px-2 py-3 text-sm leading-6">
       <div class="font-sans text-xs text-stone-500 dark:text-stone-400">
-        <time :if={@note.published_at} datetime={note_datetime(@note)}>
+        <time :if={note_published_at(@note)} datetime={note_datetime(@note)}>
           {note_time(@note)}
         </time>
-        <span :if={is_nil(@note.published_at)}>Undated</span>
+        <span :if={is_nil(note_published_at(@note))}>Undated</span>
       </div>
 
       <div class="min-w-0 border-l-2 border-emerald-200 pl-3 dark:border-emerald-900">
         <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-sans text-xs text-stone-500 dark:text-stone-400">
           <span class="font-semibold text-stone-700 dark:text-stone-300">
-            {note_actor(@note)}
+            {note_actor(@graph, @note)}
           </span>
-          <span :if={note_context(@note) != ""}>in {note_context(@note)}</span>
+          <span :if={note_context(@graph, @note) != ""}>in {note_context(@graph, @note)}</span>
         </div>
 
         <h3
-          :if={@note.title}
+          :if={note_title(@note)}
           class="mt-1 truncate font-serif text-sm font-semibold text-stone-950 dark:text-stone-50"
         >
-          {@note.title}
+          {note_title(@note)}
         </h3>
 
         <div class="assistant-prose mt-1 max-h-72 overflow-y-auto pr-2 break-words text-stone-800 dark:text-stone-100">
-          {raw(render_markdown(@note.text))}
+          {raw(render_markdown(note_text(@note)))}
         </div>
 
-        <div :if={@note.mentions != []} class="mt-2 flex flex-wrap gap-1.5">
+        <div :if={note_mentions(@note) != []} class="mt-2 flex flex-wrap gap-1.5">
           <.link
             :for={mention <- note_mentions_preview(@note)}
-            href={mention.path}
+            href={block_path(mention)}
             class="rounded-sm border border-stone-200 px-1.5 py-0.5 font-sans text-[0.6875rem] leading-none text-stone-600 transition-colors hover:border-stone-400 hover:text-stone-950 dark:border-stone-800 dark:text-stone-400 dark:hover:border-stone-600 dark:hover:text-stone-100"
           >
-            #{mention.id}
+            #{block_id(mention)}
           </.link>
           <span
             :if={hidden_mention_count(@note) > 0}
@@ -473,22 +480,72 @@ defmodule SheafWeb.DocumentIndexLive do
   defp kind_order(:transcript), do: 2
   defp kind_order(:document), do: 3
 
-  defp file_title(file), do: file.filename || file.label || file.id
+  defp file_title(%Description{} = file) do
+    first_value(file, Sheaf.NS.DOC.originalFilename()) ||
+      first_value(file, RDF.NS.RDFS.label()) ||
+      Id.id_from_iri(file.subject)
+  end
 
-  defp file_context(%{document: %{title: title}}) when is_binary(title) and title != "",
-    do: "source for " <> title
+  defp file_mime_type(%Description{} = file), do: first_value(file, Sheaf.NS.DOC.mimeType())
 
-  defp file_context(%{document: %{id: id}}) when is_binary(id), do: "source for ##{id}"
-  defp file_context(%{generated_at: generated_at}) when is_binary(generated_at), do: generated_at
-  defp file_context(file), do: file.source_key || file.iri
+  defp file_standalone?(%Graph{} = graph, %Description{} = file) do
+    is_nil(file_document(graph, file))
+  end
 
-  defp file_size(%{byte_size: nil}), do: ""
+  defp file_context(%Graph{} = graph, %Description{} = file) do
+    case file_document(graph, file) do
+      %Description{} = document ->
+        title =
+          first_value(document, RDF.NS.RDFS.label()) || "##{Id.id_from_iri(document.subject)}"
 
-  defp file_size(%{byte_size: bytes}) when is_integer(bytes) do
-    cond do
-      bytes >= 1_000_000 -> "#{Float.round(bytes / 1_000_000, 1)} MB"
-      bytes >= 1_000 -> "#{Float.round(bytes / 1_000, 1)} KB"
-      true -> "#{bytes} B"
+        "source for " <> title
+
+      nil ->
+        first_value(file, Sheaf.NS.DOC.sourceKey()) || to_string(file.subject)
+    end
+  end
+
+  defp file_document(%Graph{} = graph, %Description{} = file) do
+    graph
+    |> RDF.Data.descriptions()
+    |> Enum.find(&Description.include?(&1, {Sheaf.NS.DOC.sourceFile(), file.subject}))
+  end
+
+  defp file_size(%Description{} = file) do
+    case file_byte_size(file) do
+      nil ->
+        ""
+
+      bytes when is_integer(bytes) and bytes >= 1_000_000 ->
+        "#{Float.round(bytes / 1_000_000, 1)} MB"
+
+      bytes when is_integer(bytes) and bytes >= 1_000 ->
+        "#{Float.round(bytes / 1_000, 1)} KB"
+
+      bytes when is_integer(bytes) ->
+        "#{bytes} B"
+
+      bytes ->
+        to_string(bytes)
+    end
+  end
+
+  defp file_byte_size(%Description{} = file) do
+    file
+    |> Description.first(Sheaf.NS.DOC.byteSize())
+    |> rdf_native_value()
+    |> case do
+      bytes when is_integer(bytes) ->
+        bytes
+
+      bytes when is_binary(bytes) ->
+        case Integer.parse(bytes) do
+          {integer, _rest} -> integer
+          :error -> bytes
+        end
+
+      bytes ->
+        bytes
     end
   end
 
@@ -500,30 +557,89 @@ defmodule SheafWeb.DocumentIndexLive do
   defp upload_error_text(:not_accepted), do: "Only PDF files can be uploaded."
   defp upload_error_text(error), do: inspect(error)
 
-  defp note_actor(%{agent_label: label}) when is_binary(label) and label != "", do: label
-  defp note_actor(%{agent_id: id}) when is_binary(id) and id != "", do: "Agent #{id}"
-  defp note_actor(_note), do: "Assistant"
+  defp note_actor(%Graph{} = graph, %Description{} = note) do
+    agent = Description.first(note, Sheaf.NS.AS.attributedTo())
 
-  defp note_context(%{session_label: label}) when is_binary(label) and label != "", do: label
-  defp note_context(%{session_id: id}) when is_binary(id) and id != "", do: "session #{id}"
-  defp note_context(_note), do: ""
-
-  defp note_datetime(%{published_at: %DateTime{} = published_at}),
-    do: DateTime.to_iso8601(published_at)
-
-  defp note_datetime(%{published_at: published_at}), do: to_string(published_at)
-
-  defp note_time(%{published_at: %DateTime{} = published_at}) do
-    Calendar.strftime(published_at, "%b %-d, %H:%M")
+    cond do
+      label = resource_label(graph, agent) -> label
+      agent -> "Agent #{Id.id_from_iri(agent)}"
+      true -> "Assistant"
+    end
   end
 
-  defp note_time(%{published_at: published_at}), do: to_string(published_at)
+  defp note_context(%Graph{} = graph, %Description{} = note) do
+    context = Description.first(note, Sheaf.NS.AS.context())
 
-  defp note_mentions_preview(%{mentions: mentions}), do: Enum.take(mentions, 16)
-
-  defp hidden_mention_count(%{mentions: mentions}) do
-    max(length(mentions) - 16, 0)
+    cond do
+      label = resource_label(graph, context) -> label
+      context -> "session #{Id.id_from_iri(context)}"
+      true -> ""
+    end
   end
+
+  defp note_title(%Description{} = note), do: first_value(note, RDF.NS.RDFS.label())
+  defp note_text(%Description{} = note), do: first_value(note, Sheaf.NS.AS.content()) || ""
+
+  defp note_published_at(%Description{} = note) do
+    note
+    |> Description.first(Sheaf.NS.AS.published())
+    |> rdf_value()
+  end
+
+  defp note_datetime(%Description{} = note) do
+    case note_published_at(note) do
+      %DateTime{} = published_at -> DateTime.to_iso8601(published_at)
+      published_at -> to_string(published_at)
+    end
+  end
+
+  defp note_time(%Description{} = note) do
+    case note_published_at(note) do
+      %DateTime{} = published_at -> Calendar.strftime(published_at, "%b %-d, %H:%M")
+      published_at -> to_string(published_at)
+    end
+  end
+
+  defp note_mentions(%Description{} = note) do
+    note
+    |> Description.get(Sheaf.NS.DOC.mentions(), [])
+    |> Enum.sort_by(&Id.id_from_iri/1)
+  end
+
+  defp note_mentions_preview(%Description{} = note), do: Enum.take(note_mentions(note), 16)
+
+  defp hidden_mention_count(%Description{} = note) do
+    max(length(note_mentions(note)) - 16, 0)
+  end
+
+  defp block_id(iri), do: Id.id_from_iri(iri)
+  defp block_path(iri), do: "/b/#{block_id(iri)}"
+
+  defp first_value(%Description{} = description, predicate) do
+    description
+    |> Description.first(predicate)
+    |> rdf_value()
+  end
+
+  defp resource_label(_graph, nil), do: nil
+
+  defp resource_label(%Graph{} = graph, resource) do
+    graph
+    |> RDF.Data.description(resource)
+    |> first_value(RDF.NS.RDFS.label())
+  end
+
+  defp rdf_value(nil), do: nil
+
+  defp rdf_value(term) do
+    case RDF.Term.value(term) do
+      %DateTime{} = value -> value
+      value -> to_string(value)
+    end
+  end
+
+  defp rdf_native_value(nil), do: nil
+  defp rdf_native_value(term), do: RDF.Term.value(term)
 
   defp render_markdown(text) do
     (text || "")

@@ -3,6 +3,7 @@ defmodule Sheaf.Crossref do
   Small Crossref client for DOI metadata.
   """
 
+  alias RDF.Description
   alias Sheaf.NS.{BIBO, DCTERMS, DOI, FABIO, PRISM}
   require RDF.Graph
 
@@ -140,27 +141,22 @@ defmodule Sheaf.Crossref do
                     work_type: work_type,
                     title: title,
                     same_as: same_as do
-      if paper, do: {paper, FABIO.isRepresentationOf(), expression}
+      if paper, do: paper |> FABIO.isRepresentationOf(expression)
 
-      if work do
-        {expression, Sheaf.NS.FRBR.realizationOf(), work}
-      end
+      expression |> Sheaf.NS.FRBR.realizationOf(work)
 
       if paper && work do
-        {paper, FABIO.isPortrayalOf(), work}
+        paper |> FABIO.isPortrayalOf(work)
       end
 
-      if work_type && work do
-        {work, RDF.type(), work_type}
-      end
-
-      if title && work do
+      if work do
         work
+        |> a(work_type)
         |> DCTERMS.title(title)
         |> RDFS.label(title)
       end
 
-      Enum.map(same_as, &{&1, OWL.sameAs(), doi_iri})
+      Enum.map(same_as, &OWL.sameAs(&1, doi_iri))
     end
   end
 
@@ -201,28 +197,20 @@ defmodule Sheaf.Crossref do
                     parts: parts,
                     publishers: publishers,
                     work: work do
-      if expression_type, do: {expression, RDF.type(), expression_type}
-
-      if title do
-        expression
-        |> DCTERMS.title(title)
-        |> RDFS.label(title)
-      end
-
       expression
+      |> a(expression_type)
+      |> DCTERMS.title(title)
+      |> RDFS.label(title)
       |> FABIO.hasDOI(doi_value)
       |> DCTERMS.identifier(doi_value)
-
-      if publication_year, do: {expression, FABIO.hasPublicationYear(), publication_year}
-      if volume, do: {expression, FABIO.hasVolumeIdentifier(), volume}
-      if issue, do: {expression, FABIO.hasIssueIdentifier(), issue}
-      if page_range, do: {expression, FABIO.hasPageRange(), page_range}
-
-      Enum.map(creators, &{expression, DCTERMS.creator(), &1})
-      Enum.map(parts, &{expression, DCTERMS.isPartOf(), &1})
-      Enum.map(publishers, &{expression, DCTERMS.publisher(), &1})
-
-      if expression != doi_iri, do: {expression, OWL.sameAs(), doi_iri}
+      |> FABIO.hasPublicationYear(publication_year)
+      |> FABIO.hasVolumeIdentifier(volume)
+      |> FABIO.hasIssueIdentifier(issue)
+      |> FABIO.hasPageRange(page_range)
+      |> DCTERMS.creator(creators)
+      |> DCTERMS.isPartOf(parts)
+      |> DCTERMS.publisher(publishers)
+      |> OWL.sameAs(if(expression != doi_iri, do: doi_iri))
 
       if work && title do
         work
@@ -257,25 +245,30 @@ defmodule Sheaf.Crossref do
 
   defp existing_expression(metadata_graph, paper) do
     paper = RDF.iri(paper)
-    is_representation_of = FABIO.isRepresentationOf()
 
-    Enum.find_value(RDF.Data.statements(metadata_graph), fn
-      {^paper, ^is_representation_of, expression} -> expression
-      _statement -> nil
-    end)
+    metadata_graph
+    |> RDF.Data.description(paper)
+    |> Description.first(FABIO.isRepresentationOf())
   end
 
   defp existing_work(metadata_graph, paper, expression) do
-    statements = RDF.Data.statements(metadata_graph)
-    realization_of = Sheaf.NS.FRBR.realizationOf()
-    is_portrayal_of = FABIO.isPortrayalOf()
-    paper = paper && RDF.iri(paper)
+    existing_paper_work =
+      if paper do
+        metadata_graph
+        |> RDF.Data.description(RDF.iri(paper))
+        |> Description.first(FABIO.isPortrayalOf())
+      end
 
-    Enum.find_value(statements, fn
-      {^paper, ^is_portrayal_of, work} when not is_nil(paper) -> work
-      {^expression, ^realization_of, work} -> work
-      _statement -> nil
-    end)
+    existing_paper_work ||
+      existing_expression_work(metadata_graph, expression)
+  end
+
+  defp existing_expression_work(_metadata_graph, nil), do: nil
+
+  defp existing_expression_work(metadata_graph, expression) do
+    metadata_graph
+    |> RDF.Data.description(expression)
+    |> Description.first(Sheaf.NS.FRBR.realizationOf())
   end
 
   defp work_type(opts) do
@@ -340,11 +333,8 @@ defmodule Sheaf.Crossref do
 
   defp objects(graph, subject, predicate) do
     graph
-    |> RDF.Data.statements()
-    |> Enum.flat_map(fn
-      {^subject, ^predicate, object} -> [object]
-      _statement -> []
-    end)
+    |> RDF.Data.description(subject)
+    |> Description.get(predicate, [])
     |> Enum.uniq()
   end
 
@@ -378,5 +368,5 @@ defmodule Sheaf.Crossref do
 
   defp encoded_doi(doi), do: doi |> normalized_doi() |> URI.encode_www_form()
 
-  defp statement_count(graph), do: graph |> RDF.Data.statements() |> Enum.count()
+  defp statement_count(graph), do: RDF.Data.statement_count(graph)
 end

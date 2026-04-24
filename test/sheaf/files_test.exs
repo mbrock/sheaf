@@ -3,7 +3,7 @@ defmodule Sheaf.FilesTest do
 
   alias RDF.Description
   alias Sheaf.Files
-  alias Sheaf.NS.{DOC, FABIO, PROV}
+  require RDF.Graph
 
   test "stores a PDF as a content-addressed RDF computer file" do
     path = Path.join(System.tmp_dir!(), "sheaf-files-test.pdf")
@@ -14,7 +14,7 @@ defmodule Sheaf.FilesTest do
     generated_at = ~U[2026-04-24 10:00:00Z]
     test_pid = self()
 
-    assert {:ok, file} =
+    assert {:ok, ^file_iri} =
              Files.create(path,
                filename: "paper.pdf",
                file_iri: file_iri,
@@ -26,52 +26,58 @@ defmodule Sheaf.FilesTest do
                end
              )
 
-    assert %{id: "FILE11", filename: "paper.pdf", mime_type: "application/pdf"} = file
     assert_receive {:put_graph, ^file_iri, graph}
 
     file_description = RDF.Graph.description(graph, file_iri)
     activity_description = RDF.Graph.description(graph, activity_iri)
 
-    assert Description.include?(file_description, {RDF.type(), FABIO.ComputerFile})
-    assert Description.include?(file_description, {RDF.type(), PROV.Entity})
-    assert rdf_value(file_description, DOC.originalFilename()) == "paper.pdf"
-    assert rdf_value(file_description, DOC.mimeType()) == "application/pdf"
-    assert Description.include?(file_description, {PROV.wasGeneratedBy(), activity_iri})
-    assert rdf_value(file_description, PROV.generatedAtTime()) == generated_at
-    assert Description.include?(activity_description, {RDF.type(), PROV.Activity})
+    assert Description.include?(file_description, {RDF.type(), Sheaf.NS.FABIO.ComputerFile})
+    assert Description.include?(file_description, {RDF.type(), Sheaf.NS.PROV.Entity})
+    assert rdf_value(file_description, Sheaf.NS.DOC.originalFilename()) == "paper.pdf"
+    assert rdf_value(file_description, Sheaf.NS.DOC.mimeType()) == "application/pdf"
+    assert Description.include?(file_description, {Sheaf.NS.PROV.wasGeneratedBy(), activity_iri})
+    assert rdf_value(file_description, Sheaf.NS.PROV.generatedAtTime()) == generated_at
+    assert Description.include?(activity_description, {RDF.type(), Sheaf.NS.PROV.Activity})
 
     File.rm(path)
   end
 
-  test "builds file rows from ComputerFile bindings" do
+  test "returns ComputerFile descriptions newest first" do
     file = RDF.IRI.new!("https://example.com/sheaf/FILE11")
-    graph = RDF.IRI.new!("https://example.com/sheaf/FILE11")
+    older = RDF.IRI.new!("https://example.com/sheaf/FILE10")
+    document = RDF.IRI.new!("https://example.com/sheaf/DOC111")
 
-    rows = [
-      %{
-        "file" => file,
-        "graph" => graph,
-        "label" => RDF.literal("paper.pdf"),
-        "name" => RDF.literal("paper.pdf"),
-        "hash" => RDF.literal("abc123"),
-        "key" => RDF.literal("sha256:abc123"),
-        "mime" => RDF.literal("application/pdf"),
-        "bytes" => RDF.literal(123),
-        "generatedAt" => RDF.literal("2026-04-24T10:00:00Z")
-      }
-    ]
+    graph =
+      RDF.Graph.build file: file, older: older, document: document do
+        @prefix Sheaf.NS.DOC
+        @prefix Sheaf.NS.FABIO
+        @prefix Sheaf.NS.PROV
+        @prefix RDF.NS.RDFS
 
-    assert [
-             %{
-               id: "FILE11",
-               filename: "paper.pdf",
-               sha256: "abc123",
-               source_key: "sha256:abc123",
-               mime_type: "application/pdf",
-               byte_size: 123,
-               standalone?: true
-             }
-           ] = Files.from_rows(rows)
+        file
+        |> a(FABIO.ComputerFile)
+        |> RDFS.label("paper.pdf")
+        |> DOC.sha256("abc123")
+        |> DOC.sourceKey("sha256:abc123")
+        |> DOC.mimeType("application/pdf")
+        |> DOC.byteSize(123)
+        |> PROV.generatedAtTime(~U[2026-04-24 10:00:00Z])
+
+        older
+        |> a(FABIO.ComputerFile)
+        |> RDFS.label("older.pdf")
+        |> PROV.generatedAtTime(~U[2026-04-23 10:00:00Z])
+
+        document
+        |> RDFS.label("A paper")
+        |> DOC.sourceFile(file)
+      end
+
+    assert [file_description, older_description] = Files.descriptions(graph)
+    assert file_description.subject == file
+    assert older_description.subject == older
+    assert rdf_value(file_description, Sheaf.NS.DOC.sourceKey()) == "sha256:abc123"
+    assert rdf_value(file_description, Sheaf.NS.DOC.byteSize()) == 123
   end
 
   defp rdf_value(%Description{} = description, property) do
