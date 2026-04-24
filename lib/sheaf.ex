@@ -54,6 +54,28 @@ defmodule Sheaf do
     :ok
   end
 
+  @doc """
+  Runs a SPARQL query against the configured query endpoint.
+  """
+  def query(query, opts \\ []) do
+    config = Application.fetch_env!(:sheaf, __MODULE__)
+
+    SPARQL.Client.query(query, config[:query_endpoint], sparql_options(config, opts))
+  end
+
+  @doc """
+  Runs a SPARQL update against the configured update endpoint.
+
+  Hand-written update strings are executed in SPARQL.Client raw mode by default.
+  """
+  def update(update, opts \\ []) do
+    config = Application.fetch_env!(:sheaf, __MODULE__)
+    endpoint = config[:update_endpoint] || config[:query_endpoint]
+    opts = Keyword.put_new(opts, :raw_mode, true)
+
+    SPARQL.Client.update(update, endpoint, sparql_options(config, opts))
+  end
+
   def data_client do
     config = Application.fetch_env!(:sheaf, __MODULE__)
 
@@ -117,6 +139,34 @@ defmodule Sheaf do
 
   defp write_graph(graph),
     do: Serialization.write_stream(graph, media_type: @graph_media_type)
+
+  defp sparql_options(config, opts) do
+    case sparql_auth_headers(config) do
+      headers when map_size(headers) == 0 ->
+        opts
+
+      headers ->
+        Keyword.update(opts, :headers, headers, &merge_headers(headers, &1))
+    end
+  end
+
+  defp sparql_auth_headers(config) do
+    case config[:sparql_auth] || config[:data_auth] do
+      {:basic, credentials} when is_binary(credentials) ->
+        %{"Authorization" => "Basic " <> Base.encode64(credentials)}
+
+      nil ->
+        %{}
+    end
+  end
+
+  defp merge_headers(default_headers, headers) when is_map(headers) do
+    Map.merge(default_headers, headers)
+  end
+
+  defp merge_headers(default_headers, fun) when is_function(fun, 2) do
+    fn request, headers -> Map.merge(default_headers, fun.(request, headers)) end
+  end
 
   # RDF.ex's N-Triples/N-Quads stream decoders expect one statement per item,
   # while Req emits arbitrary network chunks.

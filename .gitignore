@@ -34,6 +34,7 @@ sheaf-*.tar
 /priv/static/images/*-[0-9a-f]*.*
 
 /priv/ieva_data/
+/priv/papers
 /priv/thesis-*.xml
 /priv/designprototype/
 /output/

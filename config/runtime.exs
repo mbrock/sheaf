@@ -72,15 +72,24 @@ config :sheaf, Sheaf,
   query_endpoint:
     System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", sparql_dataset <> "/sparql")
     |> String.trim(),
+  update_endpoint:
+    System.get_env("SHEAF_SPARQL_UPDATE_ENDPOINT", sparql_dataset <> "/update")
+    |> String.trim(),
   data_endpoint:
     System.get_env("SHEAF_SPARQL_DATA_ENDPOINT", sparql_dataset <> "/data")
     |> String.trim(),
+  sparql_auth: sparql_auth,
   data_auth: sparql_auth
+
+config :sheaf, Sheaf.PDF,
+  api_key: System.get_env("DATALAB_API_KEY"),
+  pipeline_id: System.get_env("DATALAB_PIPELINE_ID", "pl_QWhrjJhpUUoo"),
+  base_url: System.get_env("DATALAB_BASE_URL", "https://www.datalab.to/api/v1")
 
 config :sparql_client,
   query_request_method: :post,
   update_request_method: :url_encoded,
-  tesla_request_opts: [timeout: sparql_receive_timeout]
+  tesla_request_opts: [adapter: [receive_timeout: sparql_receive_timeout]]
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.

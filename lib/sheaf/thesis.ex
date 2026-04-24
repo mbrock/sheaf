@@ -20,6 +20,7 @@ defmodule Sheaf.Thesis do
     cond do
       typed?(description, DOC.Thesis) -> :thesis
       typed?(description, DOC.Transcript) -> :transcript
+      typed?(description, DOC.Paper) -> :paper
       true -> :document
     end
   end
@@ -37,6 +38,7 @@ defmodule Sheaf.Thesis do
     cond do
       typed?(description, DOC.Section) -> :section
       typed?(description, DOC.ParagraphBlock) -> :paragraph
+      typed?(description, DOC.ExtractedBlock) -> :extracted
       true -> nil
     end
   end
@@ -49,6 +51,17 @@ defmodule Sheaf.Thesis do
     case active_paragraph_iri(graph, iri) do
       nil -> ""
       paragraph_iri -> value(graph, paragraph_iri, DOC.text(), "")
+    end
+  end
+
+  def source_html(%Graph{} = graph, iri) do
+    value(graph, iri, DOC.sourceHtml(), "")
+  end
+
+  def source_page(%Graph{} = graph, iri) do
+    case object(graph, iri, DOC.sourcePage()) do
+      nil -> nil
+      term -> RDF.Term.value(term)
     end
   end
 

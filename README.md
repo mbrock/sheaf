@@ -29,6 +29,7 @@ Default Fuseki configuration:
 
 * Dataset: `http://localhost:3030/sheaf`
 * Query endpoint: `http://localhost:3030/sheaf/sparql`
+* Update endpoint: `http://localhost:3030/sheaf/update`
 * Graph Store endpoint: `http://localhost:3030/sheaf/data`
 * Graph used by Sheaf: Fuseki dataset default graph
 * Schema named graph: `https://less.rest/sheaf/`

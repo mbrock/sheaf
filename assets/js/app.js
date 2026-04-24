@@ -9,7 +9,7 @@
 //
 //     import "../vendor/some-package.js"
 //
-// Alternatively, you can `npm install some-package --prefix assets` and import
+// Alternatively, you can `bun add --cwd assets some-package` and import
 // them using a path starting with the package name:
 //
 //     import "some-package"
@@ -24,12 +24,14 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/sheaf"
 import topbar from "../vendor/topbar"
+import {PretextParagraph} from "./pretext_paragraphs"
+import {ThesisBreadcrumb} from "./thesis_breadcrumb"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, PretextParagraph, ThesisBreadcrumb},
 })
 
 // Show progress bar on live navigation and form submits
@@ -80,4 +82,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-

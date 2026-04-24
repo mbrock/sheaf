@@ -18,6 +18,11 @@ sheaf:Transcript a rdfs:Class ;
   rdfs:subClassOf sheaf:Document ;
   rdfs:comment "A document whose ordered children describe transcript structure." .
 
+sheaf:Paper a rdfs:Class ;
+  rdfs:label "Paper" ;
+  rdfs:subClassOf sheaf:Document ;
+  rdfs:comment "A paper or published document imported from an external source." .
+
 sheaf:Interview a rdfs:Class ;
   rdfs:label "Interview" ;
   rdfs:subClassOf sheaf:Transcript ;
@@ -36,6 +41,11 @@ sheaf:ParagraphBlock a rdfs:Class ;
   rdfs:label "Paragraph block" ;
   rdfs:subClassOf sheaf:Block ;
   rdfs:comment "A stable structural block whose text lives on one or more paragraph revision entities." .
+
+sheaf:ExtractedBlock a rdfs:Class ;
+  rdfs:label "Extracted block" ;
+  rdfs:subClassOf sheaf:Block ;
+  rdfs:comment "A block extracted from an external document source, preserved with source metadata and renderable source HTML." .
 
 sheaf:Paragraph a rdfs:Class ;
   rdfs:label "Paragraph" ;
@@ -102,7 +112,22 @@ sheaf:modelName a rdf:Property ;
 sheaf:sourceKey a rdf:Property ;
   rdfs:label "source key" ;
   rdfs:range xsd:string ;
-  rdfs:comment "Stable key from the source SQLite store or blob hash registry." .
+  rdfs:comment "Stable key from a source system, such as a transcript store key, blob hash registry key, or extracted document block ID." .
+
+sheaf:sourceBlockType a rdf:Property ;
+  rdfs:label "source block type" ;
+  rdfs:range xsd:string ;
+  rdfs:comment "The source system's block type name for an extracted block." .
+
+sheaf:sourcePage a rdf:Property ;
+  rdfs:label "source page" ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "The source system's page number for an extracted block." .
+
+sheaf:sourceHtml a rdf:Property ;
+  rdfs:label "source HTML" ;
+  rdfs:range xsd:string ;
+  rdfs:comment "A renderable HTML fragment extracted from the source document block." .
 
 sheaf:startTime a rdf:Property ;
   rdfs:label "start time" ;

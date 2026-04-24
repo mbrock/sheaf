@@ -50,6 +50,10 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# SPARQL.Client uses Tesla for HTTP requests. Keep it on Finch so it shares the
+# same transport stack already running in the app.
+config :tesla, :adapter, {Tesla.Adapter.Finch, name: Sheaf.Finch}
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

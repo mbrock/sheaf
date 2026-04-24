@@ -76,7 +76,11 @@ defmodule Sheaf.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "assets.setup", "assets.build"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.setup": [
+        "cmd --cd assets bun install",
+        "tailwind.install --if-missing",
+        "esbuild.install --if-missing"
+      ],
       "assets.build": ["compile", "tailwind sheaf", "esbuild sheaf"],
       "assets.deploy": [
         "tailwind sheaf --minify",
