@@ -43,7 +43,7 @@ end
 
 code = File.read!("${CODEFILE}")
 gl = Process.group_leader()
-result = :rpc.call(:"${NODE}", Sheaf.RPC, :eval, [gl, code])
+result = :rpc.call(:"${NODE}", Sheaf, :rpc_eval, [gl, code])
 
 case result do
   {:badrpc, _} -> System.halt(1)

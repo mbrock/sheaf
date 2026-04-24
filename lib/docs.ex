@@ -1,4 +1,4 @@
-defmodule Sheaf.Docs do
+defmodule Docs do
   @moduledoc """
   Small live-node documentation helper for agents and local development.
 

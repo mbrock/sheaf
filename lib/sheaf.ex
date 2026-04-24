@@ -103,6 +103,13 @@ defmodule Sheaf do
     )
   end
 
+  @doc false
+  def rpc_eval(gl, code) when is_pid(gl) and is_binary(code) do
+    Process.group_leader(self(), gl)
+    {result, _bindings} = Code.eval_string(code)
+    result
+  end
+
   @doc """
   Loads the whole dataset through the Graph Store endpoint, applies `fun`, and
   replaces the dataset with the result.

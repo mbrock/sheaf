@@ -1,8 +1,8 @@
-defmodule Sheaf.DocsTest do
+defmodule DocsTest do
   use ExUnit.Case, async: true
 
   test "renders an overview" do
-    text = Sheaf.Docs.render()
+    text = Docs.render()
 
     assert text =~ "Sheaf module overview"
     assert text =~ "Application: `:sheaf`"
@@ -11,7 +11,7 @@ defmodule Sheaf.DocsTest do
   end
 
   test "renders another loaded application overview" do
-    text = Sheaf.Docs.render([":rdf"])
+    text = Docs.render([":rdf"])
 
     assert text =~ "Rdf module overview"
     assert text =~ "Application: `:rdf`"
@@ -19,14 +19,14 @@ defmodule Sheaf.DocsTest do
   end
 
   test "renders function docs" do
-    text = Sheaf.Docs.render(["Sheaf.mint/0"])
+    text = Docs.render(["Sheaf.mint/0"])
 
     assert text =~ "Sheaf.mint/0"
     assert text =~ "Generates a new unique IRI"
   end
 
   test "can include source clips" do
-    text = Sheaf.Docs.render(["Sheaf.mint/0"], include_source: true)
+    text = Docs.render(["Sheaf.mint/0"], include_source: true)
 
     assert text =~ "Source excerpt"
     assert text =~ "def mint"
