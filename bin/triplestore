@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export HOME="${HOME:-$(eval echo ~$(whoami))}"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
+COMMAND="${1:-status}"
+
+cd "$APP_ROOT"
+
+if [ -f "$APP_ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$APP_ROOT/.env"
+  set +a
+fi
+
+CONTAINER="${SHEAF_TRIPLESTORE_CONTAINER:-sheaf-fuseki}"
+IMAGE="${SHEAF_TRIPLESTORE_IMAGE:-stain/jena-fuseki}"
+DATASET="${SHEAF_TRIPLESTORE_DATASET:-sheaf}"
+VOLUME="${SHEAF_TRIPLESTORE_VOLUME:-sheaf-fuseki-data}"
+PORT="${SHEAF_TRIPLESTORE_PORT:-3030}"
+HOST="${SHEAF_TRIPLESTORE_HOST:-127.0.0.1}"
+ADMIN_PASSWORD="${SHEAF_SPARQL_PASSWORD:-admin}"
+ADMIN_USER="${SHEAF_SPARQL_USERNAME:-admin}"
+
+usage() {
+  printf 'Usage: %s {status|start|stop|restart|logs|datasets|server}\n' "$(basename "$0")" >&2
+}
+
+container_exists() {
+  docker container inspect "$CONTAINER" >/dev/null 2>&1
+}
+
+container_running() {
+  [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null || true)" = "true" ]
+}
+
+wait_for_fuseki() {
+  local url="http://${HOST}:${PORT}/$/server"
+  local timeout="${SHEAF_TRIPLESTORE_TIMEOUT:-30}"
+  local start
+
+  start="$(date +%s)"
+  printf 'Waiting for Fuseki: %s\n' "$url"
+
+  while true; do
+    if curl -fsS -u "${ADMIN_USER}:${ADMIN_PASSWORD}" --max-time 2 "$url" >/dev/null 2>&1; then
+      printf 'Fuseki is ready: %s\n' "$url"
+      return 0
+    fi
+
+    if [ "$(($(date +%s) - start))" -ge "$timeout" ]; then
+      printf 'Timed out waiting for Fuseki after %ss: %s\n' "$timeout" "$url" >&2
+      return 1
+    fi
+
+    sleep 1
+  done
+}
+
+start_store() {
+  if container_running; then
+    printf 'Triple store already running: %s\n' "$CONTAINER"
+    wait_for_fuseki
+    return 0
+  fi
+
+  if container_exists; then
+    docker start "$CONTAINER" >/dev/null
+  else
+    docker volume create "$VOLUME" >/dev/null
+    docker run -d \
+      --name "$CONTAINER" \
+      -p "${HOST}:${PORT}:3030" \
+      -e "ADMIN_PASSWORD=${ADMIN_PASSWORD}" \
+      -e "FUSEKI_DATASET_1=${DATASET}" \
+      -v "${VOLUME}:/fuseki" \
+      "$IMAGE" >/dev/null
+  fi
+
+  printf 'Started triple store container: %s\n' "$CONTAINER"
+  wait_for_fuseki
+}
+
+stop_store() {
+  if container_running; then
+    docker stop "$CONTAINER" >/dev/null
+    printf 'Stopped triple store container: %s\n' "$CONTAINER"
+  else
+    printf 'Triple store is not running: %s\n' "$CONTAINER"
+  fi
+}
+
+status_store() {
+  if container_exists; then
+    docker ps --all \
+      --filter "name=^/${CONTAINER}$" \
+      --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+  else
+    printf 'Triple store container does not exist: %s\n' "$CONTAINER"
+  fi
+
+  if container_running; then
+    server_info
+  fi
+}
+
+server_info() {
+  curl -fsS -u "${ADMIN_USER}:${ADMIN_PASSWORD}" "http://${HOST}:${PORT}/$/server"
+}
+
+dataset_info() {
+  curl -fsS -u "${ADMIN_USER}:${ADMIN_PASSWORD}" "http://${HOST}:${PORT}/$/datasets"
+}
+
+case "$COMMAND" in
+  start)
+    start_store
+    ;;
+  stop)
+    stop_store
+    ;;
+  restart)
+    stop_store
+    start_store
+    ;;
+  status)
+    status_store
+    ;;
+  logs)
+    docker logs -f --tail "${SHEAF_TRIPLESTORE_LOG_LINES:-120}" "$CONTAINER"
+    ;;
+  datasets)
+    dataset_info
+    ;;
+  server)
+    server_info
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

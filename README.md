@@ -23,6 +23,7 @@ bin/stop
 bin/restart
 bin/status
 bin/logs
+bin/triplestore status
 bin/rpc 'Process.whereis(Sheaf.Supervisor)'
 bin/docs :rdf
 bin/docs Sheaf.mint/0
@@ -40,6 +41,7 @@ service process.
 BEAM modules without starting a second application instance.
 `bin/docs` uses the running node to show app overviews, module/function docs, and
 source snippets, which is often faster than spelunking generated HTML docs.
+`bin/triplestore` manages the Dockerized Fuseki dependency used by Sheaf.
 
 Useful graph commands:
 
@@ -53,6 +55,18 @@ mix sheaf.schema
 
 ## Storage
 
+Sheaf expects Fuseki to run in Docker. Local development uses the
+`stain/jena-fuseki` image by default with a persistent Docker volume. The helper
+script understands the same `.env` credentials used by Sheaf:
+
+```bash
+bin/triplestore start
+bin/triplestore status
+bin/triplestore datasets
+bin/triplestore logs
+bin/triplestore restart
+```
+
 Default Fuseki configuration:
 
 * Dataset: `http://localhost:3030/sheaf`
@@ -61,6 +75,18 @@ Default Fuseki configuration:
 * Graph Store endpoint: `http://localhost:3030/sheaf/data`
 * Graph used by Sheaf: Fuseki dataset default graph
 * Schema named graph: `https://less.rest/sheaf/`
+
+Default local container settings:
+
+* Container: `sheaf-fuseki`
+* Image: `stain/jena-fuseki`
+* Port: `127.0.0.1:3030->3030`
+* Volume: `sheaf-fuseki-data:/fuseki`
+
+These can be overridden with `SHEAF_TRIPLESTORE_CONTAINER`,
+`SHEAF_TRIPLESTORE_IMAGE`, `SHEAF_TRIPLESTORE_HOST`,
+`SHEAF_TRIPLESTORE_PORT`, `SHEAF_TRIPLESTORE_VOLUME`, and
+`SHEAF_TRIPLESTORE_DATASET`.
 
 The vocabulary namespace is `https://less.rest/sheaf/`.
 Block IRIs use the configured resource base, which defaults to `https://example.com/sheaf/` outside production.

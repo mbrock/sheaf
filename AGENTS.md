@@ -68,6 +68,25 @@ $ bin/logs
 [info] Sent 200 in 1ms
 ```
 
+`bin/triplestore` manages the Dockerized Fuseki dependency. Sheaf is expected to
+use Docker for the triple store in local and deployed environments.
+
+```console
+$ bin/triplestore status
+NAMES          IMAGE              STATUS
+sheaf-fuseki   stain/jena-fuseki  Up 2 minutes
+{
+  "version": "5.1.0",
+  "datasets": [{"ds.name": "/sheaf"}]
+}
+
+$ bin/triplestore restart
+Stopped triple store container: sheaf-fuseki
+Started triple store container: sheaf-fuseki
+Waiting for Fuseki: http://127.0.0.1:3030/$/server
+Fuseki is ready: http://127.0.0.1:3030/$/server
+```
+
 `bin/rpc` evaluates Elixir on the running Sheaf node. Use this to inspect live
 state without starting a second application instance.
 
@@ -149,6 +168,10 @@ relying on destructive mutation.
 ## Development Rules
 
 For HTTP requests in Elixir, prefer `Req`.
+
+Sheaf's triple store is Dockerized Fuseki. Use `bin/triplestore` rather than
+inventing ad hoc Docker commands when checking status, logs, datasets, or
+restarting it.
 
 In tests, prefer `start_supervised!/1` for OTP processes so ExUnit owns cleanup.
 Avoid fixed sleeps when a monitor, message assertion, or explicit readiness
