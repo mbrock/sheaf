@@ -28,7 +28,7 @@ defmodule Sheaf.BlobStore do
          byte_size: stat.size,
          hash: hash,
          mime_type: Keyword.get(opts, :mime_type, mime_type(source_path)),
-         original_filename: Path.basename(source_path),
+         original_filename: original_filename(source_path, opts),
          path: destination,
          source_path: source_path,
          storage_key: "sha256:#{hash}"
@@ -54,6 +54,7 @@ defmodule Sheaf.BlobStore do
   def path_for(hash, source_path, opts \\ []) when is_binary(hash) and is_binary(source_path) do
     extension =
       source_path
+      |> original_filename(opts)
       |> Path.extname()
       |> String.downcase()
 
@@ -85,6 +86,12 @@ defmodule Sheaf.BlobStore do
       |> Keyword.get(:root, @default_root)
 
     Keyword.get(opts, :root, configured)
+  end
+
+  defp original_filename(source_path, opts) do
+    opts
+    |> Keyword.get(:filename, Path.basename(source_path))
+    |> to_string()
   end
 
   defp mime_type(path) do

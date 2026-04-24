@@ -13,25 +13,12 @@ defmodule Sheaf.NS do
 
   defvocab(AS,
     base_iri: "https://www.w3.org/ns/activitystreams#",
-    terms: [
-      :Application,
-      :Note,
-      :content,
-      :context,
-      :published,
-      attributed_to: "attributedTo"
-    ]
+    file: "../activitystreams2.ttl"
   )
 
   defvocab(PROV,
     base_iri: "http://www.w3.org/ns/prov#",
-    file: "../prov-o.ttl",
-    terms: [
-      :Entity,
-      :SoftwareAgent,
-      was_invalidated_by: "wasInvalidatedBy",
-      was_revision_of: "wasRevisionOf"
-    ]
+    file: "../prov-o.ttl"
   )
 
   defvocab(BIBO,

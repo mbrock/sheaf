@@ -212,7 +212,7 @@ defmodule Sheaf.Assistant.Notes do
   defp note_triples(note_iri, agent_iri, session_iri, text, published_at, block_ids, attrs) do
     [
       {note_iri, RDF.type(), AS.Note},
-      {note_iri, AS.attributed_to(), agent_iri},
+      {note_iri, AS.attributedTo(), agent_iri},
       {note_iri, AS.context(), session_iri},
       {note_iri, AS.published(), published_at},
       {note_iri, AS.content(), text},

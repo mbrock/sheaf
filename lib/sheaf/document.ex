@@ -220,7 +220,7 @@ defmodule Sheaf.Document do
   defp invalidated?(%Graph{} = graph, iri) do
     graph
     |> Graph.description(iri)
-    |> PROV.was_invalidated_by()
+    |> PROV.wasInvalidatedBy()
     |> is_list()
   end
 

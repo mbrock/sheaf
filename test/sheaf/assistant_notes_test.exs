@@ -35,7 +35,7 @@ defmodule Sheaf.Assistant.NotesTest do
     assert MapSet.new(built.block_ids) == MapSet.new(~w[BLK111 BLK222 BLK333 BLK444])
 
     assert RDF.Data.include?(graph, {note, RDF.type(), AS.Note})
-    assert RDF.Data.include?(graph, {note, AS.attributed_to(), agent})
+    assert RDF.Data.include?(graph, {note, AS.attributedTo(), agent})
     assert RDF.Data.include?(graph, {note, AS.context(), session})
     assert RDF.Data.include?(graph, {note, AS.published(), published_at})
     assert RDF.Data.include?(graph, {note, AS.content(), built.text})
