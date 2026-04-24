@@ -74,4 +74,53 @@ defmodule Sheaf.Assistant.NotesTest do
     assert sparql =~ "<https://less.rest/sheaf/mentions>"
     assert sparql =~ "<#{Id.iri("ABC123")}>"
   end
+
+  test "from_rows groups note mentions and sorts newest notes first" do
+    older = Id.iri("NOTE10")
+    newer = Id.iri("NOTE20")
+    agent = Id.iri("AGENT4")
+    session = Id.iri("SESS04")
+
+    rows = [
+      %{
+        "note" => older,
+        "content" => RDF.literal("Older note."),
+        "published" => RDF.literal(~U[2026-04-24 11:00:00Z]),
+        "mention" => Id.iri("BLK100")
+      },
+      %{
+        "note" => newer,
+        "title" => RDF.literal("Newer note"),
+        "content" => RDF.literal("Newer note."),
+        "published" => RDF.literal(~U[2026-04-24 12:00:00Z]),
+        "agent" => agent,
+        "agentLabel" => RDF.literal("Research bot"),
+        "context" => session,
+        "contextLabel" => RDF.literal("Reading session"),
+        "mention" => Id.iri("BLK200")
+      },
+      %{
+        "note" => newer,
+        "title" => RDF.literal("Newer note"),
+        "content" => RDF.literal("Newer note."),
+        "published" => RDF.literal(~U[2026-04-24 12:00:00Z]),
+        "agent" => agent,
+        "context" => session,
+        "mention" => Id.iri("BLK201")
+      }
+    ]
+
+    assert [
+             %{
+               id: "NOTE20",
+               title: "Newer note",
+               agent_id: "AGENT4",
+               agent_label: "Research bot",
+               session_id: "SESS04",
+               session_label: "Reading session",
+               mentions: [%{id: "BLK200", path: "/b/BLK200"}, %{id: "BLK201", path: "/b/BLK201"}]
+             },
+             %{id: "NOTE10", mentions: [%{id: "BLK100", path: "/b/BLK100"}]}
+           ] = Notes.from_rows(rows)
+  end
 end

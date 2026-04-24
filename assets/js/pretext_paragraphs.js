@@ -57,17 +57,17 @@ let fontEpoch = 0
 
 export const PretextParagraph = {
   mounted() {
-    refreshParagraph(this.el)
+    //refreshParagraph(this.el)
   },
   updated() {
-    refreshParagraph(this.el)
+    //refreshParagraph(this.el)
   },
   destroyed() {
-    resizeObserver.unobserve(this.el)
-    states.delete(this.el)
-    observed.delete(this.el)
-    pending.delete(this.el)
-    forgetFontWaitTarget(this.el)
+    // resizeObserver.unobserve(this.el)
+    // states.delete(this.el)
+    // observed.delete(this.el)
+    // pending.delete(this.el)
+    // forgetFontWaitTarget(this.el)
   },
 }
 

@@ -17,6 +17,7 @@ export const DocumentBreadcrumb = {
     this.el.addEventListener("click", this.navigateAssistantBlock)
     this.copyButton?.addEventListener("click", this.copy)
     this.handleEvent("scroll-to-block", ({id}) => scheduleScrollToBlock(this, id))
+    this.handleEvent("scroll-reader-to-top", () => scheduleScrollReaderToTop(this))
 
     this.observe()
   },
@@ -51,6 +52,17 @@ function scheduleScrollToBlock(hook, id) {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => scrollToBlock(hook, id))
   })
+}
+
+function scheduleScrollReaderToTop(hook) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => scrollReaderToTop(hook))
+  })
+}
+
+function scrollReaderToTop(hook) {
+  hook.article = hook.el.querySelector("#document-start")
+  hook.article?.scrollTo({top: 0, behavior: "smooth"})
 }
 
 function scrollToBlock(hook, id) {

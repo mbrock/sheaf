@@ -268,22 +268,24 @@ defmodule Sheaf.Assistant.Chat do
     state
     |> Map.put(:active_tool, name)
     |> Map.put(:status_line, line)
-    |> append_message(:status, line)
+    |> append_raw_message(%{
+      role: :tool,
+      tool: name,
+      input: args,
+      status: :pending,
+      summary: nil
+    })
     |> broadcast_snapshot()
   end
 
-  defp handle_assistant_event(state, {:tool_finished, name, {:error, reason}}) do
-    state
-    |> Map.put(:active_tool, nil)
-    |> Map.put(:status_line, "Thinking")
-    |> append_message(:error, "Tool #{name} failed: #{inspect(reason)}")
-    |> broadcast_snapshot()
-  end
+  defp handle_assistant_event(state, {:tool_finished, name, result}) do
+    status = if match?({:error, _}, result), do: :error, else: :ok
+    summary = CorpusTools.result_summary(name, result)
 
-  defp handle_assistant_event(state, {:tool_finished, _name, _result}) do
     state
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, "Thinking")
+    |> update_last_pending_tool(name, status, summary)
     |> broadcast_snapshot()
   end
 
@@ -291,6 +293,31 @@ defmodule Sheaf.Assistant.Chat do
 
   defp append_message(state, role, text) do
     %{state | messages: state.messages ++ [%{role: role, text: text}]}
+  end
+
+  defp append_raw_message(state, message) do
+    %{state | messages: state.messages ++ [message]}
+  end
+
+  defp update_last_pending_tool(state, name, status, summary) do
+    {messages, _updated?} =
+      state.messages
+      |> Enum.reverse()
+      |> Enum.map_reduce(false, fn msg, updated? ->
+        if not updated? and tool_pending?(msg, name) do
+          {Map.merge(msg, %{status: status, summary: summary}), true}
+        else
+          {msg, updated?}
+        end
+      end)
+
+    %{state | messages: Enum.reverse(messages)}
+  end
+
+  defp tool_pending?(msg, name) do
+    Map.get(msg, :role) == :tool and
+      Map.get(msg, :tool) == name and
+      Map.get(msg, :status) == :pending
   end
 
   defp maybe_title_from(%{messages: []} = state, text) do
@@ -424,6 +451,7 @@ defmodule Sheaf.Assistant.Chat do
       pending: not is_nil(state.pending_ref),
       active_tool: state.active_tool,
       status_line: state.status_line,
+      titles: state.titles,
       error: state.error
     }
   end

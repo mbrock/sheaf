@@ -15,11 +15,10 @@ defmodule SheafWeb.DocumentLive do
   @impl true
   def handle_params(%{"id" => id} = params, _uri, socket) do
     selected_block_id = selected_block_id(params)
+    document_changed? = Map.get(socket.assigns, :document_id) != id
 
     socket =
-      if Map.get(socket.assigns, :document_id) == id do
-        assign(socket, :selected_block_id, selected_block_id)
-      else
+      if document_changed? do
         case load_document(socket, id, selected_block_id) do
           {:ok, socket} ->
             socket
@@ -27,9 +26,11 @@ defmodule SheafWeb.DocumentLive do
           {:error, reason} ->
             put_flash(socket, :error, "Could not load document #{id}: #{inspect(reason)}")
         end
+      else
+        assign(socket, :selected_block_id, selected_block_id)
       end
 
-    {:noreply, maybe_scroll_to_selected(socket)}
+    {:noreply, maybe_scroll_reader(socket, document_changed?)}
   end
 
   @impl true
@@ -63,7 +64,7 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <div
       id="document-reader"
-      class="grid h-dvh grid-rows-[minmax(0,16rem)_auto_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 lg:grid-cols-[24rem_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_20rem] dark:bg-stone-950 dark:text-stone-50"
+      class="grid h-dvh grid-rows-[minmax(0,16rem)_auto_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 lg:grid-cols-[24rem_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_30rem] dark:bg-stone-950 dark:text-stone-50"
       phx-hook="DocumentBreadcrumb"
     >
       <aside class="min-h-0 overflow-y-auto p-4 lg:col-start-1 lg:row-span-2">
@@ -99,8 +100,7 @@ defmodule SheafWeb.DocumentLive do
         </div>
       </article>
 
-      <aside class="hidden min-h-0 overflow-y-auto border-stone-200/80 p-4 xl:col-start-3 xl:row-span-2 xl:row-start-1 xl:block xl:border-l dark:border-stone-800/80">
-        <.inspector graph={@graph} root={@root} selected_id={@selected_block_id} />
+      <aside class="hidden min-h-0 overflow-y-auto border-stone-200/80 px-5 py-4 xl:col-start-3 xl:row-span-2 xl:row-start-1 xl:block xl:border-l dark:border-stone-800/80">
         <.live_component
           module={SheafWeb.AssistantChatComponent}
           id="document-assistant"
@@ -252,37 +252,6 @@ defmodule SheafWeb.DocumentLive do
     """
   end
 
-  attr :graph, :any, required: true
-  attr :root, :any, required: true
-  attr :selected_id, :string, default: nil
-
-  defp inspector(assigns) do
-    assigns = assign(assigns, :selected_iri, selected_iri(assigns.selected_id))
-
-    ~H"""
-    <div class="space-y-4">
-      <h2 class="font-sans text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
-        Inspector
-      </h2>
-
-      <p :if={is_nil(@selected_iri)} class="text-sm leading-6 text-stone-500 dark:text-stone-400">
-        Select a block.
-      </p>
-
-      <dl :if={@selected_iri} class="space-y-3 text-sm">
-        <div :for={{label, value} <- block_metadata(@graph, @root, @selected_iri)}>
-          <dt class="font-sans text-xs uppercase tracking-wide text-stone-500 dark:text-stone-400">
-            {label}
-          </dt>
-          <dd class="mt-1 break-words font-mono text-xs leading-5 text-stone-900 dark:text-stone-100">
-            {value}
-          </dd>
-        </div>
-      </dl>
-    </div>
-    """
-  end
-
   @doc false
   def document_blocks(graph, root) do
     children =
@@ -329,48 +298,9 @@ defmodule SheafWeb.DocumentLive do
     "#{Enum.join(number, ".")}. #{heading}"
   end
 
-  defp selected_iri(nil), do: nil
-  defp selected_iri(id), do: Id.iri(id)
-
   defp selected_class(block, selected_id) do
     if Document.id(block.iri) == selected_id do
       "bg-stone-200/70 dark:bg-stone-800/80"
-    end
-  end
-
-  defp block_metadata(graph, root, iri) do
-    type = Document.block_type(graph, iri)
-
-    [
-      {"ID", Document.id(iri)},
-      {"Kind", metadata_kind(graph, root, iri, type)},
-      {"Title", metadata_title(graph, root, iri, type)},
-      {"Source type", Document.source_block_type(graph, iri)},
-      {"Source key", Document.source_key(graph, iri)},
-      {"Source page", source_page_value(graph, iri)},
-      {"IRI", to_string(iri)}
-    ]
-    |> Enum.reject(fn {_label, value} -> value in [nil, ""] end)
-  end
-
-  defp metadata_kind(graph, root, iri, nil) do
-    if iri == root, do: graph |> Document.kind(iri) |> Atom.to_string(), else: "unknown"
-  end
-
-  defp metadata_kind(_graph, _root, _iri, type), do: Atom.to_string(type)
-
-  defp metadata_title(graph, root, iri, nil) do
-    if iri == root, do: document_title(graph, iri)
-  end
-
-  defp metadata_title(graph, _root, iri, :section), do: Document.heading(graph, iri)
-  defp metadata_title(_graph, _root, _iri, _type), do: nil
-
-  defp source_page_value(graph, iri) do
-    case Document.source_page(graph, iri) do
-      nil -> nil
-      page when is_integer(page) -> to_string(page + 1)
-      page -> to_string(page)
     end
   end
 
@@ -420,12 +350,16 @@ defmodule SheafWeb.DocumentLive do
 
   defp selected_block_id(_params), do: nil
 
-  defp maybe_scroll_to_selected(%{assigns: %{selected_block_id: block_id}} = socket)
+  defp maybe_scroll_reader(
+         %{assigns: %{selected_block_id: block_id}} = socket,
+         _document_changed?
+       )
        when is_binary(block_id) and block_id != "" do
     push_event(socket, "scroll-to-block", %{id: block_id})
   end
 
-  defp maybe_scroll_to_selected(socket), do: socket
+  defp maybe_scroll_reader(socket, true), do: push_event(socket, "scroll-reader-to-top", %{})
+  defp maybe_scroll_reader(socket, false), do: socket
 
   defp target_document_id(block_id, socket) do
     iri = Id.iri(block_id)

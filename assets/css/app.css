@@ -301,11 +301,6 @@
     text-decoration: underline;
   }
 
-  .assistant-prose a[href^="/b/"] {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.9em;
-  }
-
   .assistant-prose strong {
     font-weight: 600;
   }

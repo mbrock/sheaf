@@ -9,6 +9,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   use SheafWeb, :live_component
 
+  alias Sheaf.BlockRefs
   alias Sheaf.Assistant.{Chat, Chats}
   alias Sheaf.{Document, Id}
 
@@ -142,18 +143,12 @@ defmodule SheafWeb.AssistantChatComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <section class="flex min-h-[24rem] flex-col border-t border-stone-200/80 pt-4 dark:border-stone-800/80">
+    <section class="flex min-h-[24rem] flex-col border-t border-stone-200/80 pt-2 dark:border-stone-800/80">
       <div class="flex items-center justify-between gap-3">
         <h2 class="font-sans text-sm font-semibold uppercase text-stone-500 dark:text-stone-400">
           Assistant
         </h2>
         <div class="flex items-center gap-2">
-          <span
-            :if={@chat.pending}
-            class="max-w-36 truncate font-sans text-xs italic text-stone-500 dark:text-stone-400"
-          >
-            {@chat.status_line || "Thinking"}
-          </span>
           <button
             type="button"
             class="grid size-7 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
@@ -201,25 +196,24 @@ defmodule SheafWeb.AssistantChatComponent do
         </button>
       </nav>
 
-      <div class="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 text-sm">
+      <div class="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 text-sm">
         <p :if={@chat.messages == []} class="leading-6 text-stone-500 dark:text-stone-400">
           No messages yet.
         </p>
 
-        <div
+        <.chat_message
           :for={message <- @chat.messages}
-          class={[
-            "rounded-sm px-3 py-2 leading-6",
-            message.role == :user &&
-              "bg-stone-200/70 text-stone-950 dark:bg-stone-800 dark:text-stone-50",
-            message.role == :assistant &&
-              "bg-white text-stone-900 dark:bg-stone-900 dark:text-stone-100",
-            message.role == :status &&
-              "border border-stone-200/80 bg-stone-100/60 font-sans text-xs italic text-stone-600 dark:border-stone-800 dark:bg-stone-900/50 dark:text-stone-400",
-            message.role == :error && "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-100"
-          ]}
+          message={message}
+          titles={Map.get(@chat, :titles, %{})}
+        />
+
+        <div
+          :if={@chat.pending}
+          class="flex items-center gap-2 px-1 py-2 text-sm leading-5 text-stone-500 dark:text-stone-400"
         >
-          <.message_body text={message.text} role={message.role} />
+          <span class="size-3 shrink-0 animate-spin rounded-full border-2 border-stone-300 border-t-stone-700 dark:border-stone-700 dark:border-t-stone-200">
+          </span>
+          <span class="min-w-0 flex-1 truncate">{@chat.status_line || "Thinking"}</span>
         </div>
       </div>
 
@@ -247,21 +241,156 @@ defmodule SheafWeb.AssistantChatComponent do
     """
   end
 
-  attr :text, :string, required: true
-  attr :role, :atom, required: true
+  attr :message, :map, required: true
+  attr :titles, :map, default: %{}
 
-  defp message_body(%{role: :assistant} = assigns) do
+  defp chat_message(%{message: %{role: :user}} = assigns) do
     ~H"""
-    <div class="assistant-prose break-words">
-      {raw(render_markdown(@text))}
+    <div class="rounded-sm bg-stone-200/70 px-3 py-1.5 text-sm leading-snug text-stone-950 dark:bg-stone-800 dark:text-stone-50">
+      <div class="whitespace-pre-line break-words">{@message.text}</div>
     </div>
     """
   end
 
-  defp message_body(assigns) do
+  defp chat_message(%{message: %{role: :assistant}} = assigns) do
     ~H"""
-    <div class="break-words whitespace-pre-line">{@text}</div>
+    <div class="assistant-prose break-words px-1 text-xs text-stone-900 dark:text-stone-100">
+      {raw(render_markdown(@message.text))}
+    </div>
     """
+  end
+
+  defp chat_message(%{message: %{role: :tool}} = assigns) do
+    assigns = assign(assigns, :tool_view, tool_view(assigns.message, assigns.titles))
+
+    ~H"""
+    <div class="flex gap-2 px-1 py-1 text-xs ">
+      <span class="mt-0.5 w-5 shrink-0 text-center text-base ">
+        {@tool_view.icon}
+      </span>
+      <div class="min-w-0 flex-1">
+        <div class={["text-stone-700 dark:text-stone-300", @tool_view.status_class]}>
+          <span>{@tool_view.action}</span>
+          <span :if={@tool_view.target != ""}>{@tool_view.target}</span>
+          <span :if={@tool_view.scope != ""}> in <em>{@tool_view.scope}</em></span>
+        </div>
+        <div
+          :if={@tool_view.detail != ""}
+          class="mt-0.5 pl-0 text-xs  text-stone-500 dark:text-stone-400"
+        >
+          {@tool_view.detail}
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp chat_message(%{message: %{role: :status}} = assigns) do
+    ~H"""
+    <div class="px-1 py-0.5 font-sans text-[11px] italic leading-5 text-stone-500 dark:text-stone-400">
+      {@message.text}
+    </div>
+    """
+  end
+
+  defp chat_message(%{message: %{role: :error}} = assigns) do
+    ~H"""
+    <div class="rounded-sm border-l-2 border-red-500 bg-red-50/70 px-3 py-1 text-xs leading-5 text-red-800 dark:bg-red-950/30 dark:text-red-300">
+      {@message.text}
+    </div>
+    """
+  end
+
+  defp chat_message(assigns), do: ~H""
+
+  defp tool_view(%{tool: "list_documents"} = message, _titles) do
+    tool_view("📚", "Checking", "the library", "", message)
+  end
+
+  defp tool_view(%{tool: "get_document", input: input} = message, titles) do
+    id = tool_arg(input, :id)
+    target = "the outline"
+    scope = title_or_id(id, titles)
+
+    tool_view("📖", "Reading", target, scope, message)
+  end
+
+  defp tool_view(%{tool: "get_block", input: input} = message, titles) do
+    doc_id = tool_arg(input, :document_id)
+    block_id = tool_arg(input, :block_id)
+    target = "block ##{block_id || "?"}"
+    scope = title_or_id(doc_id, titles)
+
+    tool_view("📄", "Reading", target, scope, message)
+  end
+
+  defp tool_view(%{tool: "search_text", input: input} = message, titles) do
+    query = tool_arg(input, :query) || ""
+    scope = tool_arg(input, :document_id)
+    target = "“#{query}”"
+    scope = if scope, do: title_or_id(scope, titles), else: "the corpus"
+
+    tool_view("🔍", "Searching for", target, scope, message)
+  end
+
+  defp tool_view(%{tool: "write_note", input: input} = message, _titles) do
+    title = tool_arg(input, :title) || tool_arg(input, :text)
+
+    target =
+      if is_binary(title) and String.trim(title) != "",
+        do: "“#{ellipsize(title, 60)}”",
+        else: "a research note"
+
+    tool_view("📝", "Saving", target, "", message)
+  end
+
+  defp tool_view(%{tool: tool} = message, _titles) when is_binary(tool) do
+    tool_view("⚙️", "Using", String.replace(tool, "_", " "), "", message)
+  end
+
+  defp tool_view(message, _titles), do: tool_view("⚙️", "Using", "a tool", "", message)
+
+  defp tool_view(icon, action, target, scope, message) do
+    %{
+      icon: icon,
+      action: action,
+      target: target || "",
+      scope: scope || "",
+      detail: tool_detail(message),
+      status_class: tool_phrase_class(Map.get(message, :status))
+    }
+  end
+
+  defp tool_detail(%{status: :pending}), do: "working…"
+  defp tool_detail(%{status: :ok, summary: summary}) when summary in [nil, ""], do: "done"
+  defp tool_detail(%{status: :ok, summary: summary}), do: detail_text(summary)
+  defp tool_detail(%{status: :error, summary: summary}) when summary in [nil, ""], do: "error"
+  defp tool_detail(%{status: :error, summary: summary}), do: detail_text(summary)
+  defp tool_detail(_), do: ""
+
+  defp detail_text("“" <> _ = summary), do: summary
+  defp detail_text(summary), do: "(" <> summary <> ")"
+
+  defp tool_phrase_class(:error), do: "text-red-700 dark:text-red-300"
+  defp tool_phrase_class(_), do: ""
+
+  defp title_or_id(nil, _titles), do: ""
+
+  defp title_or_id(id, titles) do
+    case Map.get(titles, id) do
+      nil -> "##{id}"
+      title -> ellipsize(title, 60)
+    end
+  end
+
+  defp tool_arg(input, key) when is_map(input) do
+    Map.get(input, key) || Map.get(input, Atom.to_string(key))
+  end
+
+  defp tool_arg(_, _), do: nil
+
+  defp ellipsize(text, limit) do
+    if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 1) <> "…"
   end
 
   defp ensure_chat_index_subscription(%{assigns: %{chats_subscribed?: true}} = socket), do: socket
@@ -398,7 +527,9 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp render_markdown(text) do
-    MDEx.to_html!(text, @mdex_opts)
+    text
+    |> BlockRefs.linkify_markdown()
+    |> MDEx.to_html!(@mdex_opts)
   end
 
   defp chat_form, do: to_form(%{"message" => ""}, as: :chat)

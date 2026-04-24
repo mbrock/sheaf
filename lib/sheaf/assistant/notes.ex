@@ -9,10 +9,31 @@ defmodule Sheaf.Assistant.Notes do
 
   alias RDF.Graph
   alias RDF.NS.RDFS
+  alias Sheaf.BlockRefs
   alias Sheaf.Id
   alias Sheaf.NS.{AS, DOC, PROV}
 
-  @block_ref_pattern ~r/(?:#|\/b\/)([A-Z0-9]{6})\b/
+  @default_limit 20
+
+  @doc """
+  Lists recently published assistant notes.
+  """
+  def list(opts \\ []) do
+    limit = opts |> Keyword.get(:limit, @default_limit) |> normalize_limit()
+
+    with {:ok, result} <- Sheaf.select(list_query(limit)) do
+      {:ok, from_rows(result.results)}
+    end
+  end
+
+  @doc false
+  def from_rows(rows) do
+    rows
+    |> Enum.group_by(&row_value(&1, "note"))
+    |> Enum.reject(fn {note_iri, _rows} -> is_nil(note_iri) end)
+    |> Enum.map(fn {_note_iri, rows} -> note_from_rows(rows) end)
+    |> Enum.sort_by(&sort_key/1, :desc)
+  end
 
   @doc """
   Builds and persists a note.
@@ -102,6 +123,92 @@ defmodule Sheaf.Assistant.Notes do
     end
   end
 
+  defp list_query(limit) do
+    """
+    PREFIX as: <https://www.w3.org/ns/activitystreams#>
+    PREFIX sheaf: <https://less.rest/sheaf/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT ?note ?title ?content ?published ?agent ?agentLabel ?context ?contextLabel ?mention WHERE {
+      {
+        SELECT ?note ?published WHERE {
+          ?note a as:Note .
+          OPTIONAL { ?note as:published ?published }
+        }
+        ORDER BY DESC(?published)
+        LIMIT #{limit}
+      }
+
+      ?note as:content ?content .
+      OPTIONAL { ?note rdfs:label ?title }
+      OPTIONAL {
+        ?note as:attributedTo ?agent .
+        OPTIONAL { ?agent rdfs:label ?agentLabel }
+      }
+      OPTIONAL {
+        ?note as:context ?context .
+        OPTIONAL { ?context rdfs:label ?contextLabel }
+      }
+      OPTIONAL { ?note sheaf:mentions ?mention }
+    }
+    ORDER BY DESC(?published)
+    """
+  end
+
+  defp note_from_rows([row | _] = rows) do
+    note_iri = row_value(row, "note")
+    agent_iri = row_value(row, "agent")
+    session_iri = row_value(row, "context")
+
+    %{
+      id: Id.id_from_iri(note_iri),
+      iri: note_iri,
+      title: row_value(row, "title"),
+      text: row_value(row, "content") || "",
+      published_at: row_value(row, "published"),
+      agent_id: id_or_nil(agent_iri),
+      agent_iri: agent_iri,
+      agent_label: row_value(row, "agentLabel"),
+      session_id: id_or_nil(session_iri),
+      session_iri: session_iri,
+      session_label: row_value(row, "contextLabel"),
+      mentions: mentions(rows)
+    }
+  end
+
+  defp mentions(rows) do
+    rows
+    |> Enum.map(&row_value(&1, "mention"))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.map(fn iri ->
+      id = Id.id_from_iri(iri)
+      %{id: id, iri: iri, path: "/b/#{id}"}
+    end)
+  end
+
+  defp sort_key(%{published_at: %DateTime{} = published_at}), do: DateTime.to_unix(published_at)
+  defp sort_key(%{published_at: nil}), do: 0
+  defp sort_key(%{published_at: published_at}), do: to_string(published_at)
+
+  defp id_or_nil(nil), do: nil
+  defp id_or_nil(iri), do: Id.id_from_iri(iri)
+
+  defp row_value(row, key) do
+    row
+    |> Map.get(key)
+    |> term_value()
+  end
+
+  defp term_value(nil), do: nil
+
+  defp term_value(term) do
+    case RDF.Term.value(term) do
+      %DateTime{} = value -> value
+      value -> to_string(value)
+    end
+  end
+
   defp note_triples(note_iri, agent_iri, session_iri, text, published_at, block_ids, attrs) do
     [
       {note_iri, RDF.type(), AS.Note},
@@ -185,21 +292,18 @@ defmodule Sheaf.Assistant.Notes do
     end
   end
 
+  defp normalize_limit(limit) when is_integer(limit) and limit > 0, do: min(limit, 100)
+  defp normalize_limit(_limit), do: @default_limit
+
   defp block_ids(attrs, text) do
     explicit =
       attrs
       |> arg(:block_ids)
       |> List.wrap()
 
-    (explicit ++ block_refs_from_text(text))
+    (explicit ++ BlockRefs.ids_from_text(text))
     |> Enum.flat_map(&normalize_block_id/1)
     |> Enum.uniq()
-  end
-
-  defp block_refs_from_text(text) do
-    @block_ref_pattern
-    |> Regex.scan(text)
-    |> Enum.map(fn [_match, id] -> id end)
   end
 
   defp normalize_block_id(%RDF.IRI{} = iri), do: [Id.id_from_iri(iri)]

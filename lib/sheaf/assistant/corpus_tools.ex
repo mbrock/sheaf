@@ -105,34 +105,98 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  def humanize("list_documents", _args, _titles), do: "Looking at the library"
+  def humanize("list_documents", _args, _titles), do: "Checking the library"
 
   def humanize("get_document", args, titles) do
-    "Reading outline of " <> quote_title(arg(args, :id), titles)
+    "Reading the outline of " <> quote_title(arg(args, :id), titles)
   end
 
   def humanize("get_block", args, titles) do
     doc_id = arg(args, :document_id)
     block_id = arg(args, :block_id)
-    "Opening ##{block_id} in " <> quote_title(doc_id, titles)
+    "Reading ##{block_id} in " <> quote_title(doc_id, titles)
   end
 
   def humanize("search_text", args, titles) do
-    q = inspect(arg(args, :query) || "")
+    q = smart_quote(arg(args, :query) || "")
     scope = arg(args, :document_id)
 
     case scope do
       id when is_binary(id) and id != "" ->
-        "Searching " <> q <> " in " <> quote_title(id, titles)
+        "Searching for " <> q <> " in " <> quote_title(id, titles)
 
       _ ->
-        "Searching the corpus for " <> q
+        "Searching for " <> q <> " across the corpus"
     end
   end
 
-  def humanize("write_note", _args, _titles), do: "Writing a research note"
+  def humanize("write_note", _args, _titles), do: "Saving a research note"
 
   def humanize(name, _args, _titles), do: name
+
+  @doc """
+  Builds a short human-readable summary of a finished tool result,
+  suitable for the right-hand side of a compact tool-call row.
+  """
+  def result_summary("list_documents", {:ok, %{documents: docs}}) do
+    pluralize(length(docs), "document", "documents")
+  end
+
+  def result_summary("get_document", {:ok, %{title: title, outline: outline}}) do
+    sections = "outline with " <> pluralize(length(outline), "section", "sections")
+
+    case title do
+      nil -> sections
+      "" -> sections
+      _t -> sections
+    end
+  end
+
+  def result_summary("get_block", {:ok, %{type: :section, children: children}}) do
+    "section with " <> pluralize(length(children), "child", "children")
+  end
+
+  def result_summary("get_block", {:ok, %{type: :paragraph, text: text}})
+      when is_binary(text) do
+    excerpt_or_kind(text, "paragraph")
+  end
+
+  def result_summary("get_block", {:ok, %{type: :extracted, text: text}})
+      when is_binary(text) do
+    excerpt_or_kind(text, "extracted block")
+  end
+
+  def result_summary("get_block", {:ok, %{type: :document, title: title}}) do
+    "document" <> if(title in [nil, ""], do: "", else: ": " <> ellipsize(title, 60))
+  end
+
+  def result_summary("search_text", {:ok, %{results: results}}) do
+    pluralize(length(results), "hit", "hits")
+  end
+
+  def result_summary("write_note", {:ok, _}), do: "note saved"
+
+  def result_summary(_name, {:error, reason}) when is_binary(reason) do
+    "error: " <> ellipsize(reason, 80)
+  end
+
+  def result_summary(_name, {:error, reason}) do
+    "error: " <> ellipsize(inspect(reason), 80)
+  end
+
+  def result_summary(_name, _result), do: nil
+
+  defp pluralize(1, singular, _plural), do: "1 " <> singular
+  defp pluralize(n, _singular, plural), do: "#{n} #{plural}"
+
+  defp excerpt_or_kind(text, kind) do
+    case text |> to_string() |> normalize_text() do
+      "" -> kind
+      text -> smart_quote(ellipsize(text, 140))
+    end
+  end
+
+  defp smart_quote(text), do: "“#{text}”"
 
   defp instrument(notify, name, callback) do
     fn args ->
@@ -355,7 +419,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp ellipsize(text, limit) do
-    if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 3) <> "..."
+    if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 1) <> "…"
   end
 
   defp arg(args, key) do
@@ -372,6 +436,11 @@ defmodule Sheaf.Assistant.CorpusTools do
     |> String.replace("&gt;", ">")
     |> String.replace("&quot;", ~s("))
     |> String.replace("&#39;", "'")
+    |> normalize_text()
+  end
+
+  defp normalize_text(text) do
+    text
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
   end
