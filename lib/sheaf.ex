@@ -5,16 +5,8 @@ defmodule Sheaf do
 
   alias RDF.{Dataset, Graph, Serialization}
 
-  use RDF.Vocabulary.Namespace
-  require RDF.Turtle
-
   @dataset_media_type "application/n-quads"
   @graph_media_type "application/n-triples"
-
-  defvocab(DOC,
-    base_iri: "https://less.rest/sheaf/",
-    file: "../sheaf-schema.ttl"
-  )
 
   @doc """
   Generates a new unique IRI for a resource.

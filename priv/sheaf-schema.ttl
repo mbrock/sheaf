@@ -59,17 +59,6 @@ sheaf:children a rdf:Property ;
   rdfs:range rdf:List ;
   rdfs:comment "Links a container resource to an RDF list that preserves the order of its child resources." .
 
-sheaf:title a rdf:Property ;
-  rdfs:label "title" ;
-  rdfs:domain sheaf:Document ;
-  rdfs:range xsd:string ;
-  rdfs:comment "Display title for a top-level document resource." .
-
-sheaf:heading a rdf:Property ;
-  rdfs:label "heading" ;
-  rdfs:domain sheaf:Section ;
-  rdfs:range xsd:string .
-
 sheaf:paragraph a rdf:Property ;
   rdfs:label "paragraph" ;
   rdfs:range sheaf:Paragraph ;

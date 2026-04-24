@@ -4,7 +4,7 @@ defmodule Mix.Tasks.Sheaf.Schema do
   @shortdoc "Uploads priv/sheaf-schema.ttl to the schema named graph"
 
   alias RDF.Serialization
-  alias Sheaf.DOC
+  alias Sheaf.NS.DOC
 
   @impl Mix.Task
   def run(_args) do
