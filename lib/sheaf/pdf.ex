@@ -9,10 +9,81 @@ defmodule Sheaf.PDF do
 
   @default_base_url "https://www.datalab.to/api/v1"
   @default_output_format "markdown"
+  @default_poll_interval 10_000
+  @default_poll_timeout :timer.minutes(15)
+  @complete_statuses ~w(completed succeeded success finished done)
+  @failed_statuses ~w(failed error errored cancelled canceled)
   @result_step 0
 
   @type execution_id :: String.t()
   @type response :: {:ok, map()} | {:error, term()}
+
+  @doc """
+  Converts a local PDF and returns the normalized Datalab result.
+
+  This starts a job, polls until completion, fetches the step result, and
+  normalizes the response for the requested `:output_format`.
+
+  Options:
+
+    * `:output_format` - `"markdown"`, `"html"`, or `"json"`
+    * `:poll_interval` - milliseconds between status checks, defaults to 10s
+    * `:poll_timeout` - total milliseconds to wait, defaults to 15 minutes
+
+  The returned map includes `:execution_id`, `:status`, `:output_format`, and
+  `:output`.
+  """
+  @spec convert(Path.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def convert(path, opts \\ []) when is_binary(path) do
+    output_format = output_format(opts)
+
+    with {:ok, %{"execution_id" => execution_id}} <- start_job(path, opts),
+         {:ok, status} <- await_job(execution_id, opts),
+         {:ok, body} <- result(execution_id, opts),
+         {:ok, output} <- extract_output(body, output_format) do
+      {:ok,
+       %{
+         execution_id: execution_id,
+         output: output,
+         output_format: output_format,
+         status: status
+       }}
+    end
+  end
+
+  @doc """
+  Converts a local PDF and writes the normalized result next to the source file.
+
+  By default this writes `basename.datalab.<format-extension>`. Pass
+  `:output_path` to choose a specific file.
+  """
+  @spec convert_file(Path.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def convert_file(path, opts \\ []) when is_binary(path) do
+    output_format = output_format(opts)
+    output_path = Keyword.get_lazy(opts, :output_path, fn -> output_path(path, output_format) end)
+
+    with {:ok, result} <- convert(path, opts),
+         :ok <- write_output(output_path, result.output, output_format) do
+      {:ok, Map.put(result, :output_path, output_path)}
+    end
+  end
+
+  @doc """
+  Converts several PDFs sequentially with `convert_file/2`.
+  """
+  @spec convert_files([Path.t()], keyword()) :: {:ok, [map()]} | {:error, term()}
+  def convert_files(paths, opts \\ []) when is_list(paths) do
+    Enum.reduce_while(paths, {:ok, []}, fn path, {:ok, results} ->
+      case convert_file(path, opts) do
+        {:ok, result} -> {:cont, {:ok, [result | results]}}
+        {:error, reason} -> {:halt, {:error, {path, reason}}}
+      end
+    end)
+    |> case do
+      {:ok, results} -> {:ok, Enum.reverse(results)}
+      error -> error
+    end
+  end
 
   @doc """
   Starts a Datalab pipeline job for a local PDF.
@@ -56,6 +127,18 @@ defmodule Sheaf.PDF do
   end
 
   @doc """
+  Polls a Datalab pipeline execution until it reaches a terminal status.
+  """
+  @spec await_job(execution_id(), keyword()) :: response()
+  def await_job(execution_id, opts \\ []) when is_binary(execution_id) do
+    deadline =
+      System.monotonic_time(:millisecond) +
+        Keyword.get(opts, :poll_timeout, @default_poll_timeout)
+
+    do_await_job(execution_id, deadline, opts)
+  end
+
+  @doc """
   Fetches the raw result for a completed Datalab pipeline step.
   """
   @spec result(execution_id(), keyword()) :: response()
@@ -77,6 +160,29 @@ defmodule Sheaf.PDF do
     with {:ok, body} <- result(execution_id, opts),
          {:ok, markdown} <- fetch_markdown(body) do
       {:ok, markdown}
+    end
+  end
+
+  defp do_await_job(execution_id, deadline, opts) do
+    with {:ok, body} <- check_job(execution_id, opts),
+         {:ok, status} <- job_status(body) do
+      cond do
+        status in @complete_statuses ->
+          {:ok, body}
+
+        status in @failed_statuses ->
+          {:error, {:job_failed, body}}
+
+        System.monotonic_time(:millisecond) >= deadline ->
+          {:error, {:job_timeout, body}}
+
+        true ->
+          opts
+          |> Keyword.get(:poll_interval, @default_poll_interval)
+          |> Process.sleep()
+
+          do_await_job(execution_id, deadline, opts)
+      end
     end
   end
 
@@ -148,6 +254,59 @@ defmodule Sheaf.PDF do
     do: {:ok, markdown}
 
   defp fetch_markdown(body), do: {:error, {:missing_markdown, body}}
+
+  defp extract_output(body, "markdown"), do: fetch_markdown(body)
+  defp extract_output(%{"html" => html}, "html") when is_binary(html), do: {:ok, html}
+
+  defp extract_output(%{"result" => result}, "html") when is_map(result),
+    do: extract_output(result, "html")
+
+  defp extract_output(%{"children" => _} = document, "json"), do: {:ok, document}
+  defp extract_output(%{"json" => document}, "json") when is_map(document), do: {:ok, document}
+  defp extract_output(%{"json" => json}, "json") when is_binary(json), do: Jason.decode(json)
+
+  defp extract_output(%{"result" => result}, "json") when is_map(result),
+    do: extract_output(result, "json")
+
+  defp extract_output(body, output_format), do: {:error, {:missing_output, output_format, body}}
+
+  defp write_output(path, output, "json") when is_map(output) do
+    path
+    |> Path.dirname()
+    |> File.mkdir_p!()
+
+    File.write(path, Jason.encode!(output, pretty: true))
+  end
+
+  defp write_output(path, output, _output_format) when is_binary(output) do
+    path
+    |> Path.dirname()
+    |> File.mkdir_p!()
+
+    File.write(path, output)
+  end
+
+  defp output_format(opts) do
+    opts
+    |> Keyword.get(:output_format, @default_output_format)
+    |> to_string()
+  end
+
+  defp output_path(path, output_format) do
+    Path.rootname(path) <> ".datalab." <> output_extension(output_format)
+  end
+
+  defp output_extension("markdown"), do: "md"
+  defp output_extension(output_format), do: output_format
+
+  defp job_status(%{"status" => status}) when is_binary(status),
+    do: {:ok, String.downcase(status)}
+
+  defp job_status(%{"state" => status}) when is_binary(status),
+    do: {:ok, String.downcase(status)}
+
+  defp job_status(%{"execution" => execution}) when is_map(execution), do: job_status(execution)
+  defp job_status(body), do: {:error, {:missing_job_status, body}}
 
   defp blank_to_nil(value) when value in [nil, ""], do: nil
 
