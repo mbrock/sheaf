@@ -1,19 +1,13 @@
 defmodule Sheaf.PaperMetadata do
   @moduledoc """
-  Extracts paper metadata from PDFs or extracted document text with Gemini via ReqLLM.
+  Extracts paper metadata from PDFs or extracted document text with `Sheaf.LLM`.
 
   This is meant to provide a lightweight first pass over local PDFs: enough
   Crossref-facing metadata to search by DOI/title/authors.
   """
 
   alias RDF.Graph
-  alias ReqLLM.{Context, Response}
-  alias ReqLLM.Message.ContentPart
 
-  @default_model "google:gemini-3.1-flash-lite-preview"
-  @default_receive_timeout 120_000
-  @default_temperature 0.0
-  @default_thinking_level :medium
   @default_text_chars 80_000
 
   @type t :: %__MODULE__{
@@ -45,7 +39,7 @@ defmodule Sheaf.PaperMetadata do
     :source_filename,
     :usage,
     authors: [],
-    model: @default_model
+    model: Sheaf.LLM.default_model()
   ]
 
   @doc """
@@ -53,13 +47,7 @@ defmodule Sheaf.PaperMetadata do
 
   Options:
 
-    * `:model` - ReqLLM model spec, defaulting to Gemini 3.1 Flash Lite preview.
-    * `:temperature` - generation temperature, defaulting to `0.0`.
-    * `:receive_timeout` - Req receive timeout in milliseconds, defaulting to 120s.
-    * `:thinking_level` - Gemini thinking level, defaulting to `:medium`; pass `nil`
-      to omit it.
-    * `:provider_options` - additional Google provider options.
-    * `:llm_options` - extra ReqLLM options merged into the final request.
+    * LLM request options accepted by `Sheaf.LLM.generate_object/3`.
   """
   @spec extract_pdf(Path.t(), keyword()) :: {:ok, t()} | {:error, term()}
   def extract_pdf(path, opts \\ []) when is_binary(path) do
@@ -74,15 +62,13 @@ defmodule Sheaf.PaperMetadata do
   @spec extract_pdf_binary(binary(), String.t(), keyword()) :: {:ok, t()} | {:error, term()}
   def extract_pdf_binary(pdf, filename, opts \\ [])
       when is_binary(pdf) and is_binary(filename) do
-    model = Keyword.get(opts, :model, @default_model)
-
     message =
-      Context.user([
-        ContentPart.file(pdf, filename, "application/pdf"),
-        ContentPart.text(prompt(:pdf))
+      Sheaf.LLM.user_message([
+        Sheaf.LLM.file_part(pdf, filename, "application/pdf"),
+        Sheaf.LLM.text_part(prompt(:pdf))
       ])
 
-    extract_message(message, model, Keyword.put(opts, :source_filename, filename))
+    extract_message(message, Keyword.put(opts, :source_filename, filename))
   end
 
   @doc """
@@ -94,8 +80,6 @@ defmodule Sheaf.PaperMetadata do
   """
   @spec extract_text(String.t(), keyword()) :: {:ok, t()} | {:error, term()}
   def extract_text(text, opts \\ []) when is_binary(text) do
-    model = Keyword.get(opts, :model, @default_model)
-
     text =
       text
       |> normalize_source_text()
@@ -105,12 +89,12 @@ defmodule Sheaf.PaperMetadata do
       {:error, :empty_text}
     else
       message =
-        Context.user([
-          ContentPart.text(prompt(:text)),
-          ContentPart.text(source_text_part(text))
+        Sheaf.LLM.user_message([
+          Sheaf.LLM.text_part(prompt(:text)),
+          Sheaf.LLM.text_part(source_text_part(text))
         ])
 
-      extract_message(message, model, opts)
+      extract_message(message, opts)
     end
   end
 
@@ -152,7 +136,7 @@ defmodule Sheaf.PaperMetadata do
   end
 
   @doc false
-  def default_model, do: @default_model
+  def default_model, do: Sheaf.LLM.default_model()
 
   @doc false
   def prompt, do: prompt(:pdf)
@@ -215,78 +199,28 @@ defmodule Sheaf.PaperMetadata do
       pages: string_value(object, :pages),
       confidence: string_value(object, :confidence),
       notes: string_value(object, :notes),
-      model: Keyword.get(opts, :model, @default_model),
+      model: Keyword.get(opts, :model, Sheaf.LLM.default_model()),
       source_filename: Keyword.get(opts, :source_filename),
       usage: Keyword.get(opts, :usage)
     }
   end
 
-  defp extract_message(message, model, opts) do
-    generate_object = Keyword.get(opts, :generate_object, &ReqLLM.generate_object/4)
-
-    case generate_object.(model, message, schema(), request_options(opts)) do
-      {:ok, response} ->
-        with {:ok, object} <- response_object(response) do
-          {:ok,
-           normalize_object(object,
-             model: model,
-             source_filename: Keyword.get(opts, :source_filename),
-             usage: response_usage(response)
-           )}
-        end
+  defp extract_message(message, opts) do
+    case Sheaf.LLM.generate_object(message, schema(), opts) do
+      {:ok, result} ->
+        {:ok,
+         normalize_object(result.object,
+           model: result.model,
+           source_filename: Keyword.get(opts, :source_filename),
+           usage: result.usage
+         )}
 
       {:error, reason} ->
-        {:error, reason}
+        if reason == :missing_object,
+          do: {:error, :missing_metadata_object},
+          else: {:error, reason}
     end
   end
-
-  defp request_options(opts) do
-    provider_options = provider_options(opts)
-    llm_options = Keyword.get(opts, :llm_options, [])
-    llm_provider_options = Keyword.get(llm_options, :provider_options, [])
-
-    [
-      temperature: Keyword.get(opts, :temperature, @default_temperature),
-      receive_timeout: Keyword.get(opts, :receive_timeout, @default_receive_timeout),
-      provider_options: Keyword.merge(provider_options, llm_provider_options)
-    ]
-    |> Keyword.merge(llm_options)
-    |> Keyword.put(:provider_options, Keyword.merge(provider_options, llm_provider_options))
-  end
-
-  defp provider_options(opts) do
-    provider_options = Keyword.get(opts, :provider_options, [])
-    thinking_level = Keyword.get(opts, :thinking_level, @default_thinking_level)
-
-    cond do
-      thinking_level in [nil, false] ->
-        provider_options
-
-      Keyword.has_key?(provider_options, :google_thinking_level) ->
-        provider_options
-
-      Keyword.has_key?(provider_options, :google_thinking_budget) ->
-        provider_options
-
-      true ->
-        Keyword.put(provider_options, :google_thinking_level, thinking_level)
-    end
-  end
-
-  defp response_object(%ReqLLM.Response{} = response) do
-    case Response.object(response) do
-      object when is_map(object) -> {:ok, object}
-      _ -> {:error, :missing_metadata_object}
-    end
-  end
-
-  defp response_object(%{object: object}) when is_map(object), do: {:ok, object}
-  defp response_object(object) when is_map(object), do: {:ok, object}
-  defp response_object(_), do: {:error, :missing_metadata_object}
-
-  defp response_usage(%ReqLLM.Response{} = response), do: Response.usage(response)
-  defp response_usage(%{usage: usage}) when is_map(usage), do: usage
-  defp response_usage(_), do: nil
 
   defp text_from_chunks(chunks) do
     chunks

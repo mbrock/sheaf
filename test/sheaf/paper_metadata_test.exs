@@ -6,7 +6,7 @@ defmodule Sheaf.PaperMetadataTest do
   alias Sheaf.PaperMetadata
   alias Sheaf.NS.DOC
 
-  test "extracts PDF metadata with Gemini via ReqLLM" do
+  test "extracts PDF metadata with ReqLLM" do
     path = Path.join(System.tmp_dir!(), "sheaf-paper-metadata-test.pdf")
     File.write!(path, "%PDF-1.7\n")
 
@@ -49,9 +49,15 @@ defmodule Sheaf.PaperMetadataTest do
     assert Keyword.has_key?(schema, :doi)
     assert Keyword.has_key?(schema, :title)
     assert Keyword.has_key?(schema, :authors)
-    assert opts[:temperature] == 0.0
-    assert opts[:receive_timeout] == 120_000
-    assert opts[:provider_options][:google_thinking_level] == :medium
+    refute Keyword.has_key?(opts, :temperature)
+    assert opts[:max_tokens] == 65_536
+
+    assert opts[:provider_options][:thinking] == %{
+             type: "adaptive",
+             display: "omitted"
+           }
+
+    assert opts[:receive_timeout] == 300_000
 
     assert [file_part, prompt_part] = message.content
     assert file_part.type == :file
@@ -66,9 +72,11 @@ defmodule Sheaf.PaperMetadataTest do
 
   test "extracts PDF metadata from bytes and allows request option overrides" do
     generate_object = fn _model, _message, _schema, opts ->
-      assert opts[:temperature] == 0.2
+      refute Keyword.has_key?(opts, :temperature)
+      assert opts[:max_tokens] == 4_096
+      assert opts[:reasoning_effort] == :medium
+      refute Keyword.has_key?(opts[:provider_options], :thinking)
       assert opts[:receive_timeout] == 5_000
-      assert opts[:provider_options][:google_thinking_level] == :low
 
       {:ok,
        %{
@@ -81,9 +89,11 @@ defmodule Sheaf.PaperMetadataTest do
     assert {:ok, metadata} =
              PaperMetadata.extract_pdf_binary("%PDF", "paper.pdf",
                generate_object: generate_object,
-               temperature: 0.2,
+               max_tokens: 4_096,
+               reasoning_effort: :medium,
+               thinking: false,
                receive_timeout: 5_000,
-               provider_options: [google_thinking_level: :low]
+               provider_options: [custom: true]
              )
 
     assert metadata.title == "A Paper"

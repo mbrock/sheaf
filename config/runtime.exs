@@ -74,6 +74,12 @@ if gemini_api_key do
   config :req_llm, google_api_key: gemini_api_key
 end
 
+anthropic_api_key = System.get_env("ANTHROPIC_API_KEY")
+
+if anthropic_api_key && String.trim(anthropic_api_key) != "" do
+  config :req_llm, anthropic_api_key: anthropic_api_key
+end
+
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
 config :sheaf, :resource_base, resource_base
 
