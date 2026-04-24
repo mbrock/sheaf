@@ -61,6 +61,7 @@ defmodule Sheaf.MixProject do
       {:jason, "~> 1.2"},
       {:req, "~> 0.5"},
       {:req_llm, "~> 1.10"},
+      {:mdex, "~> 0.12"},
       {:rdf, "~> 2.1"},
       {:sparql_client, "~> 0.5"},
       {:dns_cluster, "~> 0.2.0"},

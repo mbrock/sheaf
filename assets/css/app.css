@@ -218,4 +218,116 @@
     transform: rotate(90deg);
   }
 
+  .assistant-prose > :first-child {
+    margin-top: 0;
+  }
+
+  .assistant-prose > :last-child {
+    margin-bottom: 0;
+  }
+
+  .assistant-prose p {
+    margin: 0.5rem 0;
+  }
+
+  .assistant-prose h1,
+  .assistant-prose h2,
+  .assistant-prose h3,
+  .assistant-prose h4 {
+    font-family: system-ui, sans-serif;
+    font-weight: 600;
+    margin: 0.75rem 0 0.25rem;
+  }
+
+  .assistant-prose h1 { font-size: 1.05rem; }
+  .assistant-prose h2 { font-size: 1rem; }
+  .assistant-prose h3,
+  .assistant-prose h4 { font-size: 0.95rem; }
+
+  .assistant-prose ul,
+  .assistant-prose ol {
+    margin: 0.35rem 0;
+    padding-left: 1.25rem;
+  }
+
+  .assistant-prose ul { list-style: disc; }
+  .assistant-prose ol { list-style: decimal; }
+
+  .assistant-prose li {
+    margin: 0.1rem 0;
+  }
+
+  .assistant-prose li > p {
+    margin: 0;
+  }
+
+  .assistant-prose code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.875em;
+    padding: 0.1em 0.3em;
+    border-radius: 0.2rem;
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .assistant-prose pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.25rem;
+    background: rgba(0, 0, 0, 0.05);
+    overflow-x: auto;
+    margin: 0.5rem 0;
+  }
+
+  .assistant-prose pre code {
+    padding: 0;
+    background: transparent;
+  }
+
+  .assistant-prose blockquote {
+    border-left: 2px solid rgb(168 162 158);
+    padding-left: 0.75rem;
+    margin: 0.5rem 0;
+    color: rgb(87 83 78);
+    font-style: italic;
+  }
+
+  .assistant-prose a {
+    color: rgb(2 132 199);
+    text-underline-offset: 2px;
+  }
+
+  .assistant-prose a:hover {
+    text-decoration: underline;
+  }
+
+  .assistant-prose a[href^="/b/"] {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+  }
+
+  .assistant-prose strong {
+    font-weight: 600;
+  }
+
+  .assistant-prose em {
+    font-style: italic;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .assistant-prose code,
+    .assistant-prose pre {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .assistant-prose blockquote {
+      border-left-color: rgb(120 113 108);
+      color: rgb(168 162 158);
+    }
+
+    .assistant-prose a {
+      color: rgb(56 189 248);
+    }
+  }
+
 }

@@ -5,7 +5,7 @@ defmodule SheafWeb.DocumentLive do
   alias Sheaf.Id
 
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(%{"id" => id} = params, _session, socket) do
     root = Id.iri(id)
 
     with {:ok, graph} <- Sheaf.fetch_graph(root) do
@@ -14,11 +14,19 @@ defmodule SheafWeb.DocumentLive do
         |> assign(:page_title, page_title(graph, root))
         |> assign(:graph, graph)
         |> assign(:root, root)
-        |> assign(:selected_block_id, nil)
+        |> assign(:selected_block_id, params["block"])
 
       {:ok, socket}
     end
   end
+
+  @impl true
+  def handle_params(%{"block" => block_id}, _uri, socket)
+      when is_binary(block_id) and block_id != "" do
+    {:noreply, assign(socket, :selected_block_id, block_id)}
+  end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("inspect_block", %{"id" => id}, socket) do

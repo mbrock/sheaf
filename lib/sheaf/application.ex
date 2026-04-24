@@ -13,9 +13,6 @@ defmodule Sheaf.Application do
       {Phoenix.PubSub, name: Sheaf.PubSub},
       {Finch, name: Sheaf.Finch},
       {Task.Supervisor, name: Sheaf.Assistant.TaskSupervisor},
-      # Start a worker by calling: Sheaf.Worker.start_link(arg)
-      # {Sheaf.Worker, arg},
-      # Start to serve requests, typically the last entry
       SheafWeb.Endpoint
     ]
 

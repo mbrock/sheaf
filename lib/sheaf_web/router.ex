@@ -18,17 +18,25 @@ defmodule SheafWeb.Router do
     get "/sheaf-schema.ttl", SchemaController, :show
   end
 
+  scope "/api", SheafWeb.API do
+    pipe_through :api
+
+    get "/documents", DocumentController, :index
+    get "/documents/:id", DocumentController, :show
+    get "/documents/:id/chunks", DocumentController, :chunks
+    get "/documents/:id/blocks/:block_id", DocumentController, :block
+
+    get "/sparql", SparqlController, :query
+    post "/sparql", SparqlController, :query
+  end
+
   scope "/", SheafWeb do
     pipe_through :browser
 
+    get "/b/:block_id", BlockController, :show
     live "/", DocumentIndexLive
     live "/:id", DocumentLive
   end
-
-  # Other scopes may use custom stacks.
-  # scope "/api", SheafWeb do
-  #   pipe_through :api
-  # end
 
   # Enable LiveDashboard in development
   if Application.compile_env(:sheaf, :dev_routes) do
