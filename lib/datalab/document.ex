@@ -1,6 +1,6 @@
-defmodule Sheaf.DatalabJSON do
+defmodule Datalab.Document do
   @moduledoc """
-  Small helpers for Datalab document JSON.
+  Helpers for Datalab's extracted document model.
   """
 
   def read_file(path) do

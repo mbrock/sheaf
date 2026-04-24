@@ -32,7 +32,7 @@ defmodule Mix.Tasks.Sheaf.ImportDatalabJson do
   end
 
   defp import!(path, opts) do
-    case Sheaf.PaperImport.import_file(path, title: opts[:title], pdf_path: opts[:pdf]) do
+    case Sheaf.PDF.import_file(path, title: opts[:title], pdf_path: opts[:pdf]) do
       {:ok, result} ->
         id = Sheaf.Id.id_from_iri(result.document)
 

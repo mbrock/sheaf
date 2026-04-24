@@ -1,325 +1,216 @@
 defmodule Sheaf.PDF do
   @moduledoc """
-  Small wrapper around the Datalab PDF conversion pipeline.
-
-  The default pipeline is configured by `DATALAB_PIPELINE_ID`, falling back to
-  the first Markdown conversion pipeline we tried by hand. The API key is read
-  from `DATALAB_API_KEY`.
+  Imports extracted PDF content as a Sheaf paper graph.
   """
 
-  @default_base_url "https://www.datalab.to/api/v1"
-  @default_output_format "markdown"
-  @default_poll_interval 10_000
-  @default_poll_timeout :timer.minutes(15)
-  @complete_statuses ~w(completed succeeded success finished done)
-  @failed_statuses ~w(failed error errored cancelled canceled)
-  @result_step 0
+  alias Datalab.Document, as: DatalabDocument
+  alias RDF.Graph
+  alias RDF.NS.RDFS
+  alias Sheaf.BlobStore
+  alias Sheaf.NS.{DOC, FABIO}
 
-  @type execution_id :: String.t()
-  @type response :: {:ok, map()} | {:error, term()}
+  def import_file(path, opts \\ []) do
+    with {:ok, document} <- DatalabDocument.read_file(path),
+         {:ok, source_file} <- source_file_for(path, opts) do
+      result =
+        document
+        |> build_graph(
+          opts
+          |> Keyword.put_new(:source_path, path)
+          |> put_source_file(source_file)
+        )
 
-  @doc """
-  Converts a local PDF and returns the normalized Datalab result.
-
-  This starts a job, polls until completion, fetches the step result, and
-  normalizes the response for the requested `:output_format`.
-
-  Options:
-
-    * `:output_format` - `"markdown"`, `"html"`, or `"json"`
-    * `:poll_interval` - milliseconds between status checks, defaults to 10s
-    * `:poll_timeout` - total milliseconds to wait, defaults to 15 minutes
-
-  The returned map includes `:execution_id`, `:status`, `:output_format`, and
-  `:output`.
-  """
-  @spec convert(Path.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def convert(path, opts \\ []) when is_binary(path) do
-    output_format = output_format(opts)
-
-    with {:ok, %{"execution_id" => execution_id}} <- start_job(path, opts),
-         {:ok, status} <- await_job(execution_id, opts),
-         {:ok, body} <- result(execution_id, opts),
-         {:ok, output} <- extract_output(body, output_format) do
-      {:ok,
-       %{
-         execution_id: execution_id,
-         output: output,
-         output_format: output_format,
-         status: status
-       }}
+      :ok = Sheaf.put_graph(result.document, result.graph)
+      {:ok, result}
     end
   end
 
-  @doc """
-  Converts a local PDF and writes the normalized result next to the source file.
+  def build_graph(%{"children" => _pages} = document, opts \\ []) do
+    mint = Keyword.get(opts, :mint, &Sheaf.mint/0)
+    document_iri = Keyword.get_lazy(opts, :document, mint)
+    title = Keyword.get(opts, :title) || title(document)
+    source_path = Keyword.get(opts, :source_path)
+    source_file = Keyword.get(opts, :source_file)
+    source_file_iri = source_file && Keyword.get_lazy(opts, :source_file_iri, mint)
 
-  By default this writes `basename.datalab.<format-extension>`. Pass
-  `:output_suffix` to use another basename suffix, or `:output_path` to choose
-  a specific file.
-  """
-  @spec convert_file(Path.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def convert_file(path, opts \\ []) when is_binary(path) do
-    output_format = output_format(opts)
+    blocks = DatalabDocument.document_blocks(document)
+    node_iris = node_iris(blocks, mint)
 
-    output_path =
-      Keyword.get_lazy(opts, :output_path, fn -> output_path(path, output_format, opts) end)
+    graph =
+      Graph.new(document_triples(document_iri, title, source_path))
+      |> add_source_file(document_iri, source_file, source_file_iri)
+      |> add_children(document_iri, blocks, node_iris, mint)
+      |> add_nodes(blocks, node_iris, mint)
 
-    with {:ok, result} <- convert(path, opts),
-         :ok <- write_output(output_path, result.output, output_format) do
-      {:ok, Map.put(result, :output_path, output_path)}
-    end
+    %{document: document_iri, graph: graph, source_file: source_file, title: title}
   end
 
-  @doc """
-  Converts several PDFs sequentially with `convert_file/2`.
-  """
-  @spec convert_files([Path.t()], keyword()) :: {:ok, [map()]} | {:error, term()}
-  def convert_files(paths, opts \\ []) when is_list(paths) do
-    Enum.reduce_while(paths, {:ok, []}, fn path, {:ok, results} ->
-      case convert_file(path, opts) do
-        {:ok, result} -> {:cont, {:ok, [result | results]}}
-        {:error, reason} -> {:halt, {:error, {path, reason}}}
-      end
+  defp document_triples(document_iri, title, source_path) do
+    [
+      {document_iri, RDF.type(), DOC.Document},
+      {document_iri, RDF.type(), DOC.Paper},
+      {document_iri, RDFS.label(), RDF.literal(title)}
+    ]
+    |> maybe_add(source_path, fn path -> {document_iri, DOC.sourceKey(), RDF.literal(path)} end)
+  end
+
+  defp add_source_file(graph, _document_iri, nil, _source_file_iri), do: graph
+
+  defp add_source_file(graph, document_iri, source_file, source_file_iri) do
+    Graph.add(graph, source_file_triples(document_iri, source_file, source_file_iri))
+  end
+
+  defp source_file_triples(document_iri, source_file, source_file_iri) do
+    [
+      {document_iri, DOC.sourceFile(), source_file_iri},
+      {source_file_iri, RDF.type(), FABIO.ComputerFile}
+    ]
+    |> maybe_add(source_file_value(source_file, :original_filename), fn filename ->
+      {source_file_iri, RDFS.label(), RDF.literal(filename)}
     end)
-    |> case do
-      {:ok, results} -> {:ok, Enum.reverse(results)}
-      error -> error
+    |> maybe_add(source_file_value(source_file, :hash), fn hash ->
+      {source_file_iri, DOC.sha256(), RDF.literal(hash)}
+    end)
+    |> maybe_add(source_file_value(source_file, :storage_key), fn key ->
+      {source_file_iri, DOC.sourceKey(), RDF.literal(key)}
+    end)
+    |> maybe_add(source_file_value(source_file, :mime_type), fn mime_type ->
+      {source_file_iri, DOC.mimeType(), RDF.literal(mime_type)}
+    end)
+    |> maybe_add(source_file_value(source_file, :byte_size), fn byte_size ->
+      {source_file_iri, DOC.byteSize(), RDF.literal(byte_size)}
+    end)
+    |> maybe_add(source_file_value(source_file, :original_filename), fn filename ->
+      {source_file_iri, DOC.originalFilename(), RDF.literal(filename)}
+    end)
+  end
+
+  defp add_nodes(graph, blocks, node_iris, mint) do
+    Enum.reduce(blocks, graph, fn node, graph ->
+      graph
+      |> Graph.add(node_triples(node, Map.fetch!(node_iris, node.id)))
+      |> add_children(
+        Map.fetch!(node_iris, node.id),
+        Map.get(node, :children, []),
+        node_iris,
+        mint
+      )
+      |> add_nodes(Map.get(node, :children, []), node_iris, mint)
+    end)
+  end
+
+  defp add_children(graph, _parent_iri, [], _node_iris, _mint), do: graph
+
+  defp add_children(graph, parent_iri, children, node_iris, mint) do
+    child_iris = Enum.map(children, &Map.fetch!(node_iris, &1.id))
+    list_iri = mint.()
+
+    graph
+    |> Graph.add({parent_iri, DOC.children(), list_iri})
+    |> then(fn graph -> RDF.list(child_iris, graph: graph, head: list_iri).graph end)
+  end
+
+  defp node_triples(%{type: :section, block: block} = node, iri) do
+    [
+      {iri, RDF.type(), DOC.Section},
+      {iri, RDFS.label(), RDF.literal(DatalabDocument.block_title(block))}
+    ] ++ source_triples(iri, node)
+  end
+
+  defp node_triples(%{type: :block} = node, iri) do
+    [
+      {iri, RDF.type(), DOC.ExtractedBlock}
+    ] ++ source_triples(iri, node)
+  end
+
+  defp source_triples(iri, %{block: block}) do
+    []
+    |> maybe_add(Map.get(block, "id"), fn id -> {iri, DOC.sourceKey(), RDF.literal(id)} end)
+    |> maybe_add(Map.get(block, "block_type"), fn type ->
+      {iri, DOC.sourceBlockType(), RDF.literal(type)}
+    end)
+    |> maybe_add(DatalabDocument.source_page(block), fn page ->
+      {iri, DOC.sourcePage(), RDF.literal(page)}
+    end)
+    |> maybe_add(DatalabDocument.block_html(block), fn html ->
+      {iri, DOC.sourceHtml(), RDF.literal(html)}
+    end)
+  end
+
+  defp node_iris(blocks, mint) do
+    blocks
+    |> flatten_nodes()
+    |> Map.new(fn node -> {node.id, mint.()} end)
+  end
+
+  defp flatten_nodes(nodes) do
+    Enum.flat_map(nodes, fn node -> [node | flatten_nodes(Map.get(node, :children, []))] end)
+  end
+
+  defp source_file_for(path, opts) do
+    cond do
+      Keyword.has_key?(opts, :source_file) ->
+        {:ok, Keyword.fetch!(opts, :source_file)}
+
+      pdf_path = Keyword.get(opts, :pdf_path) ->
+        BlobStore.put_file(pdf_path, blob_store_opts(opts))
+
+      pdf_path = default_pdf_path(path) ->
+        BlobStore.put_file(pdf_path, blob_store_opts(opts))
+
+      true ->
+        {:ok, nil}
     end
   end
 
-  @doc """
-  Starts a Datalab pipeline job for a local PDF.
+  defp put_source_file(opts, nil), do: opts
+  defp put_source_file(opts, source_file), do: Keyword.put(opts, :source_file, source_file)
 
-  Options:
-
-    * `:page_range` - optional Datalab page range, such as `"16-18"`
-    * `:output_format` - defaults to `"markdown"`
-    * `:pipeline_id`, `:api_key`, `:base_url` - override configured values
-    * `:req_options` - extra Req options, mostly useful in tests
-
-  Returns the decoded Datalab response, including the `execution_id`.
-  """
-  @spec start_job(Path.t(), keyword()) :: response()
-  def start_job(path, opts \\ []) when is_binary(path) do
-    with {:ok, api_key} <- api_key(opts),
-         {:ok, bytes} <- File.read(path) do
-      form =
-        [
-          {"file", {bytes, filename: Path.basename(path), content_type: "application/pdf"}},
-          {"output_format", Keyword.get(opts, :output_format, @default_output_format)}
-        ]
-        |> maybe_put("page_range", Keyword.get(opts, :page_range))
-
-      client(api_key, opts)
-      |> Req.post(url: "/pipelines/#{pipeline_id(opts)}/run", form_multipart: form)
-      |> handle_response()
-    end
-  end
-
-  @doc """
-  Checks a Datalab pipeline execution.
-  """
-  @spec check_job(execution_id(), keyword()) :: response()
-  def check_job(execution_id, opts \\ []) when is_binary(execution_id) do
-    with {:ok, api_key} <- api_key(opts) do
-      client(api_key, opts)
-      |> Req.get(url: "/pipelines/executions/#{execution_id}")
-      |> handle_response()
-    end
-  end
-
-  @doc """
-  Polls a Datalab pipeline execution until it reaches a terminal status.
-  """
-  @spec await_job(execution_id(), keyword()) :: response()
-  def await_job(execution_id, opts \\ []) when is_binary(execution_id) do
-    deadline =
-      System.monotonic_time(:millisecond) +
-        Keyword.get(opts, :poll_timeout, @default_poll_timeout)
-
-    do_await_job(execution_id, deadline, opts)
-  end
-
-  @doc """
-  Fetches the raw result for a completed Datalab pipeline step.
-  """
-  @spec result(execution_id(), keyword()) :: response()
-  def result(execution_id, opts \\ []) when is_binary(execution_id) do
-    step = Keyword.get(opts, :step, @result_step)
-
-    with {:ok, api_key} <- api_key(opts) do
-      client(api_key, opts)
-      |> Req.get(url: "/pipelines/executions/#{execution_id}/steps/#{step}/result")
-      |> handle_response()
-    end
-  end
-
-  @doc """
-  Fetches the Markdown result for a completed conversion job.
-  """
-  @spec markdown(execution_id(), keyword()) :: {:ok, String.t()} | {:error, term()}
-  def markdown(execution_id, opts \\ []) when is_binary(execution_id) do
-    with {:ok, body} <- result(execution_id, opts),
-         {:ok, markdown} <- fetch_markdown(body) do
-      {:ok, markdown}
-    end
-  end
-
-  defp do_await_job(execution_id, deadline, opts) do
-    with {:ok, body} <- check_job(execution_id, opts),
-         {:ok, status} <- job_status(body) do
+  defp default_pdf_path(path) do
+    pdf_path =
       cond do
-        status in @complete_statuses ->
-          {:ok, body}
+        String.ends_with?(path, ".datalab.hq.json") ->
+          String.replace_suffix(path, ".datalab.hq.json", ".pdf")
 
-        status in @failed_statuses ->
-          {:error, {:job_failed, body}}
-
-        System.monotonic_time(:millisecond) >= deadline ->
-          {:error, {:job_timeout, body}}
+        String.ends_with?(path, ".datalab.json") ->
+          String.replace_suffix(path, ".datalab.json", ".pdf")
 
         true ->
-          opts
-          |> Keyword.get(:poll_interval, @default_poll_interval)
-          |> Process.sleep()
-
-          do_await_job(execution_id, deadline, opts)
+          Path.rootname(path) <> ".pdf"
       end
-    end
+
+    if File.exists?(pdf_path), do: pdf_path
   end
 
-  defp client(api_key, opts) do
-    req_options = Keyword.get(opts, :req_options, [])
-
-    [
-      base_url: base_url(opts),
-      headers: [{"x-api-key", api_key}],
-      receive_timeout: Keyword.get(opts, :receive_timeout, 120_000)
-    ]
-    |> Keyword.merge(req_options)
-    |> Req.new()
-  end
-
-  defp api_key(opts) do
+  defp blob_store_opts(opts) do
     opts
-    |> Keyword.get(:api_key)
-    |> blank_to_nil()
-    |> case do
-      nil ->
-        :sheaf
-        |> Application.get_env(__MODULE__, [])
-        |> Keyword.get(:api_key)
-        |> blank_to_nil()
-        |> case do
-          nil -> {:error, :missing_datalab_api_key}
-          api_key -> {:ok, api_key}
-        end
-
-      api_key ->
-        {:ok, api_key}
-    end
+    |> Keyword.take([:blob_root])
+    |> Keyword.new(fn {:blob_root, root} -> {:root, root} end)
   end
 
-  defp pipeline_id(opts) do
-    configured =
-      :sheaf
-      |> Application.get_env(__MODULE__, [])
-      |> Keyword.get(:pipeline_id, "pl_QWhrjJhpUUoo")
-
-    Keyword.get(opts, :pipeline_id, configured)
+  defp source_file_value(source_file, key) do
+    Map.get(source_file, key) || Map.get(source_file, to_string(key))
   end
 
-  defp base_url(opts) do
-    configured =
-      :sheaf
-      |> Application.get_env(__MODULE__, [])
-      |> Keyword.get(:base_url, @default_base_url)
+  defp maybe_add(triples, nil, _fun), do: triples
+  defp maybe_add(triples, "", _fun), do: triples
+  defp maybe_add(triples, value, fun), do: triples ++ [fun.(value)]
 
-    Keyword.get(opts, :base_url, configured)
+  defp title(%{"metadata" => %{"title" => title}}) when is_binary(title) and title != "" do
+    title
   end
 
-  defp maybe_put(form, _key, nil), do: form
-  defp maybe_put(form, _key, ""), do: form
-  defp maybe_put(form, key, value), do: form ++ [{key, value}]
-
-  defp handle_response({:ok, %{status: status, body: body}}) when status in 200..299,
-    do: {:ok, body}
-
-  defp handle_response({:ok, %{status: status, body: body}}),
-    do: {:error, %{status: status, body: body}}
-
-  defp handle_response({:error, reason}), do: {:error, reason}
-
-  defp fetch_markdown(%{"markdown" => markdown}) when is_binary(markdown), do: {:ok, markdown}
-
-  defp fetch_markdown(%{"result" => %{"markdown" => markdown}}) when is_binary(markdown),
-    do: {:ok, markdown}
-
-  defp fetch_markdown(body), do: {:error, {:missing_markdown, body}}
-
-  defp extract_output(body, "markdown"), do: fetch_markdown(body)
-  defp extract_output(%{"html" => html}, "html") when is_binary(html), do: {:ok, html}
-
-  defp extract_output(%{"result" => result}, "html") when is_map(result),
-    do: extract_output(result, "html")
-
-  defp extract_output(%{"children" => _} = document, "json"), do: {:ok, document}
-  defp extract_output(%{"json" => document}, "json") when is_map(document), do: {:ok, document}
-  defp extract_output(%{"json" => json}, "json") when is_binary(json), do: Jason.decode(json)
-
-  defp extract_output(%{"result" => result}, "json") when is_map(result),
-    do: extract_output(result, "json")
-
-  defp extract_output(body, output_format), do: {:error, {:missing_output, output_format, body}}
-
-  defp write_output(path, output, "json") when is_map(output) do
-    path
-    |> Path.dirname()
-    |> File.mkdir_p!()
-
-    File.write(path, Jason.encode!(output, pretty: true))
+  defp title(document) do
+    document
+    |> DatalabDocument.document_blocks()
+    |> DatalabDocument.section_blocks()
+    |> Enum.find_value("Untitled paper", fn section ->
+      section.block
+      |> DatalabDocument.block_title()
+      |> case do
+        "" -> nil
+        title -> title
+      end
+    end)
   end
-
-  defp write_output(path, output, _output_format) when is_binary(output) do
-    path
-    |> Path.dirname()
-    |> File.mkdir_p!()
-
-    File.write(path, output)
-  end
-
-  defp output_format(opts) do
-    opts
-    |> Keyword.get(:output_format, @default_output_format)
-    |> to_string()
-  end
-
-  defp output_path(path, output_format, opts) do
-    suffix = Keyword.get(opts, :output_suffix, "datalab")
-    Path.rootname(path) <> ".#{suffix}." <> output_extension(output_format)
-  end
-
-  defp output_extension("markdown"), do: "md"
-  defp output_extension(output_format), do: output_format
-
-  defp job_status(%{"status" => status}) when is_binary(status),
-    do: {:ok, String.downcase(status)}
-
-  defp job_status(%{"state" => status}) when is_binary(status),
-    do: {:ok, String.downcase(status)}
-
-  defp job_status(%{"execution" => execution}) when is_map(execution), do: job_status(execution)
-  defp job_status(body), do: {:error, {:missing_job_status, body}}
-
-  defp blank_to_nil(value) when value in [nil, ""], do: nil
-
-  defp blank_to_nil(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> nil
-      trimmed -> trimmed
-    end
-  end
-
-  defp blank_to_nil(value), do: value
 end

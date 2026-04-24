@@ -1,122 +1,114 @@
 defmodule Sheaf.PDFTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
-  alias Sheaf.PDF
+  alias RDF.{Description, Graph}
+  alias Sheaf.NS.{DOC, FABIO}
+  alias Sheaf.{Document, PDF}
 
-  setup do
-    Req.Test.verify_on_exit!()
+  test "builds a paper graph from extracted PDF section hierarchy" do
+    document = %{
+      "children" => [
+        %{
+          "children" => [
+            %{
+              "block_type" => "SectionHeader",
+              "html" => "<h1>Intro</h1>",
+              "id" => "/page/0/SectionHeader/0",
+              "page" => 0,
+              "section_hierarchy" => %{}
+            },
+            %{
+              "block_type" => "SectionHeader",
+              "html" => "<h2>Background</h2>",
+              "id" => "/page/0/SectionHeader/1",
+              "page" => 0,
+              "section_hierarchy" => %{"1" => "/page/0/SectionHeader/0"}
+            },
+            %{
+              "block_type" => "Picture",
+              "html" => ~s(<p><img src="figure.png" alt="figure"/></p>),
+              "id" => "/page/0/Picture/2",
+              "images" => %{"figure.png" => "QUJD"},
+              "page" => 0,
+              "section_hierarchy" => %{
+                "1" => "/page/0/SectionHeader/0",
+                "2" => "/page/0/SectionHeader/1"
+              }
+            }
+          ]
+        }
+      ],
+      "metadata" => %{}
+    }
+
+    result = PDF.build_graph(document, title: "Example Paper", mint: mint())
+
+    assert Document.kind(result.graph, result.document) == :paper
+    assert Document.title(result.graph, result.document) == "Example Paper"
+
+    [intro] = Document.children(result.graph, result.document)
+    assert Document.block_type(result.graph, intro) == :section
+    assert Document.heading(result.graph, intro) == "Intro"
+
+    [background] = Document.children(result.graph, intro)
+    assert Document.block_type(result.graph, background) == :section
+    assert Document.heading(result.graph, background) == "Background"
+
+    [picture] = Document.children(result.graph, background)
+    assert Document.block_type(result.graph, picture) == :extracted
+    assert Document.source_page(result.graph, picture) == 0
+    assert Document.source_html(result.graph, picture) =~ "data:image/png;base64,QUJD"
+
+    picture_description = Graph.description(result.graph, picture)
+
+    assert rdf_value(picture_description, DOC.sourceKey()) == "/page/0/Picture/2"
+    assert rdf_value(picture_description, DOC.sourceBlockType()) == "Picture"
   end
 
-  test "starts a Datalab pipeline job for a PDF" do
-    path = Path.join(System.tmp_dir!(), "sheaf-pdf-test.pdf")
-    File.write!(path, "%PDF-1.7\n")
+  test "links imported papers to a content-addressed PDF computer file" do
+    document = %{"children" => [], "metadata" => %{}}
 
-    Req.Test.expect(__MODULE__, fn conn ->
-      assert conn.method == "POST"
-      assert conn.request_path == "/api/v1/pipelines/pl_test/run"
+    result =
+      PDF.build_graph(document,
+        title: "Example Paper",
+        source_file: %{
+          byte_size: 123,
+          hash: "abc123",
+          mime_type: "application/pdf",
+          original_filename: "paper.pdf",
+          storage_key: "sha256:abc123"
+        },
+        mint: mint(~w(DOC111 FILE111))
+      )
 
-      body = IO.iodata_to_binary(Req.Test.raw_body(conn))
-      assert body =~ ~s(name="file")
-      assert body =~ ~s(filename="sheaf-pdf-test.pdf")
-      assert body =~ ~s(name="output_format")
-      assert body =~ "markdown"
-      assert body =~ ~s(name="page_range")
-      assert body =~ "16-18"
+    document = result.document
+    file = RDF.IRI.new!("https://example.com/sheaf/FILE111")
+    file_description = Graph.description(result.graph, file)
 
-      Req.Test.json(conn, %{"execution_id" => "pex_test", "status" => "running"})
-    end)
-
-    assert {:ok, %{"execution_id" => "pex_test", "status" => "running"}} =
-             PDF.start_job(path,
-               api_key: "secret",
-               pipeline_id: "pl_test",
-               page_range: "16-18",
-               req_options: [plug: {Req.Test, __MODULE__}]
-             )
+    assert RDF.Data.include?(result.graph, {document, DOC.sourceFile(), file})
+    assert Description.include?(file_description, {RDF.type(), FABIO.ComputerFile})
+    assert rdf_value(file_description, DOC.sha256()) == "abc123"
+    assert rdf_value(file_description, DOC.mimeType()) == "application/pdf"
+    assert rdf_value(file_description, DOC.byteSize()) == 123
+    assert rdf_value(file_description, DOC.originalFilename()) == "paper.pdf"
+    assert rdf_value(file_description, DOC.sourceKey()) == "sha256:abc123"
   end
 
-  test "checks a Datalab pipeline execution" do
-    Req.Test.expect(__MODULE__, fn conn ->
-      assert conn.method == "GET"
-      assert conn.request_path == "/api/v1/pipelines/executions/pex_test"
-
-      Req.Test.json(conn, %{"execution_id" => "pex_test", "status" => "completed"})
-    end)
-
-    assert {:ok, %{"execution_id" => "pex_test", "status" => "completed"}} =
-             PDF.check_job("pex_test",
-               api_key: "secret",
-               req_options: [plug: {Req.Test, __MODULE__}]
-             )
+  defp rdf_value(%Description{} = description, property) do
+    description
+    |> Description.first(property)
+    |> RDF.Term.value()
   end
 
-  test "fetches markdown from a completed job result" do
-    Req.Test.expect(__MODULE__, fn conn ->
-      assert conn.method == "GET"
-      assert conn.request_path == "/api/v1/pipelines/executions/pex_test/steps/0/result"
+  defp mint(ids \\ ~w(DOC111 SEC111 SEC222 BLK111 LST111 LST222 LST333)) do
+    {:ok, agent} =
+      Agent.start_link(fn ->
+        ids
+        |> Enum.map(&RDF.IRI.new!("https://example.com/sheaf/#{&1}"))
+      end)
 
-      Req.Test.json(conn, %{"markdown" => "# Converted\n"})
-    end)
-
-    assert {:ok, "# Converted\n"} =
-             PDF.markdown("pex_test",
-               api_key: "secret",
-               req_options: [plug: {Req.Test, __MODULE__}]
-             )
-  end
-
-  test "converts a PDF to a JSON file" do
-    path = Path.join(System.tmp_dir!(), "sheaf-pdf-test.pdf")
-    output_path = Path.join(System.tmp_dir!(), "sheaf-pdf-test.datalab.hq.json")
-    File.write!(path, "%PDF-1.7\n")
-    File.rm(output_path)
-
-    Req.Test.expect(__MODULE__, 3, fn conn ->
-      case conn.request_path do
-        "/api/v1/pipelines/pl_test/run" ->
-          body = IO.iodata_to_binary(Req.Test.raw_body(conn))
-          assert body =~ "json"
-          Req.Test.json(conn, %{"execution_id" => "pex_test", "status" => "running"})
-
-        "/api/v1/pipelines/executions/pex_test" ->
-          Req.Test.json(conn, %{"execution_id" => "pex_test", "status" => "completed"})
-
-        "/api/v1/pipelines/executions/pex_test/steps/0/result" ->
-          Req.Test.json(conn, %{
-            "children" => [%{"block_type" => "Page", "children" => []}],
-            "metadata" => %{"title" => "Converted"}
-          })
-      end
-    end)
-
-    assert {:ok, %{execution_id: "pex_test", output_format: "json", output_path: ^output_path}} =
-             PDF.convert_file(path,
-               api_key: "secret",
-               output_format: "json",
-               output_suffix: "datalab.hq",
-               pipeline_id: "pl_test",
-               poll_interval: 0,
-               req_options: [plug: {Req.Test, __MODULE__}]
-             )
-
-    assert %{"metadata" => %{"title" => "Converted"}} =
-             output_path
-             |> File.read!()
-             |> Jason.decode!()
-  end
-
-  test "returns a useful error when the API key is missing" do
-    previous = Application.get_env(:sheaf, PDF)
-    Application.put_env(:sheaf, PDF, api_key: nil)
-
-    try do
-      assert {:error, :missing_datalab_api_key} = PDF.check_job("pex_test")
-    after
-      if previous do
-        Application.put_env(:sheaf, PDF, previous)
-      else
-        Application.delete_env(:sheaf, PDF)
-      end
+    fn ->
+      Agent.get_and_update(agent, fn [iri | rest] -> {iri, rest} end)
     end
   end
 end

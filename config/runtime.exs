@@ -96,7 +96,7 @@ config :sheaf, Sheaf,
   sparql_auth: sparql_auth,
   data_auth: sparql_auth
 
-config :sheaf, Sheaf.PDF,
+config :sheaf, Datalab,
   api_key: System.get_env("DATALAB_API_KEY"),
   pipeline_id: System.get_env("DATALAB_PIPELINE_ID", "pl_QWhrjJhpUUoo"),
   base_url: System.get_env("DATALAB_BASE_URL", "https://www.datalab.to/api/v1")
