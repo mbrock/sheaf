@@ -114,6 +114,8 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     Mix.shell().info("Polling #{length(submitted)} active files for #{job.iri}")
 
     with {:ok, executions} <- execution_index(submitted, opts) do
+      print_remote_progress(submitted, executions)
+
       stats =
         Enum.reduce(submitted, %{completed: 0, failed: 0, running: 0, errors: 0}, fn file_job,
                                                                                      stats ->
@@ -209,6 +211,34 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     stats
   end
 
+  defp print_remote_progress(file_jobs, executions) do
+    remote =
+      Enum.reduce(file_jobs, %{complete: 0, failed: 0, running: 0, missing: 0}, fn file_job,
+                                                                                   counts ->
+        case Map.fetch(executions, file_job.execution_id) do
+          {:ok, body} ->
+            case Datalab.status(body) do
+              {:ok, status} ->
+                cond do
+                  Datalab.complete_status?(status) -> %{counts | complete: counts.complete + 1}
+                  Datalab.failed_status?(status) -> %{counts | failed: counts.failed + 1}
+                  true -> %{counts | running: counts.running + 1}
+                end
+
+              {:error, _reason} ->
+                %{counts | missing: counts.missing + 1}
+            end
+
+          :error ->
+            %{counts | missing: counts.missing + 1}
+        end
+      end)
+
+    Mix.shell().info(
+      "Remote: #{remote.complete} ready, #{remote.failed} failed, #{remote.running} running, #{remote.missing} unknown."
+    )
+  end
+
   defp progress_bar(_done, 0), do: "[--------------------] 0%"
 
   defp progress_bar(done, total) do
@@ -253,7 +283,6 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
             failed_at: now()
           )
 
-          Mix.shell().info("failed #{file_job.execution_id}")
           %{stats | failed: stats.failed + 1}
 
         true ->
@@ -275,7 +304,6 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
              output_path: output_path,
              completed_at: now()
            ) do
-      Mix.shell().info("completed #{file_job.execution_id} #{output_path}")
       %{stats | completed: stats.completed + 1}
     else
       {:error, reason} ->
