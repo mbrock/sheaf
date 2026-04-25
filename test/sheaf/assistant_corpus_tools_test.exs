@@ -5,6 +5,55 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
   alias Sheaf.Assistant.CorpusTools
   alias Sheaf.Id
 
+  test "search_text tool uses embedding index search and preserves assistant hit shape" do
+    test_pid = self()
+
+    search = fn query, opts ->
+      send(test_pid, {:search_args, query, opts})
+
+      {:ok,
+       [
+         %{
+           iri: to_string(Id.iri("BLK123")),
+           doc_iri: to_string(Id.iri("DOC123")),
+           doc_title: "A paper",
+           kind: "sourceHtml",
+           text: "<p>Plastic packaging.</p>",
+           source_page: 4,
+           match: :both,
+           score: 0.99
+         }
+       ]}
+    end
+
+    tools = CorpusTools.tools(search: search)
+    tool = Enum.find(tools, &(&1.name == "search_text"))
+
+    assert {:ok, %{query: "plastic", results: [hit]}} =
+             Tool.execute(tool, %{
+               "query" => "plastic",
+               "document_id" => "DOC123",
+               "include_spreadsheets" => false,
+               "limit" => 5
+             })
+
+    assert_received {:search_args, "plastic", opts}
+    assert Keyword.get(opts, :limit) == 5
+    assert Keyword.get(opts, :document_id) == "DOC123"
+    assert Keyword.get(opts, :kinds) == ["paragraph", "sourceHtml"]
+
+    assert hit == %{
+             document_id: "DOC123",
+             document_title: "A paper",
+             block_id: "BLK123",
+             kind: :extracted,
+             text: "Plastic packaging.",
+             source_page: 4,
+             match: :both,
+             score: 0.99
+           }
+  end
+
   test "write_note tool persists through the configured note writer and emits events" do
     test_pid = self()
     agent = Id.iri("AGENT3")

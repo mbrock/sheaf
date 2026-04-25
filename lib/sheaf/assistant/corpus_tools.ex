@@ -2,8 +2,8 @@ defmodule Sheaf.Assistant.CorpusTools do
   @moduledoc """
   Corpus-aware tools for assistant chats.
 
-  The tools are stateless wrappers over SPARQL and single-document graph
-  fetches. No cached snapshot: each call hits Fuseki directly.
+  The tools are stateless wrappers over RDF graph fetches and the derived
+  embedding search index. No cached snapshot: each call reads current data.
   """
 
   alias ReqLLM.Tool
@@ -11,6 +11,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   alias Sheaf.Assistant.Notes
 
   @search_result_limit 10
+  @default_search_kinds ~w(paragraph sourceHtml)
 
   @doc """
   Builds the tool list used by corpus assistant conversations.
@@ -26,6 +27,7 @@ defmodule Sheaf.Assistant.CorpusTools do
     notify = Keyword.get(opts, :notify, fn _event -> :ok end)
     note_context = Keyword.get_lazy(opts, :note_context, &default_note_context/0) |> Map.new()
     note_writer = Keyword.get(opts, :note_writer, &Notes.write/1)
+    search = Keyword.get(opts, :search, &Sheaf.Embedding.Index.search/2)
 
     [
       Tool.new!(
@@ -60,12 +62,11 @@ defmodule Sheaf.Assistant.CorpusTools do
       Tool.new!(
         name: "search_text",
         description:
-          "Case-insensitive substring search over paragraph and extracted-block " <>
+          "Hybrid exact and semantic search over paragraph and extracted-block " <>
             "text. Searches the main prose corpus by default; pass document_id to scope. " <>
             "Set include_spreadsheets=true only when you explicitly want to search " <>
             "spreadsheet-coded row excerpts too. " <>
-            "The query may be an exact phrase or multiple space-separated keywords; " <>
-            "exact phrase matches rank first, then blocks matching more keywords. " <>
+            "Exact text matches contribute to ranking alongside embedding similarity. " <>
             "Returns hits with their document id, block id, kind, and full text; " <>
             "spreadsheet row hits also include coding metadata.",
         parameter_schema: [
@@ -83,7 +84,7 @@ defmodule Sheaf.Assistant.CorpusTools do
           ],
           limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits"]
         ],
-        callback: instrument(notify, "search_text", &search_text_tool/1)
+        callback: instrument(notify, "search_text", &search_text_tool(&1, search))
       ),
       Tool.new!(
         name: "write_note",
@@ -306,7 +307,7 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp search_text_tool(args) do
+  defp search_text_tool(args, search) do
     query = arg(args, :query)
 
     if is_binary(query) do
@@ -315,8 +316,8 @@ defmodule Sheaf.Assistant.CorpusTools do
         |> maybe_add_scope(args)
         |> maybe_include_spreadsheets(args)
 
-      case Corpus.search_text(query, opts) do
-        {:ok, results} -> {:ok, %{query: query, results: results}}
+      case search.(query, opts) do
+        {:ok, results} -> {:ok, %{query: query, results: Enum.map(results, &search_hit/1)}}
         {:error, reason} -> {:error, "search failed: #{inspect(reason)}"}
       end
     else
@@ -355,10 +356,49 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp maybe_include_spreadsheets(opts, args) do
-    if include_spreadsheets?(args), do: Keyword.put(opts, :include_spreadsheets, true), else: opts
+    kinds =
+      if include_spreadsheets?(args),
+        do: @default_search_kinds ++ ["row"],
+        else: @default_search_kinds
+
+    Keyword.put(opts, :kinds, kinds)
   end
 
   defp include_spreadsheets?(args), do: arg(args, :include_spreadsheets) in [true, "true"]
+
+  defp search_hit(result) do
+    %{
+      document_id: result.doc_iri && Id.id_from_iri(result.doc_iri),
+      document_title: result.doc_title,
+      block_id: Id.id_from_iri(result.iri),
+      kind: search_hit_kind(result.kind),
+      text: search_hit_text(result),
+      source_page: result.source_page,
+      match: result.match,
+      score: result.score
+    }
+    |> maybe_add_search_coding(result)
+  end
+
+  defp search_hit_kind("paragraph"), do: :paragraph
+  defp search_hit_kind("sourceHtml"), do: :extracted
+  defp search_hit_kind("row"), do: :row
+  defp search_hit_kind(kind) when is_binary(kind), do: String.to_atom(kind)
+  defp search_hit_kind(kind), do: kind
+
+  defp search_hit_text(%{kind: "sourceHtml", text: text}), do: plain_text(text)
+  defp search_hit_text(%{text: text}), do: normalize_text(text)
+
+  defp maybe_add_search_coding(hit, %{kind: "row"} = result) do
+    Map.put(hit, :coding, %{
+      row: result.spreadsheet_row,
+      source: result.spreadsheet_source,
+      category: Map.get(result, :code_category),
+      category_title: result.code_category_title
+    })
+  end
+
+  defp maybe_add_search_coding(hit, _result), do: hit
 
   defp document_summary(doc) do
     %{

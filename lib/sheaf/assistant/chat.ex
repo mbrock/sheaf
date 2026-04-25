@@ -503,13 +503,14 @@ defmodule Sheaf.Assistant.Chat do
         extracted blocks, and rows return text. Rows also return coding
         metadata. Every block comes back with its ancestry so you can orient
         yourself and climb upward if you want to.
-      * Use search_text to find where a concept or phrase appears. It searches
-        the main prose corpus by default; pass document_id to scope to one
-        document. Set include_spreadsheets=true only when you explicitly need
-        coded spreadsheet excerpts too. If the user asks a broad research
-        question and it is unclear whether they want empirical coded material
-        included, briefly ask whether to include the coded spreadsheet excerpts
-        before relying on them heavily.
+      * Use search_text to find where a concept or phrase appears. It combines
+        exact text matching with embedding search. It searches the main prose
+        corpus by default; pass document_id to scope to one document. Set
+        include_spreadsheets=true only when you explicitly need coded
+        spreadsheet excerpts too. If the user asks a broad research question
+        and it is unclear whether they want empirical coded material included,
+        briefly ask whether to include the coded spreadsheet excerpts before
+        relying on them heavily.
       * Use write_note to persist durable research notes when you find an
         observation, quote candidate, conceptual link, paper summary, or
         reading-plan decision that should survive this chat. Put every related

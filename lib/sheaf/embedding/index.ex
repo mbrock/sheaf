@@ -721,7 +721,7 @@ defmodule Sheaf.Embedding.Index do
                 match: :semantic,
                 run_iri: ranked.run_iri
               })
-              |> searchable_result()
+              |> searchable_result(opts)
           end
         end)
 
@@ -764,7 +764,7 @@ defmodule Sheaf.Embedding.Index do
               run_iri: nil
             })
           end)
-          |> Enum.flat_map(&searchable_result/1)
+          |> Enum.flat_map(&searchable_result(&1, opts))
 
         {:ok, results}
 
@@ -780,6 +780,7 @@ defmodule Sheaf.Embedding.Index do
     terms = search_terms(query)
     match_filter = search_match_filter(escaped, terms)
     score_bind = search_score_bind(escaped, terms)
+    scope_filter = document_scope_filter(Keyword.get(opts, :document_id))
 
     """
     PREFIX sheaf: <https://less.rest/sheaf/>
@@ -789,6 +790,7 @@ defmodule Sheaf.Embedding.Index do
       GRAPH ?doc {
         OPTIONAL { ?doc <http://www.w3.org/2000/01/rdf-schema#label> ?docTitle }
         #{text_unit_unions(kinds)}
+        #{scope_filter}
         BIND(LCASE(STR(?text)) AS ?haystack)
         #{match_filter}
         #{score_bind}
@@ -860,11 +862,35 @@ defmodule Sheaf.Embedding.Index do
 
   defp parse_score(_score), do: 0.0
 
-  defp searchable_result(%{kind: "sourceHtml"} = result) do
-    if searchable_extracted_block?(result), do: [result], else: []
+  defp document_scope_filter(nil), do: ""
+  defp document_scope_filter(""), do: ""
+  defp document_scope_filter(document_id), do: "FILTER(?doc = <#{Sheaf.Id.iri(document_id)}>)"
+
+  defp searchable_result(result, opts) do
+    if kind_allowed?(result, opts) and document_allowed?(result, opts) and
+         searchable_content?(result) do
+      [result]
+    else
+      []
+    end
   end
 
-  defp searchable_result(result), do: [result]
+  defp kind_allowed?(result, opts) do
+    result.kind in (opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap())
+  end
+
+  defp document_allowed?(result, opts) do
+    case Keyword.get(opts, :document_id) do
+      nil -> true
+      "" -> true
+      document_id -> result.doc_iri == document_id |> Sheaf.Id.iri() |> to_string()
+    end
+  end
+
+  defp searchable_content?(%{kind: "sourceHtml"} = result),
+    do: searchable_extracted_block?(result)
+
+  defp searchable_content?(_result), do: true
 
   defp searchable_extracted_block?(result) do
     source_type = Map.get(result, :source_block_type)
