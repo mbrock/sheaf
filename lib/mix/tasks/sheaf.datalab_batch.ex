@@ -111,6 +111,8 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     output_dir = Keyword.get(opts, :output_dir, @default_output_dir)
     submitted = DatalabJobs.submitted_file_jobs(job)
 
+    Mix.shell().info("Checking #{length(submitted)} active Datalab executions...")
+
     with {:ok, executions} <- execution_index(submitted, opts) do
       stats =
         Enum.reduce(submitted, %{completed: 0, failed: 0, running: 0, errors: 0}, fn file_job,
@@ -159,17 +161,21 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     done = completed + failed
     left = total - done
     cycle = Keyword.get(opts, :cycle)
+    phase = Keyword.get(opts, :phase)
     id = Sheaf.Id.id_from_iri(job.iri)
 
-    fields = [
-      "#{id} #{progress_bar(done, total)}",
-      "#{done}/#{total} done",
-      "#{left} left",
-      "#{submitted} running",
-      "#{completed} completed",
-      "#{failed} failed",
-      "#{pending} pending"
-    ]
+    fields =
+      [
+        phase && "#{phase}:",
+        "#{id} #{progress_bar(done, total)}",
+        "#{done}/#{total} done",
+        "#{left} left",
+        "#{submitted} running",
+        "#{completed} completed",
+        "#{failed} failed",
+        "#{pending} pending"
+      ]
+      |> Enum.reject(&is_nil/1)
 
     fields =
       if cycle do
@@ -248,6 +254,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
 
   defp await_loop(job_iri, opts, interval) do
     {:ok, job} = DatalabJobs.get_job(job_iri)
+    print_job(job, phase: "local")
     stats = poll_job(job, opts)
     {:ok, job} = DatalabJobs.get_job(job_iri)
 
