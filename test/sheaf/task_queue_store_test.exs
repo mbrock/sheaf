@@ -118,4 +118,39 @@ defmodule Sheaf.TaskQueue.StoreTest do
     assert {:ok, batch} = Store.get_batch(conn, "https://sheaf.less.rest/BATCH3")
     assert batch.target_count == 2
   end
+
+  test "claims pending tasks by kind" do
+    {:ok, conn} = Store.open(db_path: ":memory:")
+    on_exit(fn -> Store.close(conn) end)
+
+    assert {:ok, _batch} =
+             Store.create_batch(
+               conn,
+               %{
+                 iri: "https://sheaf.less.rest/BATCH4",
+                 queue: "metadata",
+                 kind: "metadata.resolve"
+               },
+               [
+                 %{
+                   kind: "metadata.extract_identifiers",
+                   unique_key: "metadata.extract_identifiers:https://sheaf.less.rest/DOC1"
+                 },
+                 %{
+                   kind: "metadata.crossref.lookup",
+                   unique_key:
+                     "metadata.crossref.lookup:https://sheaf.less.rest/DOC1:10.1000/example"
+                 }
+               ]
+             )
+
+    assert {:ok, task} =
+             Store.claim_task(conn,
+               queue: "metadata",
+               kind: "metadata.crossref.lookup",
+               worker: "test"
+             )
+
+    assert task.kind == "metadata.crossref.lookup"
+  end
 end

@@ -27,6 +27,8 @@ defmodule Sheaf.MetadataResolver.Queue do
     @import_kind => 1
   }
 
+  @phase_order [@extract_kind, @legacy_resolve_kind, @lookup_kind, @match_kind, @import_kind]
+
   @spec enqueue(keyword()) :: {:ok, map()} | {:error, term()}
   def enqueue(opts \\ []) do
     with {:ok, candidates} <- Sheaf.MetadataResolver.candidates(opts) do
@@ -73,7 +75,7 @@ defmodule Sheaf.MetadataResolver.Queue do
   defp work_until_limit(remaining, opts, acc) do
     result =
       remaining
-      |> claim_tasks()
+      |> claim_phase_tasks(opts)
       |> process_claimed_tasks(opts, acc)
 
     processed_now = result.processed - acc.processed
@@ -85,10 +87,23 @@ defmodule Sheaf.MetadataResolver.Queue do
     end
   end
 
-  defp claim_tasks(limit) do
+  defp claim_phase_tasks(limit, opts) do
+    Enum.reduce_while(@phase_order, [], fn kind, _tasks ->
+      batch_limit = min(limit, concurrency_for(kind, opts))
+      tasks = claim_tasks(batch_limit, kind)
+
+      if tasks == [] do
+        {:cont, []}
+      else
+        {:halt, tasks}
+      end
+    end)
+  end
+
+  defp claim_tasks(limit, kind) do
     1..limit
     |> Enum.reduce_while([], fn _index, tasks ->
-      case Sheaf.TaskQueue.claim_task(queue: @queue) do
+      case Sheaf.TaskQueue.claim_task(queue: @queue, kind: kind) do
         {:ok, nil} -> {:halt, Enum.reverse(tasks)}
         {:ok, task} -> {:cont, [task | tasks]}
         {:error, reason} -> {:halt, [%{queue_error: reason} | tasks] |> Enum.reverse()}
@@ -123,12 +138,13 @@ defmodule Sheaf.MetadataResolver.Queue do
           |> count_phase(kind, :processed)
           |> Map.update!(:processed, &(&1 + 1))
           |> count_result(payload)
+          |> notify_task_status(task, :completed, payload, opts)
 
         {:ok, {:error, reason}} ->
-          fail_processed_task(task, reason, acc)
+          fail_processed_task(task, reason, acc, opts)
 
         {:exit, reason} ->
-          fail_processed_task(task, reason, acc)
+          fail_processed_task(task, reason, acc, opts)
       end
     end)
   end
@@ -409,13 +425,14 @@ defmodule Sheaf.MetadataResolver.Queue do
   defp count_result(acc, %{doi: nil, isbn: nil}), do: Map.update!(acc, :skipped, &(&1 + 1))
   defp count_result(acc, _result), do: acc
 
-  defp fail_processed_task(task, reason, acc) do
+  defp fail_processed_task(task, reason, acc, opts) do
     :ok = Sheaf.TaskQueue.fail_task(task.id, reason)
 
     acc
     |> count_phase(task.kind, :errors)
     |> Map.update!(:processed, &(&1 + 1))
     |> Map.update!(:errors, &(&1 + 1))
+    |> notify_task_status(task, :failed, %{error: inspect(reason)}, opts)
   end
 
   defp count_phase(acc, kind, field) do
@@ -454,6 +471,7 @@ defmodule Sheaf.MetadataResolver.Queue do
     Scope: up to #{limit} queued task(s)
     Extraction: text first, front matter only, no last pages, DOI + ISBN
     #{pdf}
+    Task status updates: on
 
     Concurrency:
     - Gemini extraction: #{concurrency_for(@extract_kind, opts)}
@@ -501,4 +519,50 @@ defmodule Sheaf.MetadataResolver.Queue do
   defp phase_order("match candidates"), do: 3
   defp phase_order("rdf import"), do: 4
   defp phase_order(_phase), do: 99
+
+  defp notify_task_status(acc, task, status, payload, opts) do
+    if Keyword.get(opts, :telegram, false) do
+      Sheaf.Telegram.notify(task_status_message(task, status, payload))
+    end
+
+    acc
+  end
+
+  defp task_status_message(task, status, payload) do
+    """
+    Sheaf metadata task #{status}
+
+    Task: ##{task.id}
+    Phase: #{phase_label(task.kind)}
+    Document: #{short_iri(task.subject_iri || document_from_payload(task.input) || "?")}
+    Identifier: #{task.identifier || input_value(payload, :identifier) || "-"}
+    Result: #{task_result_summary(status, payload)}
+    """
+    |> String.trim()
+  end
+
+  defp task_result_summary(:completed, %{wrote: true}), do: "imported RDF metadata"
+
+  defp task_result_summary(:completed, %{doi: nil, isbn: nil}),
+    do: "no DOI/ISBN found; no Crossref task queued"
+
+  defp task_result_summary(:completed, %{lookup: %{source: "none"}}), do: "no Crossref lookup"
+
+  defp task_result_summary(:completed, %{lookup: lookup}) do
+    source = input_value(lookup, :source) || "unknown"
+    "Crossref #{source} lookup complete"
+  end
+
+  defp task_result_summary(:completed, %{match: %{accept?: false} = match}) do
+    "match rejected: #{input_value(match, :reason) || "below threshold"}"
+  end
+
+  defp task_result_summary(:completed, %{match: %{accept?: true}}),
+    do: "match accepted; import queued"
+
+  defp task_result_summary(:completed, %{metadata: _metadata}),
+    do: "identifier extraction complete"
+
+  defp task_result_summary(:failed, %{error: error}), do: "failed: #{error}"
+  defp task_result_summary(_status, _payload), do: "completed"
 end

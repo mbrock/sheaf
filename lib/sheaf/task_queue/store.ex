@@ -203,6 +203,7 @@ defmodule Sheaf.TaskQueue.Store do
   @spec claim_task(conn(), keyword()) :: {:ok, map() | nil} | {:error, term()}
   def claim_task(conn, opts \\ []) do
     queue = Keyword.get(opts, :queue, "metadata")
+    kind = Keyword.get(opts, :kind)
     worker = Keyword.get(opts, :worker, default_worker())
     lease_seconds = Keyword.get(opts, :lease_seconds, 300)
     now = now_iso8601()
@@ -225,12 +226,13 @@ defmodule Sheaf.TaskQueue.Store do
                FROM tasks t
                JOIN task_batches b ON b.id = t.batch_id
                WHERE t.queue = ?
+                 AND (? IS NULL OR t.kind = ?)
                  AND t.status = 'pending'
                  AND (t.run_after IS NULL OR t.run_after <= ?)
                ORDER BY t.priority DESC, t.id ASC
                LIMIT 1
                """,
-               [queue, now]
+               [queue, kind, kind, now]
              ) do
         task = task_row(task)
 
