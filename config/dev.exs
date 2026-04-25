@@ -12,6 +12,7 @@ config :sheaf, SheafWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}],
   check_origin: false,
   code_reloader: true,
+  reloadable_apps: [:sheaf, :sheaf_rdf_browser],
   debug_errors: true,
   secret_key_base: "EZd+P1fNcVZFqt1rjqJ8sm+U6xvhE09n6hcPmky7kWWAUq9KLR9Crh8GXd8lwwnC",
   watchers: [
@@ -53,7 +54,8 @@ config :sheaf, SheafWeb.Endpoint,
       ~r"priv/gettext/.*\.po$"E,
       # Router, Controllers, LiveViews and LiveComponents
       ~r"lib/sheaf_web/router\.ex$"E,
-      ~r"lib/sheaf_web/(controllers|live|components)/.*\.(ex|heex)$"E
+      ~r"lib/sheaf_web/(controllers|live|components)/.*\.(ex|heex)$"E,
+      ~r"apps/sheaf_rdf_browser/lib/.*\.(ex|heex)$"E
     ]
   ]
 

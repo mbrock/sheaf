@@ -100,7 +100,7 @@ defmodule SheafRDFBrowser.Index do
     |> Enum.map(fn class ->
       class_row(index, class)
     end)
-    |> Enum.sort_by(&{-&1.count, String.downcase(&1.label), &1.id})
+    |> Enum.sort_by(&property_namespace_label_sort_key/1)
     |> Enum.take(limit)
   end
 
@@ -143,27 +143,31 @@ defmodule SheafRDFBrowser.Index do
     Enum.map(roots, &class_node(index, &1, children_by_parent, MapSet.new()))
   end
 
+  def class_detail(%__MODULE__{} = index, class) when is_binary(class) do
+    class_row(index, class)
+  end
+
   def property_rows(%__MODULE__{} = index, limit \\ 120) do
     index.property_terms
     |> Enum.filter(&(Map.get(index.predicate_counts, &1, 0) > 0))
     |> Enum.reject(&hidden_overview_term?/1)
     |> Enum.map(fn property ->
-      display = display_term(index, property)
+      property_row(index, property, Map.get(index.predicate_counts, property, 0))
+    end)
+    |> Enum.sort_by(&property_namespace_label_sort_key/1)
+    |> Enum.take(limit)
+  end
 
-      %{
-        id: property,
-        label: display.label,
-        name: display.name,
-        prefix: display.prefix,
-        namespace: display.namespace,
-        labeled?: display.labeled?,
-        compact: compact(property),
-        count: Map.get(index.predicate_counts, property, 0),
-        comment: Map.get(index.comments, property),
-        domains: Map.get(index.domains, property, MapSet.new()) |> Enum.map(&label(index, &1)),
-        ranges: Map.get(index.ranges, property, MapSet.new()) |> Enum.map(&label(index, &1)),
-        parents: parents(index.subproperty_edges, property)
-      }
+  def property_usage_rows(%__MODULE__{} = index, usage_rows, limit \\ 120)
+      when is_list(usage_rows) do
+    usage_rows
+    |> Enum.map(fn usage ->
+      index
+      |> property_row(usage.property, usage.count)
+      |> Map.merge(%{
+        subject_count: usage.subject_count,
+        object_count: usage.object_count
+      })
     end)
     |> Enum.sort_by(&{-&1.count, String.downcase(&1.label), &1.id})
     |> Enum.take(limit)
@@ -334,11 +338,37 @@ defmodule SheafRDFBrowser.Index do
     }
   end
 
+  defp property_row(index, property, count) do
+    display = display_term(index, property)
+
+    %{
+      id: property,
+      label: display.label,
+      name: display.name,
+      prefix: display.prefix,
+      namespace: display.namespace,
+      labeled?: display.labeled?,
+      compact: compact(property),
+      count: count,
+      comment: Map.get(index.comments, property),
+      domains: Map.get(index.domains, property, MapSet.new()) |> Enum.map(&label(index, &1)),
+      ranges: Map.get(index.ranges, property, MapSet.new()) |> Enum.map(&label(index, &1)),
+      parents: parents(index.subproperty_edges, property)
+    }
+  end
+
   defp sort_terms(terms, index) do
     terms
     |> Enum.sort_by(fn term ->
       {String.downcase(label(index, term)), term}
     end)
+  end
+
+  defp property_namespace_label_sort_key(property) do
+    namespace = property.prefix || property.namespace || ""
+    label = Map.get(property, :name) || property.label || property.id
+
+    {String.downcase(namespace), String.downcase(label), -property.count, property.id}
   end
 
   defp prioritize_bfo_entity(terms) do

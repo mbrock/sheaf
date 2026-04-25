@@ -28,8 +28,25 @@ import {PretextParagraph} from "./pretext_paragraphs"
 import {DocumentBreadcrumb} from "./document_breadcrumb"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+const devSessionStorage = window.location.hostname.endsWith(".localhost") ?
+  {
+    getItem(key) {
+      return key === "phx:fallback:LongPoll" ? null : window.sessionStorage?.getItem(key)
+    },
+    setItem(key, value) {
+      if (key !== "phx:fallback:LongPoll") window.sessionStorage?.setItem(key, value)
+    },
+    removeItem(key) {
+      window.sessionStorage?.removeItem(key)
+    },
+  } :
+  window.sessionStorage
+
+window.sessionStorage?.removeItem("phx:fallback:LongPoll")
+
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
+  sessionStorage: devSessionStorage,
   params: {_csrf_token: csrfToken},
   hooks: {...colocatedHooks, PretextParagraph, DocumentBreadcrumb},
 })
@@ -56,10 +73,6 @@ window.liveSocket = liveSocket
 //
 if (process.env.NODE_ENV === "development") {
   window.addEventListener("phx:live_reload:attached", ({detail: reloader}) => {
-    // Enable server log streaming to client.
-    // Disable with reloader.disableServerLogs()
-    reloader.enableServerLogs()
-
     // Open configured PLUG_EDITOR at file:line of the clicked element's HEEx component
     //
     //   * click with "c" key pressed to open at caller location

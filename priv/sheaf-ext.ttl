@@ -1,10 +1,20 @@
 @prefix bfo: <https://node.town/bfo#> .
+@prefix bibo: <http://purl.org/ontology/bibo/> .
+@prefix dc: <http://purl.org/dc/elements/1.1/> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix fabio: <http://purl.org/spar/fabio/> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix obo: <http://purl.obolibrary.org/obo/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix prism: <http://prismstandard.org/namespaces/basic/2.1/> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix swrl: <http://www.w3.org/2003/11/swrl#> .
+@prefix vann: <http://purl.org/vocab/vann/> .
+@prefix vs: <http://www.w3.org/2003/06/sw-vocab-status/ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 bfo:Entity
   a owl:Class ;
@@ -371,3 +381,105 @@ prov:wasInformedBy
 prov:wasRevisionOf
   skos:prefLabel "was revision of"@en ;
   skos:definition "Relates an entity to an earlier entity that it revises."@en .
+
+prism:doi rdfs:label "has DOI"@en .
+prism:endingPage rdfs:label "has ending page"@en .
+prism:issn rdfs:label "has ISSN"@en .
+prism:startingPage rdfs:label "has starting page"@en .
+prism:volume rdfs:label "has volume identifier"@en .
+
+dc:contributor rdfs:label "has contributor"@en .
+dc:creator rdfs:label "has creator"@en .
+dc:date rdfs:label "has date"@en .
+dc:description rdfs:label "has description"@en .
+dc:rights rdfs:label "has rights statement"@en .
+dc:title rdfs:label "has title"@en .
+
+dcterms:description rdfs:label "has description"@en .
+
+bibo:doi rdfs:label "has DOI"@en .
+bibo:issn rdfs:label "has ISSN"@en .
+
+fabio:hasDOI rdfs:label "has DOI"@en .
+fabio:hasIssueIdentifier rdfs:label "has issue identifier"@en .
+fabio:hasPageRange rdfs:label "has page range"@en .
+fabio:hasVolumeIdentifier rdfs:label "has volume identifier"@en .
+
+vann:preferredNamespacePrefix rdfs:label "has preferred namespace prefix"@en .
+vann:preferredNamespaceUri rdfs:label "has preferred namespace URI"@en .
+
+rdf:first rdfs:label "has first item"@en .
+rdf:rest rdfs:label "has rest list"@en .
+rdf:type rdfs:label "has type"@en .
+
+rdfs:comment rdfs:label "has comment"@en .
+rdfs:domain rdfs:label "has domain"@en .
+rdfs:isDefinedBy rdfs:label "is defined by"@en .
+rdfs:label rdfs:label "has label"@en .
+rdfs:range rdfs:label "has range"@en .
+rdfs:seeAlso rdfs:label "see also"@en .
+rdfs:subClassOf rdfs:label "is subclass of"@en .
+rdfs:subPropertyOf rdfs:label "is subproperty of"@en .
+
+xsd:pattern rdfs:label "has pattern"@en .
+
+owl:allValuesFrom rdfs:label "has all values from"@en .
+owl:annotatedProperty rdfs:label "has annotated property"@en .
+owl:annotatedSource rdfs:label "has annotated source"@en .
+owl:annotatedTarget rdfs:label "has annotated target"@en .
+owl:cardinality rdfs:label "has cardinality"@en .
+owl:complementOf rdfs:label "is complement of"@en .
+owl:deprecated rdfs:label "deprecated"@en .
+owl:disjointWith rdfs:label "is disjoint with"@en .
+owl:equivalentClass rdfs:label "is equivalent class to"@en .
+owl:equivalentProperty rdfs:label "is equivalent property to"@en .
+owl:imports rdfs:label "imports"@en .
+owl:intersectionOf rdfs:label "has intersection operands"@en .
+owl:inverseOf rdfs:label "is inverse of"@en .
+owl:maxCardinality rdfs:label "has maximum cardinality"@en .
+owl:members rdfs:label "has members"@en .
+owl:minCardinality rdfs:label "has minimum cardinality"@en .
+owl:onClass rdfs:label "has constrained class"@en .
+owl:onDataRange rdfs:label "has constrained data range"@en .
+owl:onDatatype rdfs:label "has constrained datatype"@en .
+owl:onProperty rdfs:label "has constrained property"@en .
+owl:priorVersion rdfs:label "has prior version"@en .
+owl:propertyChainAxiom rdfs:label "has property chain axiom"@en .
+owl:propertyDisjointWith rdfs:label "is property disjoint with"@en .
+owl:qualifiedCardinality rdfs:label "has qualified cardinality"@en .
+owl:sameAs rdfs:label "is same as"@en .
+owl:someValuesFrom rdfs:label "has some values from"@en .
+owl:unionOf rdfs:label "has union operands"@en .
+owl:versionIRI rdfs:label "has version IRI"@en .
+owl:versionInfo rdfs:label "has version information"@en .
+owl:withRestrictions rdfs:label "has restrictions"@en .
+
+vs:term_status rdfs:label "has term status"@en .
+
+swrl:argument1 rdfs:label "has first argument"@en .
+swrl:argument2 rdfs:label "has second argument"@en .
+swrl:body rdfs:label "has body"@en .
+swrl:classPredicate rdfs:label "has class predicate"@en .
+swrl:head rdfs:label "has head"@en .
+swrl:propertyPredicate rdfs:label "has property predicate"@en .
+
+skos:changeNote rdfs:label "has change note"@en .
+skos:definition rdfs:label "has definition"@en .
+skos:editorialNote rdfs:label "has editorial note"@en .
+skos:example rdfs:label "has example"@en .
+skos:historyNote rdfs:label "has history note"@en .
+skos:prefLabel rdfs:label "has preferred label"@en .
+skos:scopeNote rdfs:label "has scope note"@en .
+
+prov:category rdfs:label "has category"@en .
+prov:component rdfs:label "has component"@en .
+prov:constraints rdfs:label "has constraints"@en .
+prov:definition rdfs:label "has definition"@en .
+prov:dm rdfs:label "has PROV-DM mapping"@en .
+prov:editorialNote rdfs:label "has editorial note"@en .
+prov:editorsDefinition rdfs:label "has editors' definition"@en .
+prov:inverse rdfs:label "is inverse of"@en .
+prov:n rdfs:label "has PROV-N mapping"@en .
+prov:qualifiedForm rdfs:label "has qualified form"@en .
+prov:sharesDefinitionWith rdfs:label "shares definition with"@en .
+prov:unqualifiedForm rdfs:label "has unqualified form"@en .

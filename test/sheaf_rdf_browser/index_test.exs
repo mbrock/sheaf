@@ -43,6 +43,29 @@ defmodule SheafRDFBrowser.IndexTest do
     refute "https://less.rest/sheaf/unused" in ids
   end
 
+  test "selected class property usage rows include RDF and RDFS properties" do
+    rows =
+      Index.property_usage_rows(Index.empty(), [
+        %{
+          property: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+          count: 12,
+          subject_count: 0,
+          object_count: 12
+        },
+        %{
+          property: "http://www.w3.org/2000/01/rdf-schema#label",
+          count: 1,
+          subject_count: 1,
+          object_count: 0
+        }
+      ])
+
+    assert Enum.map(rows, & &1.id) == [
+             "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+             "http://www.w3.org/2000/01/rdf-schema#label"
+           ]
+  end
+
   test "display terms expose unknown namespaces separately from local names" do
     term = "https://example.test/vocab/SomeClass"
     display = Index.display_term(Index.empty(), term)

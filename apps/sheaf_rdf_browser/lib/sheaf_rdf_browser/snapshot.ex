@@ -123,6 +123,26 @@ defmodule SheafRDFBrowser.Snapshot do
   }
   """
 
+  @class_property_usage_query """
+  PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+  SELECT ?class ?p ?role (COUNT(*) AS ?count)
+  WHERE {
+    {
+      GRAPH ?typeGraph { ?resource rdf:type ?class . }
+      GRAPH ?dataGraph { ?resource ?p ?o . }
+      BIND("subject" AS ?role)
+    }
+    UNION
+    {
+      GRAPH ?typeGraph { ?resource rdf:type ?class . }
+      GRAPH ?dataGraph { ?s ?p ?resource . }
+      BIND("object" AS ?role)
+    }
+  }
+  GROUP BY ?class ?p ?role
+  """
+
   defstruct status: :empty,
             dataset: nil,
             index: Index.empty(),
@@ -135,7 +155,8 @@ defmodule SheafRDFBrowser.Snapshot do
             index_ms: nil,
             bytes: 0,
             quads: 0,
-            graphs: 0
+            graphs: 0,
+            class_property_cache: %{}
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -153,6 +174,14 @@ defmodule SheafRDFBrowser.Snapshot do
     Phoenix.PubSub.subscribe(pubsub(), topic())
   end
 
+  def class_properties(class_iri) when is_binary(class_iri) do
+    GenServer.call(__MODULE__, {:class_properties, class_iri})
+  end
+
+  def cached_class_properties(class_iri) when is_binary(class_iri) do
+    GenServer.call(__MODULE__, {:cached_class_properties, class_iri})
+  end
+
   @impl true
   def init(_opts) do
     state = %__MODULE__{}
@@ -167,7 +196,6 @@ defmodule SheafRDFBrowser.Snapshot do
   @impl true
   def handle_continue(:refresh, state) do
     state = refresh_and_publish(state)
-    schedule_refresh()
     {:noreply, state}
   end
 
@@ -182,10 +210,24 @@ defmodule SheafRDFBrowser.Snapshot do
     {:reply, state, state}
   end
 
+  def handle_call({:class_properties, class_iri}, _from, state) do
+    rows = Map.get(state.class_property_cache, class_iri, [])
+    {:reply, {:ok, rows, 0}, state}
+  end
+
+  def handle_call({:cached_class_properties, class_iri}, _from, state) do
+    reply =
+      case Map.fetch(state.class_property_cache, class_iri) do
+        {:ok, rows} -> {:ok, rows, 0}
+        :error -> :miss
+      end
+
+    {:reply, reply, state}
+  end
+
   @impl true
   def handle_info(:refresh, state) do
     state = refresh_and_publish(state)
-    schedule_refresh()
     {:noreply, state}
   end
 
@@ -214,9 +256,10 @@ defmodule SheafRDFBrowser.Snapshot do
           predicate_query_ms: predicate_query_ms,
           parse_ms: 0,
           index_ms: index_ms,
-          bytes: 0,
+         bytes: 0,
           quads: quads,
-          graphs: map_size(rows.graph_counts)
+          graphs: map_size(rows.graph_counts),
+          class_property_cache: class_property_cache(Map.get(rows, :class_property_usage, []))
       }
     else
       {:error, reason} ->
@@ -231,16 +274,6 @@ defmodule SheafRDFBrowser.Snapshot do
     end
 
     state
-  end
-
-  defp schedule_refresh do
-    case config()[:refresh_interval_ms] do
-      interval when is_integer(interval) and interval > 0 ->
-        Process.send_after(self(), :refresh, interval)
-
-      _interval ->
-        :ok
-    end
   end
 
   defp fingerprint(index, quads, graphs) do
@@ -266,7 +299,14 @@ defmodule SheafRDFBrowser.Snapshot do
          subproperty_edges:
            rows(bindings(results, :subproperty_edges), child: "child", parent: "parent"),
          domains: rows(bindings(results, :domains), [:s, :o]),
-         ranges: rows(bindings(results, :ranges), [:s, :o])
+         ranges: rows(bindings(results, :ranges), [:s, :o]),
+         class_property_usage:
+           rows(bindings(results, :class_property_usage),
+             class: "class",
+             property: "p",
+             role: "role",
+             count: "count"
+           )
        }, query_ms, query_ms(results, :predicate_counts)}
     end
   end
@@ -276,7 +316,7 @@ defmodule SheafRDFBrowser.Snapshot do
       timed(fn ->
         query_specs()
         |> Task.async_stream(&fetch_named_select/1,
-          max_concurrency: System.schedulers_online(),
+          max_concurrency: config()[:refresh_max_concurrency] || 2,
           ordered: false,
           timeout: 120_000
         )
@@ -318,7 +358,8 @@ defmodule SheafRDFBrowser.Snapshot do
       subclass_edges: @subclass_query,
       subproperty_edges: @subproperty_query,
       domains: @domain_query,
-      ranges: @range_query
+      ranges: @range_query,
+      class_property_usage: @class_property_usage_query
     ]
   end
 
@@ -375,6 +416,37 @@ defmodule SheafRDFBrowser.Snapshot do
     end
   end
 
+  defp class_property_cache(rows) do
+    rows
+    |> Enum.group_by(& &1.class)
+    |> Map.new(fn {class, rows} ->
+      {class, class_property_usage_rows(rows)}
+    end)
+  end
+
+  defp class_property_usage_rows(rows) do
+    rows
+    |> Enum.group_by(& &1.property)
+    |> Enum.map(fn {property, rows} ->
+      subject_count = role_count(rows, "subject")
+      object_count = role_count(rows, "object")
+
+      %{
+        property: property,
+        count: subject_count + object_count,
+        subject_count: subject_count,
+        object_count: object_count
+      }
+    end)
+  end
+
+  defp role_count(rows, role) do
+    rows
+    |> Enum.filter(&(&1.role == role))
+    |> Enum.map(&String.to_integer(&1.count))
+    |> Enum.sum()
+  end
+
   defp timed(fun) do
     {micros, value} = :timer.tc(fun)
     {value, div(micros, 1_000)}
@@ -385,7 +457,7 @@ defmodule SheafRDFBrowser.Snapshot do
       query_endpoint: "http://localhost:3030/sheaf/sparql",
       sparql_auth: {:basic, "admin:admin"},
       load_on_start: true,
-      refresh_interval_ms: 5_000,
+      refresh_max_concurrency: 2,
       pubsub: Sheaf.PubSub
     )
   end

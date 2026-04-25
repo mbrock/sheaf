@@ -123,8 +123,8 @@ config :sheaf_rdf_browser, SheafRDFBrowser.Snapshot,
     System.get_env("SHEAF_RDF_BROWSER_LOAD_ON_START", "true")
     |> String.downcase()
     |> Kernel.in(["1", "true", "yes", "on"]),
-  refresh_interval_ms:
-    System.get_env("SHEAF_RDF_BROWSER_REFRESH_INTERVAL_MS", "5000")
+  refresh_max_concurrency:
+    System.get_env("SHEAF_RDF_BROWSER_REFRESH_MAX_CONCURRENCY", "2")
     |> String.to_integer(),
   pubsub: Sheaf.PubSub
 
