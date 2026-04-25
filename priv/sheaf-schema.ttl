@@ -6,200 +6,200 @@
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 sheaf:Document a rdfs:Class ;
-  rdfs:label "Document" ;
+  rdfs:label "document"@en ;
   rdfs:comment "A top-level Sheaf resource rendered as a reader document." .
 
 sheaf:Thesis a rdfs:Class ;
-  rdfs:label "Thesis" ;
+  rdfs:label "thesis"@en ;
   rdfs:subClassOf sheaf:Document ;
   rdfs:comment "A thesis document imported from the XML source files." .
 
 sheaf:Transcript a rdfs:Class ;
-  rdfs:label "Transcript" ;
+  rdfs:label "transcript"@en ;
   rdfs:subClassOf sheaf:Document ;
   rdfs:comment "A document whose ordered children describe transcript structure." .
 
 sheaf:Paper a rdfs:Class ;
-  rdfs:label "Paper" ;
+  rdfs:label "paper"@en ;
   rdfs:subClassOf sheaf:Document ;
   rdfs:comment "A paper or published document imported from an external source." .
 
 sheaf:Spreadsheet a rdfs:Class ;
-  rdfs:label "Spreadsheet" ;
+  rdfs:label "spreadsheet"@en ;
   rdfs:subClassOf sheaf:Document ;
   rdfs:comment "A document imported from tabular source data." .
 
 sheaf:Interview a rdfs:Class ;
-  rdfs:label "Interview" ;
+  rdfs:label "interview"@en ;
   rdfs:subClassOf sheaf:Transcript ;
   rdfs:comment "A recorded interview imported from the IEVA transcript system." .
 
 sheaf:Block a rdfs:Class ;
-  rdfs:label "Block" ;
+  rdfs:label "block"@en ;
   rdfs:comment "A structural block inside a document." .
 
 sheaf:Section a rdfs:Class ;
-  rdfs:label "Section" ;
+  rdfs:label "section"@en ;
   rdfs:subClassOf sheaf:Block ;
   rdfs:comment "A headed container block inside a document." .
 
 sheaf:ParagraphBlock a rdfs:Class ;
-  rdfs:label "Paragraph block" ;
+  rdfs:label "paragraph block"@en ;
   rdfs:subClassOf sheaf:Block ;
   rdfs:comment "A stable structural block whose text lives on one or more paragraph revision entities." .
 
 sheaf:ExtractedBlock a rdfs:Class ;
-  rdfs:label "Extracted block" ;
+  rdfs:label "extracted block"@en ;
   rdfs:subClassOf sheaf:Block ;
   rdfs:comment "A block extracted from an external document source, preserved with source metadata and renderable source HTML." .
 
 sheaf:Row a rdfs:Class ;
-  rdfs:label "Row" ;
+  rdfs:label "row"@en ;
   rdfs:subClassOf sheaf:Block ;
   rdfs:comment "A row imported from a spreadsheet or CSV source." .
 
 sheaf:Paragraph a rdfs:Class ;
-  rdfs:label "Paragraph" ;
+  rdfs:label "paragraph"@en ;
   rdfs:subClassOf prov:Entity ;
   rdfs:comment "A versioned paragraph entity carrying the text for a block or utterance revision." .
 
 sheaf:Segment a rdfs:Class ;
-  rdfs:label "Segment" ;
+  rdfs:label "segment"@en ;
   rdfs:comment "A contiguous time slice of an interview with ordered utterance children." .
 
 sheaf:Utterance a rdfs:Class ;
-  rdfs:label "Utterance" ;
+  rdfs:label "utterance"@en ;
   rdfs:comment "A speaker-attributed transcript unit inside a segment." .
 
 sheaf:AudioBlob a rdfs:Class ;
-  rdfs:label "Audio blob" ;
+  rdfs:label "audio blob"@en ;
   rdfs:comment "A content-addressed audio payload identified by its SHA-256 hash." .
 
 sheaf:ResearchSession a rdfs:Class ;
-  rdfs:label "Research session" ;
+  rdfs:label "research session"@en ;
   rdfs:comment "A durable context that groups assistant-authored research notes." .
 
 sheaf:children a rdf:Property ;
-  rdfs:label "children" ;
+  rdfs:label "has child list"@en ;
   rdfs:range rdf:List ;
   rdfs:comment "Links a container resource to an RDF list that preserves the order of its child resources." .
 
 sheaf:paragraph a rdf:Property ;
-  rdfs:label "paragraph" ;
+  rdfs:label "has paragraph"@en ;
   rdfs:range sheaf:Paragraph ;
   rdfs:comment "Links a stable text-bearing resource to a paragraph revision entity. Revision chains use prov:wasRevisionOf and superseded revisions use prov:wasInvalidatedBy." .
 
 sheaf:text a rdf:Property ;
-  rdfs:label "text" ;
+  rdfs:label "has text"@en ;
   rdfs:range xsd:string .
 
 sheaf:audio a rdf:Property ;
-  rdfs:label "audio" ;
+  rdfs:label "has audio"@en ;
   rdfs:range sheaf:AudioBlob ;
   rdfs:comment "Links an interview, segment, or utterance to a content-addressed audio blob." .
 
 sheaf:sourceFile a rdf:Property ;
-  rdfs:label "source file" ;
+  rdfs:label "has source file"@en ;
   rdfs:range fabio:ComputerFile ;
   rdfs:comment "Links an imported document to the concrete source file it was extracted from." .
 
 sheaf:filename a rdf:Property ;
-  rdfs:label "filename" ;
+  rdfs:label "has filename"@en ;
   rdfs:domain sheaf:Interview ;
   rdfs:range xsd:string .
 
 sheaf:duration a rdf:Property ;
-  rdfs:label "duration" ;
+  rdfs:label "has duration"@en ;
   rdfs:domain sheaf:Interview ;
   rdfs:range xsd:string .
 
 sheaf:currentPosition a rdf:Property ;
-  rdfs:label "current position" ;
+  rdfs:label "has current position"@en ;
   rdfs:domain sheaf:Interview ;
   rdfs:range xsd:string .
 
 sheaf:contextSegments a rdf:Property ;
-  rdfs:label "context segments" ;
+  rdfs:label "has context segment count"@en ;
   rdfs:domain sheaf:Interview ;
   rdfs:range xsd:integer .
 
 sheaf:modelName a rdf:Property ;
-  rdfs:label "model name" ;
+  rdfs:label "has model name"@en ;
   rdfs:domain sheaf:Interview ;
   rdfs:range xsd:string .
 
 sheaf:sourceKey a rdf:Property ;
-  rdfs:label "source key" ;
+  rdfs:label "has source key"@en ;
   rdfs:range xsd:string ;
   rdfs:comment "Stable key from a source system, such as a transcript store key, blob hash registry key, or extracted document block ID." .
 
 sheaf:sourceBlockType a rdf:Property ;
-  rdfs:label "source block type" ;
+  rdfs:label "has source block type"@en ;
   rdfs:range xsd:string ;
   rdfs:comment "The source system's block type name for an extracted block." .
 
 sheaf:sourcePage a rdf:Property ;
-  rdfs:label "source page" ;
+  rdfs:label "has source page"@en ;
   rdfs:range xsd:integer ;
   rdfs:comment "The source system's page number for an extracted block." .
 
 sheaf:sourceHtml a rdf:Property ;
-  rdfs:label "source HTML" ;
+  rdfs:label "has source HTML"@en ;
   rdfs:range xsd:string ;
   rdfs:comment "A renderable HTML fragment extracted from the source document block." .
 
 sheaf:spreadsheetRow a rdf:Property ;
-  rdfs:label "spreadsheet row" ;
+  rdfs:label "has spreadsheet row"@en ;
   rdfs:domain sheaf:Row ;
   rdfs:range xsd:integer .
 
 sheaf:spreadsheetSource a rdf:Property ;
-  rdfs:label "spreadsheet source" ;
+  rdfs:label "has spreadsheet source"@en ;
   rdfs:range xsd:string .
 
 sheaf:codeCategory a rdf:Property ;
-  rdfs:label "code category" ;
+  rdfs:label "has code category"@en ;
   rdfs:domain sheaf:Row ;
   rdfs:range xsd:string .
 
 sheaf:codeCategoryTitle a rdf:Property ;
-  rdfs:label "code category title" ;
+  rdfs:label "has code category title"@en ;
   rdfs:domain sheaf:Row ;
   rdfs:range xsd:string .
 
 sheaf:sha256 a rdf:Property ;
-  rdfs:label "SHA-256" ;
+  rdfs:label "has SHA-256 digest"@en ;
   rdfs:range xsd:string ;
   rdfs:comment "Lowercase hexadecimal SHA-256 digest of a content-addressed file." .
 
 sheaf:byteSize a rdf:Property ;
-  rdfs:label "byte size" ;
+  rdfs:label "has byte size"@en ;
   rdfs:range xsd:integer .
 
 sheaf:originalFilename a rdf:Property ;
-  rdfs:label "original filename" ;
+  rdfs:label "has original filename"@en ;
   rdfs:range xsd:string .
 
 sheaf:startTime a rdf:Property ;
-  rdfs:label "start time" ;
+  rdfs:label "has start time"@en ;
   rdfs:domain sheaf:Segment ;
   rdfs:range xsd:string .
 
 sheaf:endTime a rdf:Property ;
-  rdfs:label "end time" ;
+  rdfs:label "has end time"@en ;
   rdfs:domain sheaf:Segment ;
   rdfs:range xsd:string .
 
 sheaf:speaker a rdf:Property ;
-  rdfs:label "speaker" ;
+  rdfs:label "has speaker"@en ;
   rdfs:domain sheaf:Utterance ;
   rdfs:range xsd:string .
 
 sheaf:mimeType a rdf:Property ;
-  rdfs:label "MIME type" ;
+  rdfs:label "has MIME type"@en ;
   rdfs:range xsd:string .
 
 sheaf:mentions a rdf:Property ;
-  rdfs:label "mentions" ;
+  rdfs:label "mentions"@en ;
   rdfs:range rdfs:Resource ;
   rdfs:comment "Links a note, annotation, or other interpretive resource to a Sheaf resource it discusses." .

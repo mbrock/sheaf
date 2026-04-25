@@ -113,6 +113,17 @@ config :sheaf, Sheaf,
   sparql_auth: sparql_auth,
   data_auth: sparql_auth
 
+config :sheaf_rdf_browser, SheafRDFBrowser.Snapshot,
+  query_endpoint:
+    (System.get_env("SHEAF_RDF_BROWSER_QUERY_ENDPOINT") ||
+       System.get_env("SHEAF_SPARQL_QUERY_ENDPOINT", sparql_dataset <> "/sparql"))
+    |> String.trim(),
+  sparql_auth: sparql_auth,
+  load_on_start:
+    System.get_env("SHEAF_RDF_BROWSER_LOAD_ON_START", "true")
+    |> String.downcase()
+    |> Kernel.in(["1", "true", "yes", "on"])
+
 config :sheaf, Datalab,
   api_key: System.get_env("DATALAB_API_KEY"),
   pipeline_id: System.get_env("DATALAB_PIPELINE_ID", "pl_QWhrjJhpUUoo"),

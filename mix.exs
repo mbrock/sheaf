@@ -66,6 +66,7 @@ defmodule Sheaf.MixProject do
       {:mdex, "~> 0.12"},
       {:rdf, "~> 2.1"},
       {:sparql_client, "~> 0.5"},
+      {:sheaf_rdf_browser, path: "apps/sheaf_rdf_browser"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"}
     ]

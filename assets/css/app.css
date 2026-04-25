@@ -5,6 +5,7 @@
 @source "../css";
 @source "../js";
 @source "../../lib/sheaf_web";
+@source "../../apps/sheaf_rdf_browser/lib";
 
 /* A Tailwind plugin that makes "hero-#{ICON}" classes available.
    The heroicons installation itself is managed by your mix.exs */
@@ -12,6 +13,7 @@
 
 @theme {
   --font-serif: "Equity", "Iowan Old Style", Georgia, serif;
+  --font-mono: "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 /* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:

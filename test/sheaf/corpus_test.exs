@@ -86,6 +86,6 @@ defmodule Sheaf.CorpusTest do
 
     assert_receive {:sparql, sparql}
 
-    assert sparql =~ "FILTER(?doc = <https://sheaf.less.rest/DOC123>)"
+    assert sparql =~ "FILTER(?doc = <#{Sheaf.Id.iri("DOC123")}>)"
   end
 end

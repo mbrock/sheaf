@@ -35,6 +35,12 @@ defmodule SheafWeb.Router do
     post "/sparql", SparqlController, :query
   end
 
+  scope "/rdf", SheafRDFBrowserWeb do
+    pipe_through :browser
+
+    live "/", BrowserLive
+  end
+
   scope "/", SheafWeb do
     pipe_through :browser
 
