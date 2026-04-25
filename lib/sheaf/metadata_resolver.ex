@@ -64,6 +64,26 @@ defmodule Sheaf.MetadataResolver do
   end
 
   @doc """
+  Extracts local metadata for a candidate without calling Crossref or writing RDF.
+  """
+  @spec extract_candidate_metadata(candidate(), keyword()) ::
+          {:ok, Sheaf.PaperMetadata.t()} | {:error, term()}
+  def extract_candidate_metadata(%{path: path} = candidate, opts \\ []) when is_binary(path) do
+    with true <- File.exists?(path) || {:error, {:missing_blob, path}} do
+      extract_metadata(candidate, opts)
+    end
+  end
+
+  @doc """
+  Resolves already-extracted metadata through Crossref and RDF import.
+  """
+  @spec resolve_candidate_metadata(candidate(), Sheaf.PaperMetadata.t(), keyword()) ::
+          {:ok, resolve_result()} | {:error, term()}
+  def resolve_candidate_metadata(candidate, metadata, opts \\ []) do
+    resolve_metadata(candidate, metadata, opts)
+  end
+
+  @doc """
   Resolves one queued task input map.
   """
   @spec resolve_task(map(), keyword()) :: {:ok, resolve_result()} | {:error, term()}
@@ -72,6 +92,9 @@ defmodule Sheaf.MetadataResolver do
     |> candidate_from_input()
     |> resolve(opts)
   end
+
+  @doc false
+  def task_candidate(input) when is_map(input), do: candidate_from_input(input)
 
   @doc false
   def candidates_from(rows, files_graph, opts \\ []) when is_list(rows) do

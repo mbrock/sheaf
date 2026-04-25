@@ -26,6 +26,13 @@ SQLite fields hold operational details:
 - input/result/error JSON
 - inserted, updated, finished timestamps
 
+Worker concurrency is configured per task kind, not per queue:
+
+- LLM/text extraction tasks can run with high concurrency.
+- Crossref lookup/import tasks run serially or with very low concurrency.
+- RDF writes stay serial unless a future operation is explicitly designed for
+  safe concurrent writes.
+
 RDF facts hold inspectable corpus history mostly at the batch level:
 
 - batch resource type
@@ -40,15 +47,17 @@ RDF facts hold inspectable corpus history mostly at the batch level:
 
 Use separate task kinds so risky mutation is last:
 
-1. `metadata.scan_identifiers`
+1. `metadata.extract_identifiers`
    Read bounded bibliographic text from a document. Find DOI/ISBN candidates
-   with page/chunk context. No network and no RDF mutation.
+   with page/chunk context. This may use Gemini Flash Lite over extracted text
+   or, when explicitly requested, a short first-pages PDF excerpt. No Crossref
+   calls and no RDF mutation. High concurrency is allowed.
 
 2. `metadata.crossref.lookup`
    Query Crossref for deduplicated DOI/ISBN candidates. DOI lookups are direct;
    ISBN lookups may return books, book chapters, proceedings, or container-level
    records, so preserve the queried identifier and returned Crossref type in the
-   cached response. Rate limit this queue and cache misses as well as hits.
+   cached response. Rate limit this task kind and cache misses as well as hits.
 
 3. `metadata.match_candidate`
    Compare Crossref metadata against the Sheaf title and local clues. For ISBN
@@ -57,7 +66,7 @@ Use separate task kinds so risky mutation is last:
 
 4. `metadata.import_crossref`
    Only for high-confidence matches or explicit review acceptance. Merge
-   Crossref metadata into the metadata graph.
+   Crossref metadata into the metadata graph. Run serially.
 
 ## Runner
 

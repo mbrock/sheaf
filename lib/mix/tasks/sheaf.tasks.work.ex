@@ -15,6 +15,7 @@ defmodule Mix.Tasks.Sheaf.Tasks.Work do
       OptionParser.parse!(args,
         strict: [
           limit: :integer,
+          concurrency: :integer,
           telegram: :boolean,
           pdf_fallback: :boolean,
           pdf_pages: :integer,
@@ -29,6 +30,7 @@ defmodule Mix.Tasks.Sheaf.Tasks.Work do
     worker_opts =
       []
       |> Keyword.put(:limit, opts[:limit] || 1)
+      |> Keyword.put(:concurrency, opts[:concurrency] || min(opts[:limit] || 1, 32))
       |> Keyword.put(:telegram, opts[:telegram] || false)
       |> put_opt(:pdf_fallback, opts[:pdf_fallback])
       |> put_opt(:pdf_pages, opts[:pdf_pages])
