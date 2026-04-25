@@ -68,21 +68,25 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <div
       id="document-reader"
-      class="grid h-dvh grid-rows-[minmax(0,16rem)_auto_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 lg:grid-cols-[24rem_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_30rem] dark:bg-stone-950 dark:text-stone-50"
+      class="grid h-dvh grid-rows-[auto_minmax(0,16rem)_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 lg:grid-cols-[24rem_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_30rem] dark:bg-stone-950 dark:text-stone-50"
       phx-hook="DocumentBreadcrumb"
     >
-      <aside class="min-h-0 overflow-y-auto p-4 lg:col-start-1 lg:row-span-2">
-        <h1 class="font-bold text-lg">{document_title(@graph, @root)}</h1>
-        <.block_outline entries={@toc} emit_active_data class="mt-4 text-sm" />
-      </aside>
+      <div class="col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-4 py-2 backdrop-blur dark:border-stone-800/80 dark:bg-stone-950/90">
+        <div class="flex min-h-8 w-full items-center gap-3 overflow-hidden">
+          <.link
+            navigate={~p"/"}
+            class="inline-flex h-8 shrink-0 items-center gap-1 rounded-sm px-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          >
+            <.icon name="hero-arrow-left" class="size-4" />
+            <span>Back to main</span>
+          </.link>
 
-      <div class="min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-12 py-2 backdrop-blur sm:px-8 lg:col-start-2 lg:row-start-1 dark:border-stone-800/80 dark:bg-stone-950/90">
-        <div class="mx-auto flex min-h-7 w-full max-w-prose items-center gap-3 overflow-hidden">
           <span
             id="document-breadcrumb"
-            class="min-w-0 flex-1 truncate font-serif text-lg lowercase text-stone-500 [font-variant-caps:small-caps] dark:text-stone-400"
+            class="min-w-0 flex-1 truncate text-center font-serif text-lg lowercase text-stone-500 [font-variant-caps:small-caps] dark:text-stone-400"
           >
           </span>
+
           <button
             id="copy-markdown"
             type="button"
@@ -95,6 +99,11 @@ defmodule SheafWeb.DocumentLive do
         </div>
       </div>
 
+      <aside class="min-h-0 overflow-y-auto p-4 lg:col-start-1 lg:row-start-2">
+        <h1 class="font-bold text-lg">{document_title(@graph, @root)}</h1>
+        <.block_outline entries={@toc} emit_active_data class="mt-4 text-sm" />
+      </aside>
+
       <article
         id="document-start"
         class="min-h-0 min-w-0 overflow-y-auto px-12 pb-4 sm:px-8 lg:col-start-2 lg:row-start-2"
@@ -104,7 +113,7 @@ defmodule SheafWeb.DocumentLive do
         </div>
       </article>
 
-      <aside class="hidden min-h-0 overflow-y-auto border-stone-200/80 px-5 py-4 xl:col-start-3 xl:row-span-2 xl:row-start-1 xl:block xl:border-l dark:border-stone-800/80">
+      <aside class="hidden min-h-0 overflow-y-auto border-stone-200/80 px-5 py-4 xl:col-start-3 xl:row-start-2 xl:block xl:border-l dark:border-stone-800/80">
         <.live_component
           module={SheafWeb.AssistantChatComponent}
           id="document-assistant"

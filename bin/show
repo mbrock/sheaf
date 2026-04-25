@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export HOME="${HOME:-$(eval echo ~$(whoami))}"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
+ENV_FILE="${SHEAF_ENV_FILE:-$APP_ROOT/.env}"
+COUNT="${1:-1}"
+
+cd "$APP_ROOT"
+
+if ! [[ "$COUNT" =~ ^[0-9]+$ ]] || [ "$COUNT" -lt 1 ]; then
+  printf 'Usage: %s [screenshot-count]\n' "$(basename "$0")" >&2
+  exit 2
+fi
+
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    printf 'Required command not found: %s\n' "$1" >&2
+    exit 2
+  fi
+}
+
+require_cmd curl
+require_cmd jq
+require_cmd uvx
+
+if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
+  printf 'TELEGRAM_BOT_TOKEN is missing in %s\n' "$ENV_FILE" >&2
+  exit 2
+fi
+
+api_url() {
+  printf 'https://api.telegram.org/bot%s/%s' "$TELEGRAM_BOT_TOKEN" "$1"
+}
+
+save_chat_id() {
+  local chat_id="$1"
+
+  if grep -q '^TELEGRAM_CHAT_ID=' "$ENV_FILE"; then
+    sed -i "s/^TELEGRAM_CHAT_ID=.*/TELEGRAM_CHAT_ID=$chat_id/" "$ENV_FILE"
+  else
+    printf '\nTELEGRAM_CHAT_ID=%s\n' "$chat_id" >>"$ENV_FILE"
+  fi
+}
+
+discover_chat_id() {
+  curl -fsS "$(api_url getUpdates)" |
+    jq -r '
+      [
+        .result[]
+        | (
+            .message.chat.id
+            // .edited_message.chat.id
+            // .channel_post.chat.id
+            // .my_chat_member.chat.id
+          )
+      ]
+      | map(select(. != null))
+      | last
+      // empty
+    '
+}
+
+if [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+  TELEGRAM_CHAT_ID="$(discover_chat_id)"
+
+  if [ -z "$TELEGRAM_CHAT_ID" ]; then
+    printf 'Could not discover TELEGRAM_CHAT_ID. Send the bot a message, then rerun bin/show.\n' >&2
+    exit 1
+  fi
+
+  save_chat_id "$TELEGRAM_CHAT_ID"
+  printf 'Saved TELEGRAM_CHAT_ID to %s\n' "$ENV_FILE"
+fi
+
+BASE_URL="${SHEAF_SHOW_URL:-http://${SHEAF_HTTP_IP:-127.0.0.1}:${PORT:-4000}/}"
+OUT_DIR="${SHEAF_SHOW_DIR:-$APP_ROOT/output/playwright/show-$(date +%Y%m%d-%H%M%S)}"
+mkdir -p "$OUT_DIR"
+
+uvx --from playwright python - "$BASE_URL" "$COUNT" "$OUT_DIR" <<'PY'
+import sys
+from pathlib import Path
+from shutil import which
+from urllib.parse import urljoin
+
+from playwright.sync_api import sync_playwright
+
+base_url = sys.argv[1]
+count = int(sys.argv[2])
+out_dir = Path(sys.argv[3])
+
+
+def browser_choice():
+    if which("google-chrome"):
+        return "chrome", None
+    chrome = which("chromium") or which("chromium-browser")
+    if chrome:
+        return None, chrome
+    raise SystemExit("No Chrome/Chromium binary found in PATH")
+
+
+def document_links(page):
+    hrefs = page.eval_on_selector_all(
+        'a[href^="/"]',
+        """links => links
+          .map(link => link.getAttribute("href"))
+          .filter(href => /^\\/[A-Za-z0-9]{6}(?:$|[?#])/.test(href))
+        """,
+    )
+
+    seen = set()
+    urls = []
+    for href in hrefs:
+        url = urljoin(base_url, href)
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+    return urls
+
+
+channel, executable_path = browser_choice()
+paths = []
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(channel=channel, executable_path=executable_path)
+    page = browser.new_page(viewport={"width": 1440, "height": 1000})
+    page.goto(base_url, wait_until="networkidle")
+
+    urls = [base_url] + document_links(page)
+
+    for index, url in enumerate(urls[:count], start=1):
+        page.goto(url, wait_until="networkidle")
+        path = out_dir / f"sheaf-{index:02d}.png"
+        page.screenshot(path=str(path), full_page=False)
+        paths.append(str(path))
+
+    browser.close()
+
+for path in paths:
+    print(path)
+PY
+
+mapfile -t screenshots < <(find "$OUT_DIR" -maxdepth 1 -name 'sheaf-*.png' -type f | sort)
+
+if [ "${#screenshots[@]}" -eq 0 ]; then
+  printf 'No screenshots were captured.\n' >&2
+  exit 1
+fi
+
+for screenshot in "${screenshots[@]}"; do
+  curl -fsS -X POST "$(api_url sendPhoto)" \
+    -F "chat_id=$TELEGRAM_CHAT_ID" \
+    -F "photo=@$screenshot" \
+    -F "caption=Sheaf UI: $(basename "$screenshot")" >/dev/null
+  printf 'Sent %s\n' "$screenshot"
+done

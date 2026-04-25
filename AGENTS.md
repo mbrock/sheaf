@@ -150,6 +150,13 @@ service URL reported by `bin/status` (`Public URL` or `Phoenix HTTP`). Browser
 automation is appropriate for nondestructive UI checks, visual inspection, and
 screenshots of the running service.
 
+`bin/show [count]` captures one or more screenshots from the running service and
+sends them to the configured Telegram chat using the Bot API. It reads
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from `.env`; if the chat id is
+missing, it tries to discover it with `getUpdates` after the user has messaged
+the bot. It is always good to show UI: after visual/layout changes, prefer
+running `bin/show` so the user can quickly inspect the result.
+
 ## RDF Notes
 
 Read `docs/rdf-ex.md` for the Elixir RDF cheat sheet: builder DSL, IRI

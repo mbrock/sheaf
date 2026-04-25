@@ -130,96 +130,121 @@ defmodule SheafWeb.DocumentIndexLive do
   def render(assigns) do
     ~H"""
     <main class="min-h-dvh bg-stone-50 px-6 py-6 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
-      <div class="mx-auto max-w-5xl">
+      <div class="grid gap-8 lg:grid-cols-2">
         <p
           :if={@document_error}
-          class="mb-4 border-l-2 border-rose-500 py-2 pl-3 text-sm text-rose-700"
+          class="border-l-2 border-rose-500 py-2 pl-3 text-sm text-rose-700 lg:col-span-2"
         >
           {@document_error}
         </p>
 
-        <section class="mb-8">
-          <div class="mb-2 flex items-end justify-between gap-3">
-            <div>
-              <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-                Files
-              </h2>
-              <p class="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
-                Uploaded source files and PDFs attached to imported papers
-              </p>
-            </div>
-            <span
-              :if={@files != []}
-              class="font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400"
-            >
-              {length(@files)}
-            </span>
-          </div>
-
-          <.form
-            for={%{}}
-            phx-change="validate_upload"
-            phx-submit="save_upload"
-            class="mb-3 flex flex-col gap-2 border-y border-stone-200/80 py-3 dark:border-stone-800/80 sm:flex-row sm:items-start"
-          >
-            <div class="min-w-0 flex-1">
-              <.live_file_input
-                upload={@uploads.files}
-                class="block w-full text-sm text-stone-700 file:mr-3 file:rounded-sm file:border-0 file:bg-stone-200 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-stone-800 hover:file:bg-stone-300 dark:text-stone-300 dark:file:bg-stone-800 dark:file:text-stone-200 dark:hover:file:bg-stone-700"
-              />
-              <div :if={@uploads.files.entries != []} class="mt-2 space-y-1">
-                <div
-                  :for={entry <- @uploads.files.entries}
-                  class="flex min-w-0 items-center gap-2 font-sans text-xs text-stone-500 dark:text-stone-400"
-                >
-                  <span class="min-w-0 flex-1 truncate">{entry.client_name}</span>
-                  <progress class="h-1 w-20" value={entry.progress} max="100">
-                    {entry.progress}%
-                  </progress>
+        <div class="min-w-0 space-y-8">
+          <details class="group">
+            <summary class="mb-2 flex cursor-pointer list-none items-end justify-between gap-3 rounded-sm py-1 transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80 [&::-webkit-details-marker]:hidden">
+              <div class="flex min-w-0 items-start gap-2">
+                <span class="mt-0.5 block w-3 shrink-0 text-center font-mono text-xs leading-snug text-stone-400 transition-transform group-open:rotate-90 dark:text-stone-500">
+                  ▸
+                </span>
+                <div class="min-w-0">
+                  <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                    Files
+                  </h2>
+                  <p class="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+                    Uploaded source files and PDFs attached to imported papers
+                  </p>
                 </div>
               </div>
-              <p
-                :for={err <- upload_errors(@uploads.files)}
-                class="mt-1 text-xs text-rose-700 dark:text-rose-300"
+              <span
+                :if={@files != []}
+                class="shrink-0 pr-1 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400"
               >
-                {upload_error_text(err)}
-              </p>
-            </div>
+                {length(@files)}
+              </span>
+            </summary>
 
-            <button
-              type="submit"
-              class="inline-flex h-8 items-center justify-center gap-1.5 rounded-sm bg-stone-950 px-3 font-sans text-xs font-semibold text-stone-50 transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500 dark:bg-stone-50 dark:text-stone-950 dark:hover:bg-stone-300 dark:disabled:bg-stone-800 dark:disabled:text-stone-500"
-              disabled={@uploads.files.entries == []}
+            <.form
+              for={%{}}
+              phx-change="validate_upload"
+              phx-submit="save_upload"
+              class="mb-3 flex flex-col gap-2 border-y border-stone-200/80 py-3 dark:border-stone-800/80 sm:flex-row sm:items-start"
             >
-              <.icon name="hero-arrow-up-tray" class="size-4" /> Upload
-            </button>
-          </.form>
+              <div class="min-w-0 flex-1">
+                <.live_file_input
+                  upload={@uploads.files}
+                  class="block w-full text-sm text-stone-700 file:mr-3 file:rounded-sm file:border-0 file:bg-stone-200 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-stone-800 hover:file:bg-stone-300 dark:text-stone-300 dark:file:bg-stone-800 dark:file:text-stone-200 dark:hover:file:bg-stone-700"
+                />
+                <div :if={@uploads.files.entries != []} class="mt-2 space-y-1">
+                  <div
+                    :for={entry <- @uploads.files.entries}
+                    class="flex min-w-0 items-center gap-2 font-sans text-xs text-stone-500 dark:text-stone-400"
+                  >
+                    <span class="min-w-0 flex-1 truncate">{entry.client_name}</span>
+                    <progress class="h-1 w-20" value={entry.progress} max="100">
+                      {entry.progress}%
+                    </progress>
+                  </div>
+                </div>
+                <p
+                  :for={err <- upload_errors(@uploads.files)}
+                  class="mt-1 text-xs text-rose-700 dark:text-rose-300"
+                >
+                  {upload_error_text(err)}
+                </p>
+              </div>
 
-          <p
-            :if={@file_error}
-            class="border-l-2 border-rose-500 py-2 pl-3 text-sm text-rose-700"
-          >
-            {@file_error}
-          </p>
+              <button
+                type="submit"
+                class="inline-flex h-8 items-center justify-center gap-1.5 rounded-sm bg-stone-950 px-3 font-sans text-xs font-semibold text-stone-50 transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500 dark:bg-stone-50 dark:text-stone-950 dark:hover:bg-stone-300 dark:disabled:bg-stone-800 dark:disabled:text-stone-500"
+                disabled={@uploads.files.entries == []}
+              >
+                <.icon name="hero-arrow-up-tray" class="size-4" /> Upload
+              </button>
+            </.form>
 
-          <ol
-            :if={@files != []}
-            class="divide-y divide-stone-200/80 border-y border-stone-200/80 dark:divide-stone-800/80 dark:border-stone-800/80"
-          >
-            <li :for={file <- @files}>
-              <.file_entry file={file} graph={@files_graph} />
-            </li>
-          </ol>
+            <p
+              :if={@file_error}
+              class="border-l-2 border-rose-500 py-2 pl-3 text-sm text-rose-700"
+            >
+              {@file_error}
+            </p>
 
-          <p
-            :if={@files == [] and is_nil(@file_error)}
-            class="border-y border-stone-200/80 py-3 text-sm text-stone-500 dark:border-stone-800/80 dark:text-stone-400"
-          >
-            No files yet.
-          </p>
-        </section>
+            <ol
+              :if={@files != []}
+              class="divide-y divide-stone-200/80 border-y border-stone-200/80 dark:divide-stone-800/80 dark:border-stone-800/80"
+            >
+              <li :for={file <- @files}>
+                <.file_entry file={file} graph={@files_graph} />
+              </li>
+            </ol>
 
-        <section class="mb-8">
+            <p
+              :if={@files == [] and is_nil(@file_error)}
+              class="border-y border-stone-200/80 py-3 text-sm text-stone-500 dark:border-stone-800/80 dark:text-stone-400"
+            >
+              No files yet.
+            </p>
+          </details>
+
+          <div :if={@documents != []} class="space-y-5">
+            <section :for={{kind, documents} <- grouped_documents(@documents)}>
+              <h2 class="mb-1 font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                {kind_label(kind)}
+              </h2>
+
+              <ul class="divide-y divide-stone-200/80 border-y border-stone-200/80 dark:divide-stone-800/80 dark:border-stone-800/80">
+                <li :for={document <- documents}>
+                  <.document_entry
+                    document={document}
+                    expanded={MapSet.member?(@expanded, document.id)}
+                    toc={Map.get(@tocs, document.id, [])}
+                  />
+                </li>
+              </ul>
+            </section>
+          </div>
+        </div>
+
+        <section class="min-w-0">
           <div class="mb-2 flex items-end justify-between gap-3">
             <div>
               <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
@@ -260,24 +285,6 @@ defmodule SheafWeb.DocumentIndexLive do
             No research notes yet.
           </p>
         </section>
-
-        <div :if={@documents != []} class="space-y-5">
-          <section :for={{kind, documents} <- grouped_documents(@documents)}>
-            <h2 class="mb-1 font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-              {kind_label(kind)}
-            </h2>
-
-            <ul class="divide-y divide-stone-200/80 border-y border-stone-200/80 dark:divide-stone-800/80 dark:border-stone-800/80">
-              <li :for={document <- documents}>
-                <.document_entry
-                  document={document}
-                  expanded={MapSet.member?(@expanded, document.id)}
-                  toc={Map.get(@tocs, document.id, [])}
-                />
-              </li>
-            </ul>
-          </section>
-        </div>
       </div>
     </main>
     """
