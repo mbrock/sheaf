@@ -13,6 +13,16 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
   @default_output_dir "var/datalab"
   @default_await_interval 5_000
   @execution_page_size 100
+  @imported_sources_query """
+  PREFIX sheaf: <https://less.rest/sheaf/>
+
+  SELECT ?file WHERE {
+    GRAPH ?doc {
+      ?doc a sheaf:Document ;
+        sheaf:sourceFile ?file .
+    }
+  }
+  """
 
   @impl Mix.Task
   def run(args) do
@@ -400,6 +410,8 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
             %{stats | errors: stats.errors + 1}
 
           true ->
+            Mix.shell().info(import_metadata_line(file_job))
+
             case Sheaf.PDF.import_file(file_job.output_path,
                    source_file_iri: file_job.source_file
                  ) do
@@ -425,6 +437,58 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     end)
   end
 
+  defp import_metadata_line(file_job) do
+    metadata = datalab_metadata(file_job.output_path)
+
+    [
+      "importing #{file_job.output_path}",
+      "source=#{source_file_label(file_job.source_file)}",
+      metadata_summary(metadata)
+    ]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join("  ")
+  end
+
+  defp datalab_metadata(path) do
+    with {:ok, bytes} <- File.read(path),
+         {:ok, %{"metadata" => metadata}} when is_map(metadata) <- Jason.decode(bytes) do
+      metadata
+    else
+      _ -> %{}
+    end
+  end
+
+  defp metadata_summary(metadata) do
+    page_stats = Map.get(metadata, "page_stats", [])
+    title = metadata |> Map.get("title") |> present_string()
+
+    fields = [
+      title && "title=#{inspect(title)}",
+      is_list(page_stats) && "pages=#{length(page_stats)}",
+      is_list(page_stats) && "blocks=#{page_block_count(page_stats)}"
+    ]
+
+    case Enum.reject(fields, &is_nil/1) do
+      [] -> "metadata={}"
+      fields -> Enum.join(fields, " ")
+    end
+  end
+
+  defp page_block_count(page_stats) do
+    Enum.reduce(page_stats, 0, fn
+      %{"num_blocks" => count}, total when is_integer(count) -> total + count
+      _page, total -> total
+    end)
+  end
+
+  defp source_file_label(source_file) do
+    source_file
+    |> file_description()
+    |> file_name()
+  rescue
+    _ -> to_string(source_file)
+  end
+
   defp import_jobs(opts) do
     case Keyword.get(opts, :job) do
       nil ->
@@ -437,11 +501,12 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
   end
 
   defp imported_source_files do
-    with {:ok, graph} <- Files.list_graph() do
+    with {:ok, result} <- Sheaf.select(@imported_sources_query) do
       source_files =
-        graph
-        |> RDF.Data.descriptions()
-        |> Enum.flat_map(&Description.get(&1, DOC.sourceFile(), []))
+        result.results
+        |> Enum.map(&Map.fetch!(&1, "file"))
+        |> Enum.map(&RDF.Term.value/1)
+        |> Enum.map(&RDF.iri/1)
         |> MapSet.new()
 
       {:ok, source_files}
@@ -529,6 +594,13 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
       term -> RDF.Term.value(term)
     end
   end
+
+  defp present_string(value) when is_binary(value) do
+    value = String.trim(value)
+    if value == "", do: nil, else: value
+  end
+
+  defp present_string(_value), do: nil
 
   defp output_format(opts), do: Keyword.get(opts, :output_format, "json")
 
