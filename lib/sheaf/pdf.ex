@@ -216,17 +216,5 @@ defmodule Sheaf.PDF do
     title
   end
 
-  defp title(document) do
-    document
-    |> DatalabDocument.document_blocks()
-    |> DatalabDocument.section_blocks()
-    |> Enum.find_value("Untitled paper", fn section ->
-      section.block
-      |> DatalabDocument.block_title()
-      |> case do
-        "" -> nil
-        title -> title
-      end
-    end)
-  end
+  defp title(_document), do: nil
 end

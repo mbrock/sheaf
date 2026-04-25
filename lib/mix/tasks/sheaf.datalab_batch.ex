@@ -29,7 +29,8 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
           output_dir: :string,
           output_format: :string,
           await: :boolean,
-          await_interval: :integer
+          await_interval: :integer,
+          dry_run: :boolean
         ]
       )
 
@@ -43,17 +44,22 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
       command == "poll" ->
         poll(opts)
 
+      command == "import" ->
+        import_results(opts)
+
       command == "status" ->
         status(opts)
 
       true ->
         Mix.raise(
-          "Usage: mix sheaf.datalab_batch {submit|poll|status} [--job IRI] [--limit N] [--await]"
+          "Usage: mix sheaf.datalab_batch {submit|poll|import|status} [--job IRI] [--limit N] [--await]"
         )
     end
   end
 
-  defp command([command | rest]) when command in ~w(submit poll status), do: {command, rest}
+  defp command([command | rest]) when command in ~w(submit poll import status),
+    do: {command, rest}
+
   defp command(args), do: {"status", args}
 
   defp submit(opts) do
@@ -347,6 +353,98 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
 
       job_iri ->
         print_job(require_job(Keyword.put(opts, :job, job_iri)))
+    end
+  end
+
+  defp import_results(opts) do
+    jobs = import_jobs(opts)
+    {:ok, imported_sources} = imported_source_files()
+
+    all_completed =
+      jobs
+      |> Enum.flat_map(fn job ->
+        job.file_jobs
+        |> Enum.filter(&DatalabJobs.completed?/1)
+        |> Enum.map(&{job, &1})
+      end)
+
+    importable =
+      all_completed
+      |> Enum.reject(fn {_job, file_job} ->
+        MapSet.member?(imported_sources, file_job.source_file)
+      end)
+
+    candidates = maybe_limit(importable, Keyword.get(opts, :limit))
+    already_imported = length(all_completed) - length(importable)
+    limited = length(importable) - length(candidates)
+
+    Mix.shell().info(
+      "Importing #{length(candidates)} completed Datalab outputs; #{already_imported} already imported, #{limited} limited."
+    )
+
+    candidates
+    |> Enum.reduce(
+      %{imported: 0, errors: 0, already_imported: already_imported, limited: limited},
+      fn {job, file_job}, stats ->
+        cond do
+          opts[:dry_run] ->
+            Mix.shell().info("would import #{file_job.output_path} from #{file_job.source_file}")
+            stats
+
+          not is_binary(file_job.output_path) ->
+            Mix.shell().error("ERROR #{file_job.iri}: missing output path")
+            %{stats | errors: stats.errors + 1}
+
+          not File.exists?(file_job.output_path) ->
+            Mix.shell().error("ERROR #{file_job.output_path}: output file does not exist")
+            %{stats | errors: stats.errors + 1}
+
+          true ->
+            case Sheaf.PDF.import_file(file_job.output_path,
+                   source_file_iri: file_job.source_file
+                 ) do
+              {:ok, result} ->
+                id = Sheaf.Id.id_from_iri(result.document)
+                Mix.shell().info("imported /#{id} #{result.title || "(no title)"}")
+                %{stats | imported: stats.imported + 1}
+
+              {:error, reason} ->
+                Mix.shell().error("ERROR #{job.iri} #{file_job.output_path}: #{inspect(reason)}")
+
+                %{stats | errors: stats.errors + 1}
+            end
+        end
+      end
+    )
+    |> then(fn stats ->
+      Mix.shell().info(
+        "Done. Imported #{stats.imported}, already imported #{stats.already_imported}, limited #{stats.limited}, errors #{stats.errors}."
+      )
+
+      if stats.errors > 0, do: Mix.raise("Some Datalab outputs failed to import.")
+    end)
+  end
+
+  defp import_jobs(opts) do
+    case Keyword.get(opts, :job) do
+      nil ->
+        {:ok, jobs} = DatalabJobs.list_jobs()
+        jobs
+
+      _job_iri ->
+        [require_job(opts)]
+    end
+  end
+
+  defp imported_source_files do
+    with {:ok, graph} <- Files.list_graph() do
+      source_files =
+        graph
+        |> RDF.Data.descriptions()
+        |> Enum.flat_map(&Description.get(&1, DOC.sourceFile(), []))
+        |> MapSet.new()
+
+      {:ok, source_files}
     end
   end
 

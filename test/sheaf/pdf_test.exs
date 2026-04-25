@@ -134,6 +134,52 @@ defmodule Sheaf.PDFTest do
     assert RDF.Data.include?(result.graph, {result.document, DOC.sourceFile(), file})
   end
 
+  test "does not invent a title when the extracted document has none" do
+    document = %{"children" => [], "metadata" => %{}}
+
+    result =
+      PDF.build_graph(document,
+        source_file_iri: RDF.IRI.new!("https://example.com/sheaf/FILE111"),
+        mint: mint(~w(DOC111))
+      )
+
+    description = Graph.description(result.graph, result.document)
+
+    assert result.title == nil
+    refute Description.include?(description, {RDF.NS.RDFS.label(), "Untitled paper"})
+    refute Description.first(description, RDF.NS.RDFS.label())
+  end
+
+  test "does not use section headings as document titles" do
+    document = %{
+      "children" => [
+        %{
+          "children" => [
+            %{
+              "block_type" => "SectionHeader",
+              "html" => "<h1>Looks Like A Title</h1>",
+              "id" => "/page/0/SectionHeader/0",
+              "page" => 0,
+              "section_hierarchy" => %{}
+            }
+          ]
+        }
+      ],
+      "metadata" => %{}
+    }
+
+    result =
+      PDF.build_graph(document,
+        source_file_iri: RDF.IRI.new!("https://example.com/sheaf/FILE111"),
+        mint: mint(~w(DOC111 SEC111 LST111))
+      )
+
+    description = Graph.description(result.graph, result.document)
+
+    assert result.title == nil
+    refute Description.first(description, RDF.NS.RDFS.label())
+  end
+
   defp rdf_value(%Description{} = description, property) do
     description
     |> Description.first(property)
