@@ -2,10 +2,10 @@ defmodule Sheaf.MetadataResolver do
   @moduledoc """
   Resolves bibliographic metadata for stored documents.
 
-  The resolver is deliberately conservative: it uses the document's
-  `sheaf:sourceFile` link to find the original stored PDF, asks the LLM for a
-  DOI from that PDF, and only writes DOI-backed Crossref metadata. It does not
-  invent document labels or write LLM-only title facts.
+  The resolver is deliberately conservative: it uses bounded bibliographic text
+  from the stored document graph first, optionally falls back to the first few
+  PDF pages, and only writes Crossref-backed metadata. It does not invent
+  document labels or write LLM-only title facts.
   """
 
   alias RDF.Description
@@ -49,15 +49,16 @@ defmodule Sheaf.MetadataResolver do
   end
 
   @doc """
-  Resolves one candidate by extracting metadata from the source PDF.
+  Resolves one candidate by extracting metadata from bounded document text.
 
-  If the LLM does not find a DOI, this returns successfully with `wrote?: false`.
+  If no DOI/ISBN is found, this returns successfully with `wrote?: false`.
+  Set `pdf_fallback: true` to try the first few PDF pages after text extraction.
   The only RDF write path is `Sheaf.Crossref.import_metadata/2`.
   """
   @spec resolve(candidate(), keyword()) :: {:ok, resolve_result()} | {:error, term()}
   def resolve(%{path: path} = candidate, opts \\ []) when is_binary(path) do
     with true <- File.exists?(path) || {:error, {:missing_blob, path}},
-         {:ok, metadata} <- Sheaf.PaperMetadata.extract_pdf(path, llm_opts(opts)) do
+         {:ok, metadata} <- extract_metadata(candidate, opts) do
       resolve_metadata(candidate, metadata, opts)
     end
   end
@@ -227,6 +228,29 @@ defmodule Sheaf.MetadataResolver do
 
   defp crossref_lookup_opts(opts), do: Keyword.take(opts, [:base_url, :req_options])
 
+  defp extract_metadata(candidate, opts) do
+    extract_metadata = Keyword.get(opts, :extract_metadata, &default_extract_metadata/2)
+    extract_metadata.(candidate, opts)
+  end
+
+  defp default_extract_metadata(candidate, opts) do
+    metadata_opts = llm_opts(opts)
+
+    with {:ok, metadata} <-
+           Sheaf.PaperMetadata.extract_document(candidate.document, metadata_opts) do
+      if missing_identifiers?(metadata) and Keyword.get(opts, :pdf_fallback, false) do
+        candidate.path
+        |> Sheaf.PaperMetadata.extract_pdf_pages(
+          Keyword.put(metadata_opts, :pages, Keyword.get(opts, :pdf_pages, 3))
+        )
+      else
+        {:ok, metadata}
+      end
+    end
+  end
+
+  defp missing_identifiers?(metadata), do: is_nil(metadata.doi) and is_nil(metadata.isbn)
+
   defp llm_opts(opts) do
     opts
     |> Keyword.take([
@@ -237,7 +261,12 @@ defmodule Sheaf.MetadataResolver do
       :receive_timeout,
       :provider_options,
       :llm_options,
-      :generate_object
+      :generate_object,
+      :chars,
+      :first_pages,
+      :last_pages,
+      :first_chunks,
+      :last_chunks
     ])
   end
 

@@ -16,6 +16,8 @@ defmodule Mix.Tasks.Sheaf.Tasks.Work do
         strict: [
           limit: :integer,
           telegram: :boolean,
+          pdf_fallback: :boolean,
+          pdf_pages: :integer,
           model: :string,
           receive_timeout: :integer
         ]
@@ -28,6 +30,8 @@ defmodule Mix.Tasks.Sheaf.Tasks.Work do
       []
       |> Keyword.put(:limit, opts[:limit] || 1)
       |> Keyword.put(:telegram, opts[:telegram] || false)
+      |> put_opt(:pdf_fallback, opts[:pdf_fallback])
+      |> put_opt(:pdf_pages, opts[:pdf_pages])
       |> put_opt(:model, opts[:model])
       |> put_opt(:receive_timeout, opts[:receive_timeout])
 

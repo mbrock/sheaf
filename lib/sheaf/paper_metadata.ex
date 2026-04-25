@@ -8,6 +8,9 @@ defmodule Sheaf.PaperMetadata do
 
   alias RDF.Graph
 
+  @default_model "google:gemini-3.1-flash-lite-preview"
+  @default_max_tokens 4_096
+  @default_receive_timeout 120_000
   @default_text_chars 80_000
 
   @type t :: %__MODULE__{
@@ -41,7 +44,7 @@ defmodule Sheaf.PaperMetadata do
     :source_filename,
     :usage,
     authors: [],
-    model: Sheaf.LLM.default_model()
+    model: @default_model
   ]
 
   @doc """
@@ -50,10 +53,23 @@ defmodule Sheaf.PaperMetadata do
   Options:
 
     * LLM request options accepted by `Sheaf.LLM.generate_object/3`.
+    * `:pages` - number of first pages to include when using `extract_pdf_pages/2`.
   """
   @spec extract_pdf(Path.t(), keyword()) :: {:ok, t()} | {:error, term()}
   def extract_pdf(path, opts \\ []) when is_binary(path) do
     with {:ok, pdf} <- File.read(path) do
+      extract_pdf_binary(pdf, Path.basename(path), opts)
+    end
+  end
+
+  @doc """
+  Extracts metadata from the first pages of a local PDF.
+  """
+  @spec extract_pdf_pages(Path.t(), keyword()) :: {:ok, t()} | {:error, term()}
+  def extract_pdf_pages(path, opts \\ []) when is_binary(path) do
+    pages = Keyword.get(opts, :pages, 3)
+
+    with {:ok, pdf} <- first_pages_pdf(path, pages) do
       extract_pdf_binary(pdf, Path.basename(path), opts)
     end
   end
@@ -136,7 +152,7 @@ defmodule Sheaf.PaperMetadata do
   end
 
   @doc false
-  def default_model, do: Sheaf.LLM.default_model()
+  def default_model, do: @default_model
 
   @doc false
   def prompt, do: prompt(:pdf)
@@ -214,6 +230,12 @@ defmodule Sheaf.PaperMetadata do
   end
 
   defp extract_message(message, opts) do
+    opts =
+      opts
+      |> Keyword.put_new(:model, @default_model)
+      |> Keyword.put_new(:max_tokens, @default_max_tokens)
+      |> Keyword.put_new(:receive_timeout, @default_receive_timeout)
+
     case Sheaf.LLM.generate_object(message, schema(), opts) do
       {:ok, result} ->
         {:ok,
@@ -227,6 +249,71 @@ defmodule Sheaf.PaperMetadata do
         if reason == :missing_object,
           do: {:error, :missing_metadata_object},
           else: {:error, reason}
+    end
+  end
+
+  defp first_pages_pdf(path, pages) when is_integer(pages) and pages > 0 do
+    with pdfseparate when is_binary(pdfseparate) <- System.find_executable("pdfseparate"),
+         pdfunite when is_binary(pdfunite) <- System.find_executable("pdfunite") do
+      with_tmp_dir(fn dir ->
+        page_pattern = Path.join(dir, "page-%d.pdf")
+
+        case System.cmd(
+               pdfseparate,
+               ["-f", "1", "-l", Integer.to_string(pages), path, page_pattern],
+               stderr_to_stdout: true
+             ) do
+          {_output, 0} ->
+            page_paths =
+              dir
+              |> Path.join("page-*.pdf")
+              |> Path.wildcard()
+              |> Enum.sort_by(&page_number/1)
+
+            unite_pages(pdfunite, page_paths, dir)
+
+          {output, status} ->
+            {:error, {:pdfseparate_failed, status, output}}
+        end
+      end)
+    else
+      _ -> {:error, :missing_pdf_page_tools}
+    end
+  end
+
+  defp first_pages_pdf(_path, _pages), do: {:error, :invalid_page_count}
+
+  defp unite_pages(_pdfunite, [], _dir), do: {:error, :no_pdf_pages_extracted}
+
+  defp unite_pages(pdfunite, page_paths, dir) do
+    output_path = Path.join(dir, "excerpt.pdf")
+
+    case System.cmd(pdfunite, page_paths ++ [output_path], stderr_to_stdout: true) do
+      {_output, 0} -> File.read(output_path)
+      {output, status} -> {:error, {:pdfunite_failed, status, output}}
+    end
+  end
+
+  defp with_tmp_dir(fun) do
+    dir = Path.join(System.tmp_dir!(), "sheaf-pdf-pages-#{System.unique_integer([:positive])}")
+
+    with :ok <- File.mkdir_p(dir) do
+      try do
+        fun.(dir)
+      after
+        File.rm_rf(dir)
+      end
+    end
+  end
+
+  defp page_number(path) do
+    path
+    |> Path.basename(".pdf")
+    |> String.replace_prefix("page-", "")
+    |> Integer.parse()
+    |> case do
+      {number, ""} -> number
+      _ -> 0
     end
   end
 

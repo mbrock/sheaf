@@ -51,4 +51,40 @@ defmodule Sheaf.MetadataResolverTest do
     assert candidate.path =~ "priv/blobs/sha256/7e/d3/"
     assert candidate.path =~ "#{hash}.pdf"
   end
+
+  test "resolver uses injected metadata extraction before Crossref matching" do
+    path = Path.join(System.tmp_dir!(), "sheaf-metadata-resolver.pdf")
+    File.write!(path, "%PDF")
+
+    candidate = %{
+      document: RDF.IRI.new!("https://sheaf.less.rest/DOC1"),
+      file: RDF.IRI.new!("https://sheaf.less.rest/FILE1"),
+      path: path
+    }
+
+    test_pid = self()
+
+    extract_metadata = fn seen_candidate, opts ->
+      send(test_pid, {:extract_metadata, seen_candidate.document, opts[:pdf_fallback]})
+
+      {:ok,
+       Sheaf.PaperMetadata.normalize_object(%{
+         "title" => "No Identifier Yet",
+         "authors" => [],
+         "doi" => "",
+         "isbn" => ""
+       })}
+    end
+
+    assert {:ok, %{wrote?: false, match: %{reason: "no DOI or ISBN found"}}} =
+             MetadataResolver.resolve(candidate,
+               pdf_fallback: false,
+               extract_metadata: extract_metadata
+             )
+
+    assert_receive {:extract_metadata, %RDF.IRI{} = document, false}
+    assert to_string(document) == "https://sheaf.less.rest/DOC1"
+  after
+    File.rm(Path.join(System.tmp_dir!(), "sheaf-metadata-resolver.pdf"))
+  end
 end

@@ -24,6 +24,8 @@ defmodule Mix.Tasks.Sheaf.Metadata.Resolve do
           missing_only: :boolean,
           limit: :integer,
           doc: :string,
+          pdf_fallback: :boolean,
+          pdf_pages: :integer,
           model: :string,
           receive_timeout: :integer
         ]
@@ -119,6 +121,8 @@ defmodule Mix.Tasks.Sheaf.Metadata.Resolve do
     |> Keyword.put(:missing_only, missing_only?(opts))
     |> put_opt(:limit, opts[:limit])
     |> put_opt(:document, opts[:doc])
+    |> put_opt(:pdf_fallback, opts[:pdf_fallback])
+    |> put_opt(:pdf_pages, opts[:pdf_pages])
     |> put_opt(:model, opts[:model])
     |> put_opt(:receive_timeout, opts[:receive_timeout])
   end

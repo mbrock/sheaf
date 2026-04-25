@@ -53,14 +53,9 @@ defmodule Sheaf.PaperMetadataTest do
     assert Keyword.has_key?(schema, :title)
     assert Keyword.has_key?(schema, :authors)
     refute Keyword.has_key?(opts, :temperature)
-    assert opts[:max_tokens] == 65_536
-
-    assert opts[:provider_options][:thinking] == %{
-             type: "adaptive",
-             display: "omitted"
-           }
-
-    assert opts[:receive_timeout] == 300_000
+    assert opts[:max_tokens] == 4_096
+    assert opts[:provider_options] == []
+    assert opts[:receive_timeout] == 120_000
 
     assert [file_part, prompt_part] = message.content
     assert file_part.type == :file
