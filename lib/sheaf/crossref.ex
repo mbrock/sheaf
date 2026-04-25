@@ -1,6 +1,6 @@
 defmodule Sheaf.Crossref do
   @moduledoc """
-  Small Crossref client for DOI metadata.
+  Small Crossref client for DOI and ISBN metadata.
   """
 
   alias RDF.Description
@@ -22,6 +22,22 @@ defmodule Sheaf.Crossref do
     with {:ok, %{"message" => work}} <-
            get("/works/#{encoded_doi(doi)}", @json_media_type, opts) do
       {:ok, work}
+    end
+  end
+
+  @doc """
+  Searches Crossref works by ISBN.
+  """
+  @spec works_by_isbn(String.t(), keyword()) :: response()
+  def works_by_isbn(isbn, opts \\ []) when is_binary(isbn) do
+    rows = Keyword.get(opts, :rows, 5)
+
+    with {:ok, %{"message" => %{"items" => items}}} <-
+           get("/works", @json_media_type, opts,
+             filter: "isbn:#{normalized_isbn(isbn)}",
+             rows: rows
+           ) do
+      {:ok, items}
     end
   end
 
@@ -101,9 +117,9 @@ defmodule Sheaf.Crossref do
     |> RDF.Graph.add(local_metadata(expression, crossref_graph, crossref_work, doi, opts))
   end
 
-  defp get(path, accept, opts) do
+  defp get(path, accept, opts, params \\ []) do
     client(opts)
-    |> Req.get(url: path, headers: [accept: accept])
+    |> Req.get(url: path, headers: [accept: accept], params: params)
     |> handle_response()
   end
 
@@ -367,6 +383,12 @@ defmodule Sheaf.Crossref do
   defp normalized_doi(doi), do: String.trim(doi)
 
   defp encoded_doi(doi), do: doi |> normalized_doi() |> URI.encode_www_form()
+
+  defp normalized_isbn(isbn) do
+    isbn
+    |> String.upcase()
+    |> String.replace(~r/[^0-9X]/, "")
+  end
 
   defp statement_count(graph), do: RDF.Data.statement_count(graph)
 end

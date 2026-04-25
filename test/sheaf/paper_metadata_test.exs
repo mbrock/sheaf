@@ -21,6 +21,7 @@ defmodule Sheaf.PaperMetadataTest do
            "title" => "After Practice?",
            "authors" => ["David M. Evans", ""],
            "doi" => "https://doi.org/10.1177/1749975520923521.",
+           "isbn" => "ISBN 978-1-4522-6015-1",
            "year" => "2020",
            "publication" => "Cultural Sociology",
            "volume" => "14",
@@ -39,6 +40,7 @@ defmodule Sheaf.PaperMetadataTest do
     assert metadata.title == "After Practice?"
     assert metadata.authors == ["David M. Evans"]
     assert metadata.doi == "10.1177/1749975520923521"
+    assert metadata.isbn == "9781452260151"
     assert metadata.publication == "Cultural Sociology"
     assert metadata.model == PaperMetadata.default_model()
     assert metadata.source_filename == "sheaf-paper-metadata-test.pdf"
@@ -47,6 +49,7 @@ defmodule Sheaf.PaperMetadataTest do
     assert_receive {:request, model, %Message{} = message, schema, opts}
     assert model == PaperMetadata.default_model()
     assert Keyword.has_key?(schema, :doi)
+    assert Keyword.has_key?(schema, :isbn)
     assert Keyword.has_key?(schema, :title)
     assert Keyword.has_key?(schema, :authors)
     refute Keyword.has_key?(opts, :temperature)

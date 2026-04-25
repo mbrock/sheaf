@@ -14,6 +14,7 @@ defmodule Sheaf.PaperMetadata do
           title: String.t() | nil,
           authors: [String.t()],
           doi: String.t() | nil,
+          isbn: String.t() | nil,
           year: String.t() | nil,
           publication: String.t() | nil,
           volume: String.t() | nil,
@@ -29,6 +30,7 @@ defmodule Sheaf.PaperMetadata do
   defstruct [
     :title,
     :doi,
+    :isbn,
     :year,
     :publication,
     :volume,
@@ -146,10 +148,13 @@ defmodule Sheaf.PaperMetadata do
 
     Rules:
     - Prefer information visible in the PDF.
-    - Pay special attention to DOI metadata, first-page citation information, headers, and footers.
+    - Pay special attention to DOI and ISBN metadata, first-page citation information, headers, and footers.
     - Normalize DOI as lowercase without a leading https://doi.org/.
+    - Normalize ISBN as digits only, preserving a final X for ISBN-10 when present.
     - Leave DOI as an empty string if no DOI is visible or strongly inferable from the document itself.
+    - Leave ISBN as an empty string if no ISBN is visible for this document's own book, chapter, or proceedings container.
     - If multiple DOIs appear only in references, do not return a reference DOI as the paper DOI.
+    - If multiple ISBNs appear only in references, do not return a reference ISBN.
     - Return only the fields in the schema.
     """
   end
@@ -160,10 +165,13 @@ defmodule Sheaf.PaperMetadata do
 
     Rules:
     - Prefer information visible in the provided text.
-    - Pay special attention to DOI metadata, first-page citation information, headers, and footers.
+    - Pay special attention to DOI and ISBN metadata, first-page citation information, headers, and footers.
     - Normalize DOI as lowercase without a leading https://doi.org/.
+    - Normalize ISBN as digits only, preserving a final X for ISBN-10 when present.
     - Leave DOI as an empty string if no DOI is visible or strongly inferable from the document text.
+    - Leave ISBN as an empty string if no ISBN is visible for this document's own book, chapter, or proceedings container.
     - If multiple DOIs appear only in references, do not return a reference DOI as the paper DOI.
+    - If multiple ISBNs appear only in references, do not return a reference ISBN.
     - Return only the fields in the schema.
     """
   end
@@ -174,6 +182,7 @@ defmodule Sheaf.PaperMetadata do
       title: [type: :string, required: true],
       authors: [type: {:list, :string}, required: true],
       doi: [type: :string, required: true],
+      isbn: [type: :string, required: true],
       year: [type: :string, required: true],
       publication: [type: :string, required: true],
       volume: [type: :string, required: true],
@@ -190,6 +199,7 @@ defmodule Sheaf.PaperMetadata do
       title: string_value(object, :title),
       authors: string_list_value(object, :authors),
       doi: normalize_doi(value(object, :doi)),
+      isbn: normalize_isbn(value(object, :isbn)),
       year: string_value(object, :year),
       publication: string_value(object, :publication),
       volume: string_value(object, :volume),
@@ -302,6 +312,26 @@ defmodule Sheaf.PaperMetadata do
         |> String.trim_trailing(":")
         |> String.downcase()
         |> string_value()
+    end
+  end
+
+  defp normalize_isbn(nil), do: nil
+
+  defp normalize_isbn(value) do
+    value
+    |> string_value()
+    |> case do
+      nil ->
+        nil
+
+      isbn ->
+        isbn =
+          isbn
+          |> String.replace(~r/\Aisbn(?:-1[03])?:?\s*/i, "")
+          |> String.upcase()
+          |> String.replace(~r/[^0-9X]/, "")
+
+        if String.length(isbn) in [10, 13], do: isbn, else: nil
     end
   end
 end

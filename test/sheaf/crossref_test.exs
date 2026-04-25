@@ -52,6 +52,34 @@ defmodule Sheaf.CrossrefTest do
     assert turtle =~ "After Practice?"
   end
 
+  test "searches Crossref works by ISBN" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/works"
+      assert Plug.Conn.Query.decode(conn.query_string)["filter"] == "isbn:9781452260151"
+      assert Plug.Conn.Query.decode(conn.query_string)["rows"] == "2"
+
+      Req.Test.json(conn, %{
+        "message" => %{
+          "items" => [
+            %{
+              "DOI" => "10.1000/chapter",
+              "ISBN" => ["9781452260151"],
+              "title" => ["A Book Chapter"],
+              "type" => "book-chapter"
+            }
+          ]
+        }
+      })
+    end)
+
+    assert {:ok, [%{"DOI" => "10.1000/chapter", "type" => "book-chapter"}]} =
+             Crossref.works_by_isbn("978-1-4522-6015-1",
+               rows: 2,
+               req_options: [plug: {Req.Test, __MODULE__}]
+             )
+  end
+
   test "parses Crossref Turtle into an RDF graph" do
     Req.Test.expect(__MODULE__, fn conn ->
       conn
