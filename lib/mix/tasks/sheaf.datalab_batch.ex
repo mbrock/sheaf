@@ -114,6 +114,9 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     Mix.shell().info("Checking #{length(submitted)} active Datalab executions...")
 
     with {:ok, executions} <- execution_index(submitted, opts) do
+      remote_stats = remote_stats(submitted, executions)
+      Mix.shell().info(remote_stats_line(remote_stats))
+
       stats =
         Enum.reduce(submitted, %{completed: 0, failed: 0, running: 0, errors: 0}, fn file_job,
                                                                                      stats ->
@@ -144,6 +147,32 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
           }
         )
     end
+  end
+
+  defp remote_stats(file_jobs, executions) do
+    Enum.reduce(file_jobs, %{ready: 0, failed: 0, running: 0, unknown: 0}, fn file_job, counts ->
+      case Map.fetch(executions, file_job.execution_id) do
+        {:ok, body} ->
+          case Datalab.status(body) do
+            {:ok, status} ->
+              cond do
+                Datalab.complete_status?(status) -> %{counts | ready: counts.ready + 1}
+                Datalab.failed_status?(status) -> %{counts | failed: counts.failed + 1}
+                true -> %{counts | running: counts.running + 1}
+              end
+
+            {:error, _reason} ->
+              %{counts | unknown: counts.unknown + 1}
+          end
+
+        :error ->
+          %{counts | unknown: counts.unknown + 1}
+      end
+    end)
+  end
+
+  defp remote_stats_line(stats) do
+    "Datalab: #{stats.ready} ready, #{stats.running} running, #{stats.failed} failed, #{stats.unknown} unknown"
   end
 
   defp print_job_progress(job_iri, opts) do
@@ -272,6 +301,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     with {:ok, status} <- Datalab.status(body) do
       cond do
         Datalab.complete_status?(status) ->
+          Mix.shell().info("Saving #{file_job.execution_id}...")
           complete_file_job(job, file_job, output_dir, stats)
 
         Datalab.failed_status?(status) ->
