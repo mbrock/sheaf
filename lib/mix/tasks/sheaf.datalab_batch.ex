@@ -11,7 +11,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
 
   @shortdoc "Manages RDF-backed Datalab batch jobs"
   @default_output_dir "var/datalab"
-  @default_await_interval 30_000
+  @default_await_interval 5_000
   @execution_page_size 100
 
   @impl Mix.Task
