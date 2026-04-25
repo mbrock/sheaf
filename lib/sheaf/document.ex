@@ -14,9 +14,9 @@ defmodule Sheaf.Document do
 
   @doi_pattern ~r/\b10\.\d{4,9}\/[-._;()\/:A-Z0-9]+/i
   @default_first_pages 5
-  @default_last_pages 5
+  @default_last_pages 0
   @default_first_chunks 40
-  @default_last_chunks 20
+  @default_last_chunks 0
   @default_sample_chars 80_000
 
   def id(iri), do: Id.id_from_iri(iri)
@@ -80,9 +80,9 @@ defmodule Sheaf.Document do
   @doc """
   Returns a bounded text sample for bibliographic metadata extraction.
 
-  When source pages are available, this samples the first and last pages. For
-  documents without page numbers, it falls back to the first and last text
-  chunks. The final text is capped by `:chars`.
+  When source pages are available, this samples the first pages. For documents
+  without page numbers, it falls back to the first text chunks. The final text
+  is capped by `:chars`.
   """
   def bibliographic_text(document_iri, opts \\ []) do
     document_iri = RDF.iri(document_iri)
@@ -275,7 +275,7 @@ defmodule Sheaf.Document do
 
       chunks
       |> Enum.take(first_chunks)
-      |> Kernel.++(Enum.take(chunks, -last_chunks))
+      |> Kernel.++(take_last(chunks, last_chunks))
       |> Enum.uniq_by(& &1.iri)
     else
       first_pages = Keyword.get(opts, :first_pages, @default_first_pages)
@@ -285,12 +285,21 @@ defmodule Sheaf.Document do
       last_page = Enum.max(pages)
 
       first_page_set = MapSet.new(first_page..(first_page + max(first_pages - 1, 0)))
-      last_page_set = MapSet.new(max(first_page, last_page - max(last_pages - 1, 0))..last_page)
+
+      last_page_set =
+        page_range_set(max(first_page, last_page - max(last_pages - 1, 0)), last_page, last_pages)
+
       selected_pages = MapSet.union(first_page_set, last_page_set)
 
       Enum.filter(page_chunks, &MapSet.member?(selected_pages, &1.source_page))
     end
   end
+
+  defp take_last(_chunks, count) when count in [nil, 0], do: []
+  defp take_last(chunks, count), do: Enum.take(chunks, -count)
+
+  defp page_range_set(_first, _last, count) when count in [nil, 0], do: MapSet.new()
+  defp page_range_set(first, last, _count), do: MapSet.new(first..last)
 
   defp active_paragraph_iri(%Graph{} = graph, iri) do
     graph

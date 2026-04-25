@@ -142,7 +142,7 @@ defmodule Sheaf.DocumentTest do
     assert Document.doi_candidates(graph, paper, chars: 200) == ["10.1177/1749975520923521"]
   end
 
-  test "samples first and last source pages for bibliographic text and DOI candidates" do
+  test "samples first source pages for bibliographic text and only includes last pages when requested" do
     paper = RDF.IRI.new!("https://example.com/sheaf/PAPER1")
     root_list = RDF.IRI.new!("https://example.com/sheaf/LSTROOT")
 
@@ -173,15 +173,20 @@ defmodule Sheaf.DocumentTest do
         RDF.list(blocks, graph: graph, head: root_list).graph
       end)
 
+    assert Document.bibliographic_text(graph, paper, first_pages: 2) ==
+             "Page 1\n\nPage 2"
+
     assert Document.bibliographic_text(graph, paper, first_pages: 2, last_pages: 2) ==
              "Page 1\n\nPage 2\n\nPage 9\n\nPage 10 DOI 10.1000/LAST."
+
+    assert Document.doi_candidates(graph, paper, first_pages: 1) == []
 
     assert Document.doi_candidates(graph, paper, first_pages: 1, last_pages: 1) == [
              "10.1000/last"
            ]
   end
 
-  test "samples first and last chunks when source pages are absent" do
+  test "samples first chunks when source pages are absent and only includes last chunks when requested" do
     paper = RDF.IRI.new!("https://example.com/sheaf/PAPER1")
     root_list = RDF.IRI.new!("https://example.com/sheaf/LSTROOT")
 
@@ -208,6 +213,9 @@ defmodule Sheaf.DocumentTest do
       |> then(fn graph ->
         RDF.list(blocks, graph: graph, head: root_list).graph
       end)
+
+    assert Document.bibliographic_text(graph, paper, first_chunks: 2) ==
+             "Chunk 1\n\nChunk 2"
 
     assert Document.bibliographic_text(graph, paper, first_chunks: 2, last_chunks: 2) ==
              "Chunk 1\n\nChunk 2\n\nChunk 4\n\nChunk 5"
