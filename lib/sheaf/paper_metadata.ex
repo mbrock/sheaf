@@ -256,6 +256,7 @@ defmodule Sheaf.PaperMetadata do
     with pdfseparate when is_binary(pdfseparate) <- System.find_executable("pdfseparate"),
          pdfunite when is_binary(pdfunite) <- System.find_executable("pdfunite") do
       with_tmp_dir(fn dir ->
+        pages = min(pages, pdf_page_count(path) || pages)
         page_pattern = Path.join(dir, "page-%d.pdf")
 
         case System.cmd(
@@ -282,6 +283,27 @@ defmodule Sheaf.PaperMetadata do
   end
 
   defp first_pages_pdf(_path, _pages), do: {:error, :invalid_page_count}
+
+  defp pdf_page_count(path) do
+    with pdfinfo when is_binary(pdfinfo) <- System.find_executable("pdfinfo"),
+         {output, 0} <- System.cmd(pdfinfo, [path], stderr_to_stdout: true),
+         ["Pages:", pages | _rest] <-
+           output
+           |> String.split("\n")
+           |> Enum.find_value(fn line ->
+             line
+             |> String.split(~r/\s+/, trim: true)
+             |> case do
+               ["Pages:", _pages | _rest] = parts -> parts
+               _ -> nil
+             end
+           end),
+         {count, ""} <- Integer.parse(pages) do
+      count
+    else
+      _ -> nil
+    end
+  end
 
   defp unite_pages(_pdfunite, [], _dir), do: {:error, :no_pdf_pages_extracted}
 
