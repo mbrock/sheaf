@@ -13,6 +13,11 @@ defmodule Sheaf.Document do
   alias Sheaf.NS.{DOC, PROV}
 
   @doi_pattern ~r/\b10\.\d{4,9}\/[-._;()\/:A-Z0-9]+/i
+  @default_first_pages 5
+  @default_last_pages 5
+  @default_first_chunks 40
+  @default_last_chunks 20
+  @default_sample_chars 80_000
 
   def id(iri), do: Id.id_from_iri(iri)
 
@@ -73,7 +78,30 @@ defmodule Sheaf.Document do
   end
 
   @doc """
-  Finds DOI-looking strings in the start of a document.
+  Returns a bounded text sample for bibliographic metadata extraction.
+
+  When source pages are available, this samples the first and last pages. For
+  documents without page numbers, it falls back to the first and last text
+  chunks. The final text is capped by `:chars`.
+  """
+  def bibliographic_text(document_iri, opts \\ []) do
+    document_iri = RDF.iri(document_iri)
+
+    with {:ok, graph} <- Sheaf.fetch_graph(document_iri) do
+      {:ok, bibliographic_text(graph, document_iri, opts)}
+    end
+  end
+
+  def bibliographic_text(%Graph{} = graph, root, opts) do
+    graph
+    |> text_chunks(root)
+    |> bibliographic_chunks(opts)
+    |> Enum.map_join("\n\n", & &1.text)
+    |> String.slice(0, Keyword.get(opts, :chars, @default_sample_chars))
+  end
+
+  @doc """
+  Finds DOI-looking strings in the bibliographic text sample for a document.
   """
   def doi_candidates(document_iri, opts \\ []) do
     document_iri = RDF.iri(document_iri)
@@ -92,7 +120,7 @@ defmodule Sheaf.Document do
 
   def doi_candidates(%Graph{} = graph, root, opts) do
     graph
-    |> text_preview(root, opts)
+    |> bibliographic_text(root, opts)
     |> doi_candidates_from_text()
   end
 
@@ -236,6 +264,32 @@ defmodule Sheaf.Document do
       text: text |> to_string() |> normalize_text(),
       type: type
     }
+  end
+
+  defp bibliographic_chunks(chunks, opts) do
+    page_chunks = Enum.filter(chunks, &is_integer(&1.source_page))
+
+    if page_chunks == [] do
+      first_chunks = Keyword.get(opts, :first_chunks, @default_first_chunks)
+      last_chunks = Keyword.get(opts, :last_chunks, @default_last_chunks)
+
+      chunks
+      |> Enum.take(first_chunks)
+      |> Kernel.++(Enum.take(chunks, -last_chunks))
+      |> Enum.uniq_by(& &1.iri)
+    else
+      first_pages = Keyword.get(opts, :first_pages, @default_first_pages)
+      last_pages = Keyword.get(opts, :last_pages, @default_last_pages)
+      pages = page_chunks |> Enum.map(& &1.source_page) |> Enum.uniq()
+      first_page = Enum.min(pages)
+      last_page = Enum.max(pages)
+
+      first_page_set = MapSet.new(first_page..(first_page + max(first_pages - 1, 0)))
+      last_page_set = MapSet.new(max(first_page, last_page - max(last_pages - 1, 0))..last_page)
+      selected_pages = MapSet.union(first_page_set, last_page_set)
+
+      Enum.filter(page_chunks, &MapSet.member?(selected_pages, &1.source_page))
+    end
   end
 
   defp active_paragraph_iri(%Graph{} = graph, iri) do

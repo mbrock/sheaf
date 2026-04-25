@@ -120,7 +120,7 @@ print_sparql_diagnostics() {
   local data_endpoint="${SHEAF_SPARQL_DATA_ENDPOINT:-${dataset%/}/data}"
   local server="${dataset%/*}"
   local auth_args=()
-  local server_json datasets_json count_json
+  local server_json datasets_json graph_count_json triple_count_json
 
   while IFS= read -r arg; do
     auth_args+=("$arg")
@@ -143,15 +143,26 @@ print_sparql_diagnostics() {
     print_kv "Datasets" "$(json_value '[.datasets[]."ds.name"] | join(", ")' "$datasets_json")"
   fi
 
-  if count_json=$(
+  if graph_count_json=$(
     curl -fsS --max-time 5 "${auth_args[@]}" \
       -H 'Accept: application/sparql-results+json' \
-      --data-urlencode 'query=SELECT (COUNT(*) AS ?triples) WHERE { ?s ?p ?o }' \
+      --data-urlencode 'query=SELECT (COUNT(DISTINCT ?g) AS ?graphs) WHERE { GRAPH ?g { ?s ?p ?o } }' \
       "$query_endpoint" 2>/dev/null
   ); then
-    print_kv "Triples" "$(json_value '.results.bindings[0].triples.value // "unknown"' "$count_json")"
+    print_kv "Graphs" "$(json_value '.results.bindings[0].graphs.value // "unknown"' "$graph_count_json")"
   else
-    print_kv "Triples" "unavailable"
+    print_kv "Graphs" "unavailable"
+  fi
+
+  if triple_count_json=$(
+    curl -fsS --max-time 5 "${auth_args[@]}" \
+      -H 'Accept: application/sparql-results+json' \
+      --data-urlencode 'query=SELECT (COUNT(*) AS ?triples) WHERE { { ?s ?p ?o } UNION { GRAPH ?g { ?s ?p ?o } } }' \
+      "$query_endpoint" 2>/dev/null
+  ); then
+    print_kv "Total triples" "$(json_value '.results.bindings[0].triples.value // "unknown"' "$triple_count_json")"
+  else
+    print_kv "Total triples" "unavailable"
   fi
 }
 

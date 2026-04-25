@@ -141,4 +141,75 @@ defmodule Sheaf.DocumentTest do
     assert Document.text_preview(graph, paper, chars: 32) == "Example Paper DOI: 10.1177/17499"
     assert Document.doi_candidates(graph, paper, chars: 200) == ["10.1177/1749975520923521"]
   end
+
+  test "samples first and last source pages for bibliographic text and DOI candidates" do
+    paper = RDF.IRI.new!("https://example.com/sheaf/PAPER1")
+    root_list = RDF.IRI.new!("https://example.com/sheaf/LSTROOT")
+
+    blocks =
+      for page <- 1..10 do
+        RDF.IRI.new!("https://example.com/sheaf/BLK#{page}")
+      end
+
+    graph =
+      blocks
+      |> Enum.with_index(1)
+      |> Enum.reduce(
+        RDF.Graph.new([
+          {paper, RDF.type(), DOC.Document},
+          {paper, RDF.type(), DOC.Paper},
+          {paper, DOC.children(), root_list}
+        ]),
+        fn {block, page}, graph ->
+          text = if page == 10, do: "Page 10 DOI 10.1000/LAST.", else: "Page #{page}"
+
+          graph
+          |> RDF.Graph.add({block, RDF.type(), DOC.ExtractedBlock})
+          |> RDF.Graph.add({block, DOC.sourcePage(), RDF.literal(page)})
+          |> RDF.Graph.add({block, DOC.sourceHtml(), RDF.literal("<p>#{text}</p>")})
+        end
+      )
+      |> then(fn graph ->
+        RDF.list(blocks, graph: graph, head: root_list).graph
+      end)
+
+    assert Document.bibliographic_text(graph, paper, first_pages: 2, last_pages: 2) ==
+             "Page 1\n\nPage 2\n\nPage 9\n\nPage 10 DOI 10.1000/LAST."
+
+    assert Document.doi_candidates(graph, paper, first_pages: 1, last_pages: 1) == [
+             "10.1000/last"
+           ]
+  end
+
+  test "samples first and last chunks when source pages are absent" do
+    paper = RDF.IRI.new!("https://example.com/sheaf/PAPER1")
+    root_list = RDF.IRI.new!("https://example.com/sheaf/LSTROOT")
+
+    blocks =
+      for index <- 1..5 do
+        RDF.IRI.new!("https://example.com/sheaf/BLK#{index}")
+      end
+
+    graph =
+      blocks
+      |> Enum.with_index(1)
+      |> Enum.reduce(
+        RDF.Graph.new([
+          {paper, RDF.type(), DOC.Document},
+          {paper, RDF.type(), DOC.Paper},
+          {paper, DOC.children(), root_list}
+        ]),
+        fn {block, index}, graph ->
+          graph
+          |> RDF.Graph.add({block, RDF.type(), DOC.ExtractedBlock})
+          |> RDF.Graph.add({block, DOC.sourceHtml(), RDF.literal("<p>Chunk #{index}</p>")})
+        end
+      )
+      |> then(fn graph ->
+        RDF.list(blocks, graph: graph, head: root_list).graph
+      end)
+
+    assert Document.bibliographic_text(graph, paper, first_chunks: 2, last_chunks: 2) ==
+             "Chunk 1\n\nChunk 2\n\nChunk 4\n\nChunk 5"
+  end
 end
