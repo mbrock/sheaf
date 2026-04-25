@@ -103,4 +103,11 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              iri: to_string(Id.iri("NOTE03"))
            }
   end
+
+  test "write_note tool can be omitted" do
+    tools = CorpusTools.tools(include_notes?: false)
+
+    refute Enum.any?(tools, &(&1.name == "write_note"))
+    assert Enum.any?(tools, &(&1.name == "search_text"))
+  end
 end

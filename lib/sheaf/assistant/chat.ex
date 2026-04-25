@@ -105,10 +105,14 @@ defmodule Sheaf.Assistant.Chat do
     session_iri = Keyword.get_lazy(opts, :session_iri, fn -> Id.iri(id) end)
     agent_iri = Keyword.get_lazy(opts, :agent_iri, &Sheaf.mint/0)
 
-    context = Context.new([Context.system(system_prompt(kind))])
+    allow_notes? =
+      Keyword.get(opts, :allow_notes?, Keyword.get(opts, :allow_notes, kind == :research))
+
+    context = Context.new([Context.system(system_prompt(kind, allow_notes?))])
 
     tools =
       CorpusTools.tools(
+        include_notes?: allow_notes?,
         notify: fn event -> GenServer.cast(chat, {:assistant_event, event}) end,
         note_context: %{
           agent_iri: agent_iri,
@@ -459,7 +463,7 @@ defmodule Sheaf.Assistant.Chat do
   defp server_ref(pid) when is_pid(pid), do: pid
   defp server_ref(id) when is_binary(id), do: via(id)
 
-  defp system_prompt(kind) do
+  defp system_prompt(kind, allow_notes?) do
     """
     You are a research assistant embedded in Sheaf, a reading and writing
     environment for Ieva's master's thesis in anthropology at Tallinn University.
@@ -511,11 +515,7 @@ defmodule Sheaf.Assistant.Chat do
         and it is unclear whether they want empirical coded material included,
         briefly ask whether to include the coded spreadsheet excerpts before
         relying on them heavily.
-      * Use write_note to persist durable research notes when you find an
-        observation, quote candidate, conceptual link, paper summary, or
-        reading-plan decision that should survive this chat. Put every related
-        block id in block_ids, and also write those block ids inline in the note
-        text using simple ids such as #HCFU75.
+    #{note_tool_prompt(allow_notes?)}
 
     How to help:
       * Skim papers and report the argument, method, and relevance to the
@@ -526,9 +526,6 @@ defmodule Sheaf.Assistant.Chat do
       * Clarify concepts from practice theory grounded in the actual corpus
         when possible.
       * Keep answers short by default; go deeper only when she asks.
-      * Do not write a note for every ordinary answer. Write one when the
-        result is research material worth keeping, or when she explicitly asks
-        you to take notes.
       * When you cite, use simple block ids: "(Evans 2020, #4C3K1P)" for
         papers, "(#4C3K1P)" for her own prose, or "(4C3K1P)" when the hash
         would read awkwardly.
@@ -537,11 +534,23 @@ defmodule Sheaf.Assistant.Chat do
     document she's currently reading and any block she has selected. Treat
     this as a hint, not a scope restriction — you can navigate elsewhere.
 
-    #{mode_prompt(kind)}
+    #{mode_prompt(kind, allow_notes?)}
     """
   end
 
-  defp mode_prompt(:research) do
+  defp note_tool_prompt(true) do
+    """
+      * Use write_note to persist durable research notes when you find an
+        observation, quote candidate, conceptual link, paper summary, or
+        reading-plan decision that should survive this chat. Put every related
+        block id in block_ids, and also write those block ids inline in the note
+        text using simple ids such as #HCFU75.
+    """
+  end
+
+  defp note_tool_prompt(false), do: ""
+
+  defp mode_prompt(:research, true) do
     """
     Research session mode:
       * Treat the first user message as a research question, paper-reading
@@ -553,12 +562,20 @@ defmodule Sheaf.Assistant.Chat do
     """
   end
 
-  defp mode_prompt(_kind) do
+  defp mode_prompt(:research, false) do
+    """
+    Research session mode:
+      * Treat the first user message as a research question, paper-reading
+        assignment, or exploration brief.
+      * Work through the corpus with the available tools and finish with a
+        concise progress report.
+    """
+  end
+
+  defp mode_prompt(_kind, _allow_notes?) do
     """
     Chat mode:
       * Answer the user's immediate question directly.
-      * Use notes sparingly unless the user asks you to take notes or the
-        answer produces research material worth keeping.
     """
   end
 end

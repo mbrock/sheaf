@@ -42,9 +42,9 @@ defmodule SheafWeb.AssistantChatComponent do
       if socket.assigns.selected_chat_id == snapshot.id do
         socket
         |> assign(:chat, snapshot)
-        |> assign(:chats, Chats.list())
+        |> maybe_refresh_chat_list()
       else
-        assign(socket, :chats, Chats.list())
+        maybe_refresh_chat_list(socket)
       end
 
     {:ok, socket}
@@ -65,8 +65,9 @@ defmodule SheafWeb.AssistantChatComponent do
       |> assign(assigns)
       |> assign_new(:model, fn -> Sheaf.LLM.default_model() end)
       |> assign_new(:llm_options, fn -> [] end)
-      |> ensure_chat_index_subscription()
-      |> ensure_selected_chat()
+      |> assign_new(:variant, fn -> :full end)
+      |> maybe_ensure_chat_index_subscription()
+      |> maybe_ensure_selected_chat()
 
     {:ok, socket}
   end
@@ -101,27 +102,30 @@ defmodule SheafWeb.AssistantChatComponent do
       socket.assigns.chat.pending ->
         {:noreply, socket}
 
-      is_nil(socket.assigns.selected_chat_id) ->
-        {:noreply, put_local_error(socket, "No assistant chat is selected.")}
-
       true ->
+        socket = ensure_sendable_chat(socket)
+
         socket =
-          case Chat.send_user_message(
-                 socket.assigns.selected_chat_id,
-                 message,
-                 turn_context(socket.assigns)
-               ) do
-            :ok ->
-              assign(socket, :form, chat_form())
+          if is_nil(socket.assigns.selected_chat_id) do
+            put_local_error(socket, "No assistant chat is selected.")
+          else
+            case Chat.send_user_message(
+                   socket.assigns.selected_chat_id,
+                   message,
+                   turn_context(socket.assigns)
+                 ) do
+              :ok ->
+                assign(socket, :form, chat_form())
 
-            {:error, :busy} ->
-              socket
+              {:error, :busy} ->
+                socket
 
-            {:error, :empty_message} ->
-              assign(socket, :form, chat_form())
+              {:error, :empty_message} ->
+                assign(socket, :form, chat_form())
 
-            {:error, reason} ->
-              put_local_error(socket, "Assistant error: #{inspect(reason)}")
+              {:error, reason} ->
+                put_local_error(socket, "Assistant error: #{inspect(reason)}")
+            end
           end
 
         {:noreply, socket}
@@ -143,12 +147,22 @@ defmodule SheafWeb.AssistantChatComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <section class="flex min-h-[24rem] flex-col border-t border-stone-200/80 pt-2 dark:border-stone-800/80">
-      <div class="flex items-center justify-between gap-3">
+    <section class={assistant_section_class(@variant, @selected_chat_id)}>
+      <.inline_start
+        :if={inline?(@variant) and is_nil(@selected_chat_id)}
+        id={@id}
+        form={@form}
+        myself={@myself}
+      />
+
+      <div
+        :if={not inline?(@variant) or not is_nil(@selected_chat_id)}
+        class="flex items-center justify-between gap-3"
+      >
         <h2 class="font-sans text-sm font-semibold uppercase text-stone-500 dark:text-stone-400">
           Assistant
         </h2>
-        <div class="flex items-center gap-2">
+        <div :if={not inline?(@variant)} class="flex items-center gap-2">
           <button
             type="button"
             class="grid size-7 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
@@ -173,7 +187,7 @@ defmodule SheafWeb.AssistantChatComponent do
       </div>
 
       <nav
-        :if={@chats != []}
+        :if={not inline?(@variant) and @chats != []}
         class="mt-3 max-h-28 space-y-1 overflow-y-auto border-y border-stone-200/80 py-2 dark:border-stone-800/80"
       >
         <button
@@ -196,7 +210,10 @@ defmodule SheafWeb.AssistantChatComponent do
         </button>
       </nav>
 
-      <div class="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 text-sm">
+      <div
+        :if={not inline?(@variant) or not is_nil(@selected_chat_id)}
+        class="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 text-sm"
+      >
         <p :if={@chat.messages == []} class="leading-6 text-stone-500 dark:text-stone-400">
           No messages yet.
         </p>
@@ -217,7 +234,13 @@ defmodule SheafWeb.AssistantChatComponent do
         </div>
       </div>
 
-      <.form for={@form} phx-submit="send" phx-target={@myself} class="mt-3 space-y-2">
+      <.form
+        :if={not inline?(@variant) or not is_nil(@selected_chat_id)}
+        for={@form}
+        phx-submit="send"
+        phx-target={@myself}
+        class="mt-3 space-y-2"
+      >
         <textarea
           name="chat[message]"
           rows="3"
@@ -238,6 +261,40 @@ defmodule SheafWeb.AssistantChatComponent do
         </div>
       </.form>
     </section>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :form, :any, required: true
+  attr :myself, :any, required: true
+
+  defp inline_start(assigns) do
+    ~H"""
+    <.form for={@form} phx-submit="send" phx-target={@myself} class="space-y-2">
+      <label
+        for={"#{@id}-assistant-message"}
+        class="block font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400"
+      >
+        Assistant
+      </label>
+      <div class="flex items-end gap-2">
+        <textarea
+          id={"#{@id}-assistant-message"}
+          name="chat[message]"
+          rows="2"
+          class="block min-h-16 flex-1 resize-none rounded-sm border border-stone-300 bg-white px-3 py-2 text-sm leading-5 text-stone-950 outline-none transition-colors placeholder:text-stone-400 focus:border-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
+          placeholder="Ask the assistant"
+        ></textarea>
+        <button
+          type="submit"
+          class="grid size-8 shrink-0 place-items-center rounded-sm bg-stone-950 text-stone-50 transition-colors hover:bg-stone-700 dark:bg-stone-50 dark:text-stone-950 dark:hover:bg-stone-300"
+          title="Send"
+          aria-label="Send"
+        >
+          <.icon name="hero-paper-airplane" class="size-4" />
+        </button>
+      </div>
+    </.form>
     """
   end
 
@@ -393,6 +450,30 @@ defmodule SheafWeb.AssistantChatComponent do
     if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 1) <> "…"
   end
 
+  defp maybe_refresh_chat_list(socket) do
+    if history_enabled?(socket.assigns) do
+      assign(socket, :chats, Chats.list())
+    else
+      socket
+    end
+  end
+
+  defp maybe_ensure_chat_index_subscription(socket) do
+    if history_enabled?(socket.assigns) do
+      ensure_chat_index_subscription(socket)
+    else
+      socket
+    end
+  end
+
+  defp maybe_ensure_selected_chat(socket) do
+    if history_enabled?(socket.assigns) do
+      ensure_selected_chat(socket)
+    else
+      socket
+    end
+  end
+
   defp ensure_chat_index_subscription(%{assigns: %{chats_subscribed?: true}} = socket), do: socket
 
   defp ensure_chat_index_subscription(socket) do
@@ -411,6 +492,27 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp ensure_selected_chat(socket), do: select_default_chat(socket)
+
+  defp ensure_sendable_chat(%{assigns: %{selected_chat_id: id}} = socket) when is_binary(id),
+    do: socket
+
+  defp ensure_sendable_chat(socket) do
+    if inline?(socket.assigns.variant) do
+      create_inline_chat(socket)
+    else
+      socket
+    end
+  end
+
+  defp create_inline_chat(socket) do
+    case Chats.create(Keyword.put(chat_options(socket, :chat), :listed?, false)) do
+      %{id: id} ->
+        select_chat(socket, id)
+
+      {:error, reason} ->
+        put_local_error(socket, "Could not start assistant chat: #{inspect(reason)}")
+    end
+  end
 
   defp select_default_chat(socket) do
     case Chats.ensure_default(chat_options(socket, :chat)) do
@@ -448,11 +550,44 @@ defmodule SheafWeb.AssistantChatComponent do
   defp unsubscribe_from_previous_chat(socket, _new_id), do: socket
 
   defp chat_options(socket, kind) do
-    [
+    options = [
       kind: kind,
       model: socket.assigns.model,
       llm_options: socket.assigns.llm_options
     ]
+
+    case assistant_allow_notes(socket.assigns) do
+      {:ok, allow_notes?} -> Keyword.put(options, :allow_notes, allow_notes?)
+      :error -> options
+    end
+  end
+
+  defp assistant_allow_notes(assigns) do
+    case Map.fetch(assigns, :allow_notes) do
+      {:ok, allow_notes?} -> {:ok, allow_notes?}
+      :error -> Map.fetch(assigns, :allow_notes?)
+    end
+  end
+
+  defp history_enabled?(assigns), do: not inline?(assigns.variant)
+
+  defp inline?(:inline), do: true
+  defp inline?(:compact), do: true
+  defp inline?("inline"), do: true
+  defp inline?("compact"), do: true
+  defp inline?(_variant), do: false
+
+  defp assistant_section_class(variant, selected_chat_id) do
+    cond do
+      inline?(variant) and is_nil(selected_chat_id) ->
+        "border-y border-stone-200/80 py-3 dark:border-stone-800/80"
+
+      inline?(variant) ->
+        "flex min-h-[24rem] flex-col border-y border-stone-200/80 py-3 dark:border-stone-800/80"
+
+      true ->
+        "flex min-h-[24rem] flex-col border-t border-stone-200/80 pt-2 dark:border-stone-800/80"
+    end
   end
 
   defp chat_listed?(chats, id), do: Enum.any?(chats, &(&1.id == id))

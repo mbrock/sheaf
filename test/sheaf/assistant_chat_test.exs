@@ -10,7 +10,7 @@ defmodule Sheaf.Assistant.ChatTest do
 
     generate_text = fn _model, context, opts ->
       send(test_pid, {:inference_started, self(), context})
-      assert Enum.any?(opts[:tools], &(&1.name == "write_note"))
+      refute Enum.any?(opts[:tools], &(&1.name == "write_note"))
 
       receive do
         :finish ->
@@ -41,6 +41,7 @@ defmodule Sheaf.Assistant.ChatTest do
     assert_receive {:inference_started, task_pid, context}
     assert user_text(context) =~ ~s|Currently open: "Draft chapter" (id ABC123, kind thesis)|
     assert user_text(context) =~ "Currently selected block: #DEF456"
+    refute system_text(context) =~ "write_note"
 
     assert %{
              title: "What should I do next?",
@@ -62,8 +63,9 @@ defmodule Sheaf.Assistant.ChatTest do
   test "research sessions expose their kind and get research-mode prompt guidance" do
     test_pid = self()
 
-    generate_text = fn _model, context, _opts ->
+    generate_text = fn _model, context, opts ->
       send(test_pid, {:research_inference_started, self(), context})
+      assert Enum.any?(opts[:tools], &(&1.name == "write_note"))
 
       receive do
         :finish ->

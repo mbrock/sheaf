@@ -138,8 +138,14 @@ defmodule SheafWeb.DocumentIndexLive do
           {@document_error}
         </p>
 
-        <div class="lg:col-span-2">
+        <div class="space-y-4 lg:col-span-2">
           <.live_component module={SheafWeb.EmbeddingSearchComponent} id="embedding-search" />
+          <.live_component
+            module={SheafWeb.AssistantChatComponent}
+            id="index-assistant"
+            variant={:inline}
+            allow_notes={false}
+          />
         </div>
 
         <div class="min-w-0 space-y-8">

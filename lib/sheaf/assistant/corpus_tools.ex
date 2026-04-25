@@ -25,11 +25,10 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   def tools(opts) when is_list(opts) do
     notify = Keyword.get(opts, :notify, fn _event -> :ok end)
-    note_context = Keyword.get_lazy(opts, :note_context, &default_note_context/0) |> Map.new()
-    note_writer = Keyword.get(opts, :note_writer, &Notes.write/1)
     search = Keyword.get(opts, :search, &Sheaf.Embedding.Index.search/2)
+    include_notes? = Keyword.get(opts, :include_notes?, true)
 
-    [
+    tools = [
       Tool.new!(
         name: "list_documents",
         description:
@@ -85,33 +84,48 @@ defmodule Sheaf.Assistant.CorpusTools do
           limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits"]
         ],
         callback: instrument(notify, "search_text", &search_text_tool(&1, search))
-      ),
-      Tool.new!(
-        name: "write_note",
-        description:
-          "Persist a durable research note as RDF. Use this for observations, " <>
-            "claims, quote candidates, cross-paper links, or reading-plan notes " <>
-            "that should survive the chat. Pass mentioned block ids explicitly.",
-        parameter_schema: [
-          text: [
-            type: :string,
-            required: true,
-            doc:
-              "Self-contained note text. Include simple block references like #ABC123 when relevant."
-          ],
-          block_ids: [
-            type: {:list, :string},
-            default: [],
-            doc: "Block ids mentioned or related by this note, without the leading #."
-          ],
-          title: [type: :string, doc: "Optional short title for the note."]
-        ],
-        callback:
-          instrument(notify, "write_note", fn args ->
-            write_note_tool(args, note_context, note_writer)
-          end)
       )
     ]
+
+    if include_notes? do
+      note_context = Keyword.get_lazy(opts, :note_context, &default_note_context/0) |> Map.new()
+      note_writer = Keyword.get(opts, :note_writer, &Notes.write/1)
+
+      tools ++
+        [
+          write_note_tool_definition(notify, note_context, note_writer)
+        ]
+    else
+      tools
+    end
+  end
+
+  defp write_note_tool_definition(notify, note_context, note_writer) do
+    Tool.new!(
+      name: "write_note",
+      description:
+        "Persist a durable research note as RDF. Use this for observations, " <>
+          "claims, quote candidates, cross-paper links, or reading-plan notes " <>
+          "that should survive the chat. Pass mentioned block ids explicitly.",
+      parameter_schema: [
+        text: [
+          type: :string,
+          required: true,
+          doc:
+            "Self-contained note text. Include simple block references like #ABC123 when relevant."
+        ],
+        block_ids: [
+          type: {:list, :string},
+          default: [],
+          doc: "Block ids mentioned or related by this note, without the leading #."
+        ],
+        title: [type: :string, doc: "Optional short title for the note."]
+      ],
+      callback:
+        instrument(notify, "write_note", fn args ->
+          write_note_tool(args, note_context, note_writer)
+        end)
+    )
   end
 
   def titles do

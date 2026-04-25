@@ -103,6 +103,7 @@ defmodule Sheaf.Assistant.Chats do
     id = Keyword.get_lazy(opts, :id, &mint_id/0)
     kind = opts |> Keyword.get(:kind, @default_kind) |> normalize_kind()
     title = Keyword.get_lazy(opts, :title, fn -> default_title(kind) end)
+    listed? = Keyword.get(opts, :listed?, true)
     now = timestamp()
 
     child_opts =
@@ -116,14 +117,26 @@ defmodule Sheaf.Assistant.Chats do
         conversation = %{id: id, title: title, kind: kind, created_at: now, updated_at: now}
 
         state =
-          state
-          |> put_conversation(conversation)
-          |> broadcast_list()
+          if listed? do
+            state
+            |> put_conversation(conversation)
+            |> broadcast_list()
+          else
+            state
+          end
 
         {conversation, state}
 
       {:error, {:already_started, _pid}} ->
-        conversation = Map.fetch!(state.conversations, id)
+        conversation =
+          Map.get(state.conversations, id, %{
+            id: id,
+            title: title,
+            kind: kind,
+            created_at: now,
+            updated_at: now
+          })
+
         {conversation, state}
 
       {:error, reason} ->
