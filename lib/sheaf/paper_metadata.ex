@@ -105,8 +105,7 @@ defmodule Sheaf.PaperMetadata do
           {:ok, t()} | {:error, term()}
   def extract_graph(%Graph{} = graph, root, opts \\ []) do
     graph
-    |> Sheaf.Document.text_chunks(root)
-    |> text_from_chunks()
+    |> Sheaf.Document.bibliographic_text(root, opts)
     |> extract_text(opts)
   end
 
@@ -117,9 +116,8 @@ defmodule Sheaf.PaperMetadata do
   def extract_document(document_iri, opts \\ []) do
     document_iri = RDF.iri(document_iri)
 
-    with {:ok, chunks} <- Sheaf.Document.text_chunks(document_iri) do
-      chunks
-      |> text_from_chunks()
+    with {:ok, text} <- Sheaf.Document.bibliographic_text(document_iri, opts) do
+      text
       |> extract_text(opts)
     end
   end
@@ -220,12 +218,6 @@ defmodule Sheaf.PaperMetadata do
           do: {:error, :missing_metadata_object},
           else: {:error, reason}
     end
-  end
-
-  defp text_from_chunks(chunks) do
-    chunks
-    |> Enum.map_join("\n\n", & &1.text)
-    |> normalize_source_text()
   end
 
   defp source_text_part(text) do
