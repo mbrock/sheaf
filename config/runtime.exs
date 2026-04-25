@@ -74,6 +74,18 @@ if gemini_api_key do
   config :req_llm, google_api_key: gemini_api_key
 end
 
+config :sheaf, Sheaf.Embedding,
+  api_key: gemini_api_key,
+  base_url:
+    System.get_env(
+      "SHEAF_GEMINI_EMBEDDING_BASE_URL",
+      "https://generativelanguage.googleapis.com/v1beta"
+    ),
+  model: System.get_env("SHEAF_GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
+
+config :sheaf, Sheaf.Embedding.Store,
+  path: System.get_env("SHEAF_EMBEDDINGS_DB", "var/sheaf-embeddings.sqlite3")
+
 anthropic_api_key = System.get_env("ANTHROPIC_API_KEY")
 
 if anthropic_api_key && String.trim(anthropic_api_key) != "" do

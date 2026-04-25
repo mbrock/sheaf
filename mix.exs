@@ -61,6 +61,8 @@ defmodule Sheaf.MixProject do
       {:jason, "~> 1.2"},
       {:req, "~> 0.5"},
       {:req_llm, "~> 1.10"},
+      {:exqlite, "~> 0.36.0"},
+      {:sqlite_vec, "~> 0.1.0"},
       {:mdex, "~> 0.12"},
       {:rdf, "~> 2.1"},
       {:sparql_client, "~> 0.5"},

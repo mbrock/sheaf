@@ -138,6 +138,10 @@ defmodule SheafWeb.DocumentIndexLive do
           {@document_error}
         </p>
 
+        <div class="lg:col-span-2">
+          <.live_component module={SheafWeb.EmbeddingSearchComponent} id="embedding-search" />
+        </div>
+
         <div class="min-w-0 space-y-8">
           <details class="group">
             <summary class="mb-2 flex cursor-pointer list-none items-end justify-between gap-3 rounded-sm py-1 transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80 [&::-webkit-details-marker]:hidden">
