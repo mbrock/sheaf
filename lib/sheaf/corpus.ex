@@ -56,6 +56,8 @@ defmodule Sheaf.Corpus do
 
   @doc """
   Case-insensitive substring search across paragraph and extracted-block text.
+  Multi-word queries are treated as keyword searches: exact phrase matches rank
+  first, then blocks matching the most query terms.
 
   Options:
 
@@ -74,10 +76,11 @@ defmodule Sheaf.Corpus do
     else
       limit = Keyword.get(opts, :limit, @default_search_limit)
       scope = Keyword.get(opts, :document_id)
+      select = Keyword.get(opts, :select, &Sheaf.select/1)
 
       sparql = search_sparql(needle, scope, limit)
 
-      case Sheaf.select(sparql) do
+      case select.(sparql) do
         {:ok, result} -> {:ok, Enum.map(result.results, &hit_from_row/1)}
         {:error, reason} -> {:error, reason}
       end
@@ -124,6 +127,9 @@ defmodule Sheaf.Corpus do
 
   defp search_sparql(query, scope, limit) do
     escaped = escape_sparql_string(query)
+    terms = search_terms(query)
+    match_filter = search_match_filter(escaped, terms)
+    score_bind = search_score_bind(escaped, terms)
     scope_filter = if scope, do: "FILTER(?doc = <#{Id.iri(scope)}>)", else: ""
 
     """
@@ -145,12 +151,50 @@ defmodule Sheaf.Corpus do
           OPTIONAL { ?block sheaf:sourcePage ?page }
           BIND("extracted" AS ?kind)
         }
-        FILTER(CONTAINS(LCASE(STR(?text)), LCASE("#{escaped}")))
+        BIND(LCASE(STR(?text)) AS ?haystack)
+        #{match_filter}
+        #{score_bind}
       }
       #{scope_filter}
     }
+    ORDER BY DESC(?score)
     LIMIT #{limit}
     """
+  end
+
+  defp search_terms(query) do
+    ~r/[\p{L}\p{N}]+/u
+    |> Regex.scan(String.downcase(query))
+    |> Enum.map(fn [term] -> term end)
+    |> Enum.uniq()
+  end
+
+  defp search_match_filter(escaped_query, []),
+    do: ~s/FILTER(CONTAINS(?haystack, LCASE("#{escaped_query}")))/
+
+  defp search_match_filter(escaped_query, terms) do
+    keyword_match =
+      terms
+      |> Enum.map(&~s/CONTAINS(?haystack, "#{escape_sparql_string(&1)}")/)
+      |> Enum.join(" || ")
+
+    ~s/FILTER(CONTAINS(?haystack, LCASE("#{escaped_query}")) || #{keyword_match})/
+  end
+
+  defp search_score_bind(escaped_query, []),
+    do: ~s/BIND(IF(CONTAINS(?haystack, LCASE("#{escaped_query}")), 100, 0) AS ?score)/
+
+  defp search_score_bind(escaped_query, terms) do
+    keyword_score =
+      terms
+      |> Enum.map(&~s/IF(CONTAINS(?haystack, "#{escape_sparql_string(&1)}"), 1, 0)/)
+      |> Enum.join(" + ")
+
+    """
+    BIND(IF(CONTAINS(?haystack, LCASE("#{escaped_query}")), 100, 0) AS ?exactScore)
+        BIND((?exactScore + #{keyword_score}) AS ?score)
+    """
+    |> String.trim()
   end
 
   defp escape_sparql_string(value) do

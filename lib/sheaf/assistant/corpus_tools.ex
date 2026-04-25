@@ -62,9 +62,16 @@ defmodule Sheaf.Assistant.CorpusTools do
         description:
           "Case-insensitive substring search over paragraph and extracted-block " <>
             "text. Searches the whole corpus by default; pass document_id to scope. " <>
+            "The query may be an exact phrase or multiple space-separated keywords; " <>
+            "exact phrase matches rank first, then blocks matching more keywords. " <>
             "Returns hits with their document id, block id, kind, and full text.",
         parameter_schema: [
-          query: [type: :string, required: true, doc: "Search string"],
+          query: [
+            type: :string,
+            required: true,
+            doc:
+              "Exact phrase or space-separated keywords, for example \"circular economy\" or \"politics economy\"."
+          ],
           document_id: [type: :string, doc: "Optional: scope to one document"],
           limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits"]
         ],

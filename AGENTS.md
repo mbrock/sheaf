@@ -145,6 +145,11 @@ $ mix precommit
 ...
 ```
 
+For browser checks, use Playwright with Chrome via `uvx`/`uv` against the
+service URL reported by `bin/status` (`Public URL` or `Phoenix HTTP`). Browser
+automation is appropriate for nondestructive UI checks, visual inspection, and
+screenshots of the running service.
+
 ## RDF Notes
 
 Read `docs/rdf-ex.md` for the Elixir RDF cheat sheet: builder DSL, IRI
