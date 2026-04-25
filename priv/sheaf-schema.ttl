@@ -7,6 +7,7 @@
 
 sheaf:Document a rdfs:Class ;
   rdfs:label "document"@en ;
+  rdfs:subClassOf prov:Entity ;
   rdfs:comment "A top-level Sheaf resource rendered as a reader document." .
 
 sheaf:Thesis a rdfs:Class ;
@@ -36,6 +37,7 @@ sheaf:Interview a rdfs:Class ;
 
 sheaf:Block a rdfs:Class ;
   rdfs:label "block"@en ;
+  rdfs:subClassOf prov:Entity ;
   rdfs:comment "A structural block inside a document." .
 
 sheaf:Section a rdfs:Class ;
@@ -65,19 +67,33 @@ sheaf:Paragraph a rdfs:Class ;
 
 sheaf:Segment a rdfs:Class ;
   rdfs:label "segment"@en ;
+  rdfs:subClassOf prov:Entity ;
   rdfs:comment "A contiguous time slice of an interview with ordered utterance children." .
 
 sheaf:Utterance a rdfs:Class ;
   rdfs:label "utterance"@en ;
+  rdfs:subClassOf prov:Entity ;
   rdfs:comment "A speaker-attributed transcript unit inside a segment." .
 
 sheaf:AudioBlob a rdfs:Class ;
   rdfs:label "audio blob"@en ;
+  rdfs:subClassOf prov:Entity ;
   rdfs:comment "A content-addressed audio payload identified by its SHA-256 hash." .
 
 sheaf:ResearchSession a rdfs:Class ;
   rdfs:label "research session"@en ;
+  rdfs:subClassOf prov:Entity ;
   rdfs:comment "A durable context that groups assistant-authored research notes." .
+
+sheaf:BatchJob a rdfs:Class ;
+  rdfs:label "batch job"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "A durable record of a batch of background work." .
+
+sheaf:FileProcessingJob a rdfs:Class ;
+  rdfs:label "file processing job"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "A durable record of background work performed for a file." .
 
 sheaf:children a rdf:Property ;
   rdfs:label "has child list"@en ;

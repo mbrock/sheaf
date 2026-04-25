@@ -19,10 +19,17 @@ defmodule SheafRDFBrowser.Index do
   @rdfs_range RDFS.range() |> to_string()
   @owl_class OWL.Class |> to_string()
   @rdfs_class RDFS.Class |> to_string()
+  @bfo_entity "https://node.town/bfo#Entity"
   @owl_object_property OWL.ObjectProperty |> to_string()
   @owl_datatype_property OWL.DatatypeProperty |> to_string()
   @owl_annotation_property OWL.AnnotationProperty |> to_string()
   @rdf_property "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
+  @hidden_overview_namespaces [
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "http://www.w3.org/2000/01/rdf-schema#",
+    "http://www.w3.org/2002/07/owl#",
+    "http://www.w3.org/2003/11/swrl#"
+  ]
 
   @label_priority %{
     @skos_pref_label => 0,
@@ -89,6 +96,7 @@ defmodule SheafRDFBrowser.Index do
 
   def class_rows(%__MODULE__{} = index, limit \\ 120) do
     index.class_terms
+    |> Enum.reject(&hidden_overview_term?/1)
     |> Enum.map(fn class ->
       class_row(index, class)
     end)
@@ -98,7 +106,11 @@ defmodule SheafRDFBrowser.Index do
 
   def class_tree(%__MODULE__{} = index) do
     relevant_classes = instance_relevant_classes(index)
-    visible_classes = MapSet.reject(relevant_classes, &blank_node?/1)
+
+    visible_classes =
+      MapSet.reject(relevant_classes, fn class ->
+        blank_node?(class) or hidden_overview_term?(class)
+      end)
 
     children_by_parent =
       index.subclass_edges
@@ -116,11 +128,13 @@ defmodule SheafRDFBrowser.Index do
           |> Enum.any?(fn parent -> MapSet.member?(visible_classes, parent) end))
       )
       |> sort_terms(index)
+      |> prioritize_bfo_entity()
 
     roots =
       if roots == [] do
         visible_classes
         |> sort_terms(index)
+        |> prioritize_bfo_entity()
         |> Enum.take(80)
       else
         roots
@@ -132,6 +146,7 @@ defmodule SheafRDFBrowser.Index do
   def property_rows(%__MODULE__{} = index, limit \\ 120) do
     index.property_terms
     |> Enum.filter(&(Map.get(index.predicate_counts, &1, 0) > 0))
+    |> Enum.reject(&hidden_overview_term?/1)
     |> Enum.map(fn property ->
       display = display_term(index, property)
 
@@ -326,6 +341,13 @@ defmodule SheafRDFBrowser.Index do
     end)
   end
 
+  defp prioritize_bfo_entity(terms) do
+    case Enum.split_with(terms, &(&1 == @bfo_entity)) do
+      {[], terms} -> terms
+      {entities, rest} -> entities ++ rest
+    end
+  end
+
   defp instance_relevant_classes(index) do
     parent_map =
       index.subclass_edges
@@ -496,6 +518,12 @@ defmodule SheafRDFBrowser.Index do
   defp blank_node?(term) when is_binary(term), do: String.starts_with?(term, "_:")
   defp blank_node?(_term), do: false
 
+  defp hidden_overview_term?(term) when is_binary(term) do
+    Enum.any?(@hidden_overview_namespaces, &String.starts_with?(term, &1))
+  end
+
+  defp hidden_overview_term?(_term), do: false
+
   defp split_compact(term) do
     prefixes()
     |> Enum.find_value(fn {prefix, iri} ->
@@ -570,12 +598,28 @@ defmodule SheafRDFBrowser.Index do
       {"rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#"},
       {"rdfs", "http://www.w3.org/2000/01/rdf-schema#"},
       {"owl", "http://www.w3.org/2002/07/owl#"},
+      {"xsd", "http://www.w3.org/2001/XMLSchema#"},
       {"skos", "http://www.w3.org/2004/02/skos/core#"},
+      {"dc", "http://purl.org/dc/elements/1.1/"},
       {"dcterms", "http://purl.org/dc/terms/"},
+      {"geo", "http://www.w3.org/2003/01/geo/wgs84_pos#"},
+      {"bfo", "https://node.town/bfo#"},
       {"prov", "http://www.w3.org/ns/prov#"},
       {"foaf", "http://xmlns.com/foaf/0.1/"},
-      {"fabio", "http://purl.org/spar/fabio/"},
       {"bibo", "http://purl.org/ontology/bibo/"},
+      {"biro", "http://purl.org/spar/biro/"},
+      {"c4o", "http://purl.org/spar/c4o/"},
+      {"cito", "http://purl.org/spar/cito/"},
+      {"deo", "http://purl.org/spar/deo/"},
+      {"doco", "http://purl.org/spar/doco/"},
+      {"fabio", "http://purl.org/spar/fabio/"},
+      {"frbr", "http://purl.org/vocab/frbr/core#"},
+      {"prism", "http://prismstandard.org/namespaces/basic/2.0/"},
+      {"prism", "http://prismstandard.org/namespaces/basic/2.1/"},
+      {"pro", "http://purl.org/spar/pro/"},
+      {"pso", "http://purl.org/spar/pso/"},
+      {"pwo", "http://purl.org/spar/pwo/"},
+      {"vann", "http://purl.org/vocab/vann/"},
       {"sheaf", "https://less.rest/sheaf/"}
     ]
   end

@@ -51,4 +51,27 @@ defmodule SheafRDFBrowser.IndexTest do
     assert display.namespace == "https://example.test/vocab/"
     assert display.prefix == nil
   end
+
+  test "BFO entity is first among root classes" do
+    dataset =
+      """
+      <https://node.town/bfo#Entity> <http://www.w3.org/2000/01/rdf-schema#label> "entity"@en <https://less.rest/sheaf/ext> .
+      <https://node.town/bfo#Continuant> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://node.town/bfo#Entity> <https://less.rest/sheaf/ext> .
+      <https://example.test/ZedRoot> <http://www.w3.org/2000/01/rdf-schema#label> "aaa root"@en <https://less.rest/sheaf/ext> .
+      <https://example.test/InstantiatedContinuant> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://node.town/bfo#Continuant> <https://less.rest/sheaf/ext> .
+      <https://example.test/InstantiatedZed> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.test/ZedRoot> <https://less.rest/sheaf/ext> .
+      <https://example.test/a> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.test/InstantiatedContinuant> <https://example.test/data> .
+      <https://example.test/b> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://example.test/InstantiatedZed> <https://example.test/data> .
+      """
+      |> String.split("\n", trim: true)
+      |> Stream.map(&(&1 <> "\n"))
+      |> Serialization.read_stream!(media_type: "application/n-quads")
+
+    [root | _] =
+      dataset
+      |> Index.build()
+      |> Index.class_tree()
+
+    assert root.id == "https://node.town/bfo#Entity"
+  end
 end

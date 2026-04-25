@@ -16,9 +16,18 @@ defmodule Mix.Tasks.Sheaf.Schema do
 
     Sheaf.put_graph(DOC.__base_iri__(), Serialization.read_file!(schema_path()))
     Mix.shell().info("Uploaded schema graph #{DOC.__base_iri__()}")
+
+    Sheaf.put_graph(extension_graph(), Serialization.read_file!(extension_path()))
+    Mix.shell().info("Uploaded schema extension graph #{extension_graph()}")
   end
 
   defp schema_path do
     Application.app_dir(:sheaf, "priv/sheaf-schema.ttl")
   end
+
+  defp extension_path do
+    Application.app_dir(:sheaf, "priv/sheaf-ext.ttl")
+  end
+
+  defp extension_graph, do: "https://less.rest/sheaf/ext"
 end

@@ -1,0 +1,373 @@
+@prefix bfo: <https://node.town/bfo#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix obo: <http://purl.obolibrary.org/obo/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+bfo:Entity
+  a owl:Class ;
+  owl:equivalentClass obo:BFO_0000001 ;
+  skos:prefLabel "entity"@en ;
+  skos:definition "Anything that exists, has existed, or will exist."@en .
+
+bfo:Continuant
+  a owl:Class ;
+  rdfs:subClassOf bfo:Entity ;
+  owl:equivalentClass obo:BFO_0000002 ;
+  skos:prefLabel "continuant"@en ;
+  skos:definition "An entity that maintains its identity through time."@en .
+
+bfo:Occurrent
+  a owl:Class ;
+  rdfs:subClassOf bfo:Entity ;
+  owl:equivalentClass obo:BFO_0000003 ;
+  skos:prefLabel "occurrent"@en ;
+  skos:definition "An entity that unfolds in time."@en .
+
+bfo:IndependentContinuant
+  a owl:Class ;
+  rdfs:subClassOf bfo:Continuant ;
+  owl:equivalentClass obo:BFO_0000004 ;
+  skos:prefLabel "independent continuant"@en ;
+  skos:definition "A continuant that does not depend on other entities for its existence."@en .
+
+bfo:MaterialEntity
+  a owl:Class ;
+  rdfs:subClassOf bfo:IndependentContinuant ;
+  owl:equivalentClass obo:BFO_0000040 ;
+  skos:prefLabel "material entity"@en ;
+  skos:definition "An independent continuant that has matter as parts."@en .
+
+bfo:Object
+  a owl:Class ;
+  rdfs:subClassOf bfo:MaterialEntity ;
+  owl:equivalentClass obo:BFO_0000030 ;
+  skos:prefLabel "object"@en ;
+  skos:definition "A material entity that exhibits causal unity and maintains its identity through changes in parts."@en .
+
+bfo:FiatObjectPart
+  a owl:Class ;
+  rdfs:subClassOf bfo:MaterialEntity ;
+  owl:equivalentClass obo:BFO_0000024 ;
+  skos:prefLabel "fiat object part"@en ;
+  skos:definition "A material entity that is part of an object and demarcated by fiat boundaries."@en .
+
+bfo:ObjectAggregate
+  a owl:Class ;
+  rdfs:subClassOf bfo:MaterialEntity ;
+  owl:equivalentClass obo:BFO_0000027 ;
+  skos:prefLabel "object aggregate"@en ;
+  skos:definition "A material entity consisting of multiple objects functioning as a unit."@en .
+
+bfo:ImmaterialEntity
+  a owl:Class ;
+  rdfs:subClassOf bfo:IndependentContinuant ;
+  owl:equivalentClass obo:BFO_0000141 ;
+  skos:prefLabel "immaterial entity"@en ;
+  skos:definition "An independent continuant that never has material parts."@en .
+
+bfo:SpatialRegion
+  a owl:Class ;
+  rdfs:subClassOf bfo:ImmaterialEntity ;
+  owl:equivalentClass obo:BFO_0000006 ;
+  skos:prefLabel "spatial region"@en ;
+  skos:definition "A continuant region of space."@en .
+
+bfo:ThreeDimensionalSpatialRegion
+  a owl:Class ;
+  rdfs:subClassOf bfo:SpatialRegion ;
+  owl:equivalentClass obo:BFO_0000028 ;
+  skos:prefLabel "three-dimensional spatial region"@en ;
+  skos:definition "A spatial region extending in three dimensions."@en .
+
+bfo:TwoDimensionalSpatialRegion
+  a owl:Class ;
+  rdfs:subClassOf bfo:SpatialRegion ;
+  owl:equivalentClass obo:BFO_0000009 ;
+  skos:prefLabel "two-dimensional spatial region"@en ;
+  skos:definition "A spatial region extending in two dimensions."@en .
+
+bfo:OneDimensionalSpatialRegion
+  a owl:Class ;
+  rdfs:subClassOf bfo:SpatialRegion ;
+  owl:equivalentClass obo:BFO_0000026 ;
+  skos:prefLabel "one-dimensional spatial region"@en ;
+  skos:definition "A spatial region extending in one dimension."@en .
+
+bfo:ZeroDimensionalSpatialRegion
+  a owl:Class ;
+  rdfs:subClassOf bfo:SpatialRegion ;
+  owl:equivalentClass obo:BFO_0000018 ;
+  skos:prefLabel "zero-dimensional spatial region"@en ;
+  skos:definition "A spatial region consisting of one or more points."@en .
+
+bfo:Site
+  a owl:Class ;
+  rdfs:subClassOf bfo:ImmaterialEntity ;
+  owl:equivalentClass obo:BFO_0000029 ;
+  skos:prefLabel "site"@en ;
+  skos:definition "An immaterial entity bounded by material entities."@en .
+
+bfo:ContinuantFiatBoundary
+  a owl:Class ;
+  rdfs:subClassOf bfo:ImmaterialEntity ;
+  owl:equivalentClass obo:BFO_0000140 ;
+  skos:prefLabel "continuant fiat boundary"@en ;
+  skos:definition "An immaterial boundary defined by convention or fiat."@en .
+
+bfo:FiatLine
+  a owl:Class ;
+  rdfs:subClassOf bfo:ContinuantFiatBoundary ;
+  owl:equivalentClass obo:BFO_0000142 ;
+  skos:prefLabel "fiat line"@en ;
+  skos:definition "A one-dimensional fiat boundary."@en .
+
+bfo:FiatSurface
+  a owl:Class ;
+  rdfs:subClassOf bfo:ContinuantFiatBoundary ;
+  owl:equivalentClass obo:BFO_0000146 ;
+  skos:prefLabel "fiat surface"@en ;
+  skos:definition "A two-dimensional fiat boundary."@en .
+
+bfo:FiatPoint
+  a owl:Class ;
+  rdfs:subClassOf bfo:ContinuantFiatBoundary ;
+  owl:equivalentClass obo:BFO_0000147 ;
+  skos:prefLabel "fiat point"@en ;
+  skos:definition "A zero-dimensional fiat boundary."@en .
+
+bfo:SpecificallyDependentContinuant
+  a owl:Class ;
+  rdfs:subClassOf bfo:Continuant ;
+  owl:equivalentClass obo:BFO_0000020 ;
+  skos:prefLabel "specifically dependent continuant"@en ;
+  skos:definition "A continuant that depends on a specific independent continuant."@en .
+
+bfo:Quality
+  a owl:Class ;
+  rdfs:subClassOf bfo:SpecificallyDependentContinuant ;
+  owl:equivalentClass obo:BFO_0000019 ;
+  skos:prefLabel "quality"@en ;
+  skos:definition "A dependent entity that is fully exhibited at any time it exists."@en .
+
+bfo:RelationalQuality
+  a owl:Class ;
+  rdfs:subClassOf bfo:Quality ;
+  owl:equivalentClass obo:BFO_0000145 ;
+  skos:prefLabel "relational quality"@en ;
+  skos:definition "A quality that inheres in multiple bearers."@en .
+
+bfo:RealizableEntity
+  a owl:Class ;
+  rdfs:subClassOf bfo:SpecificallyDependentContinuant ;
+  owl:equivalentClass obo:BFO_0000017 ;
+  skos:prefLabel "realizable entity"@en ;
+  skos:definition "A dependent entity requiring processes for its realization."@en .
+
+bfo:Disposition
+  a owl:Class ;
+  rdfs:subClassOf bfo:RealizableEntity ;
+  owl:equivalentClass obo:BFO_0000016 ;
+  skos:prefLabel "disposition"@en ;
+  skos:definition "A realizable entity requiring specific physical conditions for realization."@en .
+
+bfo:Function
+  a owl:Class ;
+  rdfs:subClassOf bfo:Disposition ;
+  owl:equivalentClass obo:BFO_0000034 ;
+  skos:prefLabel "function"@en ;
+  skos:definition "A disposition that exists due to physical makeup selected for its type."@en .
+
+bfo:Role
+  a owl:Class ;
+  rdfs:subClassOf bfo:RealizableEntity ;
+  owl:equivalentClass obo:BFO_0000023 ;
+  skos:prefLabel "role"@en ;
+  skos:definition "A realizable entity that exists due to external circumstances."@en .
+
+bfo:GenericallyDependentContinuant
+  a owl:Class ;
+  rdfs:subClassOf bfo:Continuant ;
+  owl:equivalentClass obo:BFO_0000031 ;
+  skos:prefLabel "generically dependent continuant"@en ;
+  skos:definition "A continuant that depends on some bearer but can migrate between bearers."@en .
+
+bfo:Process
+  a owl:Class ;
+  rdfs:subClassOf bfo:Occurrent ;
+  owl:equivalentClass obo:BFO_0000015 ;
+  skos:prefLabel "process"@en ;
+  skos:definition "An occurrent that has temporal parts and material participants."@en .
+
+bfo:History
+  a owl:Class ;
+  rdfs:subClassOf bfo:Process ;
+  owl:equivalentClass obo:BFO_0000182 ;
+  skos:prefLabel "history"@en ;
+  skos:definition "The complete process of changes undergone by a material entity."@en .
+
+bfo:ProcessBoundary
+  a owl:Class ;
+  rdfs:subClassOf bfo:Occurrent ;
+  owl:equivalentClass obo:BFO_0000035 ;
+  skos:prefLabel "process boundary"@en ;
+  skos:definition "An occurrent marking the instant of beginning or ending of a process."@en .
+
+bfo:TemporalRegion
+  a owl:Class ;
+  rdfs:subClassOf bfo:Occurrent ;
+  owl:equivalentClass obo:BFO_0000008 ;
+  skos:prefLabel "temporal region"@en ;
+  skos:definition "A region of time."@en .
+
+bfo:OneDimensionalTemporalRegion
+  a owl:Class ;
+  rdfs:subClassOf bfo:TemporalRegion ;
+  owl:equivalentClass obo:BFO_0000038 ;
+  skos:prefLabel "one-dimensional temporal region"@en ;
+  skos:definition "A temporal region with duration."@en .
+
+bfo:ZeroDimensionalTemporalRegion
+  a owl:Class ;
+  rdfs:subClassOf bfo:TemporalRegion ;
+  owl:equivalentClass obo:BFO_0000148 ;
+  skos:prefLabel "zero-dimensional temporal region"@en ;
+  skos:definition "A temporal region without duration."@en .
+
+bfo:TemporalInterval
+  a owl:Class ;
+  rdfs:subClassOf bfo:OneDimensionalTemporalRegion ;
+  owl:equivalentClass obo:BFO_0000202 ;
+  skos:prefLabel "temporal interval"@en ;
+  skos:definition "A continuous one-dimensional temporal region."@en .
+
+bfo:TemporalInstant
+  a owl:Class ;
+  rdfs:subClassOf bfo:ZeroDimensionalTemporalRegion ;
+  owl:equivalentClass obo:BFO_0000203 ;
+  skos:prefLabel "temporal instant"@en ;
+  skos:definition "A temporal region occupying a single moment."@en .
+
+bfo:SpatiotemporalRegion
+  a owl:Class ;
+  rdfs:subClassOf bfo:Occurrent ;
+  owl:equivalentClass obo:BFO_0000011 ;
+  skos:prefLabel "spatiotemporal region"@en ;
+  skos:definition "A region of spacetime."@en .
+
+bfo:partOf
+  a owl:ObjectProperty ;
+  owl:equivalentProperty obo:BFO_0000050 ;
+  skos:prefLabel "part of"@en ;
+  skos:definition "A fundamental relation of parthood between entities."@en .
+
+bfo:hasPart
+  a owl:ObjectProperty ;
+  owl:equivalentProperty obo:BFO_0000051 ;
+  skos:prefLabel "has part"@en ;
+  skos:definition "Inverse of part of relation."@en .
+
+bfo:hasContinuantPart
+  a owl:ObjectProperty ;
+  owl:equivalentProperty obo:BFO_0000178 ;
+  skos:prefLabel "has continuant part"@en ;
+  skos:definition "Parthood relation between continuants."@en .
+
+bfo:continuantPartOf
+  a owl:ObjectProperty ;
+  owl:equivalentProperty obo:BFO_0000176 ;
+  skos:prefLabel "continuant part of"@en ;
+  skos:definition "Inverse of has continuant part."@en .
+
+bfo:occurrentPartOf
+  a owl:ObjectProperty ;
+  owl:equivalentProperty obo:BFO_0000132 ;
+  skos:prefLabel "occurrent part of"@en ;
+  skos:definition "Parthood relation between occurrents."@en .
+
+bfo:hasOccurrentPart
+  a owl:ObjectProperty ;
+  owl:equivalentProperty obo:BFO_0000117 ;
+  skos:prefLabel "has occurrent part"@en ;
+  skos:definition "Inverse of occurrent part of."@en .
+
+bfo:specificallyDependsOn
+  a owl:ObjectProperty ;
+  owl:equivalentProperty obo:BFO_0000195 ;
+  skos:prefLabel "specifically depends on"@en ;
+  skos:definition "Dependency relation from specifically dependent continuant to bearer."@en .
+
+bfo:specificallyDependedOnBy
+  a owl:ObjectProperty ;
+  owl:equivalentProperty obo:BFO_0000194 ;
+  skos:prefLabel "specifically depended on by"@en ;
+  skos:definition "Inverse of specifically depends on."@en .
+
+bfo:Continuant owl:disjointWith bfo:Occurrent .
+bfo:IndependentContinuant owl:disjointWith bfo:SpecificallyDependentContinuant, bfo:GenericallyDependentContinuant .
+bfo:SpecificallyDependentContinuant owl:disjointWith bfo:GenericallyDependentContinuant .
+bfo:MaterialEntity owl:disjointWith bfo:ImmaterialEntity .
+bfo:Disposition owl:disjointWith bfo:Role .
+bfo:RealizableEntity owl:disjointWith bfo:Quality .
+bfo:IndependentContinuant owl:disjointWith bfo:SpatiotemporalRegion, bfo:Process, bfo:ProcessBoundary .
+bfo:OneDimensionalTemporalRegion owl:disjointWith bfo:ZeroDimensionalTemporalRegion .
+
+foaf:Agent
+  rdfs:subClassOf prov:Agent .
+
+prov:Activity
+  rdfs:subClassOf bfo:Occurrent ;
+  skos:prefLabel "activity"@en ;
+  skos:definition "Something that happens over time and may use or generate entities."@en .
+
+prov:Agent
+  rdfs:subClassOf bfo:Continuant ;
+  skos:prefLabel "agent"@en ;
+  skos:definition "A person, organization, software system, or other bearer of responsibility for an activity."@en .
+
+prov:Entity
+  rdfs:subClassOf bfo:Continuant ;
+  skos:prefLabel "entity"@en ;
+  skos:definition "A thing with some fixed aspects, such as a document, file, version, or other resource described by the dataset."@en .
+
+prov:SoftwareAgent
+  skos:prefLabel "software agent"@en ;
+  skos:definition "A software system acting as an agent in some activity."@en .
+
+prov:endedAtTime
+  skos:prefLabel "ended at time"@en ;
+  skos:definition "Relates an activity to the time at which it ended."@en .
+
+prov:generated
+  skos:prefLabel "generated"@en ;
+  skos:definition "Relates an activity to an entity that came into existence through that activity."@en .
+
+prov:generatedAtTime
+  skos:prefLabel "generated at time"@en ;
+  skos:definition "Relates an entity to the time at which it was completely created and available for use."@en .
+
+prov:startedAtTime
+  skos:prefLabel "started at time"@en ;
+  skos:definition "Relates an activity to the time at which it started."@en .
+
+prov:used
+  skos:prefLabel "used"@en ;
+  skos:definition "Relates an activity to an entity used in carrying out that activity."@en .
+
+prov:wasAssociatedWith
+  skos:prefLabel "was associated with"@en ;
+  skos:definition "Relates an activity to an agent that bore some responsibility for it."@en .
+
+prov:wasGeneratedBy
+  skos:prefLabel "was generated by"@en ;
+  skos:definition "Relates an entity to the activity that generated it."@en .
+
+prov:wasInformedBy
+  skos:prefLabel "was informed by"@en ;
+  skos:definition "Relates an activity to an earlier activity on which it depended."@en .
+
+prov:wasRevisionOf
+  skos:prefLabel "was revision of"@en ;
+  skos:definition "Relates an entity to an earlier entity that it revises."@en .

@@ -122,7 +122,11 @@ config :sheaf_rdf_browser, SheafRDFBrowser.Snapshot,
   load_on_start:
     System.get_env("SHEAF_RDF_BROWSER_LOAD_ON_START", "true")
     |> String.downcase()
-    |> Kernel.in(["1", "true", "yes", "on"])
+    |> Kernel.in(["1", "true", "yes", "on"]),
+  refresh_interval_ms:
+    System.get_env("SHEAF_RDF_BROWSER_REFRESH_INTERVAL_MS", "5000")
+    |> String.to_integer(),
+  pubsub: Sheaf.PubSub
 
 config :sheaf, Datalab,
   api_key: System.get_env("DATALAB_API_KEY"),

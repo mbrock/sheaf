@@ -127,6 +127,7 @@ defmodule SheafRDFBrowser.Snapshot do
             dataset: nil,
             index: Index.empty(),
             loaded_at: nil,
+            fingerprint: nil,
             error: nil,
             query_ms: nil,
             predicate_query_ms: nil,
@@ -148,6 +149,10 @@ defmodule SheafRDFBrowser.Snapshot do
     GenServer.call(__MODULE__, :refresh, timeout)
   end
 
+  def subscribe do
+    Phoenix.PubSub.subscribe(pubsub(), topic())
+  end
+
   @impl true
   def init(_opts) do
     state = %__MODULE__{}
@@ -161,7 +166,9 @@ defmodule SheafRDFBrowser.Snapshot do
 
   @impl true
   def handle_continue(:refresh, state) do
-    {:noreply, do_refresh(state)}
+    state = refresh_and_publish(state)
+    schedule_refresh()
+    {:noreply, state}
   end
 
   @impl true
@@ -171,8 +178,21 @@ defmodule SheafRDFBrowser.Snapshot do
 
   def handle_call(:refresh, _from, state) do
     state = %{state | status: :loading, error: nil}
-    state = do_refresh(state)
+    state = refresh_and_publish(state)
     {:reply, state, state}
+  end
+
+  @impl true
+  def handle_info(:refresh, state) do
+    state = refresh_and_publish(state)
+    schedule_refresh()
+    {:noreply, state}
+  end
+
+  defp refresh_and_publish(state) do
+    state
+    |> do_refresh()
+    |> publish_if_changed(state.fingerprint)
   end
 
   defp do_refresh(state) do
@@ -180,6 +200,7 @@ defmodule SheafRDFBrowser.Snapshot do
       {index, index_ms} = timed(fn -> Index.build_from_rows(rows) end)
 
       quads = rows.graph_counts |> Map.values() |> Enum.sum()
+      fingerprint = fingerprint(index, quads, map_size(rows.graph_counts))
 
       %{
         state
@@ -187,6 +208,7 @@ defmodule SheafRDFBrowser.Snapshot do
           dataset: nil,
           index: index,
           loaded_at: DateTime.utc_now(),
+          fingerprint: fingerprint,
           error: nil,
           query_ms: query_ms,
           predicate_query_ms: predicate_query_ms,
@@ -198,8 +220,35 @@ defmodule SheafRDFBrowser.Snapshot do
       }
     else
       {:error, reason} ->
-        %{state | status: :error, error: inspect(reason)}
+        error = inspect(reason)
+        %{state | status: :error, error: error, fingerprint: :erlang.phash2({:error, error})}
     end
+  end
+
+  defp publish_if_changed(%__MODULE__{} = state, old_fingerprint) do
+    if state.fingerprint != old_fingerprint do
+      Phoenix.PubSub.broadcast(pubsub(), topic(), {:snapshot_updated, state})
+    end
+
+    state
+  end
+
+  defp schedule_refresh do
+    case config()[:refresh_interval_ms] do
+      interval when is_integer(interval) and interval > 0 ->
+        Process.send_after(self(), :refresh, interval)
+
+      _interval ->
+        :ok
+    end
+  end
+
+  defp fingerprint(index, quads, graphs) do
+    :erlang.phash2(
+      {quads, graphs, index.labels, index.comments, index.class_counts, index.predicate_counts,
+       index.class_terms, index.property_terms, index.subclass_edges, index.subproperty_edges,
+       index.domains, index.ranges}
+    )
   end
 
   defp fetch_rows do
@@ -335,7 +384,12 @@ defmodule SheafRDFBrowser.Snapshot do
     Application.get_env(:sheaf_rdf_browser, __MODULE__,
       query_endpoint: "http://localhost:3030/sheaf/sparql",
       sparql_auth: {:basic, "admin:admin"},
-      load_on_start: true
+      load_on_start: true,
+      refresh_interval_ms: 5_000,
+      pubsub: Sheaf.PubSub
     )
   end
+
+  defp pubsub, do: Keyword.fetch!(config(), :pubsub)
+  defp topic, do: "sheaf_rdf_browser:snapshot"
 end

@@ -21,6 +21,11 @@ defmodule Sheaf.NS do
     file: "../prov-o.ttl"
   )
 
+  defvocab(BFO,
+    base_iri: "https://node.town/bfo#",
+    file: "../sheaf-ext.ttl"
+  )
+
   defvocab(BIBO,
     base_iri: "http://purl.org/ontology/bibo/",
     terms: ~w[

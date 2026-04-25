@@ -108,7 +108,7 @@
 /* This file is for your main application CSS */
 @font-face {
   font-family: "Equity";
-  src: url("/fonts/EquityOTA-Regular.otf") format("opentype");
+  src: url("/fonts/Equity-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -116,7 +116,7 @@
 
 @font-face {
   font-family: "Equity";
-  src: url("/fonts/EquityOTA-Italic.otf") format("opentype");
+  src: url("/fonts/Equity-Italic.woff2") format("woff2");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -124,8 +124,16 @@
 
 @font-face {
   font-family: "Equity";
-  src: url("/fonts/EquityOTA-Bold.otf") format("opentype");
+  src: url("/fonts/Equity-Bold.woff2") format("woff2");
   font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Equity Caps";
+  src: url("/fonts/Equity-Caps-Regular.woff2") format("woff2");
+  font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
@@ -144,6 +152,12 @@
   font-weight: 700;
   font-style: normal;
   font-display: swap;
+}
+
+@utility small-caps {
+  font-family: "Equity Caps", "Equity", "Iowan Old Style", Georgia, serif;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
 }
 
 @layer base {
