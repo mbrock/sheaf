@@ -30,7 +30,7 @@ defmodule Mix.Tasks.Sheaf.Tasks.EnqueueMetadataScan do
       {:ok, batch} ->
         message = "Enqueued #{batch.target_count} metadata task(s) in #{short(batch.iri)}"
         Mix.shell().info(message)
-        if opts[:telegram], do: Sheaf.Telegram.notify("Sheaf: #{message}")
+        if opts[:telegram], do: Sheaf.Telegram.notify(telegram_message(batch, resolver_opts))
 
       {:error, reason} ->
         Mix.raise("Failed to enqueue metadata tasks: #{inspect(reason)}")
@@ -56,4 +56,29 @@ defmodule Mix.Tasks.Sheaf.Tasks.EnqueueMetadataScan do
   defp put_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp short(iri), do: String.replace_prefix(to_string(iri), "https://sheaf.less.rest/", "")
+
+  defp telegram_message(batch, opts) do
+    scope =
+      cond do
+        opts[:document] -> "one document"
+        opts[:limit] -> "up to #{opts[:limit]} document(s)"
+        opts[:missing_only] -> "all documents missing Crossref metadata"
+        true -> "all source-linked documents"
+      end
+
+    """
+    Sheaf metadata batch queued
+
+    Batch: #{short(batch.iri)}
+    Scope: #{scope}
+    Initial tasks: #{batch.target_count} identifier extraction task(s)
+
+    Workflow:
+    - extract DOI/ISBN from bounded front-matter text
+    - optionally fall back to first PDF pages only
+    - look up Crossref serially
+    - import accepted matches into RDF serially
+    """
+    |> String.trim()
+  end
 end

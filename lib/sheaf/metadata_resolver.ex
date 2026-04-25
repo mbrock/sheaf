@@ -84,6 +84,74 @@ defmodule Sheaf.MetadataResolver do
   end
 
   @doc """
+  Looks up Crossref data for extracted DOI or ISBN metadata.
+  """
+  @spec lookup_identifier(Sheaf.PaperMetadata.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def lookup_identifier(metadata, opts \\ []) do
+    cond do
+      metadata.doi ->
+        with {:ok, work} <- Sheaf.Crossref.work(metadata.doi, crossref_lookup_opts(opts)) do
+          {:ok, %{source: "doi", identifier: metadata.doi, work: work}}
+        end
+
+      metadata.isbn ->
+        with {:ok, works} <-
+               Sheaf.Crossref.works_by_isbn(metadata.isbn, crossref_lookup_opts(opts)) do
+          {:ok, %{source: "isbn", identifier: metadata.isbn, works: works}}
+        end
+
+      true ->
+        {:ok, %{source: "none", identifier: nil, reason: "no DOI or ISBN found"}}
+    end
+  end
+
+  @doc """
+  Matches extracted metadata against a Crossref lookup result.
+  """
+  @spec match_lookup(Sheaf.PaperMetadata.t(), map()) :: {:ok, map()}
+  def match_lookup(metadata, %{source: "doi", work: work}) do
+    {:ok, match_crossref(metadata, work, :doi) |> Map.put(:work, work)}
+  end
+
+  def match_lookup(metadata, %{source: "isbn", works: works}) do
+    {work, match} = best_isbn_match(metadata, works)
+    {:ok, Map.put(match, :work, work)}
+  end
+
+  def match_lookup(_metadata, lookup) do
+    {:ok,
+     %{
+       accept?: false,
+       score: 0.0,
+       source: Map.get(lookup, :source) || Map.get(lookup, "source") || "none",
+       reason: Map.get(lookup, :reason) || Map.get(lookup, "reason") || "no lookup result"
+     }}
+  end
+
+  @doc """
+  Imports Crossref metadata for an accepted match.
+  """
+  @spec import_match(candidate(), Sheaf.PaperMetadata.t(), map(), keyword()) ::
+          {:ok, resolve_result()} | {:error, term()}
+  def import_match(candidate, metadata, match, opts \\ []) do
+    cond do
+      not Map.get(match, :accept?) ->
+        {:ok, no_import(candidate, metadata, clean_match(match))}
+
+      doi = Map.get(match, :doi) || get_in(match, [:work, "DOI"]) ->
+        import_crossref(candidate, metadata, doi, clean_match(match), opts)
+
+      true ->
+        {:ok,
+         no_import(
+           candidate,
+           metadata,
+           match |> clean_match() |> Map.put(:reason, "accepted match has no DOI")
+         )}
+    end
+  end
+
+  @doc """
   Resolves one queued task input map.
   """
   @spec resolve_task(map(), keyword()) :: {:ok, resolve_result()} | {:error, term()}
@@ -195,40 +263,9 @@ defmodule Sheaf.MetadataResolver do
   end
 
   defp resolve_metadata(candidate, metadata, opts) do
-    cond do
-      metadata.doi ->
-        resolve_doi(candidate, metadata, metadata.doi, opts)
-
-      metadata.isbn ->
-        resolve_isbn(candidate, metadata, opts)
-
-      true ->
-        {:ok,
-         %{candidate: candidate, metadata: metadata, wrote?: false, match: no_identifier_match()}}
-    end
-  end
-
-  defp resolve_doi(candidate, metadata, doi, opts) do
-    with {:ok, work} <- Sheaf.Crossref.work(doi, crossref_lookup_opts(opts)),
-         match = match_crossref(metadata, work, :doi),
-         true <- match.accept? || {:ok, no_import(candidate, metadata, match)} do
-      import_crossref(candidate, metadata, doi, match, opts)
-    end
-  end
-
-  defp resolve_isbn(candidate, metadata, opts) do
-    with {:ok, works} <- Sheaf.Crossref.works_by_isbn(metadata.isbn, crossref_lookup_opts(opts)),
-         {work, match} <- best_isbn_match(metadata, works),
-         true <- match.accept? || {:ok, no_import(candidate, metadata, match)},
-         doi when is_binary(doi) <-
-           work["DOI"] ||
-             {:ok,
-              no_import(
-                candidate,
-                metadata,
-                Map.put(match, :reason, "matched ISBN record has no DOI")
-              )} do
-      import_crossref(candidate, metadata, doi, match, opts)
+    with {:ok, lookup} <- lookup_identifier(metadata, opts),
+         {:ok, match} <- match_lookup(metadata, lookup) do
+      import_match(candidate, metadata, match, opts)
     end
   end
 
@@ -248,6 +285,8 @@ defmodule Sheaf.MetadataResolver do
   defp no_import(candidate, metadata, match) do
     %{candidate: candidate, metadata: metadata, wrote?: false, match: match}
   end
+
+  defp clean_match(match), do: Map.delete(match, :work)
 
   defp crossref_lookup_opts(opts), do: Keyword.take(opts, [:base_url, :req_options])
 
@@ -310,10 +349,6 @@ defmodule Sheaf.MetadataResolver do
 
   defp nullable_iri(nil), do: nil
   defp nullable_iri(value), do: RDF.iri(value)
-
-  defp no_identifier_match do
-    %{accept?: false, score: 0.0, identifier: nil, source: "none", reason: "no DOI or ISBN found"}
-  end
 
   defp best_isbn_match(metadata, works) do
     works

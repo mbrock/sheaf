@@ -18,6 +18,11 @@ defmodule Sheaf.TaskQueue do
     with_conn(opts, &Store.create_batch(&1, attrs, tasks))
   end
 
+  @spec create_task(String.t(), map(), map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def create_task(batch_iri, attrs, task, opts \\ []) do
+    with_conn(opts, &Store.create_task(&1, batch_iri, attrs, task))
+  end
+
   @spec list_batches(keyword()) :: {:ok, [map()]} | {:error, term()}
   def list_batches(opts \\ []) do
     with_conn(opts, &Store.list_batches(&1, opts))

@@ -97,6 +97,35 @@ defmodule Sheaf.TaskQueue.Store do
     end)
   end
 
+  @spec create_task(conn(), String.t(), map(), map()) :: {:ok, map()} | {:error, term()}
+  def create_task(conn, batch_iri, attrs, task)
+      when is_binary(batch_iri) and is_map(attrs) and is_map(task) do
+    now = now_iso8601()
+
+    transaction(conn, fn ->
+      with {:ok, batch} when not is_nil(batch) <- get_batch(conn, batch_iri),
+           :ok <- insert_tasks(conn, batch.id, attrs, [task], now),
+           :ok <-
+             execute(
+               conn,
+               """
+               UPDATE task_batches
+               SET target_count = (SELECT COUNT(*) FROM tasks WHERE batch_id = ?),
+                   updated_at = ?,
+                   finished_at = NULL,
+                   status = CASE WHEN status IN ('completed', 'partial', 'failed', 'canceled') THEN 'running' ELSE status END
+               WHERE id = ?
+               """,
+               [batch.id, now, batch.id]
+             ) do
+        get_task_by_unique_key(conn, Map.fetch!(task, :unique_key))
+      else
+        {:ok, nil} -> {:error, :missing_batch}
+        error -> error
+      end
+    end)
+  end
+
   @spec get_batch(conn(), String.t()) :: {:ok, map() | nil} | {:error, term()}
   def get_batch(conn, iri) do
     with {:ok, rows} <-
@@ -421,6 +450,26 @@ defmodule Sheaf.TaskQueue.Store do
       """,
       [task_id]
     )
+  end
+
+  defp get_task_by_unique_key(conn, unique_key) do
+    with {:ok, [row]} <-
+           query(
+             conn,
+             """
+             SELECT t.id, t.batch_id, b.iri, t.iri, t.queue, t.kind, t.status, t.priority,
+                    t.subject_iri, t.identifier, t.unique_key, t.attempts, t.max_attempts,
+                    t.run_after, t.locked_by, t.locked_until, t.input_json, t.result_json,
+                    t.error_json, t.inserted_at, t.updated_at, t.started_at, t.finished_at
+             FROM tasks t
+             JOIN task_batches b ON b.id = t.batch_id
+             WHERE t.unique_key = ?
+             LIMIT 1
+             """,
+             [unique_key]
+           ) do
+      {:ok, task_row(row)}
+    end
   end
 
   defp transaction(conn, fun) do

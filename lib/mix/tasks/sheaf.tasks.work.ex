@@ -16,6 +16,10 @@ defmodule Mix.Tasks.Sheaf.Tasks.Work do
         strict: [
           limit: :integer,
           concurrency: :integer,
+          extract_concurrency: :integer,
+          lookup_concurrency: :integer,
+          match_concurrency: :integer,
+          import_concurrency: :integer,
           telegram: :boolean,
           pdf_fallback: :boolean,
           pdf_pages: :integer,
@@ -30,7 +34,7 @@ defmodule Mix.Tasks.Sheaf.Tasks.Work do
     worker_opts =
       []
       |> Keyword.put(:limit, opts[:limit] || 1)
-      |> Keyword.put(:concurrency, opts[:concurrency] || min(opts[:limit] || 1, 32))
+      |> Keyword.put(:concurrency_by_kind, concurrency_by_kind(opts))
       |> Keyword.put(:telegram, opts[:telegram] || false)
       |> put_opt(:pdf_fallback, opts[:pdf_fallback])
       |> put_opt(:pdf_pages, opts[:pdf_pages])
@@ -46,4 +50,18 @@ defmodule Mix.Tasks.Sheaf.Tasks.Work do
 
   defp put_opt(opts, _key, nil), do: opts
   defp put_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp concurrency_by_kind(opts) do
+    extract = opts[:extract_concurrency] || opts[:concurrency]
+
+    %{}
+    |> put_kind("metadata.extract_identifiers", extract)
+    |> put_kind("metadata.resolve_document", extract)
+    |> put_kind("metadata.crossref.lookup", opts[:lookup_concurrency])
+    |> put_kind("metadata.match_candidate", opts[:match_concurrency])
+    |> put_kind("metadata.import_crossref", opts[:import_concurrency])
+  end
+
+  defp put_kind(map, _kind, nil), do: map
+  defp put_kind(map, kind, value), do: Map.put(map, kind, value)
 end

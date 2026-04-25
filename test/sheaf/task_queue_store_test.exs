@@ -73,4 +73,49 @@ defmodule Sheaf.TaskQueue.StoreTest do
     assert batch.status == "failed"
     assert batch.failed_count == 1
   end
+
+  test "creates a follow-up task in an existing batch" do
+    {:ok, conn} = Store.open(db_path: ":memory:")
+    on_exit(fn -> Store.close(conn) end)
+
+    assert {:ok, batch} =
+             Store.create_batch(
+               conn,
+               %{
+                 iri: "https://sheaf.less.rest/BATCH3",
+                 queue: "metadata",
+                 kind: "metadata.resolve"
+               },
+               [
+                 %{
+                   kind: "metadata.extract_identifiers",
+                   unique_key: "metadata.extract_identifiers:https://sheaf.less.rest/DOC1",
+                   subject_iri: "https://sheaf.less.rest/DOC1"
+                 }
+               ]
+             )
+
+    assert batch.target_count == 1
+
+    assert {:ok, task} =
+             Store.create_task(
+               conn,
+               "https://sheaf.less.rest/BATCH3",
+               %{queue: "metadata"},
+               %{
+                 kind: "metadata.crossref.lookup",
+                 unique_key:
+                   "metadata.crossref.lookup:https://sheaf.less.rest/DOC1:10.1000/example",
+                 subject_iri: "https://sheaf.less.rest/DOC1",
+                 identifier: "10.1000/example",
+                 input: %{doi: "10.1000/example"}
+               }
+             )
+
+    assert task.kind == "metadata.crossref.lookup"
+    assert task.input["doi"] == "10.1000/example"
+
+    assert {:ok, batch} = Store.get_batch(conn, "https://sheaf.less.rest/BATCH3")
+    assert batch.target_count == 2
+  end
 end
