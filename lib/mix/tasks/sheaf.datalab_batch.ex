@@ -12,7 +12,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
   @shortdoc "Manages RDF-backed Datalab batch jobs"
   @default_output_dir "var/datalab"
   @default_await_interval 30_000
-  @execution_page_size 200
+  @execution_page_size 100
 
   @impl Mix.Task
   def run(args) do
@@ -99,7 +99,12 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
 
   defp poll(opts) do
     job = require_job(opts)
-    poll_job(job, opts)
+
+    if opts[:await] do
+      await(job.iri, opts)
+    else
+      poll_job(job, opts)
+    end
   end
 
   defp poll_job(job, opts) do
