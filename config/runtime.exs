@@ -86,6 +86,11 @@ config :sheaf, Sheaf.Embedding,
 config :sheaf, Sheaf.Embedding.Store,
   path: System.get_env("SHEAF_EMBEDDINGS_DB", "var/sheaf-embeddings.sqlite3")
 
+config :sheaf, Sheaf.TaskQueue.Store,
+  path:
+    System.get_env("SHEAF_TASK_QUEUE_DB") ||
+      System.get_env("SHEAF_EMBEDDINGS_DB", "var/sheaf-embeddings.sqlite3")
+
 anthropic_api_key = System.get_env("ANTHROPIC_API_KEY")
 
 if anthropic_api_key && String.trim(anthropic_api_key) != "" do
