@@ -29,19 +29,136 @@ defmodule Sheaf.EmbeddingTest do
              )
   end
 
-  test "embeds text lists with separate requests" do
-    Req.Test.expect(__MODULE__, 2, fn conn ->
-      %{"content" => %{"parts" => [%{"text" => text}]}} =
-        Jason.decode!(IO.iodata_to_binary(Req.Test.raw_body(conn)))
+  test "embeds text lists with batchEmbedContents" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.request_path == "/v1beta/models/gemini-embedding-2:batchEmbedContents"
 
-      value = if text == "First.", do: 1.0, else: 2.0
-      Req.Test.json(conn, %{"embedding" => %{"values" => [value]}})
+      assert %{
+               "requests" => [
+                 %{
+                   "model" => "models/gemini-embedding-2",
+                   "content" => %{"parts" => [%{"text" => "First."}]}
+                 },
+                 %{
+                   "model" => "models/gemini-embedding-2",
+                   "content" => %{"parts" => [%{"text" => "Second."}]}
+                 }
+               ]
+             } = Jason.decode!(IO.iodata_to_binary(Req.Test.raw_body(conn)))
+
+      Req.Test.json(conn, %{
+        "embeddings" => [
+          %{"values" => [1.0]},
+          %{"values" => [2.0]}
+        ]
+      })
     end)
 
     assert {:ok, [%{values: [1.0]}, %{values: [2.0]}]} =
              Embedding.embed_texts(["First.", "Second."],
                api_key: "secret",
                req_options: [plug: {Req.Test, __MODULE__}]
+             )
+  end
+
+  test "embeds documents with async Batch API inline requests" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/v1beta/models/gemini-embedding-001:asyncBatchEmbedContent"
+
+      assert %{
+               "batch" => %{
+                 "inputConfig" => %{
+                   "requests" => %{
+                     "requests" => [
+                       %{
+                         "metadata" => %{"key" => "doc-1"},
+                         "request" => %{
+                           "model" => "models/gemini-embedding-001",
+                           "content" => %{"parts" => [%{"text" => "First."}]}
+                         }
+                       }
+                     ]
+                   }
+                 }
+               }
+             } = Jason.decode!(IO.iodata_to_binary(Req.Test.raw_body(conn)))
+
+      Req.Test.json(conn, %{
+        "name" => "batches/test",
+        "metadata" => %{
+          "name" => "batches/test",
+          "state" => "BATCH_STATE_PENDING"
+        }
+      })
+    end)
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/v1beta/batches/test"
+
+      Req.Test.json(conn, %{
+        "name" => "batches/test",
+        "metadata" => %{
+          "name" => "batches/test",
+          "state" => "BATCH_STATE_SUCCEEDED",
+          "output" => %{
+            "inlinedResponses" => %{
+              "inlinedResponses" => [
+                %{"response" => %{"embedding" => %{"values" => [1, 2]}}}
+              ]
+            }
+          }
+        }
+      })
+    end)
+
+    assert {:ok, [%{values: [1.0, 2.0]}]} =
+             Embedding.async_batch_embed_documents(
+               [%{key: "doc-1", text: "First."}],
+               api_key: "secret",
+               model: "gemini-embedding-001",
+               batch_input: :inline,
+               req_options: [plug: {Req.Test, __MODULE__}]
+             )
+  end
+
+  test "translates search task for gemini embedding 2" do
+    assert %{
+             content: %{
+               parts: [
+                 %{text: "task: search result | query: plastic"}
+               ]
+             }
+           } =
+             Embedding.request_body(
+               [
+                 %{
+                   text:
+                     Embedding.prepared_text("plastic",
+                       model: "gemini-embedding-2",
+                       task: :search,
+                       input_role: :query
+                     )
+                 }
+               ],
+               model: "gemini-embedding-2",
+               task: :search,
+               input_role: :query
+             )
+  end
+
+  test "translates search task for gemini embedding 001" do
+    assert %{
+             content: %{parts: [%{text: "Plastic text."}]},
+             taskType: "RETRIEVAL_DOCUMENT",
+             title: "Document title"
+           } =
+             Embedding.request_body([%{text: "Plastic text."}],
+               model: "gemini-embedding-001",
+               task: :search,
+               input_role: :document,
+               title: "Document title"
              )
   end
 

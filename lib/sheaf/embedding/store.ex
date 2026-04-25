@@ -59,10 +59,11 @@ defmodule Sheaf.Embedding.Store do
              "CREATE INDEX IF NOT EXISTS embeddings_run_idx ON embeddings(run_iri)"
            ),
          :ok <- Sqlite3.execute(conn, vector_items_sql()),
+         :ok <- ensure_vector_items_source_column(conn),
          :ok <-
            Sqlite3.execute(
              conn,
-             "CREATE INDEX IF NOT EXISTS embedding_vector_items_model_idx ON embedding_vector_items(model, dimensions)"
+             "CREATE INDEX IF NOT EXISTS embedding_vector_items_source_idx ON embedding_vector_items(model, dimensions, source)"
            ) do
       :ok
     end
@@ -127,6 +128,90 @@ defmodule Sheaf.Embedding.Store do
   end
 
   @doc """
+  Returns one embedding run row by IRI.
+  """
+  @spec get_run(conn(), String.t()) :: {:ok, map() | nil} | {:error, term()}
+  def get_run(conn, run_iri) do
+    with {:ok, rows} <-
+           query(
+             conn,
+             """
+             SELECT iri, model, dimensions, source, status, target_count,
+                    embedded_count, skipped_count, error_count, started_at,
+                    finished_at, metadata_json
+             FROM embedding_runs
+             WHERE iri = ?
+             LIMIT 1
+             """,
+             [run_iri]
+           ) do
+      case rows do
+        [] ->
+          {:ok, nil}
+
+        [
+          [
+            iri,
+            model,
+            dimensions,
+            source,
+            status,
+            target_count,
+            embedded_count,
+            skipped_count,
+            error_count,
+            started_at,
+            finished_at,
+            metadata_json
+          ]
+        ] ->
+          {:ok,
+           %{
+             iri: iri,
+             model: model,
+             dimensions: dimensions,
+             source: source,
+             status: status,
+             target_count: target_count,
+             embedded_count: embedded_count,
+             skipped_count: skipped_count,
+             error_count: error_count,
+             started_at: started_at,
+             finished_at: finished_at,
+             metadata: decode_metadata(metadata_json)
+           }}
+      end
+    end
+  end
+
+  @doc """
+  Updates non-terminal run bookkeeping without setting `finished_at`.
+  """
+  @spec update_run(conn(), String.t(), map()) :: :ok | {:error, term()}
+  def update_run(conn, run_iri, attrs) do
+    execute(
+      conn,
+      """
+      UPDATE embedding_runs
+      SET status = ?,
+          embedded_count = ?,
+          skipped_count = ?,
+          error_count = ?,
+          metadata_json = ?
+      WHERE iri = ?
+      """,
+      [
+        Map.get(attrs, :status, "running"),
+        Map.get(attrs, :embedded_count, 0),
+        Map.get(attrs, :skipped_count, 0),
+        Map.get(attrs, :error_count, 0),
+        Jason.encode!(Map.get(attrs, :metadata, %{})),
+        run_iri
+      ]
+    )
+  end
+
+  @doc """
   Inserts one embedding row for a run.
   """
   @spec insert_embedding(conn(), map()) :: :ok | {:error, term()}
@@ -152,8 +237,8 @@ defmodule Sheaf.Embedding.Store do
   @doc """
   Returns `{iri, text_hash}` pairs already available for a model/dimensions.
   """
-  @spec reusable_hashes(conn(), String.t(), pos_integer()) :: MapSet.t()
-  def reusable_hashes(conn, model, dimensions) do
+  @spec reusable_hashes(conn(), String.t(), pos_integer(), String.t() | nil) :: MapSet.t()
+  def reusable_hashes(conn, model, dimensions, source \\ nil) do
     {:ok, rows} =
       query(
         conn,
@@ -163,9 +248,10 @@ defmodule Sheaf.Embedding.Store do
         JOIN embedding_runs r ON r.iri = e.run_iri
         WHERE r.model = ?
           AND r.dimensions = ?
+          AND (? IS NULL OR r.source = ?)
           AND r.status IN ('completed', 'partial')
         """,
-        [model, dimensions]
+        [model, dimensions, source, source]
       )
 
     rows
@@ -178,7 +264,7 @@ defmodule Sheaf.Embedding.Store do
   """
   @spec latest_embedding(conn(), String.t(), String.t(), String.t(), pos_integer()) ::
           {:ok, map() | nil} | {:error, term()}
-  def latest_embedding(conn, iri, text_hash, model, dimensions) do
+  def latest_embedding(conn, iri, text_hash, model, dimensions, source \\ nil) do
     with {:ok, rows} <-
            query(
              conn,
@@ -190,11 +276,12 @@ defmodule Sheaf.Embedding.Store do
                AND e.text_hash = ?
                AND r.model = ?
                AND r.dimensions = ?
+               AND (? IS NULL OR r.source = ?)
                AND r.status IN ('completed', 'partial')
              ORDER BY COALESCE(r.finished_at, r.started_at) DESC, e.inserted_at DESC
              LIMIT 1
              """,
-             [iri, text_hash, model, dimensions]
+             [iri, text_hash, model, dimensions, source, source]
            ) do
       case rows do
         [] ->
@@ -220,10 +307,11 @@ defmodule Sheaf.Embedding.Store do
   recently finished run wins. Rows remain physically attached to their original
   run; this is only a read view over the derived cache.
   """
-  @spec latest_embeddings(conn(), String.t(), pos_integer()) :: {:ok, [map()]} | {:error, term()}
-  def latest_embeddings(conn, model, dimensions) do
+  @spec latest_embeddings(conn(), String.t(), pos_integer(), String.t() | nil) ::
+          {:ok, [map()]} | {:error, term()}
+  def latest_embeddings(conn, model, dimensions, source \\ nil) do
     with {:ok, rows} <-
-           latest_embedding_rows(conn, model, dimensions) do
+           latest_embedding_rows(conn, model, dimensions, source) do
       {:ok,
        Enum.map(rows, fn [iri, run_iri, text_hash, text_chars, blob] ->
          %{
@@ -240,14 +328,14 @@ defmodule Sheaf.Embedding.Store do
   @doc """
   Rebuilds the sqlite-vec search table for the latest embeddings of a model.
   """
-  @spec sync_vector_index(conn(), String.t(), pos_integer()) ::
+  @spec sync_vector_index(conn(), String.t(), pos_integer(), String.t() | nil) ::
           {:ok, non_neg_integer()} | {:error, term()}
-  def sync_vector_index(conn, model, dimensions) do
+  def sync_vector_index(conn, model, dimensions, source \\ nil) do
     with :ok <- ensure_vector_table(conn, dimensions),
-         {:ok, rows} <- latest_embedding_rows(conn, model, dimensions) do
+         {:ok, rows} <- latest_embedding_rows(conn, model, dimensions, source) do
       transaction(conn, fn ->
-        with :ok <- delete_vector_index(conn, model, dimensions) do
-          insert_vector_rows(conn, model, dimensions, rows)
+        with :ok <- delete_vector_index(conn, model, dimensions, source) do
+          insert_vector_rows(conn, model, dimensions, source, rows)
         end
       end)
     end
@@ -256,12 +344,19 @@ defmodule Sheaf.Embedding.Store do
   @doc """
   Returns nearest embeddings using sqlite-vec cosine distance.
   """
-  @spec search_vectors(conn(), [float()], String.t(), pos_integer(), pos_integer()) ::
+  @spec search_vectors(
+          conn(),
+          [float()],
+          String.t(),
+          pos_integer(),
+          pos_integer(),
+          String.t() | nil
+        ) ::
           {:ok, [map()]} | {:error, term()}
-  def search_vectors(conn, query_values, model, dimensions, limit) do
+  def search_vectors(conn, query_values, model, dimensions, limit, source \\ nil) do
     with :ok <- ensure_vector_table(conn, dimensions),
-         {:ok, count} <- vector_index_count(conn, model, dimensions),
-         {:ok, _count} <- maybe_sync_vector_index(conn, model, dimensions, count),
+         {:ok, count} <- vector_index_count(conn, model, dimensions, source),
+         {:ok, _count} <- maybe_sync_vector_index(conn, model, dimensions, source, count),
          {:ok, rows} <-
            query(
              conn,
@@ -273,9 +368,10 @@ defmodule Sheaf.Embedding.Store do
                AND k = ?
                AND i.model = ?
                AND i.dimensions = ?
+               AND (? IS NULL OR i.source = ?)
              ORDER BY v.distance
              """,
-             [{:blob, encode_vector(query_values)}, limit, model, dimensions]
+             [{:blob, encode_vector(query_values)}, limit, model, dimensions, source, source]
            ) do
       {:ok,
        Enum.map(rows, fn [iri, run_iri, distance] ->
@@ -294,7 +390,7 @@ defmodule Sheaf.Embedding.Store do
     for <<value::little-float-32 <- binary>>, do: value
   end
 
-  defp latest_embedding_rows(conn, model, dimensions) do
+  defp latest_embedding_rows(conn, model, dimensions, source) do
     query(
       conn,
       """
@@ -313,11 +409,12 @@ defmodule Sheaf.Embedding.Store do
         JOIN embedding_runs r ON r.iri = e.run_iri
         WHERE r.model = ?
           AND r.dimensions = ?
+          AND (? IS NULL OR r.source = ?)
           AND r.status IN ('completed', 'partial')
       )
       WHERE row_number = 1
       """,
-      [model, dimensions]
+      [model, dimensions, source, source]
     )
   end
 
@@ -364,7 +461,7 @@ defmodule Sheaf.Embedding.Store do
     "embedding_vec_#{dimensions}"
   end
 
-  defp vector_index_count(conn, model, dimensions) do
+  defp vector_index_count(conn, model, dimensions, source) do
     with {:ok, [[count]]} <-
            query(
              conn,
@@ -373,32 +470,33 @@ defmodule Sheaf.Embedding.Store do
              FROM embedding_vector_items
              WHERE model = ?
                AND dimensions = ?
+               AND (? IS NULL OR source = ?)
              """,
-             [model, dimensions]
+             [model, dimensions, source, source]
            ) do
       {:ok, count}
     end
   end
 
-  defp maybe_sync_vector_index(conn, model, dimensions, 0),
-    do: sync_vector_index(conn, model, dimensions)
+  defp maybe_sync_vector_index(conn, model, dimensions, source, 0),
+    do: sync_vector_index(conn, model, dimensions, source)
 
-  defp maybe_sync_vector_index(_conn, _model, _dimensions, count), do: {:ok, count}
+  defp maybe_sync_vector_index(_conn, _model, _dimensions, _source, count), do: {:ok, count}
 
-  defp delete_vector_index(conn, model, dimensions) do
+  defp delete_vector_index(conn, model, dimensions, source) do
     table = vector_table_name(dimensions)
 
     with {:ok, rowids} <-
            query(
              conn,
-             "SELECT rowid FROM embedding_vector_items WHERE model = ? AND dimensions = ?",
-             [model, dimensions]
+             "SELECT rowid FROM embedding_vector_items WHERE model = ? AND dimensions = ? AND (? IS NULL OR source = ?)",
+             [model, dimensions, source, source]
            ),
          :ok <- delete_vector_rows(conn, table, rowids) do
       execute(
         conn,
-        "DELETE FROM embedding_vector_items WHERE model = ? AND dimensions = ?",
-        [model, dimensions]
+        "DELETE FROM embedding_vector_items WHERE model = ? AND dimensions = ? AND (? IS NULL OR source = ?)",
+        [model, dimensions, source, source]
       )
     end
   end
@@ -412,7 +510,7 @@ defmodule Sheaf.Embedding.Store do
     end)
   end
 
-  defp insert_vector_rows(conn, model, dimensions, rows) do
+  defp insert_vector_rows(conn, model, dimensions, source, rows) do
     table = vector_table_name(dimensions)
 
     rows
@@ -426,7 +524,8 @@ defmodule Sheaf.Embedding.Store do
              run_iri,
              text_hash,
              text_chars,
-             blob
+             blob,
+             source
            ) do
         :ok -> {:cont, {:ok, count + 1}}
         {:error, reason} -> {:halt, {:error, reason}}
@@ -443,17 +542,18 @@ defmodule Sheaf.Embedding.Store do
          run_iri,
          text_hash,
          text_chars,
-         blob
+         blob,
+         source
        ) do
     with :ok <-
            execute(
              conn,
              """
              INSERT INTO embedding_vector_items
-               (iri, run_iri, text_hash, model, dimensions, text_chars)
-             VALUES (?, ?, ?, ?, ?, ?)
+               (iri, run_iri, text_hash, model, dimensions, text_chars, source)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
              """,
-             [iri, run_iri, text_hash, model, dimensions, text_chars]
+             [iri, run_iri, text_hash, model, dimensions, text_chars, source]
            ),
          {:ok, [[rowid]]} <- query(conn, "SELECT last_insert_rowid()", []) do
       execute(conn, "INSERT INTO #{table}(rowid, embedding) VALUES (?, ?)", [
@@ -512,6 +612,27 @@ defmodule Sheaf.Embedding.Store do
     end
   end
 
+  defp ensure_vector_items_source_column(conn) do
+    with {:ok, statement} <- Sqlite3.prepare(conn, "PRAGMA table_info(embedding_vector_items)") do
+      try do
+        {:ok, rows} = Sqlite3.fetch_all(conn, statement)
+
+        has_source? =
+          Enum.any?(rows, fn row ->
+            Enum.at(row, 1) == "source"
+          end)
+
+        if has_source? do
+          :ok
+        else
+          Sqlite3.execute(conn, "ALTER TABLE embedding_vector_items ADD COLUMN source TEXT")
+        end
+      after
+        Sqlite3.release(conn, statement)
+      end
+    end
+  end
+
   defp ensure_parent_dir(":memory:"), do: :ok
 
   defp ensure_parent_dir(path) do
@@ -519,6 +640,10 @@ defmodule Sheaf.Embedding.Store do
     |> Path.dirname()
     |> File.mkdir_p()
   end
+
+  defp decode_metadata(nil), do: %{}
+  defp decode_metadata(""), do: %{}
+  defp decode_metadata(json), do: Jason.decode!(json)
 
   defp now_iso8601 do
     DateTime.utc_now()
@@ -572,7 +697,8 @@ defmodule Sheaf.Embedding.Store do
       text_hash TEXT NOT NULL,
       model TEXT NOT NULL,
       dimensions INTEGER NOT NULL,
-      text_chars INTEGER NOT NULL
+      text_chars INTEGER NOT NULL,
+      source TEXT
     )
     """
   end

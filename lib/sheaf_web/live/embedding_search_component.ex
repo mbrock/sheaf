@@ -24,7 +24,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
     {:ok,
      socket
      |> assign(assigns)
-     |> assign_new(:limit, fn -> 8 end)}
+     |> assign_new(:limit, fn -> 20 end)}
   end
 
   @impl true
@@ -73,21 +73,23 @@ defmodule SheafWeb.EmbeddingSearchComponent do
         </span>
       </div>
 
-      <.form for={%{}} as={:search} phx-change="search" phx-target={@myself}>
+      <.form for={%{}} as={:search} phx-submit="search" phx-target={@myself}>
         <div class="flex items-center gap-2 rounded-sm border border-stone-300 bg-white px-2 py-1.5 dark:border-stone-700 dark:bg-stone-900">
-          <.icon
-            name="hero-magnifying-glass"
-            class="size-4 shrink-0 text-stone-400 dark:text-stone-500"
-          />
           <input
             type="search"
             name="search[query]"
             value={@query}
-            phx-debounce="500"
             autocomplete="off"
             placeholder="Search concepts, passages, or cases"
             class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-sm leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 dark:text-stone-50 dark:placeholder:text-stone-500"
           />
+          <button
+            type="submit"
+            title="Search"
+            class="grid size-6 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
+          >
+            <.icon name="hero-magnifying-glass" class="size-4" />
+          </button>
         </div>
       </.form>
 
@@ -133,6 +135,9 @@ defmodule SheafWeb.EmbeddingSearchComponent do
               <span :if={context_label(result)} class="min-w-0 truncate">
                 {context_label(result)}
               </span>
+              <span class="uppercase">
+                {match_label(result)}
+              </span>
             </div>
 
             <p class="mt-1 line-clamp-2 text-xs leading-5 text-stone-700 dark:text-stone-300">
@@ -170,6 +175,10 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
   defp score_percent(score) when is_float(score), do: "#{round(score * 100)}"
   defp score_percent(_score), do: ""
+
+  defp match_label(%{match: :both}), do: "exact + semantic"
+  defp match_label(%{match: :exact}), do: "exact"
+  defp match_label(_result), do: "semantic"
 
   defp snippet(text) do
     text
