@@ -31,7 +31,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert {:ok, result} =
              Tool.execute(tool, %{
-               "text" => "This relates [#ABC123](/b/ABC123) to the introduction.",
+               "text" => "This relates #ABC123 to the introduction.",
                "block_ids" => ["ABC123"],
                "title" => "A note"
              })
@@ -40,7 +40,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert_receive {:note_attrs,
                     %{
-                      text: "This relates [#ABC123](/b/ABC123) to the introduction.",
+                      text: "This relates #ABC123 to the introduction.",
                       title: "A note",
                       block_ids: ["ABC123"],
                       agent_iri: ^agent,

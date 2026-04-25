@@ -181,6 +181,9 @@ relying on destructive mutation.
 
 For HTTP requests in Elixir, prefer `Req`.
 
+For Python commands, always use `uv` or `uvx`; do not call `python`,
+`python3`, or `pip` directly.
+
 Sheaf's triple store is Dockerized Fuseki. Use `bin/triplestore` rather than
 inventing ad hoc Docker commands when checking status, logs, datasets, or
 restarting it.

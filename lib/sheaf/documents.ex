@@ -17,12 +17,18 @@ defmodule Sheaf.Documents do
 
   SELECT ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages ?pageCount WHERE {
     GRAPH ?graph {
-      ?doc a sheaf:Document .
-      OPTIONAL { ?doc rdfs:label ?title }
-      OPTIONAL {
+      {
         ?doc a ?kind .
-        FILTER(?kind IN (sheaf:Paper, sheaf:Thesis, sheaf:Transcript))
+        FILTER(?kind IN (sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
+      } UNION {
+        ?doc a sheaf:Document .
+        FILTER NOT EXISTS {
+          ?doc a ?specificKind .
+          FILTER(?specificKind IN (sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
+        }
+        BIND(sheaf:Document AS ?kind)
       }
+      OPTIONAL { ?doc rdfs:label ?title }
     }
     OPTIONAL {
       SELECT ?doc ((MAX(?sp) - MIN(?sp) + 1) AS ?pageCount) WHERE {
@@ -80,7 +86,8 @@ defmodule Sheaf.Documents do
     |> Enum.sort_by(&{kind_order(&1.kind), String.downcase(&1.title)})
   end
 
-  defp from_document_rows([row | _] = rows) do
+  defp from_document_rows(rows) do
+    row = Enum.min_by(rows, &(kind(&1["kind"]) |> kind_order()))
     iri = row_iri(row)
     kind = kind(row["kind"])
     metadata = metadata(rows)
@@ -173,6 +180,7 @@ defmodule Sheaf.Documents do
   defp kind(term_to_iri(DOC.Paper)), do: :paper
   defp kind(term_to_iri(DOC.Thesis)), do: :thesis
   defp kind(term_to_iri(DOC.Transcript)), do: :transcript
+  defp kind(term_to_iri(DOC.Spreadsheet)), do: :spreadsheet
   defp kind(_term), do: :document
 
   defp path(iri) do
@@ -187,7 +195,8 @@ defmodule Sheaf.Documents do
   defp kind_order(:thesis), do: 0
   defp kind_order(:paper), do: 1
   defp kind_order(:transcript), do: 2
-  defp kind_order(:document), do: 3
+  defp kind_order(:spreadsheet), do: 3
+  defp kind_order(:document), do: 4
 
   defp term_value(term), do: term |> RDF.Term.value() |> to_string()
 end

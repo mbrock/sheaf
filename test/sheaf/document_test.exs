@@ -18,6 +18,7 @@ defmodule Sheaf.DocumentTest do
     nested_paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV2222")
     tail_paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR333")
     tail_paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV3333")
+    row = RDF.IRI.new!("https://example.com/sheaf/ROW444")
 
     graph =
       RDF.Graph.new([
@@ -42,10 +43,12 @@ defmodule Sheaf.DocumentTest do
         {tail_paragraph, RDF.type(), DOC.ParagraphBlock},
         {tail_paragraph, DOC.paragraph(), tail_paragraph_revision},
         {tail_paragraph_revision, RDF.type(), DOC.Paragraph},
-        {tail_paragraph_revision, DOC.text(), RDF.literal("Trailing paragraph.")}
+        {tail_paragraph_revision, DOC.text(), RDF.literal("Trailing paragraph.")},
+        {row, RDF.type(), DOC.Row},
+        {row, DOC.text(), RDF.literal("Spreadsheet row text.")}
       ])
       |> then(fn graph ->
-        RDF.list([intro, tail_paragraph], graph: graph, head: root_list).graph
+        RDF.list([intro, tail_paragraph, row], graph: graph, head: root_list).graph
       end)
       |> then(fn graph ->
         RDF.list([first_paragraph, nested_section], graph: graph, head: intro_list).graph
@@ -55,11 +58,13 @@ defmodule Sheaf.DocumentTest do
     assert Document.title(graph, thesis) == "Example Thesis"
     assert Document.kind(graph, thesis) == :thesis
 
-    assert [^intro, ^tail_paragraph] = Document.children(graph, thesis)
+    assert [^intro, ^tail_paragraph, ^row] = Document.children(graph, thesis)
     assert Document.block_type(graph, intro) == :section
     assert Document.heading(graph, intro) == "Introduction"
     assert Document.block_type(graph, tail_paragraph) == :paragraph
     assert Document.paragraph_text(graph, tail_paragraph) == "Trailing paragraph."
+    assert Document.block_type(graph, row) == :row
+    assert Document.text(graph, row) == "Spreadsheet row text."
 
     assert [^first_paragraph, ^nested_section] = Document.children(graph, intro)
     assert Document.block_type(graph, first_paragraph) == :paragraph
@@ -69,6 +74,15 @@ defmodule Sheaf.DocumentTest do
 
     assert [^nested_paragraph] = Document.children(graph, nested_section)
     assert Document.paragraph_text(graph, nested_paragraph) == "Nested paragraph."
+
+    assert [
+             %{id: "SEC111", type: :section, text: "Introduction"},
+             %{id: "PAR111", type: :paragraph, text: "Opening paragraph."},
+             %{id: "SEC222", type: :section, text: "Research Questions"},
+             %{id: "PAR222", type: :paragraph, text: "Nested paragraph."},
+             %{id: "PAR333", type: :paragraph, text: "Trailing paragraph."},
+             %{id: "ROW444", type: :row, text: "Spreadsheet row text."}
+           ] = Document.text_chunks(graph, thesis)
 
     assert [
              %{

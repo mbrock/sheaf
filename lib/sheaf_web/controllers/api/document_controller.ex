@@ -120,6 +120,7 @@ defmodule SheafWeb.API.DocumentController do
           source: block_source(graph, block_iri),
           children: children
         }
+        |> maybe_add_coding(graph, block_iri, type)
     end
   end
 
@@ -139,6 +140,7 @@ defmodule SheafWeb.API.DocumentController do
 
   defp block_text(graph, iri, :paragraph), do: Document.paragraph_text(graph, iri)
   defp block_text(graph, iri, :extracted), do: Document.source_html(graph, iri)
+  defp block_text(graph, iri, :row), do: Document.text(graph, iri)
   defp block_text(_graph, _iri, _type), do: nil
 
   defp block_source(graph, iri) do
@@ -148,6 +150,17 @@ defmodule SheafWeb.API.DocumentController do
       type: Document.source_block_type(graph, iri)
     }
   end
+
+  defp maybe_add_coding(payload, graph, iri, :row) do
+    Map.put(payload, :coding, %{
+      row: Document.spreadsheet_row(graph, iri),
+      source: Document.spreadsheet_source(graph, iri),
+      category: Document.code_category(graph, iri),
+      category_title: Document.code_category_title(graph, iri)
+    })
+  end
+
+  defp maybe_add_coding(payload, _graph, _iri, _type), do: payload
 
   defp send_error(conn, status, message, reason) do
     conn

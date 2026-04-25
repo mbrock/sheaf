@@ -480,12 +480,14 @@ defmodule SheafWeb.DocumentIndexLive do
   defp kind_label(:thesis), do: "Thesis"
   defp kind_label(:paper), do: "Papers"
   defp kind_label(:transcript), do: "Transcripts"
+  defp kind_label(:spreadsheet), do: "Spreadsheets"
   defp kind_label(:document), do: "Documents"
 
   defp kind_order(:thesis), do: 0
   defp kind_order(:paper), do: 1
   defp kind_order(:transcript), do: 2
-  defp kind_order(:document), do: 3
+  defp kind_order(:spreadsheet), do: 3
+  defp kind_order(:document), do: 4
 
   defp file_title(%Description{} = file) do
     first_value(file, Sheaf.NS.DOC.originalFilename()) ||

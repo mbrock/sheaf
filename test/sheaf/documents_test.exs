@@ -34,6 +34,11 @@ defmodule Sheaf.DocumentsTest do
         "doc" => ~I<https://example.com/sheaf/THESIS>,
         "title" => RDF.literal("Example Thesis"),
         "kind" => RDF.iri(DOC.Thesis)
+      },
+      %{
+        "doc" => ~I<https://example.com/sheaf/CODED>,
+        "title" => RDF.literal("Coded spreadsheet"),
+        "kind" => RDF.iri(DOC.Spreadsheet)
       }
     ]
 
@@ -45,7 +50,43 @@ defmodule Sheaf.DocumentsTest do
                kind: :transcript,
                path: nil,
                title: "Interview 23"
+             },
+             %{
+               id: "CODED",
+               kind: :spreadsheet,
+               path: "/CODED",
+               title: "Coded spreadsheet"
              }
+           ] = Documents.from_rows(rows)
+  end
+
+  test "prefers specific document kinds over generic document rows" do
+    rows = [
+      %{
+        "doc" => ~I<https://example.com/sheaf/PAPER1>,
+        "title" => RDF.literal("Example Paper"),
+        "kind" => RDF.iri(DOC.Document)
+      },
+      %{
+        "doc" => ~I<https://example.com/sheaf/PAPER1>,
+        "title" => RDF.literal("Example Paper"),
+        "kind" => RDF.iri(DOC.Paper)
+      },
+      %{
+        "doc" => ~I<https://example.com/sheaf/THESIS>,
+        "title" => RDF.literal("Example Thesis"),
+        "kind" => RDF.iri(DOC.Document)
+      },
+      %{
+        "doc" => ~I<https://example.com/sheaf/THESIS>,
+        "title" => RDF.literal("Example Thesis"),
+        "kind" => RDF.iri(DOC.Thesis)
+      }
+    ]
+
+    assert [
+             %{id: "THESIS", kind: :thesis},
+             %{id: "PAPER1", kind: :paper}
            ] = Documents.from_rows(rows)
   end
 

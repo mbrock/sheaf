@@ -31,7 +31,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       Tool.new!(
         name: "list_documents",
         description:
-          "List every document in the Sheaf corpus (thesis + papers). " <>
+          "List every document in the Sheaf corpus. " <>
             "Returns id, kind, title, authors, year, page count, DOI, venue.",
         callback: instrument(notify, "list_documents", &list_documents_tool/1)
       ),
@@ -61,10 +61,13 @@ defmodule Sheaf.Assistant.CorpusTools do
         name: "search_text",
         description:
           "Case-insensitive substring search over paragraph and extracted-block " <>
-            "text. Searches the whole corpus by default; pass document_id to scope. " <>
+            "text. Searches the main prose corpus by default; pass document_id to scope. " <>
+            "Set include_spreadsheets=true only when you explicitly want to search " <>
+            "spreadsheet-coded row excerpts too. " <>
             "The query may be an exact phrase or multiple space-separated keywords; " <>
             "exact phrase matches rank first, then blocks matching more keywords. " <>
-            "Returns hits with their document id, block id, kind, and full text.",
+            "Returns hits with their document id, block id, kind, and full text; " <>
+            "spreadsheet row hits also include coding metadata.",
         parameter_schema: [
           query: [
             type: :string,
@@ -73,6 +76,11 @@ defmodule Sheaf.Assistant.CorpusTools do
               "Exact phrase or space-separated keywords, for example \"circular economy\" or \"politics economy\"."
           ],
           document_id: [type: :string, doc: "Optional: scope to one document"],
+          include_spreadsheets: [
+            type: :boolean,
+            default: false,
+            doc: "Explicitly include sheaf:Row spreadsheet excerpts and coding metadata."
+          ],
           limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits"]
         ],
         callback: instrument(notify, "search_text", &search_text_tool/1)
@@ -88,7 +96,7 @@ defmodule Sheaf.Assistant.CorpusTools do
             type: :string,
             required: true,
             doc:
-              "Self-contained note text. Include block references as markdown links when relevant."
+              "Self-contained note text. Include simple block references like #ABC123 when relevant."
           ],
           block_ids: [
             type: {:list, :string},
@@ -127,13 +135,14 @@ defmodule Sheaf.Assistant.CorpusTools do
   def humanize("search_text", args, titles) do
     q = smart_quote(arg(args, :query) || "")
     scope = arg(args, :document_id)
+    corpus = if include_spreadsheets?(args), do: " including coded excerpts", else: ""
 
     case scope do
       id when is_binary(id) and id != "" ->
-        "Searching for " <> q <> " in " <> quote_title(id, titles)
+        "Searching for " <> q <> " in " <> quote_title(id, titles) <> corpus
 
       _ ->
-        "Searching for " <> q <> " across the corpus"
+        "Searching for " <> q <> " across the corpus" <> corpus
     end
   end
 
@@ -171,6 +180,11 @@ defmodule Sheaf.Assistant.CorpusTools do
   def result_summary("get_block", {:ok, %{type: :extracted, text: text}})
       when is_binary(text) do
     excerpt_or_kind(text, "extracted block")
+  end
+
+  def result_summary("get_block", {:ok, %{type: :row, text: text}})
+      when is_binary(text) do
+    excerpt_or_kind(text, "row")
   end
 
   def result_summary("get_block", {:ok, %{type: :document, title: title}}) do
@@ -299,6 +313,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       opts =
         [limit: arg(args, :limit) || @search_result_limit]
         |> maybe_add_scope(args)
+        |> maybe_include_spreadsheets(args)
 
       case Corpus.search_text(query, opts) do
         {:ok, results} -> {:ok, %{query: query, results: results}}
@@ -338,6 +353,12 @@ defmodule Sheaf.Assistant.CorpusTools do
       id -> Keyword.put(opts, :document_id, id)
     end
   end
+
+  defp maybe_include_spreadsheets(opts, args) do
+    if include_spreadsheets?(args), do: Keyword.put(opts, :include_spreadsheets, true), else: opts
+  end
+
+  defp include_spreadsheets?(args), do: arg(args, :include_spreadsheets) in [true, "true"]
 
   defp document_summary(doc) do
     %{
@@ -383,6 +404,11 @@ defmodule Sheaf.Assistant.CorpusTools do
 
       :extracted ->
         Map.put(base, :text, plain_text(Document.source_html(graph, iri)))
+
+      :row ->
+        base
+        |> Map.put(:text, Document.text(graph, iri))
+        |> Map.put(:coding, row_coding(graph, iri))
     end
   end
 
@@ -404,6 +430,15 @@ defmodule Sheaf.Assistant.CorpusTools do
       key: Document.source_key(graph, iri),
       page: Document.source_page(graph, iri),
       type: Document.source_block_type(graph, iri)
+    }
+  end
+
+  defp row_coding(graph, iri) do
+    %{
+      row: Document.spreadsheet_row(graph, iri),
+      source: Document.spreadsheet_source(graph, iri),
+      category: Document.code_category(graph, iri),
+      category_title: Document.code_category_title(graph, iri)
     }
   end
 

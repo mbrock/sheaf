@@ -218,6 +218,50 @@ defmodule SheafWeb.DocumentLive do
     """
   end
 
+  defp reader_block(%{block: %{type: :row}} = assigns) do
+    ~H"""
+    <article
+      id={"block-#{Document.id(@block.iri)}"}
+      class={[
+        "relative max-w-prose cursor-pointer rounded-sm py-1 transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
+        selected_class(@block, @selected_id)
+      ]}
+      phx-click="inspect_block"
+      phx-value-id={Document.id(@block.iri)}
+    >
+      <span class="absolute right-full top-1 mr-3 w-10 text-right font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
+        §{@block.number}
+      </span>
+
+      <div class="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
+        <span
+          :if={Document.code_category(@graph, @block.iri) != ""}
+          class="shrink-0 font-semibold text-stone-700 dark:text-stone-300"
+        >
+          {Document.code_category(@graph, @block.iri)}
+        </span>
+        <span
+          :if={Document.code_category_title(@graph, @block.iri) != ""}
+          class="min-w-0 flex-1 truncate"
+          title={Document.code_category_title(@graph, @block.iri)}
+        >
+          {Document.code_category_title(@graph, @block.iri)}
+        </span>
+      </div>
+
+      <span
+        id={"text-#{Document.id(@block.iri)}"}
+        class="block font-serif leading-7"
+        phx-hook="PretextParagraph"
+        phx-update="ignore"
+        data-pretext-text
+      >
+        {Document.text(@graph, @block.iri)}
+      </span>
+    </article>
+    """
+  end
+
   defp reader_block(%{block: %{type: :extracted, source_type: "Text"}} = assigns) do
     ~H"""
     <div
@@ -289,6 +333,10 @@ defmodule SheafWeb.DocumentLive do
         :paragraph ->
           number = paragraph_index + 1
           {%{type: :paragraph, iri: iri, number: number}, {section_index, number}}
+
+        :row ->
+          number = paragraph_index + 1
+          {%{type: :row, iri: iri, number: number}, {section_index, number}}
 
         :extracted ->
           source_type = Document.source_block_type(graph, iri)

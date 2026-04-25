@@ -24,6 +24,11 @@ sheaf:Paper a rdfs:Class ;
   rdfs:subClassOf sheaf:Document ;
   rdfs:comment "A paper or published document imported from an external source." .
 
+sheaf:Spreadsheet a rdfs:Class ;
+  rdfs:label "Spreadsheet" ;
+  rdfs:subClassOf sheaf:Document ;
+  rdfs:comment "A document imported from tabular source data." .
+
 sheaf:Interview a rdfs:Class ;
   rdfs:label "Interview" ;
   rdfs:subClassOf sheaf:Transcript ;
@@ -47,6 +52,11 @@ sheaf:ExtractedBlock a rdfs:Class ;
   rdfs:label "Extracted block" ;
   rdfs:subClassOf sheaf:Block ;
   rdfs:comment "A block extracted from an external document source, preserved with source metadata and renderable source HTML." .
+
+sheaf:Row a rdfs:Class ;
+  rdfs:label "Row" ;
+  rdfs:subClassOf sheaf:Block ;
+  rdfs:comment "A row imported from a spreadsheet or CSV source." .
 
 sheaf:Paragraph a rdfs:Class ;
   rdfs:label "Paragraph" ;
@@ -81,7 +91,6 @@ sheaf:paragraph a rdf:Property ;
 
 sheaf:text a rdf:Property ;
   rdfs:label "text" ;
-  rdfs:domain sheaf:Paragraph ;
   rdfs:range xsd:string .
 
 sheaf:audio a rdf:Property ;
@@ -138,6 +147,25 @@ sheaf:sourceHtml a rdf:Property ;
   rdfs:label "source HTML" ;
   rdfs:range xsd:string ;
   rdfs:comment "A renderable HTML fragment extracted from the source document block." .
+
+sheaf:spreadsheetRow a rdf:Property ;
+  rdfs:label "spreadsheet row" ;
+  rdfs:domain sheaf:Row ;
+  rdfs:range xsd:integer .
+
+sheaf:spreadsheetSource a rdf:Property ;
+  rdfs:label "spreadsheet source" ;
+  rdfs:range xsd:string .
+
+sheaf:codeCategory a rdf:Property ;
+  rdfs:label "code category" ;
+  rdfs:domain sheaf:Row ;
+  rdfs:range xsd:string .
+
+sheaf:codeCategoryTitle a rdf:Property ;
+  rdfs:label "code category title" ;
+  rdfs:domain sheaf:Row ;
+  rdfs:range xsd:string .
 
 sheaf:sha256 a rdf:Property ;
   rdfs:label "SHA-256" ;

@@ -107,6 +107,7 @@ defmodule Sheaf.Document do
       typed?(description, DOC.Thesis) -> :thesis
       typed?(description, DOC.Transcript) -> :transcript
       typed?(description, DOC.Paper) -> :paper
+      typed?(description, DOC.Spreadsheet) -> :spreadsheet
       true -> :document
     end
   end
@@ -137,6 +138,7 @@ defmodule Sheaf.Document do
       typed?(description, DOC.Section) -> :section
       typed?(description, DOC.ParagraphBlock) -> :paragraph
       typed?(description, DOC.ExtractedBlock) -> :extracted
+      typed?(description, DOC.Row) -> :row
       true -> nil
     end
   end
@@ -150,6 +152,10 @@ defmodule Sheaf.Document do
       nil -> ""
       paragraph_iri -> value(graph, paragraph_iri, DOC.text(), "")
     end
+  end
+
+  def text(%Graph{} = graph, iri) do
+    value(graph, iri, DOC.text(), "")
   end
 
   def source_html(%Graph{} = graph, iri) do
@@ -169,6 +175,25 @@ defmodule Sheaf.Document do
       nil -> nil
       term -> RDF.Term.value(term)
     end
+  end
+
+  def spreadsheet_row(%Graph{} = graph, iri) do
+    case object(graph, iri, DOC.spreadsheetRow()) do
+      nil -> nil
+      term -> RDF.Term.value(term)
+    end
+  end
+
+  def spreadsheet_source(%Graph{} = graph, iri) do
+    value(graph, iri, DOC.spreadsheetSource(), "")
+  end
+
+  def code_category(%Graph{} = graph, iri) do
+    value(graph, iri, DOC.codeCategory(), "")
+  end
+
+  def code_category_title(%Graph{} = graph, iri) do
+    value(graph, iri, DOC.codeCategoryTitle(), "")
   end
 
   defp text_chunks_for(%Graph{} = graph, iri) do
@@ -192,6 +217,9 @@ defmodule Sheaf.Document do
 
       :extracted ->
         chunk(graph, iri, :extracted, plain_text(source_html(graph, iri)))
+
+      :row ->
+        chunk(graph, iri, :row, text(graph, iri))
 
       _other ->
         nil
