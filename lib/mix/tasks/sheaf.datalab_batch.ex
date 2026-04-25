@@ -111,27 +111,36 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     output_dir = Keyword.get(opts, :output_dir, @default_output_dir)
     submitted = DatalabJobs.submitted_file_jobs(job)
 
-    Mix.shell().info("Polling #{length(submitted)} submitted files for #{job.iri}")
+    Mix.shell().info("Polling #{length(submitted)} active files for #{job.iri}")
 
     with {:ok, executions} <- execution_index(submitted, opts) do
-      submitted
-      |> Enum.reduce(%{completed: 0, failed: 0, running: 0, errors: 0}, fn file_job, stats ->
-        case Map.fetch(executions, file_job.execution_id) do
-          {:ok, body} ->
-            handle_poll_status(job, file_job, body, output_dir, stats)
+      stats =
+        Enum.reduce(submitted, %{completed: 0, failed: 0, running: 0, errors: 0}, fn file_job,
+                                                                                     stats ->
+          case Map.fetch(executions, file_job.execution_id) do
+            {:ok, body} ->
+              handle_poll_status(job, file_job, body, output_dir, stats)
 
-          :error ->
-            Mix.shell().error("ERROR #{file_job.execution_id}: not found in pipeline executions")
-            %{stats | errors: stats.errors + 1}
-        end
-      end)
-      |> print_poll_stats()
+            :error ->
+              Mix.shell().error(
+                "ERROR #{file_job.execution_id}: not found in pipeline executions"
+              )
+
+              %{stats | errors: stats.errors + 1}
+          end
+        end)
+
+      print_progress(job.iri, stats)
     else
       {:error, reason} ->
         Mix.shell().error("ERROR list pipeline executions: #{inspect(reason)}")
 
-        %{completed: 0, failed: 0, running: 0, errors: length(submitted)}
-        |> print_poll_stats()
+        print_progress(job.iri, %{
+          completed: 0,
+          failed: 0,
+          running: 0,
+          errors: length(submitted)
+        })
     end
   end
 
@@ -172,12 +181,43 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     end
   end
 
-  defp print_poll_stats(stats) do
+  defp print_progress(job_iri, stats) do
+    {:ok, job} = DatalabJobs.get_job(job_iri)
+    counts = Enum.frequencies_by(job.file_jobs, & &1.status)
+    total = length(job.file_jobs)
+    completed = counts["completed"] || 0
+    failed = counts["failed"] || 0
+    pending = counts["pending"] || 0
+    submitted = counts["submitted"] || 0
+    done = completed + failed
+    left = total - done
+
     Mix.shell().info(
-      "Done. Completed #{stats.completed}, failed #{stats.failed}, running #{stats.running}, errors #{stats.errors}."
+      [
+        progress_bar(done, total),
+        "#{done}/#{total} done",
+        "#{left} left",
+        "#{completed} completed",
+        "#{failed} failed",
+        "#{submitted} running",
+        "#{pending} pending",
+        "cycle +#{stats.completed}/-#{stats.failed}, errors #{stats.errors}"
+      ]
+      |> Enum.join("  ")
     )
 
     stats
+  end
+
+  defp progress_bar(_done, 0), do: "[--------------------] 0%"
+
+  defp progress_bar(done, total) do
+    width = 20
+    filled = div(done * width, total)
+    percent = div(done * 100, total)
+
+    "[" <>
+      String.duplicate("#", filled) <> String.duplicate("-", width - filled) <> "] #{percent}%"
   end
 
   defp await(job_iri, opts) do
@@ -217,7 +257,6 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
           %{stats | failed: stats.failed + 1}
 
         true ->
-          Mix.shell().info("#{status} #{file_job.execution_id}")
           %{stats | running: stats.running + 1}
       end
     else
