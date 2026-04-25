@@ -48,6 +48,31 @@ defmodule DatalabTest do
              )
   end
 
+  test "lists Datalab pipeline executions" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/api/v1/pipelines/pl_test/executions"
+      assert conn.query_params["limit"] == "50"
+      assert conn.query_params["offset"] == "100"
+
+      Req.Test.json(conn, %{
+        "executions" => [
+          %{"execution_id" => "pex_test", "status" => "running"}
+        ],
+        "total" => 101
+      })
+    end)
+
+    assert {:ok, %{"executions" => [%{"execution_id" => "pex_test"}], "total" => 101}} =
+             Datalab.list_pipeline_executions(
+               api_key: "secret",
+               pipeline_id: "pl_test",
+               limit: 50,
+               offset: 100,
+               req_options: [plug: {Req.Test, __MODULE__}]
+             )
+  end
+
   test "fetches markdown from a completed job result" do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.method == "GET"

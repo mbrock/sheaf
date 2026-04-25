@@ -11,7 +11,7 @@ defmodule Datalab do
   @default_output_format "markdown"
   @default_poll_interval 10_000
   @default_poll_timeout :timer.minutes(15)
-  @complete_statuses ~w(completed succeeded success finished done)
+  @complete_statuses ~w(completed completed_with_errors succeeded success finished done)
   @failed_statuses ~w(failed error errored cancelled canceled)
   @result_step 0
 
@@ -130,6 +130,24 @@ defmodule Datalab do
   end
 
   @doc """
+  Lists recent executions for the configured Datalab pipeline.
+  """
+  @spec list_pipeline_executions(keyword()) :: response()
+  def list_pipeline_executions(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 200)
+    offset = Keyword.get(opts, :offset, 0)
+
+    with {:ok, api_key} <- api_key(opts) do
+      client(api_key, opts)
+      |> Req.get(
+        url: "/pipelines/#{pipeline_id(opts)}/executions",
+        params: [limit: limit, offset: offset]
+      )
+      |> handle_response()
+    end
+  end
+
+  @doc """
   Polls a Datalab pipeline execution until it reaches a terminal status.
   """
   @spec await_job(execution_id(), keyword()) :: response()
@@ -164,6 +182,30 @@ defmodule Datalab do
          {:ok, markdown} <- fetch_markdown(body) do
       {:ok, markdown}
     end
+  end
+
+  @doc """
+  Extracts a normalized status string from a Datalab execution response.
+  """
+  def status(body), do: job_status(body)
+
+  @doc """
+  Returns true when a normalized Datalab status is terminal and successful.
+  """
+  def complete_status?(status) when is_binary(status),
+    do: String.downcase(status) in @complete_statuses
+
+  @doc """
+  Returns true when a normalized Datalab status is terminal and failed.
+  """
+  def failed_status?(status) when is_binary(status),
+    do: String.downcase(status) in @failed_statuses
+
+  @doc """
+  Extracts normalized output from a Datalab step result body.
+  """
+  def output(body, output_format \\ @default_output_format) do
+    extract_output(body, to_string(output_format))
   end
 
   defp do_await_job(execution_id, deadline, opts) do

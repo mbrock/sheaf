@@ -122,6 +122,18 @@ defmodule Sheaf.Files do
     end
   end
 
+  @doc """
+  Resolves a `ComputerFile` description to its content-addressed local blob path.
+  """
+  def local_path(%Description{} = file, opts \\ []) do
+    with hash when is_binary(hash) <- first_value(file, Sheaf.NS.DOC.sha256()),
+         filename when is_binary(filename) <- first_value(file, Sheaf.NS.DOC.originalFilename()) do
+      {:ok, BlobStore.path_for(hash, filename, blob_opts(Keyword.put(opts, :filename, filename)))}
+    else
+      _ -> {:error, :missing_blob_metadata}
+    end
+  end
+
   defp files_graph(opts) do
     case Keyword.fetch(opts, :files_graph) do
       {:ok, graph} -> {:ok, graph}

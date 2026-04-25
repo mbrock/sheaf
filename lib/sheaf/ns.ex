@@ -38,6 +38,7 @@ defmodule Sheaf.NS do
     terms: ~w[
       creator
       date
+      format
       identifier
       isPartOf
       publisher
