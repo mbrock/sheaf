@@ -83,6 +83,64 @@ defmodule Sheaf.Files do
     end
   end
 
+  @doc """
+  Stores a local file unless a `ComputerFile` with the same SHA-256 already exists.
+
+  Returns a map with the file IRI, blob metadata, and whether a new RDF graph was
+  created. This is intended for batch ingestion where reruns should be safe.
+  """
+  def ingest(path, opts \\ []) when is_binary(path) do
+    with {:ok, stored_file} <- BlobStore.put_file(path, blob_opts(opts)),
+         {:ok, existing_iri} <- find_by_hash(stored_file.hash, opts) do
+      case existing_iri do
+        nil ->
+          with {:ok, file_iri} <- create_from_stored_file(stored_file, opts) do
+            {:ok, %{iri: file_iri, stored_file: stored_file, created?: true}}
+          end
+
+        file_iri ->
+          {:ok, %{iri: file_iri, stored_file: stored_file, created?: false}}
+      end
+    end
+  end
+
+  @doc """
+  Finds the first known `ComputerFile` IRI with a matching SHA-256 hash.
+  """
+  def find_by_hash(hash, opts \\ []) when is_binary(hash) do
+    with {:ok, graph} <- files_graph(opts) do
+      iri =
+        graph
+        |> descriptions()
+        |> Enum.find_value(fn description ->
+          if first_value(description, Sheaf.NS.DOC.sha256()) == hash do
+            description.subject
+          end
+        end)
+
+      {:ok, iri}
+    end
+  end
+
+  defp files_graph(opts) do
+    case Keyword.fetch(opts, :files_graph) do
+      {:ok, graph} -> {:ok, graph}
+      :error -> list_graph()
+    end
+  end
+
+  defp create_from_stored_file(stored_file, opts) do
+    file_iri = Keyword.get_lazy(opts, :file_iri, &Sheaf.mint/0)
+    activity_iri = Keyword.get_lazy(opts, :activity_iri, &Sheaf.mint/0)
+    generated_at = Keyword.get_lazy(opts, :generated_at, &now/0)
+    graph = file_graph(file_iri, activity_iri, stored_file, generated_at)
+    put_graph = Keyword.get(opts, :put_graph, &Sheaf.put_graph/2)
+
+    with :ok <- put_graph.(file_iri, graph) do
+      {:ok, file_iri}
+    end
+  end
+
   defp file_graph(file_iri, activity_iri, stored_file, generated_at) do
     RDF.Graph.build file: file_iri,
                     activity: activity_iri,
@@ -137,6 +195,12 @@ defmodule Sheaf.Files do
 
   defp term_value(nil), do: nil
   defp term_value(term), do: RDF.Term.value(term)
+
+  defp first_value(%Description{} = description, property) do
+    description
+    |> Description.first(property)
+    |> term_value()
+  end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 end

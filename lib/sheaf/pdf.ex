@@ -29,8 +29,10 @@ defmodule Sheaf.PDF do
     title = Keyword.get(opts, :title) || title(document)
     source_path = present_value(Keyword.get(opts, :source_path))
     source_file = Keyword.get(opts, :source_file)
-    source_file_metadata = source_file_metadata(source_file)
-    source_file_iri = source_file && Keyword.get_lazy(opts, :source_file_iri, mint)
+    source_file_iri = Keyword.get(opts, :source_file_iri) || (source_file && mint.())
+
+    source_file_metadata =
+      source_file_metadata(source_file, Keyword.has_key?(opts, :source_file_iri))
 
     blocks = DatalabDocument.document_blocks(document)
     nodes = flatten_nodes(blocks)
@@ -44,6 +46,7 @@ defmodule Sheaf.PDF do
                       source_path: source_path,
                       source_file: source_file_metadata,
                       source_file_iri: source_file_iri,
+                      source_file_metadata: source_file_metadata,
                       nodes: node_summaries,
                       child_lists: child_lists do
         @prefix Sheaf.NS.DOC
@@ -57,7 +60,7 @@ defmodule Sheaf.PDF do
         |> DOC.sourceKey(source_path)
         |> DOC.sourceFile(source_file_iri)
 
-        if source_file_iri do
+        if source_file_metadata do
           source_file_iri
           |> a(FABIO.ComputerFile)
           |> RDFS.label(source_file.original_filename)
@@ -84,9 +87,10 @@ defmodule Sheaf.PDF do
     %{document: document_iri, graph: graph, source_file: source_file, title: title}
   end
 
-  defp source_file_metadata(nil), do: nil
+  defp source_file_metadata(nil, _existing_file?), do: nil
+  defp source_file_metadata(_source_file, true), do: nil
 
-  defp source_file_metadata(source_file) do
+  defp source_file_metadata(source_file, false) do
     %{
       original_filename: source_file_value(source_file, :original_filename),
       hash: source_file_value(source_file, :hash),

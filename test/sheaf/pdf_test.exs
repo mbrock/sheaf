@@ -94,6 +94,46 @@ defmodule Sheaf.PDFTest do
     assert rdf_value(file_description, DOC.sourceKey()) == "sha256:abc123"
   end
 
+  test "links imported papers to an existing file entity without duplicating its description" do
+    document = %{"children" => [], "metadata" => %{}}
+    file = RDF.IRI.new!("https://example.com/sheaf/FILE111")
+
+    result =
+      PDF.build_graph(document,
+        title: "Example Paper",
+        source_file: %{
+          byte_size: 123,
+          hash: "abc123",
+          mime_type: "application/pdf",
+          original_filename: "paper.pdf",
+          storage_key: "sha256:abc123"
+        },
+        source_file_iri: file,
+        mint: mint(~w(DOC111))
+      )
+
+    paper = result.document
+    file_description = Graph.description(result.graph, file)
+
+    assert RDF.Data.include?(result.graph, {paper, DOC.sourceFile(), file})
+    refute Description.include?(file_description, {RDF.type(), FABIO.ComputerFile})
+    refute Description.include?(file_description, {DOC.sha256(), "abc123"})
+  end
+
+  test "links imported papers to an existing file entity without source metadata" do
+    document = %{"children" => [], "metadata" => %{}}
+    file = RDF.IRI.new!("https://example.com/sheaf/FILE111")
+
+    result =
+      PDF.build_graph(document,
+        title: "Example Paper",
+        source_file_iri: file,
+        mint: mint(~w(DOC111))
+      )
+
+    assert RDF.Data.include?(result.graph, {result.document, DOC.sourceFile(), file})
+  end
+
   defp rdf_value(%Description{} = description, property) do
     description
     |> Description.first(property)

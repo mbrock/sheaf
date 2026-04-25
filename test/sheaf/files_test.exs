@@ -80,6 +80,52 @@ defmodule Sheaf.FilesTest do
     assert rdf_value(file_description, Sheaf.NS.DOC.byteSize()) == 123
   end
 
+  test "ingest reuses an existing file with the same hash" do
+    path = Path.join(System.tmp_dir!(), "sheaf-files-ingest-test.pdf")
+    File.write!(path, "%PDF-1.7\nsame\n")
+
+    file_iri = RDF.IRI.new!("https://example.com/sheaf/FILE11")
+    activity_iri = RDF.IRI.new!("https://example.com/sheaf/ACT111")
+    generated_at = ~U[2026-04-24 10:00:00Z]
+
+    existing_graph =
+      RDF.Graph.build file: file_iri, activity: activity_iri, generated_at: generated_at do
+        @prefix Sheaf.NS.DOC
+        @prefix Sheaf.NS.FABIO
+        @prefix Sheaf.NS.PROV
+        @prefix RDF.NS.RDFS
+
+        file
+        |> a(FABIO.ComputerFile)
+        |> RDFS.label("paper.pdf")
+        |> DOC.sha256("ad56ddd904fc8df946ef72eeb0bf5ac99e7b99ee12ecfc0b593325b1a00c9b7e")
+        |> DOC.sourceKey(
+          "sha256:ad56ddd904fc8df946ef72eeb0bf5ac99e7b99ee12ecfc0b593325b1a00c9b7e"
+        )
+        |> DOC.mimeType("application/pdf")
+        |> DOC.byteSize(14)
+        |> PROV.generatedAtTime(generated_at)
+      end
+
+    test_pid = self()
+
+    assert {:ok, result} =
+             Files.ingest(path,
+               filename: "paper-copy.pdf",
+               files_graph: existing_graph,
+               put_graph: fn graph_name, graph ->
+                 send(test_pid, {:put_graph, graph_name, graph})
+                 :ok
+               end
+             )
+
+    assert result.iri == file_iri
+    refute result.created?
+    refute_received {:put_graph, _graph_name, _graph}
+
+    File.rm(path)
+  end
+
   defp rdf_value(%Description{} = description, property) do
     description
     |> Description.first(property)
