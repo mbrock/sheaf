@@ -85,7 +85,6 @@ defmodule SheafWeb.CoreComponents do
           data-toc-link={@emit_active_data && "block-#{entry.id}"}
           class={[
             "-mx-1 flex items-baseline rounded-sm border-l-2 border-transparent py-0.5 pl-2 pr-1 transition-colors",
-            "hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
             "data-[current=true]:border-stone-950 data-[current=true]:bg-stone-200/70 data-[current=true]:text-stone-950",
             "dark:data-[current=true]:border-stone-100 dark:data-[current=true]:bg-stone-800/80 dark:data-[current=true]:text-stone-50",
             if(length(entry.number) == 1,

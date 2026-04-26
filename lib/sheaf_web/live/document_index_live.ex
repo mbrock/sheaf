@@ -150,7 +150,7 @@ defmodule SheafWeb.DocumentIndexLive do
 
         <div class="min-w-0 space-y-8">
           <details class="group">
-            <summary class="mb-2 flex cursor-pointer list-none items-end justify-between gap-3 rounded-sm py-1 transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80 [&::-webkit-details-marker]:hidden">
+            <summary class="mb-2 flex cursor-pointer list-none items-end justify-between gap-3 rounded-sm py-1 transition-colors [&::-webkit-details-marker]:hidden">
               <div class="flex min-w-0 items-start gap-2">
                 <span class="mt-0.5 block w-3 shrink-0 text-center font-mono text-xs leading-snug text-stone-400 transition-transform group-open:rotate-90 dark:text-stone-500">
                   ▸
@@ -390,7 +390,7 @@ defmodule SheafWeb.DocumentIndexLive do
         phx-value-id={@document.id}
         aria-expanded={@expanded}
         aria-label={if(@expanded, do: "Collapse outline", else: "Expand outline")}
-        class="shrink-0 px-2 py-1.5 text-stone-400 transition-colors hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-500 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+        class="shrink-0 px-2 py-1.5 text-stone-400 transition-colors hover:text-stone-900 dark:text-stone-500 dark:hover:text-stone-100"
       >
         <span class={[
           "block w-3 text-center font-mono text-xs leading-snug transition-transform",
@@ -404,7 +404,7 @@ defmodule SheafWeb.DocumentIndexLive do
         <.link
           :if={@document.path}
           navigate={@document.path}
-          class="block transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80"
+          class="block transition-colors"
         >
           <.document_row document={@document} />
         </.link>
@@ -445,7 +445,7 @@ defmodule SheafWeb.DocumentIndexLive do
       >
         <span class="w-10 shrink-0 tabular-nums">{year_str(@document)}</span>
 
-        <span class="min-w-0 flex-1 truncate font-serif text-stone-600 [font-variant-caps:small-caps] dark:text-stone-300">
+        <span class="small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300">
           {authors_str(@document) || ""}
         </span>
 

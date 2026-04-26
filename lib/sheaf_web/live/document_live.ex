@@ -83,7 +83,7 @@ defmodule SheafWeb.DocumentLive do
 
           <span
             id="document-breadcrumb"
-            class="min-w-0 flex-1 truncate text-center font-serif text-lg lowercase text-stone-500 [font-variant-caps:small-caps] dark:text-stone-400"
+            class="small-caps min-w-0 flex-1 truncate text-center text-lg text-stone-500 dark:text-stone-400"
           >
           </span>
 
@@ -152,7 +152,7 @@ defmodule SheafWeb.DocumentLive do
     <section id={"block-#{Document.id(@block.iri)}"} class="space-y-6">
       <h1
         class={[
-          "cursor-pointer rounded-sm font-sans text-2xl font-bold transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
+          "cursor-pointer rounded-sm font-sans text-2xl font-bold",
           selected_class(@block, @selected_id)
         ]}
         phx-click="inspect_block"
@@ -175,7 +175,7 @@ defmodule SheafWeb.DocumentLive do
     >
       <summary
         class={[
-          "cursor-pointer list-none rounded-sm transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
+          "cursor-pointer list-none rounded-sm",
           selected_class(@block, @selected_id)
         ]}
         phx-click="inspect_block"
@@ -196,7 +196,7 @@ defmodule SheafWeb.DocumentLive do
     <p
       id={"block-#{Document.id(@block.iri)}"}
       class={[
-        "relative max-w-prose cursor-pointer rounded-sm font-serif leading-7 transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
+        "relative max-w-prose cursor-pointer rounded-sm font-serif leading-7",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
@@ -223,7 +223,7 @@ defmodule SheafWeb.DocumentLive do
     <article
       id={"block-#{Document.id(@block.iri)}"}
       class={[
-        "relative max-w-prose cursor-pointer rounded-sm py-1 transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
+        "relative max-w-prose cursor-pointer rounded-sm py-1",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
@@ -268,7 +268,7 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "relative max-w-prose cursor-pointer rounded-sm font-serif leading-7 transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
+        "relative max-w-prose cursor-pointer rounded-sm font-serif leading-7",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
@@ -296,7 +296,7 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "relative max-w-prose cursor-pointer rounded-sm font-sans text-sm leading-6 text-stone-700 transition-colors hover:bg-stone-200/70 dark:text-stone-300 dark:hover:bg-stone-800/80",
+        "relative max-w-prose cursor-pointer rounded-sm font-sans text-sm leading-6 text-stone-700 dark:text-stone-300",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
