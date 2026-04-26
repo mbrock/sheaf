@@ -18,7 +18,7 @@ defmodule Sheaf.Documents do
   PREFIX bibo: <http://purl.org/ontology/bibo/>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-  SELECT ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages ?pageCount ?metadataPageCount ?excluded ?cited ?metadataOnly WHERE {
+  SELECT ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages ?pageCount ?metadataPageCount ?status ?statusLabel ?excluded ?workspaceOwnerAuthored ?workspaceOwnerName ?cited ?metadataOnly WHERE {
     {
       GRAPH ?graph {
         {
@@ -80,6 +80,10 @@ defmodule Sheaf.Documents do
           OPTIONAL { ?expression fabio:hasIssueIdentifier ?issue }
           OPTIONAL { ?expression fabio:hasPageRange ?pages }
           OPTIONAL { ?expression bibo:numPages ?metadataPageCount }
+          OPTIONAL {
+            ?expression bibo:status ?status .
+            OPTIONAL { ?status rdfs:label ?statusLabel }
+          }
         }
       }
       OPTIONAL {
@@ -88,6 +92,18 @@ defmodule Sheaf.Documents do
             sheaf:excludesDocument ?doc .
           BIND("true" AS ?excluded)
         }
+      }
+      OPTIONAL {
+        GRAPH <https://less.rest/sheaf/workspace> {
+          ?workspace a sheaf:Workspace ;
+            sheaf:hasWorkspaceOwner ?workspaceOwner .
+        }
+        GRAPH <https://less.rest/sheaf/metadata> {
+          ?doc fabio:isRepresentationOf ?workspaceOwnerWork .
+          ?workspaceOwnerWork dcterms:creator ?workspaceOwner .
+          OPTIONAL { ?workspaceOwner foaf:name ?workspaceOwnerName }
+        }
+        BIND("true" AS ?workspaceOwnerAuthored)
       }
       OPTIONAL {
         GRAPH ?citationGraph {
@@ -146,8 +162,29 @@ defmodule Sheaf.Documents do
           OPTIONAL { ?expression fabio:hasIssueIdentifier ?issue }
           OPTIONAL { ?expression fabio:hasPageRange ?pages }
           OPTIONAL { ?expression bibo:numPages ?metadataPageCount }
+          OPTIONAL {
+            ?expression bibo:status ?expressionStatus .
+            OPTIONAL { ?expressionStatus rdfs:label ?expressionStatusLabel }
+          }
         }
+        OPTIONAL {
+          ?doc bibo:status ?workStatus .
+          OPTIONAL { ?workStatus rdfs:label ?workStatusLabel }
+        }
+        BIND(COALESCE(?expressionStatus, ?workStatus) AS ?status)
+        BIND(COALESCE(?expressionStatusLabel, ?workStatusLabel) AS ?statusLabel)
         BIND(COALESCE(?resourceTitle, ?workTitle, ?metadataTitle) AS ?title)
+      }
+      OPTIONAL {
+        GRAPH <https://less.rest/sheaf/workspace> {
+          ?workspace a sheaf:Workspace ;
+            sheaf:hasWorkspaceOwner ?workspaceOwner .
+        }
+        GRAPH <https://less.rest/sheaf/metadata> {
+          ?doc dcterms:creator ?workspaceOwner .
+          OPTIONAL { ?workspaceOwner foaf:name ?workspaceOwnerName }
+        }
+        BIND("true" AS ?workspaceOwnerAuthored)
       }
     }
   }
@@ -164,7 +201,7 @@ defmodule Sheaf.Documents do
   PREFIX bibo: <http://purl.org/ontology/bibo/>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-  SELECT ?block ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages ?pageCount ?metadataPageCount ?cited ?metadataOnly WHERE {
+  SELECT ?block ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages ?pageCount ?metadataPageCount ?status ?statusLabel ?cited ?metadataOnly WHERE {
     GRAPH <__DOCUMENT_IRI__> {
       ?block biro:references ?doc .
       BIND("true" AS ?cited)
@@ -231,6 +268,10 @@ defmodule Sheaf.Documents do
           OPTIONAL { ?expression fabio:hasIssueIdentifier ?issue }
           OPTIONAL { ?expression fabio:hasPageRange ?pages }
           OPTIONAL { ?expression bibo:numPages ?metadataPageCount }
+          OPTIONAL {
+            ?expression bibo:status ?status .
+            OPTIONAL { ?status rdfs:label ?statusLabel }
+          }
         }
       }
     } UNION {
@@ -278,7 +319,17 @@ defmodule Sheaf.Documents do
           OPTIONAL { ?expression fabio:hasIssueIdentifier ?issue }
           OPTIONAL { ?expression fabio:hasPageRange ?pages }
           OPTIONAL { ?expression bibo:numPages ?metadataPageCount }
+          OPTIONAL {
+            ?expression bibo:status ?expressionStatus .
+            OPTIONAL { ?expressionStatus rdfs:label ?expressionStatusLabel }
+          }
         }
+        OPTIONAL {
+          ?doc bibo:status ?workStatus .
+          OPTIONAL { ?workStatus rdfs:label ?workStatusLabel }
+        }
+        BIND(COALESCE(?expressionStatus, ?workStatus) AS ?status)
+        BIND(COALESCE(?expressionStatusLabel, ?workStatusLabel) AS ?statusLabel)
         BIND(COALESCE(?resourceTitle, ?workTitle, ?metadataTitle) AS ?title)
       }
     }
@@ -306,7 +357,12 @@ defmodule Sheaf.Documents do
     |> Enum.group_by(&row_iri/1)
     |> Enum.map(fn {_iri, rows} -> from_document_rows(rows) end)
     |> maybe_reject_excluded(opts)
-    |> Enum.sort_by(&{kind_order(&1.kind), String.downcase(&1.title)})
+    |> Enum.sort_by(&document_sort_key/1)
+  end
+
+  defp document_sort_key(document) do
+    {if(document.workspace_owner_authored?, do: 0, else: 1), kind_order(document.kind),
+     String.downcase(document.title)}
   end
 
   defp from_document_rows(rows) do
@@ -324,6 +380,8 @@ defmodule Sheaf.Documents do
       has_document?: not metadata_only?(rows),
       metadata: metadata,
       path: path(iri, metadata_only?(rows)),
+      workspace_owner_authored?: workspace_owner_authored?(rows),
+      workspace_owner_name: value(rows, "workspaceOwnerName"),
       title: metadata[:title] || title(row["title"], iri)
     }
   end
@@ -347,6 +405,10 @@ defmodule Sheaf.Documents do
   end
 
   defp excluded?(rows), do: Enum.any?(rows, &Map.has_key?(&1, "excluded"))
+
+  defp workspace_owner_authored?(rows),
+    do: Enum.any?(rows, &Map.has_key?(&1, "workspaceOwnerAuthored"))
+
   defp cited?(rows), do: Enum.any?(rows, &Map.has_key?(&1, "cited"))
   defp metadata_only?(rows), do: Enum.any?(rows, &Map.has_key?(&1, "metadataOnly"))
 
@@ -362,6 +424,7 @@ defmodule Sheaf.Documents do
       page_count: integer_value(rows, "pageCount") || integer_value(rows, "metadataPageCount"),
       pages: value(rows, "pages"),
       publisher: value(rows, "publisherTitle"),
+      status: status(rows),
       title: value(rows, "metadataTitle"),
       venue: value(rows, "venueTitle"),
       volume: value(rows, "volume"),
@@ -409,6 +472,20 @@ defmodule Sheaf.Documents do
         term -> term_value(term)
       end
     end)
+  end
+
+  defp status(rows) do
+    case value(rows, "statusLabel") || value(rows, "status") do
+      nil ->
+        nil
+
+      status ->
+        status
+        |> String.split(["#", "/"])
+        |> List.last()
+        |> String.replace("-", " ")
+        |> String.downcase()
+    end
   end
 
   defp kind_name(nil), do: nil

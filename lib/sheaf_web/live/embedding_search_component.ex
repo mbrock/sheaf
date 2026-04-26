@@ -266,7 +266,10 @@ defmodule SheafWeb.EmbeddingSearchComponent do
     assigns =
       assigns
       |> assign(:visible_results, visible_results(assigns.results, assigns.preview_limit))
-      |> assign(:visible_exact_results, visible_results(assigns.exact_results, assigns.preview_limit))
+      |> assign(
+        :visible_exact_results,
+        visible_results(assigns.exact_results, assigns.preview_limit)
+      )
       |> assign(
         :visible_approximate_results,
         visible_results(assigns.approximate_results, assigns.preview_limit)
@@ -337,12 +340,10 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
   defp result_list(assigns) do
     ~H"""
-    <ol
-      class={[
-        "overflow-y-auto",
-        if(@compact?, do: "", else: "max-h-[30rem] space-y-0.5 pr-1")
-      ]}
-    >
+    <ol class={[
+      "overflow-y-auto",
+      if(@compact?, do: "", else: "max-h-[30rem] space-y-0.5 pr-1")
+    ]}>
       <li :for={result <- @results}>
         <article class={[
           "transition-colors hover:bg-stone-100 dark:hover:bg-stone-800/80",

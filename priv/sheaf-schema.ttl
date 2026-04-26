@@ -1,6 +1,7 @@
 @prefix sheaf: <https://less.rest/sheaf/> .
 @prefix as: <https://www.w3.org/ns/activitystreams#> .
 @prefix fabio: <http://purl.org/spar/fabio/> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -282,3 +283,9 @@ sheaf:excludesDocument a rdf:Property ;
   rdfs:domain sheaf:Workspace ;
   rdfs:range sheaf:Document ;
   rdfs:comment "Links a workspace to a document omitted from active workspace views and search results while remaining in the library." .
+
+sheaf:hasWorkspaceOwner a rdf:Property ;
+  rdfs:label "has workspace owner"@en ;
+  rdfs:domain sheaf:Workspace ;
+  rdfs:range foaf:Person ;
+  rdfs:comment "Links a workspace to the person whose authored work the workspace is organized around." .

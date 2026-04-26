@@ -199,6 +199,13 @@ defmodule SheafWeb.DocumentIndexLive do
     end)
   end
 
+  defp document_group(%{workspace_owner_authored?: true, workspace_owner_name: name})
+       when is_binary(name) and name != "" do
+    {:workspace_owner, name}
+  end
+
+  defp document_group(%{workspace_owner_authored?: true}), do: :workspace_owner_documents
+
   defp document_group(%{metadata: %{kind: kind}}) when is_binary(kind) do
     {:expression, kind}
   end
@@ -209,6 +216,8 @@ defmodule SheafWeb.DocumentIndexLive do
   defp first_title([]), do: ""
 
   defp kind_label({:expression, kind}), do: pluralize_expression_kind(kind)
+  defp kind_label({:workspace_owner, name}), do: name
+  defp kind_label(:workspace_owner_documents), do: "Workspace owner's work"
   defp kind_label(:thesis), do: "Thesis"
   defp kind_label(:paper), do: "Papers"
   defp kind_label(:transcript), do: "Transcripts"
@@ -222,7 +231,9 @@ defmodule SheafWeb.DocumentIndexLive do
   defp pluralize_expression_kind("Report document"), do: "Reports"
   defp pluralize_expression_kind(kind), do: kind <> "s"
 
-  defp kind_order(:thesis), do: 0
+  defp kind_order({:workspace_owner, _name}), do: 0
+  defp kind_order(:workspace_owner_documents), do: 0
+  defp kind_order(:thesis), do: 1
   defp kind_order({:expression, "Journal article"}), do: 1
   defp kind_order({:expression, "Book"}), do: 2
   defp kind_order({:expression, "Book chapter"}), do: 3

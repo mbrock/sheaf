@@ -118,6 +118,7 @@ defmodule Sheaf.DocumentsTest do
         "year" => RDF.literal("2020"),
         "venueTitle" => RDF.literal("Example Journal"),
         "doi" => RDF.literal("10.123/example"),
+        "statusLabel" => RDF.literal("draft"),
         "volume" => RDF.literal("14"),
         "issue" => RDF.literal("4"),
         "pages" => RDF.literal("340-356")
@@ -146,6 +147,7 @@ defmodule Sheaf.DocumentsTest do
                  issue: "4",
                  kind: "Journal article",
                  pages: "340-356",
+                 status: "draft",
                  title: "Article title",
                  venue: "Example Journal",
                  volume: "14",
@@ -153,6 +155,34 @@ defmodule Sheaf.DocumentsTest do
                },
                title: "Article title"
              }
+           ] = Documents.from_rows(rows)
+  end
+
+  test "marks workspace-owner-authored documents and sorts them before other rows" do
+    rows = [
+      %{
+        "doc" => ~I<https://example.com/sheaf/PAPER1>,
+        "title" => RDF.literal("A Paper"),
+        "kind" => RDF.iri(DOC.Paper)
+      },
+      %{
+        "doc" => ~I<https://example.com/sheaf/THESIS>,
+        "title" => RDF.literal("Practices of Divestment"),
+        "kind" => RDF.iri(DOC.Thesis),
+        "metadataKind" => ~I<http://purl.org/spar/fabio/MastersThesis>,
+        "workspaceOwnerAuthored" => RDF.literal("true"),
+        "workspaceOwnerName" => RDF.literal("Ieva Lange")
+      }
+    ]
+
+    assert [
+             %{
+               id: "THESIS",
+               kind: :thesis,
+               workspace_owner_authored?: true,
+               workspace_owner_name: "Ieva Lange"
+             },
+             %{id: "PAPER1", kind: :paper, workspace_owner_authored?: false}
            ] = Documents.from_rows(rows)
   end
 

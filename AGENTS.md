@@ -127,7 +127,11 @@ Source excerpt 11-40:
 ```
 
 `bin/deploy` builds assets, compiles, and hot-reloads modified/new BEAM modules
-on the running node. Use it for code-only changes that do not need a full restart.
+on the running node. Do not run it for ordinary local development changes while
+the dev server is running; Phoenix already recompiles and live-reloads those
+changes, and an extra deploy causes annoying double reloads. Reserve `bin/deploy`
+for explicit deploy/hot-reload requests or situations where the dev server's
+normal reload path is not in use.
 
 ```console
 $ bin/deploy
@@ -207,6 +211,13 @@ relying on destructive mutation.
 ## Development Rules
 
 For HTTP requests in Elixir, prefer `Req`.
+
+When the dev server is running, do not run `bin/deploy`, `mix compile`, or other
+manual compile/reload commands just to make LiveView, component, CSS, or JS edits
+take effect. Let Phoenix's dev reloader handle it. Use focused tests or browser
+checks for verification, and only restart/redeploy when the change actually
+touches startup, dependency, config, supervision, or release/runtime loading
+behavior.
 
 For Python commands, always use `uv` or `uvx`; do not call `python`,
 `python3`, or `pip` directly.

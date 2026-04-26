@@ -39,6 +39,17 @@ defmodule Sheaf.Workspace do
     end
   end
 
+  @doc """
+  Records the person whose authored work the active workspace is organized around.
+  """
+  def set_owner(person_id) when is_binary(person_id) do
+    person = Id.iri(person_id) |> to_string()
+
+    with {:ok, workspace} <- ensure_default() do
+      Sheaf.update(insert_owner_update(workspace, person))
+    end
+  end
+
   def graph, do: @graph
 
   def exclusion_filter(variable \\ "?doc") do
@@ -101,6 +112,33 @@ defmodule Sheaf.Workspace do
         <#{workspace}> a sheaf:Workspace ;
           rdfs:label "#{@label}" ;
           sheaf:excludesDocument <#{document}> .
+      }
+    }
+    """
+  end
+
+  defp insert_owner_update(workspace, person) do
+    """
+    PREFIX sheaf: <https://less.rest/sheaf/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    DELETE {
+      GRAPH <#{@graph}> {
+        <#{workspace}> sheaf:hasWorkspaceOwner ?previous .
+      }
+    }
+    INSERT {
+      GRAPH <#{@graph}> {
+        <#{workspace}> a sheaf:Workspace ;
+          rdfs:label "#{@label}" ;
+          sheaf:hasWorkspaceOwner <#{person}> .
+      }
+    }
+    WHERE {
+      OPTIONAL {
+        GRAPH <#{@graph}> {
+          <#{workspace}> sheaf:hasWorkspaceOwner ?previous .
+        }
       }
     }
     """

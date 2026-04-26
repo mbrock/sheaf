@@ -32,16 +32,15 @@ defmodule SheafWeb.DocumentEntryComponents do
     <div class={["leading-snug", if(@nested, do: "px-2 py-1.5", else: "px-2 py-1")]}>
       <div class="flex min-w-0 items-baseline gap-2 font-sans">
         <input
-          :if={@show_checkbox && excludable?(@document)}
+          :if={@show_checkbox && checkbox_visible?(@document)}
           type="checkbox"
-          checked={!@document.excluded?}
+          checked={checkbox_checked?(@document)}
+          disabled={!excludable?(@document)}
           phx-click="toggle_document_exclusion"
           phx-value-id={@document.id}
           phx-value-included={if(@document.excluded?, do: "true", else: "false")}
-          aria-label={
-            if(@document.excluded?, do: "Include in workspace", else: "Exclude from workspace")
-          }
-          title={if(@document.excluded?, do: "Include in workspace", else: "Exclude from workspace")}
+          aria-label={checkbox_label(@document)}
+          title={checkbox_label(@document)}
           class="inline-block size-3.5 shrink-0 rounded-sm border border-stone-400 bg-stone-100 text-stone-600 accent-stone-500 focus:ring-1 focus:ring-stone-400 dark:border-stone-500 dark:bg-stone-800 dark:text-stone-300 dark:accent-stone-400"
         />
         <.link
@@ -72,6 +71,12 @@ defmodule SheafWeb.DocumentEntryComponents do
         >
           cited
         </span>
+        <span
+          :if={status_str(@document) == "draft"}
+          class="shrink-0 rounded-sm border border-sky-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-sky-800 dark:border-sky-700 dark:text-sky-200"
+        >
+          draft
+        </span>
       </div>
 
       <div
@@ -99,6 +104,18 @@ defmodule SheafWeb.DocumentEntryComponents do
       </div>
     </div>
     """
+  end
+
+  defp checkbox_visible?(document), do: excludable?(document) or !has_document?(document)
+
+  defp checkbox_checked?(document), do: excludable?(document) and !document.excluded?
+
+  defp checkbox_label(document) do
+    cond do
+      !has_document?(document) -> "Metadata-only entry cannot be excluded from workspace"
+      document.excluded? -> "Include in workspace"
+      true -> "Exclude from workspace"
+    end
   end
 
   defp excludable?(%{kind: :thesis}), do: false
@@ -130,6 +147,8 @@ defmodule SheafWeb.DocumentEntryComponents do
       count -> "#{count} pp."
     end
   end
+
+  defp status_str(document), do: document |> Map.get(:metadata, %{}) |> Map.get(:status)
 
   defp chapter_metadata?(document), do: chapter_venue(document) != nil
 
