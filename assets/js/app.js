@@ -27,22 +27,6 @@ import topbar from "../vendor/topbar"
 import {PretextParagraph} from "./pretext_paragraphs"
 import {DocumentBreadcrumb} from "./document_breadcrumb"
 
-const SearchSubmitOnEnter = {
-  mounted() {
-    this.el.addEventListener("keydown", event => {
-      if (event.key !== "Enter") return
-
-      const form = this.el.closest("form")
-      const button = form?.querySelector("button[type='submit']")
-
-      if (!button) return
-
-      event.preventDefault()
-      button.click()
-    })
-  },
-}
-
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const devSessionStorage = window.location.hostname.endsWith(".localhost") ?
   {
@@ -64,7 +48,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   sessionStorage: devSessionStorage,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, PretextParagraph, DocumentBreadcrumb, SearchSubmitOnEnter},
+  hooks: {...colocatedHooks, PretextParagraph, DocumentBreadcrumb},
 })
 
 // Show progress bar on live navigation and form submits

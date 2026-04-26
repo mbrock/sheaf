@@ -50,6 +50,18 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
   def handle_event("search_key", _params, socket), do: {:noreply, socket}
 
+  def handle_event("reset", _params, socket) do
+    {:noreply,
+     assign(socket,
+       query: "",
+       results: [],
+       exact_results: [],
+       approximate_results: [],
+       error: nil,
+       searched?: false
+     )}
+  end
+
   defp search(query, socket) do
     query = String.trim(query || "")
 
@@ -147,7 +159,11 @@ defmodule SheafWeb.EmbeddingSearchComponent do
       assign(assigns, :open?, toolbar_open?(assigns.query, assigns.searched?, assigns.error))
 
     ~H"""
-    <div class="relative z-20 shrink-0">
+    <div
+      class="relative z-20 shrink-0"
+      phx-click-away="reset"
+      phx-target={@myself}
+    >
       <form phx-submit="search" phx-target={@myself}>
         <div class="flex w-[min(22rem,42vw)] items-center gap-2 rounded-sm border border-stone-300 bg-white px-2 py-1.5 dark:border-stone-700 dark:bg-stone-900">
           <input
@@ -157,7 +173,6 @@ defmodule SheafWeb.EmbeddingSearchComponent do
             value={@query}
             autocomplete="off"
             placeholder="Search"
-            phx-hook="SearchSubmitOnEnter"
             class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-sm leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 dark:text-stone-50 dark:placeholder:text-stone-500"
           />
           <button
@@ -223,7 +238,6 @@ defmodule SheafWeb.EmbeddingSearchComponent do
             value={@query}
             autocomplete="off"
             placeholder="Search concepts, passages, or cases"
-            phx-hook="SearchSubmitOnEnter"
             class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-sm leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 dark:text-stone-50 dark:placeholder:text-stone-500"
           />
           <button

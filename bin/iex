@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Open an interactive IEx shell on the running Sheaf node.
+# Usage: bin/iex
+#        IEX_NODE=sheaf@host bin/iex
+set -euo pipefail
+
+export HOME="${HOME:-$(eval echo ~$(whoami))}"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
+
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/runtime_env.sh"
+load_sheaf_env "$APP_ROOT"
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'USAGE'
+Usage: bin/iex
+
+Opens an interactive IEx remote shell on the running Sheaf node.
+
+Environment:
+  IEX_NODE      target node override (defaults to RPC_NODE or SHEAF_NODE_NAME)
+  RPC_NODE      shared target node override used by bin/rpc
+  ERLANG_COOKIE cookie override (defaults to ~/.erlang.cookie when unset)
+USAGE
+  exit 0
+fi
+
+NODE="${IEX_NODE:-${RPC_NODE:-$(sheaf_node_name)}}"
+CLIENT_NODE="$(sheaf_rpc_client_name "$NODE" "iex_$$")"
+set_sheaf_elixir_node_args "$CLIENT_NODE"
+COOKIE_ARGS=()
+while IFS= read -r arg; do
+  COOKIE_ARGS+=("$arg")
+done < <(sheaf_cookie_args)
+
+exec iex "$SHEAF_ELIXIR_NODE_FLAG" "$SHEAF_ELIXIR_NODE_VALUE" "${COOKIE_ARGS[@]}" --remsh "$NODE"

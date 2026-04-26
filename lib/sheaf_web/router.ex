@@ -18,6 +18,16 @@ defmodule SheafWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :dashboard do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :fetch_live_flash
+    plug :put_root_layout, html: {SheafWeb.Layouts, :root}
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug :dashboard_basic_auth
+  end
+
   scope "/", SheafWeb do
     get "/sheaf-schema.ttl", SchemaController, :show
     get "/health", HealthController, :show
@@ -61,9 +71,16 @@ defmodule SheafWeb.Router do
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do
-      pipe_through :browser
+      pipe_through :dashboard
 
       live_dashboard "/dashboard", metrics: SheafWeb.Telemetry
     end
+  end
+
+  defp dashboard_basic_auth(conn, _opts) do
+    username = System.get_env("SHEAF_DASHBOARD_USERNAME", "admin")
+    password = System.get_env("SHEAF_DASHBOARD_PASSWORD", "sheaf")
+
+    Plug.BasicAuth.basic_auth(conn, username: username, password: password)
   end
 end

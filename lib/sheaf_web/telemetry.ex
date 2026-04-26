@@ -55,6 +55,42 @@ defmodule SheafWeb.Telemetry do
         tags: [:event],
         unit: {:native, :millisecond}
       ),
+      summary("phoenix.live_view.mount.stop.duration",
+        tags: [:view, :connected],
+        keep: &sheaf_live_view_metadata?/1,
+        tag_values: &live_view_tag_values/1,
+        unit: {:native, :millisecond}
+      ),
+      summary("phoenix.live_view.handle_params.stop.duration",
+        tags: [:view, :connected],
+        keep: &sheaf_live_view_metadata?/1,
+        tag_values: &live_view_tag_values/1,
+        unit: {:native, :millisecond}
+      ),
+      summary("phoenix.live_view.handle_event.stop.duration",
+        tags: [:view, :event, :connected],
+        keep: &sheaf_live_view_metadata?/1,
+        tag_values: &live_view_tag_values/1,
+        unit: {:native, :millisecond}
+      ),
+      summary("phoenix.live_view.render.stop.duration",
+        tags: [:view, :connected, :changed, :force],
+        keep: &sheaf_live_view_metadata?/1,
+        tag_values: &live_view_tag_values/1,
+        unit: {:native, :millisecond}
+      ),
+      summary("phoenix.live_component.update.stop.duration",
+        tags: [:view, :component, :connected],
+        keep: &sheaf_live_component_metadata?/1,
+        tag_values: &live_component_tag_values/1,
+        unit: {:native, :millisecond}
+      ),
+      summary("phoenix.live_component.handle_event.stop.duration",
+        tags: [:view, :component, :event, :connected],
+        keep: &sheaf_live_component_metadata?/1,
+        tag_values: &live_component_tag_values/1,
+        unit: {:native, :millisecond}
+      ),
 
       # VM Metrics
       summary("vm.memory.total", unit: {:byte, :kilobyte}),
@@ -71,4 +107,54 @@ defmodule SheafWeb.Telemetry do
       # {SheafWeb, :count_users, []}
     ]
   end
+
+  defp sheaf_live_view_metadata?(metadata) do
+    metadata
+    |> Map.get(:socket)
+    |> socket_view()
+    |> sheaf_module?()
+  end
+
+  defp sheaf_live_component_metadata?(metadata) do
+    socket_view = metadata |> Map.get(:socket) |> socket_view()
+    component = metadata |> Map.get(:component) |> module_tag()
+
+    sheaf_module?(socket_view) and sheaf_module?(component)
+  end
+
+  defp live_view_tag_values(metadata) do
+    socket = Map.get(metadata, :socket)
+
+    metadata
+    |> Map.put(:view, socket_view(socket))
+    |> Map.put(:connected, socket_connected?(socket))
+    |> Map.put(:changed, Map.get(metadata, :changed?, false))
+    |> Map.put(:force, Map.get(metadata, :force?, false))
+  end
+
+  defp live_component_tag_values(metadata) do
+    socket = Map.get(metadata, :socket)
+
+    metadata
+    |> Map.put(:view, socket_view(socket))
+    |> Map.put(:component, metadata |> Map.get(:component) |> module_tag())
+    |> Map.put(:connected, socket_connected?(socket))
+  end
+
+  defp socket_view(%Phoenix.LiveView.Socket{view: view}), do: module_tag(view)
+  defp socket_view(_socket), do: :unknown
+
+  defp socket_connected?(%Phoenix.LiveView.Socket{} = socket), do: Phoenix.LiveView.connected?(socket)
+  defp socket_connected?(_socket), do: false
+
+  defp module_tag(module) when is_atom(module), do: module
+  defp module_tag(_module), do: :unknown
+
+  defp sheaf_module?(module) when is_atom(module) do
+    module
+    |> Atom.to_string()
+    |> String.starts_with?(["Elixir.Sheaf", "Elixir.SheafWeb", "Elixir.SheafRDFBrowser"])
+  end
+
+  defp sheaf_module?(_module), do: false
 end
