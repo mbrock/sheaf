@@ -61,7 +61,7 @@ defmodule Sheaf.Assistant.ChatTest do
            } = wait_for_messages(id, 2)
   end
 
-  test "research sessions expose their kind and get research-mode prompt guidance" do
+  test "research-mode conversations expose their kind and get research prompt guidance" do
     test_pid = self()
 
     generate_text = fn _model, context, opts ->
@@ -87,12 +87,12 @@ defmodule Sheaf.Assistant.ChatTest do
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )
 
-    assert %{title: "Research session", kind: :research, pending: false} = Chat.snapshot(id)
+    assert %{title: "Assistant conversation", kind: :research, pending: false} = Chat.snapshot(id)
 
     assert :ok = Chat.send_user_message(id, "Read the circular economy papers.")
 
     assert_receive {:research_inference_started, task_pid, context}
-    assert system_text(context) =~ "Research session mode:"
+    assert system_text(context) =~ "Research mode:"
     assert system_text(context) =~ "write durable"
 
     assert %{title: "Read the circular economy papers.", kind: :research, pending: true} =

@@ -92,22 +92,28 @@ sheaf:AudioBlob a rdfs:Class ;
   rdfs:subClassOf prov:Entity ;
   rdfs:comment "A content-addressed audio payload identified by its SHA-256 hash." .
 
-sheaf:ResearchSession a rdfs:Class ;
-  rdfs:label "research session"@en ;
+sheaf:AssistantConversation a rdfs:Class ;
+  rdfs:label "assistant conversation"@en ;
   rdfs:subClassOf as:OrderedCollection,
     prov:Entity ;
-  rdfs:comment "A durable context that orders user and assistant messages, assistant-authored research notes, and related research activity." .
+  rdfs:comment "A durable context that orders user and assistant messages, assistant-authored research notes, and related assistant activity." .
+
+sheaf:conversationMode a rdf:Property ;
+  rdfs:label "has conversation mode"@en ;
+  rdfs:domain sheaf:AssistantConversation ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Records the assistant conversation mode, such as quick or research." .
 
 sheaf:Message a rdfs:Class ;
   rdfs:label "message"@en ;
   rdfs:subClassOf prov:Entity ;
-  rdfs:comment "A user or assistant turn in a research session or assistant chat, described with ActivityStreams content, actor, context, and publication-time properties." .
+  rdfs:comment "A user or assistant turn in an assistant conversation, described with ActivityStreams content, actor, context, and publication-time properties." .
 
 sheaf:ResearchNote a rdfs:Class ;
   rdfs:label "research note"@en ;
   rdfs:subClassOf as:Note,
     prov:Entity ;
-  rdfs:comment "A durable assistant-authored note written during a research session, distinct from ordinary chat messages." .
+  rdfs:comment "A durable assistant-authored note written during an assistant conversation, distinct from ordinary chat messages." .
 
 sheaf:assistantModelName a rdf:Property ;
   rdfs:label "has assistant model name"@en ;

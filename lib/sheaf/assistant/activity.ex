@@ -3,7 +3,7 @@ defmodule Sheaf.Assistant.Activity do
   Persistent ActivityStreams records for assistant chat turns.
 
   Chat state is still process-local for the live UI, but the semantic trace of a
-  research session is appended to RDF: messages, contextual actors, and the
+  assistant conversation is appended to RDF: messages, contextual actors, and the
   session collection that groups them.
   """
 
@@ -57,6 +57,7 @@ defmodule Sheaf.Assistant.Activity do
                         actor_type: actor_type,
                         model_name: optional_text(attrs, :model_name),
                         session_label: optional_text(attrs, :session_label),
+                        conversation_mode: optional_text(attrs, :conversation_mode),
                         in_reply_to: optional_iri(attrs, :in_reply_to) do
           @prefix Sheaf.NS.AS
           @prefix Sheaf.NS.DOC
@@ -75,10 +76,11 @@ defmodule Sheaf.Assistant.Activity do
           |> DOC.assistantModelName(model_name)
 
           session
-          |> a(DOC.ResearchSession)
+          |> a(DOC.AssistantConversation)
           |> a(AS.OrderedCollection)
           |> RDFS.label(session_label)
           |> AS.name(session_label)
+          |> DOC.conversationMode(conversation_mode)
           |> AS.items(message)
         end
 

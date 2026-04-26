@@ -59,6 +59,7 @@ defmodule Sheaf.Assistant.Notes do
     * `:title`
     * `:agent_label`
     * `:session_label`
+    * `:conversation_mode`
 
   Options:
 
@@ -97,7 +98,8 @@ defmodule Sheaf.Assistant.Notes do
                         block_ids: block_ids,
                         title: optional_text(attrs, :title),
                         agent_label: optional_text(attrs, :agent_label),
-                        session_label: optional_text(attrs, :session_label) do
+                        session_label: optional_text(attrs, :session_label),
+                        conversation_mode: optional_text(attrs, :conversation_mode) do
           @prefix Sheaf.NS.AS
           @prefix Sheaf.NS.DOC
           @prefix Sheaf.NS.PROV
@@ -118,10 +120,11 @@ defmodule Sheaf.Assistant.Notes do
           |> RDFS.label(agent_label)
 
           session
-          |> a(DOC.ResearchSession)
+          |> a(DOC.AssistantConversation)
           |> a(AS.OrderedCollection)
           |> RDFS.label(session_label)
           |> AS.name(session_label)
+          |> DOC.conversationMode(conversation_mode)
           |> AS.items(note)
         end
 
@@ -176,9 +179,10 @@ defmodule Sheaf.Assistant.Notes do
       ?agent a prov:SoftwareAgent ;
         rdfs:label ?agentLabel .
 
-      ?context a sheaf:ResearchSession ;
+      ?context a sheaf:AssistantConversation ;
         a as:OrderedCollection ;
         rdfs:label ?contextLabel ;
+        sheaf:conversationMode ?contextMode ;
         as:items ?note ;
         as:items ?question .
 
@@ -218,6 +222,7 @@ defmodule Sheaf.Assistant.Notes do
       OPTIONAL {
         ?note as:context ?context .
         OPTIONAL { ?context rdfs:label ?contextLabel }
+        OPTIONAL { ?context sheaf:conversationMode ?contextMode }
         OPTIONAL {
           ?question a sheaf:Message ;
             as:context ?context ;

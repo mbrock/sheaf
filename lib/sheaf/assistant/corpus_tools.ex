@@ -538,7 +538,8 @@ defmodule Sheaf.Assistant.CorpusTools do
       agent_iri: Sheaf.mint(),
       agent_label: "Sheaf research assistant",
       session_iri: Sheaf.mint(),
-      session_label: "Assistant research session"
+      session_label: "Assistant conversation",
+      conversation_mode: "research"
     }
   end
 

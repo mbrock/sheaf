@@ -8,6 +8,7 @@ defmodule SheafWeb.DocumentLive do
   alias Sheaf.Corpus
   alias Sheaf.Document
   alias Sheaf.Id
+  alias SheafWeb.AppChrome
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
@@ -71,33 +72,11 @@ defmodule SheafWeb.DocumentLive do
       class="grid h-dvh grid-rows-[auto_minmax(0,16rem)_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 lg:grid-cols-[24rem_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_30rem] dark:bg-stone-950 dark:text-stone-50"
       phx-hook="DocumentBreadcrumb"
     >
-      <div class="col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-4 py-2 backdrop-blur dark:border-stone-800/80 dark:bg-stone-950/90">
-        <div class="flex min-h-8 w-full items-center gap-3 overflow-hidden">
-          <.link
-            navigate={~p"/"}
-            class="inline-flex h-8 shrink-0 items-center gap-1 rounded-sm px-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
-          >
-            <.icon name="hero-arrow-left" class="size-4" />
-            <span>Back to main</span>
-          </.link>
-
-          <span
-            id="document-breadcrumb"
-            class="small-caps min-w-0 flex-1 truncate text-center text-lg text-stone-500 dark:text-stone-400"
-          >
-          </span>
-
-          <button
-            id="copy-markdown"
-            type="button"
-            class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
-            title="Copy markdown"
-            aria-label="Copy markdown"
-          >
-            <.icon name="hero-clipboard-document" class="size-4" />
-          </button>
-        </div>
-      </div>
+      <AppChrome.toolbar
+        section={:document}
+        breadcrumb_id="document-breadcrumb"
+        copy_markdown?={true}
+      />
 
       <aside class="min-h-0 overflow-y-auto p-4 lg:col-start-1 lg:row-start-2">
         <h1 class="font-bold text-lg">{document_title(@graph, @root)}</h1>
@@ -113,15 +92,12 @@ defmodule SheafWeb.DocumentLive do
         </div>
       </article>
 
-      <aside class="hidden min-h-0 overflow-y-auto border-stone-200/80 px-5 py-4 xl:col-start-3 xl:row-start-2 xl:block xl:border-l dark:border-stone-800/80">
-        <.live_component
-          module={SheafWeb.AssistantChatComponent}
-          id="document-assistant"
-          graph={@graph}
-          root={@root}
-          selected_id={@selected_block_id}
-        />
-      </aside>
+      <AppChrome.right_sidebar
+        assistant_id="document-assistant"
+        graph={@graph}
+        root={@root}
+        selected_id={@selected_block_id}
+      />
     </div>
     """
   end

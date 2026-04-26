@@ -11,6 +11,7 @@ defmodule SheafWeb.DocumentIndexLive do
   alias Sheaf.Assistant.Notes
   alias Sheaf.Document
   alias Sheaf.Id
+  alias SheafWeb.AppChrome
 
   @mdex_opts [
     extension: [
@@ -91,58 +92,47 @@ defmodule SheafWeb.DocumentIndexLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="min-h-dvh bg-stone-50 px-6 py-6 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
-      <div class="grid gap-8 lg:grid-cols-2">
+    <main class="grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 xl:grid-cols-[minmax(0,1fr)_30rem] dark:bg-stone-950 dark:text-stone-50">
+      <AppChrome.toolbar section={:index} />
+
+      <div class="min-h-0 overflow-y-auto px-6 py-6 xl:col-start-1 xl:row-start-2">
         <p
           :if={@document_error}
-          class="py-2 text-sm text-rose-700 lg:col-span-2"
+          class="py-2 text-sm text-rose-700"
         >
           {@document_error}
         </p>
 
-        <div class="space-y-4 lg:col-span-2">
-          <.live_component module={SheafWeb.EmbeddingSearchComponent} id="embedding-search" />
-          <.live_component
-            module={SheafWeb.AssistantChatComponent}
-            id="index-assistant"
-            variant={:inline}
-            allow_notes={false}
-          />
+        <div :if={@documents != []} class="space-y-5">
+          <section :for={{kind, documents} <- grouped_documents(@documents)}>
+            <div class="mb-1 flex items-baseline justify-between gap-3">
+              <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                {kind_label(kind)}
+              </h2>
+              <span class="shrink-0 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
+                {length(documents)}
+              </span>
+            </div>
+
+            <ul class="space-y-1">
+              <li :for={document <- documents}>
+                <.document_entry
+                  document={document}
+                  expanded={MapSet.member?(@expanded, document.id)}
+                  toc={Map.get(@tocs, document.id, [])}
+                />
+              </li>
+            </ul>
+          </section>
         </div>
+      </div>
 
-        <div class="min-w-0 space-y-8">
-          <div :if={@documents != []} class="space-y-5">
-            <section :for={{kind, documents} <- grouped_documents(@documents)}>
-              <div class="mb-1 flex items-baseline justify-between gap-3">
-                <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-                  {kind_label(kind)}
-                </h2>
-                <span class="shrink-0 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
-                  {length(documents)}
-                </span>
-              </div>
-
-              <ul class="space-y-1">
-                <li :for={document <- documents}>
-                  <.document_entry
-                    document={document}
-                    expanded={MapSet.member?(@expanded, document.id)}
-                    toc={Map.get(@tocs, document.id, [])}
-                  />
-                </li>
-              </ul>
-            </section>
-          </div>
-        </div>
-
-        <section class="min-w-0">
+      <AppChrome.right_sidebar assistant_id="index-assistant" class="xl:col-start-2 xl:row-start-2">
+        <section class="mt-4 min-w-0">
           <div class="mb-2 flex items-end justify-between gap-3">
-            <span
-              :if={@notes != []}
-              class="ml-auto font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400"
-            >
-              {length(@notes)}
-            </span>
+            <h2 class="font-sans text-sm font-semibold uppercase text-stone-500 dark:text-stone-400">
+              History
+            </h2>
           </div>
 
           <p
@@ -152,24 +142,26 @@ defmodule SheafWeb.DocumentIndexLive do
             {@notes_error}
           </p>
 
-          <div :if={@notes != []} class="space-y-5">
+          <div :if={@notes != []} class="space-y-3">
             <section
               :for={group <- grouped_notes(@notes, @notes_graph, @research_session_titles)}
-              class="space-y-1"
+              class="space-y-0.5"
             >
-              <div class="flex items-baseline gap-2 px-2 py-1">
+              <div class="flex items-center gap-2 py-1">
+                <.icon name={history_icon(group)} class={history_icon_class(group)} />
                 <span class="min-w-0 flex-1 truncate font-sans text-sm text-stone-800 dark:text-stone-100">
                   {group.title}
                 </span>
-                <div class="flex shrink-0 items-baseline gap-2 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
-                  <time :if={group.published_at} datetime={datetime_attr(group.published_at)}>
-                    {compact_time(group.published_at)}
-                  </time>
-                  <span>{length(group.notes)}</span>
-                </div>
+                <time
+                  :if={group.published_at}
+                  datetime={datetime_attr(group.published_at)}
+                  class="shrink-0 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400"
+                >
+                  {compact_time(group.published_at)}
+                </time>
               </div>
 
-              <ol class="space-y-1">
+              <ol class="space-y-0.5">
                 <li :for={note <- group.notes}>
                   <.note_entry note={note} />
                 </li>
@@ -184,7 +176,7 @@ defmodule SheafWeb.DocumentIndexLive do
             No research notes yet.
           </p>
         </section>
-      </div>
+      </AppChrome.right_sidebar>
     </main>
     """
   end
@@ -378,7 +370,12 @@ defmodule SheafWeb.DocumentIndexLive do
     notes
     |> Enum.group_by(&note_context_iri/1)
     |> Enum.map(fn {session_iri, notes} ->
-      %{session_iri: session_iri, notes: notes, published_at: group_published_at(notes)}
+      %{
+        session_iri: session_iri,
+        notes: notes,
+        published_at: group_published_at(notes),
+        mode: session_mode(graph, session_iri)
+      }
     end)
     |> Enum.map(&put_note_group_title(&1, graph, session_titles))
     |> Enum.sort_by(fn group -> group_sort_time(group.published_at) end, {:desc, DateTime})
@@ -389,7 +386,8 @@ defmodule SheafWeb.DocumentIndexLive do
       graph
       |> research_question_content(session_iri)
       |> case do
-        title when is_binary(title) and title not in ["", "Research session"] ->
+        title
+        when is_binary(title) and title not in ["", "Research session", "Assistant conversation"] ->
           title
 
         _other ->
@@ -397,13 +395,18 @@ defmodule SheafWeb.DocumentIndexLive do
           |> session_id()
           |> then(&Map.get(session_titles, &1))
           |> case do
-            title when is_binary(title) and title not in ["", "Research session"] ->
+            title
+            when is_binary(title) and
+                   title not in ["", "Research session", "Assistant conversation"] ->
               title
 
             _other ->
               case note_group_title(session_resource_label(graph, session_iri)) do
-                "Research session" -> note_group_title_from_notes(group.notes)
-                title -> title
+                title when title in ["Research session", "Assistant conversation"] ->
+                  note_group_title_from_notes(group.notes)
+
+                title ->
+                  title
               end
           end
       end
@@ -438,9 +441,10 @@ defmodule SheafWeb.DocumentIndexLive do
     end
   end
 
-  defp note_group_title(nil), do: "Research session"
-  defp note_group_title(""), do: "Research session"
+  defp note_group_title(nil), do: "Assistant conversation"
+  defp note_group_title(""), do: "Assistant conversation"
   defp note_group_title("Research session " <> _id), do: "Research session"
+  defp note_group_title("Assistant conversation " <> _id), do: "Assistant conversation"
   defp note_group_title(title), do: title
 
   defp note_group_title_from_notes(notes) do
@@ -452,7 +456,7 @@ defmodule SheafWeb.DocumentIndexLive do
     |> common_note_title()
   end
 
-  defp common_note_title([]), do: "Research session"
+  defp common_note_title([]), do: "Assistant conversation"
   defp common_note_title([title]), do: title
 
   defp common_note_title(titles) do
@@ -491,6 +495,22 @@ defmodule SheafWeb.DocumentIndexLive do
 
   defp session_resource_label(_graph, nil), do: nil
   defp session_resource_label(graph, session_iri), do: resource_label(graph, RDF.iri(session_iri))
+
+  defp session_mode(_graph, nil), do: nil
+
+  defp session_mode(graph, session_iri) do
+    graph
+    |> RDF.Data.description(RDF.iri(session_iri))
+    |> first_value(Sheaf.NS.DOC.conversationMode())
+  end
+
+  defp history_icon(%{mode: "research"}), do: "hero-beaker"
+  defp history_icon(_group), do: "hero-chat-bubble-left-ellipsis"
+
+  defp history_icon_class(%{mode: "research"}),
+    do: "size-3.5 shrink-0 text-emerald-600 dark:text-emerald-300"
+
+  defp history_icon_class(_group), do: "size-3.5 shrink-0 text-stone-400 dark:text-stone-500"
 
   defp group_published_at(notes) do
     notes

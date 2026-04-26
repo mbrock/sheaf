@@ -45,7 +45,7 @@ defmodule Sheaf.Assistant.NotesTest do
     assert RDF.Data.include?(graph, {note, Sheaf.NS.AS.content(), text})
     assert RDF.Data.include?(graph, {note, RDF.NS.RDFS.label(), "Circulation comparison"})
     assert RDF.Data.include?(graph, {agent, RDF.type(), PROV.SoftwareAgent})
-    assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.DOC.ResearchSession})
+    assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.DOC.AssistantConversation})
     assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.AS.OrderedCollection})
     assert RDF.Data.include?(graph, {session, Sheaf.NS.AS.items(), note})
     assert RDF.Data.include?(graph, {note, Sheaf.NS.DOC.mentions(), Id.iri("BLK444")})

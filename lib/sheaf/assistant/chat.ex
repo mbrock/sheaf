@@ -15,7 +15,7 @@ defmodule Sheaf.Assistant.Chat do
   alias Sheaf.Id
 
   @registry Sheaf.Assistant.ChatRegistry
-  @default_title "New chat"
+  @default_title "Assistant conversation"
   @default_kind :chat
   @default_max_tool_rounds 500
 
@@ -34,6 +34,7 @@ defmodule Sheaf.Assistant.Chat do
     kind: @default_kind,
     messages: [],
     subscribers: %{},
+    allow_notes?: false,
     model: nil,
     llm_options: [],
     max_tool_rounds: @default_max_tool_rounds,
@@ -121,7 +122,8 @@ defmodule Sheaf.Assistant.Chat do
           agent_iri: agent_iri,
           agent_label: "Sheaf research assistant",
           session_iri: session_iri,
-          session_label: session_label(kind, id)
+          session_label: session_label(kind, id),
+          conversation_mode: conversation_mode(kind, allow_notes?)
         }
       )
 
@@ -144,6 +146,7 @@ defmodule Sheaf.Assistant.Chat do
            agent_iri: agent_iri,
            session_iri: session_iri,
            activity_writer: activity_writer,
+           allow_notes?: allow_notes?,
            model: model,
            llm_options: llm_options,
            max_tool_rounds: max_tool_rounds,
@@ -348,6 +351,7 @@ defmodule Sheaf.Assistant.Chat do
         message_iri: message_iri,
         session_iri: state.session_iri,
         session_label: session_label(state.kind, state.id),
+        conversation_mode: conversation_mode(state.kind, state.allow_notes?),
         text: text
       })
 
@@ -360,6 +364,7 @@ defmodule Sheaf.Assistant.Chat do
         model_name: state.model,
         session_iri: state.session_iri,
         session_label: session_label(state.kind, state.id),
+        conversation_mode: conversation_mode(state.kind, state.allow_notes?),
         in_reply_to: state.last_user_message_iri,
         text: text
       })
@@ -374,11 +379,13 @@ defmodule Sheaf.Assistant.Chat do
     apply(writer, function, [attrs])
   end
 
-  defp default_title(:research), do: "Research session"
-  defp default_title(_kind), do: @default_title
+  defp default_title(_kind), do: "Assistant conversation"
 
-  defp session_label(:research, id), do: "Research session #{id}"
-  defp session_label(_kind, id), do: "Assistant chat #{id}"
+  defp session_label(_kind, id), do: "Assistant conversation #{id}"
+
+  defp conversation_mode(:research, _allow_notes?), do: "research"
+  defp conversation_mode(_kind, true), do: "research"
+  defp conversation_mode(_kind, _allow_notes?), do: "quick"
 
   defp normalize_kind(:research), do: :research
   defp normalize_kind("research"), do: :research
@@ -592,7 +599,7 @@ defmodule Sheaf.Assistant.Chat do
 
   defp mode_prompt(:research, true) do
     """
-    Research session mode:
+    Research mode:
       * Treat the first user message as a research question, paper-reading
         assignment, or exploration brief.
       * Work through the corpus with the available tools and write durable
@@ -604,7 +611,7 @@ defmodule Sheaf.Assistant.Chat do
 
   defp mode_prompt(:research, false) do
     """
-    Research session mode:
+    Research mode:
       * Treat the first user message as a research question, paper-reading
         assignment, or exploration brief.
       * Work through the corpus with the available tools and finish with a

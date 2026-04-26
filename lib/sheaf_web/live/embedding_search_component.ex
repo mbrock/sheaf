@@ -24,7 +24,8 @@ defmodule SheafWeb.EmbeddingSearchComponent do
     {:ok,
      socket
      |> assign(assigns)
-     |> assign_new(:limit, fn -> 20 end)}
+     |> assign_new(:limit, fn -> 20 end)
+     |> assign_new(:variant, fn -> :full end)}
   end
 
   @impl true
@@ -55,7 +56,54 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <section class="py-3">
+    <section>
+      <.toolbar_search :if={@variant == :toolbar} {assigns} />
+      <.full_search :if={@variant != :toolbar} {assigns} />
+    </section>
+    """
+  end
+
+  defp toolbar_search(assigns) do
+    assigns = assign(assigns, :popover_id, "#{assigns.id}-results")
+
+    ~H"""
+    <div class="relative shrink-0">
+      <.form for={%{}} as={:search} phx-submit="search" phx-target={@myself}>
+        <div class="flex w-[min(22rem,42vw)] items-center gap-2 rounded-sm border border-stone-300 bg-white px-2 py-1.5 dark:border-stone-700 dark:bg-stone-900">
+          <input
+            type="search"
+            name="search[query]"
+            value={@query}
+            autocomplete="off"
+            placeholder="Search"
+            popovertarget={@popover_id}
+            class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-sm leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 dark:text-stone-50 dark:placeholder:text-stone-500"
+          />
+          <button
+            type="submit"
+            title="Search"
+            popovertarget={@popover_id}
+            class="grid size-6 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
+          >
+            <.icon name="hero-magnifying-glass" class="size-4" />
+          </button>
+        </div>
+      </.form>
+
+      <div
+        id={@popover_id}
+        popover="auto"
+        class="m-0 mt-2 w-[min(34rem,calc(100vw-2rem))] rounded-sm border border-stone-200 bg-stone-50 p-2 text-stone-950 shadow-lg dark:border-stone-800 dark:bg-stone-950 dark:text-stone-50"
+      >
+        <.search_results results={@results} searched?={@searched?} error={@error} />
+      </div>
+    </div>
+    """
+  end
+
+  defp full_search(assigns) do
+    ~H"""
+    <div class="py-3">
       <div class="mb-2 flex justify-end">
         <span
           :if={@searched?}
@@ -85,60 +133,77 @@ defmodule SheafWeb.EmbeddingSearchComponent do
         </div>
       </.form>
 
-      <p
-        :if={@error}
-        class="mt-2 py-1 text-xs leading-5 text-rose-700 dark:text-rose-300"
-      >
-        {@error}
-      </p>
+      <.search_results results={@results} searched?={@searched?} error={@error} />
+    </div>
+    """
+  end
 
-      <p
-        :if={@searched? and @results == [] and is_nil(@error)}
-        class="mt-2 text-xs leading-5 text-stone-500 dark:text-stone-400"
-      >
-        No matching indexed blocks.
-      </p>
+  attr :results, :list, required: true
+  attr :searched?, :boolean, required: true
+  attr :error, :string, default: nil
 
-      <ol
-        :if={@results != []}
-        class="mt-3 max-h-[28rem] overflow-y-auto"
-      >
-        <li :for={result <- @results}>
-          <.link
-            href={block_path(result.iri)}
-            class="block px-2 py-2 transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80"
-          >
-            <div class="flex min-w-0 items-baseline gap-2">
-              <span class="shrink-0 font-mono text-[11px] text-stone-500 dark:text-stone-400">
-                #{block_id(result.iri)}
-              </span>
-              <span class="min-w-0 flex-1 truncate font-serif text-sm text-stone-950 dark:text-stone-50">
-                {result.doc_title || "Untitled document"}
-              </span>
-              <span class="shrink-0 font-sans text-[11px] tabular-nums text-stone-500 dark:text-stone-400">
-                {score_percent(result.score)}
-              </span>
-            </div>
+  defp search_results(assigns) do
+    ~H"""
+    <p
+      :if={@error}
+      class="py-1 text-xs leading-5 text-rose-700 dark:text-rose-300"
+    >
+      {@error}
+    </p>
 
-            <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-sans text-[11px] leading-4 text-stone-500 dark:text-stone-400">
-              <span class="rounded-sm bg-stone-200/70 px-1.5 py-0.5 uppercase leading-none dark:bg-stone-800/80">
-                {kind_label(result.kind)}
-              </span>
-              <span :if={context_label(result)} class="min-w-0 truncate">
-                {context_label(result)}
-              </span>
-              <span class="uppercase">
-                {match_label(result)}
-              </span>
-            </div>
+    <p
+      :if={@searched? and @results == [] and is_nil(@error)}
+      class="text-xs leading-5 text-stone-500 dark:text-stone-400"
+    >
+      No matching indexed blocks.
+    </p>
 
-            <p class="mt-1 line-clamp-2 text-xs leading-5 text-stone-700 dark:text-stone-300">
-              {snippet(result.text)}
-            </p>
-          </.link>
-        </li>
-      </ol>
-    </section>
+    <p
+      :if={not @searched? and is_nil(@error)}
+      class="text-xs leading-5 text-stone-500 dark:text-stone-400"
+    >
+      Search indexed passages and coded rows.
+    </p>
+
+    <ol
+      :if={@results != []}
+      class="max-h-[28rem] overflow-y-auto"
+    >
+      <li :for={result <- @results}>
+        <.link
+          href={block_path(result.iri)}
+          class="block px-2 py-2 transition-colors hover:bg-stone-200/70 dark:hover:bg-stone-800/80"
+        >
+          <div class="flex min-w-0 items-baseline gap-2">
+            <span class="shrink-0 font-mono text-[11px] text-stone-500 dark:text-stone-400">
+              #{block_id(result.iri)}
+            </span>
+            <span class="min-w-0 flex-1 truncate font-sans text-sm text-stone-950 dark:text-stone-50">
+              {result.doc_title || "Untitled document"}
+            </span>
+            <span class="shrink-0 font-sans text-[11px] tabular-nums text-stone-500 dark:text-stone-400">
+              {score_percent(result.score)}
+            </span>
+          </div>
+
+          <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-sans text-[11px] leading-4 text-stone-500 dark:text-stone-400">
+            <span class="rounded-sm bg-stone-200/70 px-1.5 py-0.5 uppercase leading-none dark:bg-stone-800/80">
+              {kind_label(result.kind)}
+            </span>
+            <span :if={context_label(result)} class="min-w-0 truncate">
+              {context_label(result)}
+            </span>
+            <span class="uppercase">
+              {match_label(result)}
+            </span>
+          </div>
+
+          <p class="mt-1 line-clamp-2 text-xs leading-5 text-stone-700 dark:text-stone-300">
+            {snippet(result.text)}
+          </p>
+        </.link>
+      </li>
+    </ol>
     """
   end
 

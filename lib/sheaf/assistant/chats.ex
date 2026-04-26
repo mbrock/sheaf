@@ -8,7 +8,7 @@ defmodule Sheaf.Assistant.Chats do
   alias Sheaf.Assistant.Chat
   alias Sheaf.Id
 
-  @default_title "New chat"
+  @default_title "Assistant conversation"
   @default_kind :chat
   @supervisor Sheaf.Assistant.ChatSupervisor
 
@@ -192,6 +192,5 @@ defmodule Sheaf.Assistant.Chats do
   defp normalize_kind("research"), do: :research
   defp normalize_kind(_kind), do: :chat
 
-  defp default_title(:research), do: "Research session"
   defp default_title(_kind), do: @default_title
 end

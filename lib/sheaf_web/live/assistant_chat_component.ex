@@ -33,6 +33,7 @@ defmodule SheafWeb.AssistantChatComponent do
      |> assign(:selected_chat_id, nil)
      |> assign(:subscribed_chat_id, nil)
      |> assign(:chats_subscribed?, false)
+     |> assign(:mode, "quick")
      |> assign(:form, chat_form())}
   end
 
@@ -54,7 +55,6 @@ defmodule SheafWeb.AssistantChatComponent do
     socket =
       socket
       |> assign(:chats, chats)
-      |> ensure_selected_chat()
 
     {:ok, socket}
   end
@@ -73,14 +73,6 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   @impl true
-  def handle_event("new_chat", _params, socket) do
-    {:noreply, create_chat(socket, :chat)}
-  end
-
-  def handle_event("new_research", _params, socket) do
-    {:noreply, create_chat(socket, :research)}
-  end
-
   def handle_event("select_chat", %{"id" => id}, socket) do
     socket =
       if chat_listed?(socket.assigns.chats, id) do
@@ -92,18 +84,28 @@ defmodule SheafWeb.AssistantChatComponent do
     {:noreply, socket}
   end
 
-  def handle_event("send", %{"chat" => %{"message" => message}}, socket) do
+  def handle_event("set_mode", %{"chat" => %{"mode" => mode}}, socket) do
+    mode = normalize_mode(mode)
+    {:noreply, socket |> assign(:mode, mode) |> assign(:form, chat_form(mode))}
+  end
+
+  def handle_event("send", %{"chat" => %{"message" => message} = chat_params}, socket) do
+    mode = Map.get(chat_params, "mode", socket.assigns.mode)
     message = String.trim(message)
+    mode = normalize_mode(mode)
 
     cond do
       message == "" ->
-        {:noreply, assign(socket, :form, chat_form())}
+        {:noreply, socket |> assign(:mode, mode) |> assign(:form, chat_form(mode))}
 
       socket.assigns.chat.pending ->
         {:noreply, socket}
 
       true ->
-        socket = ensure_sendable_chat(socket)
+        socket =
+          socket
+          |> assign(:mode, mode)
+          |> ensure_sendable_chat(mode)
 
         socket =
           if is_nil(socket.assigns.selected_chat_id) do
@@ -115,13 +117,13 @@ defmodule SheafWeb.AssistantChatComponent do
                    turn_context(socket.assigns)
                  ) do
               :ok ->
-                assign(socket, :form, chat_form())
+                assign(socket, :form, chat_form(mode))
 
               {:error, :busy} ->
                 socket
 
               {:error, :empty_message} ->
-                assign(socket, :form, chat_form())
+                assign(socket, :form, chat_form(mode))
 
               {:error, reason} ->
                 put_local_error(socket, "Assistant error: #{inspect(reason)}")
@@ -132,92 +134,65 @@ defmodule SheafWeb.AssistantChatComponent do
     end
   end
 
-  defp create_chat(socket, kind) do
-    case Chats.create(chat_options(socket, kind)) do
-      %{id: id} ->
-        socket
-        |> assign(:chats, Chats.list())
-        |> select_chat(id)
-
-      {:error, reason} ->
-        put_local_error(socket, "Could not start chat: #{inspect(reason)}")
-    end
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
     <section class={assistant_section_class(@variant, @selected_chat_id)}>
-      <.inline_start
-        :if={inline?(@variant) and is_nil(@selected_chat_id)}
-        id={@id}
-        form={@form}
-        myself={@myself}
-      />
-
-      <div
-        :if={not inline?(@variant) or not is_nil(@selected_chat_id)}
-        class="flex items-center justify-between gap-3"
+      <.form
+        for={@form}
+        phx-change="set_mode"
+        phx-submit="send"
+        phx-target={@myself}
+        class="space-y-2"
       >
-        <h2 class="font-sans text-sm font-semibold uppercase text-stone-500 dark:text-stone-400">
-          Assistant
-        </h2>
-        <div :if={not inline?(@variant)} class="flex items-center gap-2">
+        <textarea
+          name="chat[message]"
+          rows="1"
+          class="block max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-2 text-sm leading-5 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
+          placeholder={input_placeholder(@mode)}
+          disabled={@chat.pending}
+        ></textarea>
+        <div class="flex items-center justify-between gap-3">
+          <div class="inline-flex items-center gap-1 font-sans text-xs">
+            <label class={mode_label_class(@mode, "quick")}>
+              <input
+                type="radio"
+                name="chat[mode]"
+                value="quick"
+                checked={@mode == "quick"}
+                class="sr-only"
+              />
+              <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
+              <span>Quick</span>
+            </label>
+            <label class={mode_label_class(@mode, "research")}>
+              <input
+                type="radio"
+                name="chat[mode]"
+                value="research"
+                checked={@mode == "research"}
+                class="sr-only"
+              />
+              <.icon name="hero-beaker" class="size-3.5" />
+              <span>Research</span>
+            </label>
+          </div>
           <button
-            type="button"
-            class="grid size-7 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
-            title="New chat"
-            aria-label="New chat"
-            phx-click="new_chat"
-            phx-target={@myself}
+            type="submit"
+            class="grid size-8 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
+            title="Send"
+            aria-label="Send"
+            disabled={@chat.pending}
           >
-            <.icon name="hero-plus" class="size-4" />
-          </button>
-          <button
-            type="button"
-            class="grid size-7 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
-            title="New research session"
-            aria-label="New research session"
-            phx-click="new_research"
-            phx-target={@myself}
-          >
-            <.icon name="hero-beaker" class="size-4" />
+            <.icon name="hero-paper-airplane" class="size-4" />
           </button>
         </div>
-      </div>
-
-      <nav
-        :if={not inline?(@variant) and @chats != []}
-        class="mt-3 max-h-28 space-y-1 overflow-y-auto py-2"
-      >
-        <button
-          :for={chat <- @chats}
-          type="button"
-          class={chat_button_class(chat.id, @selected_chat_id)}
-          phx-click="select_chat"
-          phx-value-id={chat.id}
-          phx-target={@myself}
-          title={chat_title(chat)}
-        >
-          <.icon name={chat_kind_icon(chat)} class={chat_kind_icon_class(chat)} />
-          <span class="min-w-0 flex-1 truncate">{chat.title}</span>
-          <span
-            :if={chat_kind(chat) == :research}
-            class="ml-2 shrink-0 rounded-sm bg-emerald-100 px-1.5 py-0.5 text-[0.625rem] uppercase leading-none text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300"
-          >
-            Research
-          </span>
-        </button>
-      </nav>
+      </.form>
 
       <div
-        :if={not inline?(@variant) or not is_nil(@selected_chat_id)}
-        class="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 text-sm"
+        :if={not inline?(@variant) and @selected_chat_id}
+        class="mt-3 max-h-80 min-h-0 space-y-2 overflow-y-auto pr-1 text-sm"
       >
-        <p :if={@chat.messages == []} class="leading-6 text-stone-500 dark:text-stone-400">
-          No messages yet.
-        </p>
-
         <.chat_message
           :for={message <- @chat.messages}
           message={message}
@@ -233,63 +208,7 @@ defmodule SheafWeb.AssistantChatComponent do
           <span class="min-w-0 flex-1 truncate">{@chat.status_line || "Thinking"}</span>
         </div>
       </div>
-
-      <.form
-        :if={not inline?(@variant) or not is_nil(@selected_chat_id)}
-        for={@form}
-        phx-submit="send"
-        phx-target={@myself}
-        class="mt-3 space-y-2"
-      >
-        <textarea
-          name="chat[message]"
-          rows="3"
-          class="block w-full resize-none rounded-sm border border-stone-300 bg-white px-3 py-2 text-sm leading-5 text-stone-950 outline-none transition-colors placeholder:text-stone-400 focus:border-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
-          placeholder={input_placeholder(@chat)}
-          disabled={@chat.pending or is_nil(@selected_chat_id)}
-        ></textarea>
-        <div class="flex justify-end">
-          <button
-            type="submit"
-            class="grid size-8 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
-            title="Send"
-            aria-label="Send"
-            disabled={@chat.pending or is_nil(@selected_chat_id)}
-          >
-            <.icon name="hero-paper-airplane" class="size-4" />
-          </button>
-        </div>
-      </.form>
     </section>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :form, :any, required: true
-  attr :myself, :any, required: true
-
-  defp inline_start(assigns) do
-    ~H"""
-    <.form for={@form} phx-submit="send" phx-target={@myself}>
-      <div class="flex items-center gap-2 rounded-sm border border-stone-300 bg-white px-2 py-1.5 dark:border-stone-700 dark:bg-stone-900">
-        <input
-          id={"#{@id}-assistant-message"}
-          type="text"
-          name="chat[message]"
-          autocomplete="off"
-          class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-sm leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 dark:text-stone-50 dark:placeholder:text-stone-500"
-          placeholder="Ask the assistant"
-        />
-        <button
-          type="submit"
-          class="grid size-6 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
-          title="Send"
-          aria-label="Send"
-        >
-          <.icon name="hero-paper-airplane" class="size-4" />
-        </button>
-      </div>
-    </.form>
     """
   end
 
@@ -461,13 +380,7 @@ defmodule SheafWeb.AssistantChatComponent do
     end
   end
 
-  defp maybe_ensure_selected_chat(socket) do
-    if history_enabled?(socket.assigns) do
-      ensure_selected_chat(socket)
-    else
-      socket
-    end
-  end
+  defp maybe_ensure_selected_chat(socket), do: socket
 
   defp ensure_chat_index_subscription(%{assigns: %{chats_subscribed?: true}} = socket), do: socket
 
@@ -477,40 +390,18 @@ defmodule SheafWeb.AssistantChatComponent do
     |> assign(:chats_subscribed?, true)
   end
 
-  defp ensure_selected_chat(%{assigns: %{selected_chat_id: id, chats: chats}} = socket)
-       when is_binary(id) do
-    if chat_listed?(chats, id) do
-      subscribe_to_chat(socket, id)
-    else
-      select_default_chat(socket)
-    end
-  end
+  defp ensure_sendable_chat(%{assigns: %{selected_chat_id: id}} = socket, _mode)
+       when is_binary(id),
+       do: socket
 
-  defp ensure_selected_chat(socket), do: select_default_chat(socket)
+  defp ensure_sendable_chat(socket, mode), do: create_conversation_for_send(socket, mode)
 
-  defp ensure_sendable_chat(%{assigns: %{selected_chat_id: id}} = socket) when is_binary(id),
-    do: socket
+  defp create_conversation_for_send(socket, mode) do
+    kind = mode_kind(mode)
 
-  defp ensure_sendable_chat(socket) do
-    if inline?(socket.assigns.variant) do
-      create_inline_chat(socket)
-    else
-      socket
-    end
-  end
-
-  defp create_inline_chat(socket) do
-    case Chats.create(Keyword.put(chat_options(socket, :chat), :listed?, false)) do
-      %{id: id} ->
-        select_chat(socket, id)
-
-      {:error, reason} ->
-        put_local_error(socket, "Could not start assistant chat: #{inspect(reason)}")
-    end
-  end
-
-  defp select_default_chat(socket) do
-    case Chats.ensure_default(chat_options(socket, :chat)) do
+    case Chats.create(
+           Keyword.put(chat_options(socket, kind), :listed?, history_enabled?(socket.assigns))
+         ) do
       %{id: id} ->
         socket
         |> assign(:chats, Chats.list())
@@ -534,6 +425,7 @@ defmodule SheafWeb.AssistantChatComponent do
     socket
     |> assign(:subscribed_chat_id, id)
     |> assign(:chat, snapshot)
+    |> assign(:mode, chat_mode(snapshot))
   end
 
   defp unsubscribe_from_previous_chat(%{assigns: %{subscribed_chat_id: old_id}} = socket, new_id)
@@ -551,16 +443,20 @@ defmodule SheafWeb.AssistantChatComponent do
       llm_options: socket.assigns.llm_options
     ]
 
-    case assistant_allow_notes(socket.assigns) do
+    case assistant_allow_notes(socket.assigns, kind) do
       {:ok, allow_notes?} -> Keyword.put(options, :allow_notes, allow_notes?)
       :error -> options
     end
   end
 
-  defp assistant_allow_notes(assigns) do
+  defp assistant_allow_notes(assigns, kind) do
     case Map.fetch(assigns, :allow_notes) do
       {:ok, allow_notes?} -> {:ok, allow_notes?}
       :error -> Map.fetch(assigns, :allow_notes?)
+    end
+    |> case do
+      :error -> {:ok, kind == :research}
+      other -> other
     end
   end
 
@@ -578,52 +474,44 @@ defmodule SheafWeb.AssistantChatComponent do
         "py-3"
 
       inline?(variant) ->
-        "flex min-h-[24rem] flex-col py-3"
+        "flex flex-col py-3"
 
       true ->
-        "flex min-h-[24rem] flex-col pt-2"
+        "flex flex-col pt-2"
     end
   end
 
-  defp chat_listed?(chats, id), do: Enum.any?(chats, &(&1.id == id))
+  defp normalize_mode("research"), do: "research"
+  defp normalize_mode(_mode), do: "quick"
 
-  defp chat_button_class(id, selected_id) do
+  defp mode_kind("research"), do: :research
+  defp mode_kind(_mode), do: :chat
+
+  defp mode_label_class(selected_mode, mode) do
     [
-      "flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left font-sans text-xs transition-colors",
-      "hover:bg-stone-200/70 dark:hover:bg-stone-800/80",
-      id == selected_id && "bg-stone-200/70 text-stone-950 dark:bg-stone-800 dark:text-stone-50",
-      id != selected_id && "text-stone-600 dark:text-stone-400"
+      "inline-flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 transition-colors",
+      selected_mode == mode &&
+        "text-stone-900 ring-1 ring-inset ring-stone-400/70 dark:text-stone-50 dark:ring-stone-500/80",
+      selected_mode != mode &&
+        "text-stone-500 hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
     ]
   end
 
-  defp chat_title(chat) do
-    case chat_kind(chat) do
-      :research -> "Research session: #{chat.title}"
-      _kind -> chat.title
-    end
-  end
+  defp chat_listed?(chats, id), do: Enum.any?(chats, &(&1.id == id))
 
   defp chat_kind(%{kind: :research}), do: :research
   defp chat_kind(%{kind: "research"}), do: :research
   defp chat_kind(_chat), do: :chat
 
-  defp chat_kind_icon(chat) do
+  defp chat_mode(chat) do
     case chat_kind(chat) do
-      :research -> "hero-beaker"
-      _kind -> "hero-chat-bubble-left-ellipsis"
+      :research -> "research"
+      _kind -> "quick"
     end
   end
 
-  defp chat_kind_icon_class(chat) do
-    [
-      "size-3.5 shrink-0",
-      chat_kind(chat) == :research && "text-emerald-600 dark:text-emerald-300"
-    ]
-  end
-
-  defp input_placeholder(%{kind: :research}), do: "Give this research session a question"
-  defp input_placeholder(%{kind: "research"}), do: "Give this research session a question"
-  defp input_placeholder(_chat), do: "Ask about the thesis or the papers"
+  defp input_placeholder("research"), do: "Give the assistant a research task"
+  defp input_placeholder(_mode), do: "Ask a quick question"
 
   defp turn_context(assigns) do
     %{}
@@ -662,12 +550,12 @@ defmodule SheafWeb.AssistantChatComponent do
     |> MDEx.to_html!(@mdex_opts)
   end
 
-  defp chat_form, do: to_form(%{"message" => ""}, as: :chat)
+  defp chat_form(mode \\ "quick"), do: to_form(%{"message" => "", "mode" => mode}, as: :chat)
 
   defp empty_chat do
     %{
       id: nil,
-      title: "New chat",
+      title: "Assistant conversation",
       kind: :chat,
       messages: [],
       pending: false,

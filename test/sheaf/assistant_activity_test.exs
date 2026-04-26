@@ -16,14 +16,22 @@ defmodule Sheaf.Assistant.ActivityTest do
                %{
                  message_iri: question,
                  session_iri: session,
-                 session_label: "Research session SESS01",
+                 session_label: "Assistant conversation SESS01",
+                 conversation_mode: "quick",
                  text: "What should I read about circular economies?"
                },
                published_at: published_at
              )
 
     assert RDF.Data.include?(question_graph, {question, RDF.type(), Sheaf.NS.DOC.Message})
+
+    assert RDF.Data.include?(
+             question_graph,
+             {session, RDF.type(), Sheaf.NS.DOC.AssistantConversation}
+           )
+
     assert RDF.Data.include?(question_graph, {session, RDF.type(), Sheaf.NS.AS.OrderedCollection})
+    assert RDF.Data.include?(question_graph, {session, Sheaf.NS.DOC.conversationMode(), "quick"})
     assert RDF.Data.include?(question_graph, {session, Sheaf.NS.AS.items(), question})
 
     assert [user] =
@@ -42,7 +50,8 @@ defmodule Sheaf.Assistant.ActivityTest do
                  message_iri: reply,
                  model_name: "test-model",
                  session_iri: session,
-                 session_label: "Research session SESS01",
+                 session_label: "Assistant conversation SESS01",
+                 conversation_mode: "research",
                  in_reply_to: question,
                  text: "Start with the reuse papers."
                },
@@ -53,6 +62,7 @@ defmodule Sheaf.Assistant.ActivityTest do
     refute RDF.Data.include?(reply_graph, {reply, RDF.type(), Sheaf.NS.AS.Note})
     assert RDF.Data.include?(reply_graph, {reply, Sheaf.NS.AS.inReplyTo(), question})
     assert RDF.Data.include?(reply_graph, {session, Sheaf.NS.AS.items(), reply})
+    assert RDF.Data.include?(reply_graph, {session, Sheaf.NS.DOC.conversationMode(), "research"})
 
     assert [assistant] =
              RDF.Description.get(
