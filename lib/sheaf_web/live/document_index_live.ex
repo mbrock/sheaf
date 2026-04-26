@@ -9,7 +9,6 @@ defmodule SheafWeb.DocumentIndexLive do
   alias Sheaf.BlockRefs
   alias Sheaf.Assistant.Chats
   alias Sheaf.Assistant.Notes
-  alias Sheaf.Document
   alias Sheaf.Id
   alias SheafWeb.AppChrome
 
@@ -38,33 +37,25 @@ defmodule SheafWeb.DocumentIndexLive do
       |> assign(:research_session_titles, research_session_titles())
       |> assign(:document_error, document_error)
       |> assign(:notes_error, notes_error)
-      |> assign(:expanded, MapSet.new())
-      |> assign(:tocs, %{})
 
     {:ok, socket}
   end
 
   @impl true
-  def handle_event("toggle_toc", %{"id" => id}, socket) do
-    expanded = socket.assigns.expanded
-    tocs = socket.assigns.tocs
+  def handle_event("toggle_document_exclusion", %{"id" => id, "included" => included}, socket) do
+    excluded? = included not in ["true", true]
 
-    if MapSet.member?(expanded, id) do
-      {:noreply, assign(socket, :expanded, MapSet.delete(expanded, id))}
-    else
-      document = Enum.find(socket.assigns.documents, &(&1.id == id))
+    case Sheaf.Workspace.set_document_excluded(id, excluded?) do
+      :ok ->
+        {documents, document_error} = fetch_documents()
 
-      tocs =
-        if document && not Map.has_key?(tocs, id) do
-          Map.put(tocs, id, fetch_toc(document))
-        else
-          tocs
-        end
+        {:noreply,
+         socket
+         |> assign(:documents, documents)
+         |> assign(:document_error, document_error)}
 
-      {:noreply,
-       socket
-       |> assign(:expanded, MapSet.put(expanded, id))
-       |> assign(:tocs, tocs)}
+      {:error, reason} ->
+        {:noreply, assign(socket, :document_error, inspect(reason))}
     end
   end
 
@@ -79,13 +70,6 @@ defmodule SheafWeb.DocumentIndexLive do
     case Notes.list_graph(limit: 30) do
       {:ok, graph} -> {Notes.descriptions(graph), graph, nil}
       {:error, reason} -> {[], Graph.new(), inspect(reason)}
-    end
-  end
-
-  defp fetch_toc(document) do
-    case Sheaf.fetch_graph(document.iri) do
-      {:ok, graph} -> Document.toc(graph, document.iri)
-      _ -> []
     end
   end
 
@@ -114,13 +98,9 @@ defmodule SheafWeb.DocumentIndexLive do
               </span>
             </div>
 
-            <ul class="space-y-1">
+            <ul class="space-y-0.5">
               <li :for={document <- documents}>
-                <.document_entry
-                  document={document}
-                  expanded={MapSet.member?(@expanded, document.id)}
-                  toc={Map.get(@tocs, document.id, [])}
-                />
+                <.document_entry document={document} />
               </li>
             </ul>
           </section>
@@ -208,72 +188,50 @@ defmodule SheafWeb.DocumentIndexLive do
   end
 
   attr :document, :map, required: true
-  attr :expanded, :boolean, default: false
-  attr :toc, :list, default: []
 
   defp document_entry(assigns) do
     ~H"""
-    <div class="flex items-stretch gap-0">
-      <button
-        type="button"
-        phx-click="toggle_toc"
-        phx-value-id={@document.id}
-        aria-expanded={@expanded}
-        aria-label={if(@expanded, do: "Collapse outline", else: "Expand outline")}
-        class="shrink-0 px-2 py-1.5 text-stone-400 transition-colors hover:text-stone-900 dark:text-stone-500 dark:hover:text-stone-100"
-      >
-        <span class={[
-          "block w-3 text-center font-mono text-xs leading-snug transition-transform",
-          @expanded && "rotate-90"
-        ]}>
-          ▸
-        </span>
-      </button>
-
-      <div class="min-w-0 flex-1">
-        <.link
-          :if={@document.path}
-          navigate={@document.path}
-          class="block transition-colors"
-        >
-          <.document_row document={@document} />
-        </.link>
-
-        <div :if={is_nil(@document.path)}>
-          <.document_row document={@document} />
-        </div>
-
-        <div
-          :if={@expanded}
-          class="py-2 pl-2 pr-2"
-        >
-          <.block_outline
-            :if={@toc != []}
-            entries={@toc}
-            base_path={@document.path}
-            class="text-xs"
-          />
-          <p :if={@toc == []} class="px-2 text-xs italic text-stone-500 dark:text-stone-400">
-            No outline available.
-          </p>
-        </div>
-      </div>
+    <div class={[@document.excluded? && "opacity-45 grayscale"]}>
+      <.document_row document={@document} />
     </div>
     """
   end
+
+  defp excludable?(%{kind: :thesis}), do: false
+  defp excludable?(_document), do: true
 
   attr :document, :map, required: true
 
   defp document_row(assigns) do
     ~H"""
-    <div class="px-2 py-1.5 leading-snug">
-      <div class="truncate font-sans">{@document.title}</div>
+    <div class="px-2 py-1 leading-snug">
+      <div class="truncate font-sans">
+        <input
+          :if={excludable?(@document)}
+          type="checkbox"
+          checked={!@document.excluded?}
+          phx-click="toggle_document_exclusion"
+          phx-value-id={@document.id}
+          phx-value-included={if(@document.excluded?, do: "true", else: "false")}
+          aria-label={
+            if(@document.excluded?, do: "Include in workspace", else: "Exclude from workspace")
+          }
+          title={if(@document.excluded?, do: "Include in workspace", else: "Exclude from workspace")}
+          class="mr-2 inline-block size-3.5 align-baseline rounded-sm border border-stone-400 bg-stone-100 text-stone-600 accent-stone-500 focus:ring-1 focus:ring-stone-400 dark:border-stone-500 dark:bg-stone-800 dark:text-stone-300 dark:accent-stone-400"
+        />
+        <.link :if={@document.path} navigate={@document.path} class="transition-colors">
+          {@document.title}
+        </.link>
+        <span :if={is_nil(@document.path)}>{@document.title}</span>
+      </div>
 
       <div
         :if={subline?(@document)}
-        class="flex min-w-0 items-baseline gap-3 text-sm text-stone-500 dark:text-stone-400"
+        class="flex min-w-0 items-baseline gap-3 text-[0.9375rem] text-stone-500 dark:text-stone-400"
       >
-        <span class="w-10 shrink-0 tabular-nums">{year_str(@document)}</span>
+        <span :if={year_str(@document) != ""} class="shrink-0 tabular-nums">
+          {year_str(@document)}
+        </span>
 
         <span class="small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300">
           {authors_str(@document) || ""}
@@ -281,13 +239,21 @@ defmodule SheafWeb.DocumentIndexLive do
 
         <span class="shrink-0 tabular-nums">{page_count_str(@document)}</span>
       </div>
+
+      <div
+        :if={chapter_metadata?(@document)}
+        class="flex min-w-0 items-baseline gap-2 truncate font-sans text-xs text-stone-500 dark:text-stone-400"
+      >
+        <span class="min-w-0 truncate italic">{chapter_venue(@document)}</span>
+        <span :if={publisher_str(@document)} class="shrink-0">{publisher_str(@document)}</span>
+        <span :if={pages_str(@document)} class="shrink-0">{pages_str(@document)}</span>
+      </div>
     </div>
     """
   end
 
   defp subline?(document) do
-    authors_str(document) != nil or year_str(document) != "" or
-      page_count_str(document) != ""
+    authors_str(document) != nil or year_str(document) != "" or page_count_str(document) != ""
   end
 
   defp authors_str(document) do
@@ -308,6 +274,24 @@ defmodule SheafWeb.DocumentIndexLive do
     case document |> Map.get(:metadata, %{}) |> Map.get(:page_count) do
       nil -> ""
       count -> "#{count} pp."
+    end
+  end
+
+  defp chapter_metadata?(document), do: chapter_venue(document) != nil
+
+  defp chapter_venue(%{metadata: %{kind: "Book chapter", venue: venue}})
+       when is_binary(venue) and venue != "",
+       do: venue
+
+  defp chapter_venue(_document), do: nil
+
+  defp publisher_str(document), do: document |> Map.get(:metadata, %{}) |> Map.get(:publisher)
+
+  defp pages_str(document) do
+    case document |> Map.get(:metadata, %{}) |> Map.get(:pages) do
+      nil -> nil
+      "" -> nil
+      pages -> "pp. #{pages}"
     end
   end
 
@@ -345,13 +329,13 @@ defmodule SheafWeb.DocumentIndexLive do
   defp pluralize_expression_kind("Report document"), do: "Reports"
   defp pluralize_expression_kind(kind), do: kind <> "s"
 
-  defp kind_order({:expression, "Journal article"}), do: 0
-  defp kind_order({:expression, "Book"}), do: 1
-  defp kind_order({:expression, "Book chapter"}), do: 2
-  defp kind_order({:expression, "Doctoral thesis"}), do: 3
-  defp kind_order({:expression, "Report document"}), do: 4
-  defp kind_order({:expression, _kind}), do: 5
-  defp kind_order(:thesis), do: 6
+  defp kind_order(:thesis), do: 0
+  defp kind_order({:expression, "Journal article"}), do: 1
+  defp kind_order({:expression, "Book"}), do: 2
+  defp kind_order({:expression, "Book chapter"}), do: 3
+  defp kind_order({:expression, "Doctoral thesis"}), do: 4
+  defp kind_order({:expression, "Report document"}), do: 5
+  defp kind_order({:expression, _kind}), do: 6
   defp kind_order(:paper), do: 6
   defp kind_order(:transcript), do: 7
   defp kind_order(:spreadsheet), do: 8

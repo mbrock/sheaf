@@ -7,6 +7,9 @@ export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
 COMMAND="${1:-status}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
 
 cd "$APP_ROOT"
 
@@ -27,7 +30,7 @@ ADMIN_PASSWORD="${SHEAF_SPARQL_PASSWORD:-admin}"
 ADMIN_USER="${SHEAF_SPARQL_USERNAME:-admin}"
 
 usage() {
-  printf 'Usage: %s {status|start|stop|restart|logs|datasets|server}\n' "$(basename "$0")" >&2
+  printf 'Usage: %s {status|start|stop|restart|logs|datasets|server|backups|backup [OUTPUT]}\n' "$(basename "$0")" >&2
 }
 
 container_exists() {
@@ -116,6 +119,88 @@ dataset_info() {
   curl -fsS -u "${ADMIN_USER}:${ADMIN_PASSWORD}" "http://${HOST}:${PORT}/$/datasets"
 }
 
+backups_info() {
+  curl -fsS -u "${ADMIN_USER}:${ADMIN_PASSWORD}" "http://${HOST}:${PORT}/$/backups-list"
+}
+
+require_jq() {
+  if ! command -v jq >/dev/null 2>&1; then
+    printf 'jq is required for Fuseki backup task polling.\n' >&2
+    return 1
+  fi
+}
+
+backup_store() {
+  require_jq
+
+  local output="${1:-}"
+  local before_json task_json task_id task_json_poll after_json before_files new_file
+  local timeout="${SHEAF_TRIPLESTORE_BACKUP_TIMEOUT:-300}"
+  local start
+
+  before_json="$(backups_info)"
+  before_files="$(printf '%s' "$before_json" | jq -c '.backups // []')"
+
+  task_json="$(
+    curl -fsS -u "${ADMIN_USER}:${ADMIN_PASSWORD}" \
+      -X POST "http://${HOST}:${PORT}/$/backup/${DATASET}"
+  )"
+  task_id="$(printf '%s' "$task_json" | jq -r '.taskId // empty')"
+
+  if [ -z "$task_id" ]; then
+    printf 'Fuseki did not return a backup task id: %s\n' "$task_json" >&2
+    return 1
+  fi
+
+  printf 'Started Fuseki backup task: %s\n' "$task_id"
+  start="$(date +%s)"
+
+  while true; do
+    task_json_poll="$(
+      curl -fsS -u "${ADMIN_USER}:${ADMIN_PASSWORD}" \
+        "http://${HOST}:${PORT}/$/tasks/${task_id}"
+    )"
+
+    if printf '%s' "$task_json_poll" |
+      jq -e 'if type == "array" then .[0] else . end | .finished? // .finishPoint? // empty' >/dev/null; then
+      break
+    fi
+
+    if [ "$(($(date +%s) - start))" -ge "$timeout" ]; then
+      printf 'Timed out waiting for Fuseki backup task %s after %ss.\n' "$task_id" "$timeout" >&2
+      return 1
+    fi
+
+    sleep 1
+  done
+
+  after_json="$(backups_info)"
+  new_file="$(
+    printf '%s' "$after_json" |
+      jq -r --argjson before "$before_files" \
+        '.backups // [] | map(select(. as $file | ($before | index($file) | not))) | sort | last // empty'
+  )"
+
+  if [ -z "$new_file" ]; then
+    printf 'Backup task finished, but no new backup file appeared in Fuseki.\n' >&2
+    return 1
+  fi
+
+  printf 'Fuseki backup created: backups/%s\n' "$new_file"
+
+  if [ -n "$output" ]; then
+    if [ -d "$output" ] || [[ "$output" == */ ]]; then
+      mkdir -p "$output"
+      output="${output%/}/$new_file"
+    else
+      mkdir -p "$(dirname "$output")"
+    fi
+
+    docker cp "$CONTAINER:/fuseki/backups/$new_file" "$output"
+    printf 'Copied backup to: %s\n' "$output"
+  fi
+}
+
 case "$COMMAND" in
   start)
     start_store
@@ -138,6 +223,12 @@ case "$COMMAND" in
     ;;
   server)
     server_info
+    ;;
+  backups)
+    backups_info
+    ;;
+  backup)
+    backup_store "$@"
     ;;
   *)
     usage

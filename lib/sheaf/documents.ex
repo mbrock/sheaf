@@ -15,7 +15,7 @@ defmodule Sheaf.Documents do
   PREFIX foaf: <http://xmlns.com/foaf/0.1/>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-  SELECT ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages ?pageCount WHERE {
+  SELECT ?doc ?title ?kind ?metadataTitle ?metadataKind ?authorName ?year ?venueTitle ?publisherTitle ?doi ?volume ?issue ?pages ?pageCount ?excluded WHERE {
     GRAPH ?graph {
       {
         ?doc a ?kind .
@@ -69,20 +69,28 @@ defmodule Sheaf.Documents do
         OPTIONAL { ?expression fabio:hasPageRange ?pages }
       }
     }
+    OPTIONAL {
+      GRAPH <https://less.rest/sheaf/workspace> {
+        ?workspace a sheaf:Workspace ;
+          sheaf:excludesDocument ?doc .
+        BIND("true" AS ?excluded)
+      }
+    }
   }
   """
 
-  def list do
+  def list(opts \\ []) do
     with {:ok, result} <- Sheaf.select(@query) do
-      {:ok, from_rows(result.results)}
+      {:ok, from_rows(result.results, opts)}
     end
   end
 
   @doc false
-  def from_rows(rows) do
+  def from_rows(rows, opts \\ []) do
     rows
     |> Enum.group_by(&row_iri/1)
     |> Enum.map(fn {_iri, rows} -> from_document_rows(rows) end)
+    |> maybe_reject_excluded(opts)
     |> Enum.sort_by(&{kind_order(&1.kind), String.downcase(&1.title)})
   end
 
@@ -96,6 +104,7 @@ defmodule Sheaf.Documents do
       id: Id.id_from_iri(iri),
       iri: iri,
       kind: kind,
+      excluded?: excluded?(rows),
       metadata: metadata,
       path: path(iri),
       title: metadata[:title] || title(row["title"], iri)
@@ -103,6 +112,16 @@ defmodule Sheaf.Documents do
   end
 
   defp row_iri(row), do: row |> Map.fetch!("doc") |> term_value()
+
+  defp maybe_reject_excluded(documents, opts) do
+    if Keyword.get(opts, :include_excluded, true) do
+      documents
+    else
+      Enum.reject(documents, & &1.excluded?)
+    end
+  end
+
+  defp excluded?(rows), do: Enum.any?(rows, &Map.has_key?(&1, "excluded"))
 
   defp title(nil, iri), do: Id.id_from_iri(iri)
   defp title(term, _iri), do: term_value(term)

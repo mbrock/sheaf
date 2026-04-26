@@ -22,8 +22,8 @@ defmodule Sheaf.Search.IndexTest do
   test "sync mirrors RDF text units into SQLite FTS", %{db_path: db_path} do
     select = fn sparql ->
       refute sparql =~ "UNION"
-      refute sparql =~ "FILTER"
       refute sparql =~ "ORDER BY"
+      assert sparql =~ "sheaf:excludesDocument"
 
       cond do
         sparql =~ "sheaf:paragraph" ->

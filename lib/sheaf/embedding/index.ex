@@ -560,6 +560,7 @@ defmodule Sheaf.Embedding.Index do
         OPTIONAL { ?doc <http://www.w3.org/2000/01/rdf-schema#label> ?docTitle }
         #{text_unit_unions(kinds)}
       }
+      #{Sheaf.Workspace.exclusion_filter("?doc")}
     }
     ORDER BY ?iri
     #{if limit, do: "LIMIT #{limit}", else: ""}
@@ -659,6 +660,7 @@ defmodule Sheaf.Embedding.Index do
            {doc,
             %{
               title: rows |> Enum.find_value(&(Map.get(&1, "title") && term_value(&1["title"]))),
+              excluded?: Enum.any?(rows, &Map.has_key?(&1, "excluded")),
               authors:
                 rows
                 |> Enum.map(&Map.get(&1, "authorName"))
@@ -798,6 +800,7 @@ defmodule Sheaf.Embedding.Index do
 
   defp searchable_result(result, opts) do
     if kind_allowed?(result, opts) and document_allowed?(result, opts) and
+         not result[:doc_excluded?] and
          searchable_content?(result) do
       [result]
     else
@@ -915,7 +918,7 @@ defmodule Sheaf.Embedding.Index do
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
     PREFIX sheaf: <https://less.rest/sheaf/>
 
-    SELECT ?doc ?title ?authorName WHERE {
+    SELECT ?doc ?title ?authorName ?excluded WHERE {
       GRAPH ?doc {
         ?doc a ?kind ;
           rdfs:label ?title .
@@ -926,6 +929,13 @@ defmodule Sheaf.Embedding.Index do
           ?doc fabio:isRepresentationOf ?expression .
           ?expression dcterms:creator ?author .
           OPTIONAL { ?author foaf:name ?authorName }
+        }
+      }
+      OPTIONAL {
+        GRAPH <https://less.rest/sheaf/workspace> {
+          ?workspace a sheaf:Workspace ;
+            sheaf:excludesDocument ?doc .
+          BIND("true" AS ?excluded)
         }
       }
     }
@@ -988,6 +998,7 @@ defmodule Sheaf.Embedding.Index do
       doc_iri: doc_iri,
       doc_title: doc_title,
       doc_authors: Map.get(doc, :authors, []),
+      doc_excluded?: Map.get(doc, :excluded?, false),
       source_page: description |> Description.first(Sheaf.NS.DOC.sourcePage()) |> integer_value(),
       source_block_type: first_value(description, Sheaf.NS.DOC.sourceBlockType()),
       spreadsheet_row:

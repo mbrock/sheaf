@@ -340,6 +340,7 @@ defmodule Sheaf.Search.Index do
         ?iri sheaf:paragraph ?para .
         ?para sheaf:text ?text .
       }
+      #{Sheaf.Workspace.exclusion_filter("?doc")}
     }
     #{limit_clause(opts)}
     """
@@ -353,6 +354,7 @@ defmodule Sheaf.Search.Index do
       GRAPH ?doc {
         ?iri sheaf:sourceHtml ?text .
       }
+      #{Sheaf.Workspace.exclusion_filter("?doc")}
     }
     #{limit_clause(opts)}
     """
@@ -367,6 +369,7 @@ defmodule Sheaf.Search.Index do
         ?iri a sheaf:Row ;
           sheaf:text ?text .
       }
+      #{Sheaf.Workspace.exclusion_filter("?doc")}
     }
     #{limit_clause(opts)}
     """

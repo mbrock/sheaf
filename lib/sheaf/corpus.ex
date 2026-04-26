@@ -17,7 +17,7 @@ defmodule Sheaf.Corpus do
   @doc """
   Full document list (delegates to `Sheaf.Documents.list/0`).
   """
-  def documents, do: Documents.list()
+  def documents, do: Documents.list(include_excluded: false)
 
   @doc """
   Fetches a single document's graph by id. Raises if fetch fails.
@@ -171,6 +171,7 @@ defmodule Sheaf.Corpus do
         #{score_bind}
       }
       #{scope_filter}
+      #{Sheaf.Workspace.exclusion_filter("?doc")}
     }
     ORDER BY DESC(?score)
     LIMIT #{limit}

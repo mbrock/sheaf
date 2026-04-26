@@ -23,7 +23,8 @@ defmodule Sheaf.DocumentsTest do
       %{
         "doc" => ~I<https://example.com/sheaf/PAPER1>,
         "title" => RDF.literal("Example Paper"),
-        "kind" => RDF.iri(DOC.Paper)
+        "kind" => RDF.iri(DOC.Paper),
+        "excluded" => RDF.literal("true")
       },
       %{
         "doc" => ~I<https://example.com/sheaf/interviews/23>,
@@ -44,7 +45,13 @@ defmodule Sheaf.DocumentsTest do
 
     assert [
              %{id: "THESIS", kind: :thesis, path: "/THESIS", title: "Example Thesis"},
-             %{id: "PAPER1", kind: :paper, path: "/PAPER1", title: "Example Paper"},
+             %{
+               id: "PAPER1",
+               kind: :paper,
+               path: "/PAPER1",
+               title: "Example Paper",
+               excluded?: true
+             },
              %{
                id: "23",
                kind: :transcript,
@@ -58,6 +65,8 @@ defmodule Sheaf.DocumentsTest do
                title: "Coded spreadsheet"
              }
            ] = Documents.from_rows(rows)
+
+    refute Enum.any?(Documents.from_rows(rows, include_excluded: false), &(&1.id == "PAPER1"))
   end
 
   test "prefers specific document kinds over generic document rows" do

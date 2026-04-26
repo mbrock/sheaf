@@ -23,6 +23,7 @@ defmodule Sheaf.CorpusTest do
              "FILTER(?docKind IN (sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))"
 
     assert sparql =~ "FILTER NOT EXISTS"
+    assert sparql =~ "sheaf:excludesDocument"
     assert sparql =~ "ORDER BY DESC(?score)"
     refute sparql =~ "sheaf:Row"
   end

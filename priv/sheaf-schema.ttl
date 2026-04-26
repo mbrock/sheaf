@@ -42,6 +42,11 @@ sheaf:Spreadsheet a rdfs:Class ;
   rdfs:subClassOf sheaf:Document ;
   rdfs:comment "A document imported from tabular source data." .
 
+sheaf:Workspace a rdfs:Class ;
+  rdfs:label "workspace"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "A persistent context for local reading and research preferences." .
+
 sheaf:Interview a rdfs:Class ;
   rdfs:label "interview"@en ;
   rdfs:subClassOf sheaf:Transcript ;
@@ -271,3 +276,9 @@ sheaf:mentions a rdf:Property ;
   rdfs:label "mentions"@en ;
   rdfs:range rdfs:Resource ;
   rdfs:comment "Links a note, annotation, or other interpretive resource to a Sheaf resource it discusses." .
+
+sheaf:excludesDocument a rdf:Property ;
+  rdfs:label "excludes document"@en ;
+  rdfs:domain sheaf:Workspace ;
+  rdfs:range sheaf:Document ;
+  rdfs:comment "Links a workspace to a document omitted from active workspace views and search results while remaining in the library." .

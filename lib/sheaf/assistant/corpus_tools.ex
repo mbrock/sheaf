@@ -129,7 +129,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   def titles do
-    case Documents.list() do
+    case Documents.list(include_excluded: false) do
       {:ok, docs} -> Map.new(docs, &{&1.id, &1.title})
       _ -> %{}
     end
@@ -244,7 +244,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp list_documents_tool(_args) do
-    case Documents.list() do
+    case Documents.list(include_excluded: false) do
       {:ok, documents} ->
         {:ok, %{documents: Enum.map(documents, &document_summary/1)}}
 
