@@ -36,9 +36,11 @@ also prints derived app URLs, RDF base IRIs, SPARQL endpoints, Fuseki server
 metadata, dataset names, and a quick triple count before checking the configured
 service process.
 
-`bin/rpc` evaluates Elixir on the running Sheaf node. `bin/deploy` runs
-`mix assets.build`, then uses `bin/rpc` to hot-reload modified and newly compiled
-BEAM modules without starting a second application instance.
+`bin/rpc` evaluates Elixir on the running Sheaf node. For a development service,
+`bin/deploy` runs `mix assets.build`, then uses `bin/rpc` to hot-reload modified
+and newly compiled BEAM modules without starting a second application instance.
+For the production systemd service, `bin/deploy` runs `bin/build-prod` and
+restarts the service instead.
 `bin/docs` uses the running node to show app overviews, module/function docs, and
 source snippets, which is often faster than spelunking generated HTML docs.
 `bin/triplestore` manages the Dockerized Fuseki dependency used by Sheaf.
@@ -105,7 +107,7 @@ Installed service and proxy layout on this machine:
 
 * User service file: [ops/systemd/sheaf.service](/home/mbrock/sheaf/ops/systemd/sheaf.service)
 * Repo env file: [.env](/home/mbrock/sheaf/.env)
-* Service entrypoint: [bin/serve](/home/mbrock/sheaf/bin/serve)
+* Service entrypoint: [bin/serve-prod](/home/mbrock/sheaf/bin/serve-prod)
 * Caddy snippet in repo: [ops/caddy/sheaf.example.test.caddy](/home/mbrock/sheaf/ops/caddy/sheaf.example.test.caddy)
 
 The live service listens on `127.0.0.1:4041` and Caddy terminates TLS for your configured host.
