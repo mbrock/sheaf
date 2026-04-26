@@ -231,6 +231,46 @@ defmodule SheafWeb.AssistantChatComponent do
     """
   end
 
+  defp chat_message(%{message: %{role: :tool, tool: "write_note", input: input}} = assigns) do
+    assigns =
+      assigns
+      |> assign(:tool_view, tool_view(assigns.message, assigns.titles))
+      |> assign(:note_view, note_view(input))
+
+    ~H"""
+    <div class="px-1 py-1 text-xs">
+      <article class="rounded-sm border border-emerald-200 bg-emerald-50/60 p-3 text-stone-900 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-stone-100">
+        <div class="mb-2 flex items-start gap-2">
+          <span class="mt-0.5 shrink-0 text-base">📝</span>
+          <div class="min-w-0 flex-1">
+            <div class="font-sans text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+              Research note
+              <span class={["font-normal normal-case tracking-normal", @tool_view.status_class]}>
+                {@tool_view.detail}
+              </span>
+            </div>
+            <h3
+              :if={@note_view.title != ""}
+              class="mt-0.5 text-sm font-semibold leading-snug text-stone-950 dark:text-stone-50"
+            >
+              {@note_view.title}
+            </h3>
+          </div>
+        </div>
+        <div
+          :if={@note_view.text != ""}
+          class="assistant-prose max-h-80 overflow-y-auto break-words pr-1 text-xs leading-5 text-stone-800 dark:text-stone-100"
+        >
+          {raw(render_markdown(@note_view.text))}
+        </div>
+        <p :if={@note_view.text == ""} class="text-xs text-stone-500 dark:text-stone-400">
+          The assistant is preparing a note.
+        </p>
+      </article>
+    </div>
+    """
+  end
+
   defp chat_message(%{message: %{role: :tool}} = assigns) do
     assigns = assign(assigns, :tool_view, tool_view(assigns.message, assigns.titles))
 
@@ -366,6 +406,16 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp tool_arg(_, _), do: nil
+
+  defp note_view(input) do
+    %{
+      title: input |> tool_arg(:title) |> note_text_value(),
+      text: input |> tool_arg(:text) |> note_text_value()
+    }
+  end
+
+  defp note_text_value(value) when is_binary(value), do: String.trim(value)
+  defp note_text_value(_value), do: ""
 
   defp tool_blocks(input) do
     input

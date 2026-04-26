@@ -4,17 +4,15 @@ defmodule RDFKnife.DiffTest do
   alias RDFKnife.Diff
 
   @patch %{
-           "format" => "rdfknife.patch.v1",
-           "positive" =>
-             """
-             <https://example.test/a> <https://example.test/p> "added" .
-             <https://example.test/g-s> <https://example.test/p> <https://example.test/o> <https://example.test/g> .
-             """,
-           "negative" =>
-             """
-             <https://example.test/a> <https://example.test/p> "old" .
-             """
-         }
+    "format" => "rdfknife.patch.v1",
+    "positive" => """
+    <https://example.test/a> <https://example.test/p> "added" .
+    <https://example.test/g-s> <https://example.test/p> <https://example.test/o> <https://example.test/g> .
+    """,
+    "negative" => """
+    <https://example.test/a> <https://example.test/p> "old" .
+    """
+  }
 
   test "reads simple JSON patch with positive and negative N-Quads datasets" do
     assert {:ok, diff} = Jason.encode!(@patch) |> Diff.read_string()
@@ -36,28 +34,28 @@ defmodule RDFKnife.DiffTest do
   test "renders SPARQL Update grouped by default and named graphs" do
     diff = Jason.encode!(@patch) |> Diff.read_string() |> elem(1)
 
-    assert Diff.to_sparql!(diff) == """
-           DELETE DATA {
-             <https://example.test/a> <https://example.test/p> "old" .
-           }
-
-           INSERT DATA {
-             <https://example.test/a> <https://example.test/p> "added" .
-             GRAPH <https://example.test/g> {
-               <https://example.test/g-s> <https://example.test/p> <https://example.test/o> .
+    assert Diff.to_sparql!(diff) ==
+             """
+             DELETE DATA {
+               <https://example.test/a> <https://example.test/p> "old" .
              }
-           }
-           """ |> String.trim_trailing()
+
+             INSERT DATA {
+               <https://example.test/a> <https://example.test/p> "added" .
+               GRAPH <https://example.test/g> {
+                 <https://example.test/g-s> <https://example.test/p> <https://example.test/o> .
+               }
+             }
+             """
+             |> String.trim_trailing()
   end
 
   test "applies a patch to an in-memory dataset" do
     original =
-      RDF.NQuads.read_string!(
-        """
-        <https://example.test/a> <https://example.test/p> "old" .
-        <https://example.test/keep> <https://example.test/p> "same" .
-        """
-      )
+      RDF.NQuads.read_string!("""
+      <https://example.test/a> <https://example.test/p> "old" .
+      <https://example.test/keep> <https://example.test/p> "same" .
+      """)
 
     diff = Jason.encode!(@patch) |> Diff.read_string() |> elem(1)
 

@@ -48,3 +48,6 @@ sheaf-*.tar
 # In case you use Node.js/npm, you want to ignore these.
 npm-debug.log
 /assets/node_modules/
+
+# Compiled Go binaries from tools/, built into bin/ on demand.
+/bin/otel-tail

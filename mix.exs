@@ -21,7 +21,12 @@ defmodule Sheaf.MixProject do
   def application do
     [
       mod: {Sheaf.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [
+        :logger,
+        :runtime_tools,
+        :opentelemetry_exporter,
+        :opentelemetry
+      ]
     ]
   end
 
@@ -57,6 +62,14 @@ defmodule Sheaf.MixProject do
        depth: 1},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
+      {:opentelemetry, "~> 1.5"},
+      {:opentelemetry_api, "~> 1.4"},
+      {:opentelemetry_exporter, "~> 1.10"},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:opentelemetry_bandit, "~> 0.3"},
+      {:opentelemetry_req, "~> 1.0"},
+      {:opentelemetry_finch, "~> 0.2"},
+      {:redix, "~> 1.5"},
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:req, "~> 0.5"},

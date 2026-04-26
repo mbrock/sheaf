@@ -210,6 +210,36 @@ service URL reported by `bin/status` (`Public URL` or `Phoenix HTTP`). Browser
 automation is appropriate for nondestructive UI checks, visual inspection, and
 screenshots of the running service.
 
+Sheaf emits OpenTelemetry spans via a custom span processor
+(`Sheaf.Tracing.RedisSinkProcessor`) that ships every ended span to a local
+Redis Stream (`otel:spans`) as JSON. The Go CLI in `tools/otel-tail` (built
+into `bin/otel-tail`) tails the stream live and prints colorized two-line
+summaries — that's the primary way to inspect spans during development, in
+place of any web UI.
+
+```console
+$ bin/otel-tail
+16:14:19.426  sheaf.select                              123.88ms  client
+  row_count: 334   operation: select   system: fuseki   address: http://localhost:3031/sheaf/sparql
+16:14:19.447  SheafWeb.DocumentIndexLive.mount          144.71ms  server
+16:14:19.463  GET /                                     471.42ms  server
+  status_code: 200   method: GET   route: /   address: 127.0.0.1   port: 4043
+```
+
+`bin/otel-tail --backfill N` prints the last N spans before tailing live;
+`--json` emits one JSON object per line for piping into `jq`; `-v` shows all
+attributes, not just the promoted ones; `--no-color` disables ANSI styling.
+
+The OTel SDK is configured at compile time in `config/config.exs` to use only
+the Redis sink (no OTLP exporter to Jaeger or anywhere else). Service name,
+deployment environment, and a kill switch are settable via the standard
+`OTEL_*` env vars (`OTEL_SERVICE_NAME`, `OTEL_SDK_DISABLED`) or
+`SHEAF_OTEL_*` equivalents. Span retention is bounded by Redis Streams'
+`MAXLEN ~ 1000000` trim — adjust in `Sheaf.Tracing.RedisSink` if needed.
+
+Redis is expected to run as a system service on localhost:6379 (`apt install
+redis-server`); `systemctl is-active redis-server` should report `active`.
+
 `bin/show [count]` captures one or more screenshots from the running service and
 sends them to the configured Telegram chat using the Bot API. It reads
 `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from `.env`; if the chat id is

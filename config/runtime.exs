@@ -147,6 +147,66 @@ config :sparql_client,
   update_request_method: :url_encoded,
   tesla_request_opts: [adapter: [receive_timeout: sparql_receive_timeout]]
 
+# OpenTelemetry runtime configuration. The OTEL_* env vars are the de facto
+# standard, so we honour them first and only fall back to SHEAF_-prefixed
+# variables for local convenience. Setting OTEL_SDK_DISABLED=true (or
+# SHEAF_OTEL_DISABLED=true) turns the SDK into a no-op without removing the
+# instrumentation packages from the runtime.
+otel_truthy = fn value ->
+  case value do
+    nil -> false
+    "" -> false
+    other -> String.downcase(String.trim(other)) in ["1", "true", "yes", "on"]
+  end
+end
+
+otel_disabled? =
+  otel_truthy.(System.get_env("OTEL_SDK_DISABLED")) or
+    otel_truthy.(System.get_env("SHEAF_OTEL_DISABLED"))
+
+otel_endpoint =
+  System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") ||
+    System.get_env("SHEAF_OTEL_ENDPOINT") ||
+    "http://localhost:4318"
+
+otel_service_name =
+  System.get_env("OTEL_SERVICE_NAME") ||
+    System.get_env("SHEAF_OTEL_SERVICE_NAME") ||
+    "sheaf"
+
+otel_deployment_env =
+  System.get_env("SHEAF_OTEL_ENVIRONMENT") ||
+    case config_env() do
+      :prod -> System.get_env("PHX_HOST", "production")
+      env -> Atom.to_string(env)
+    end
+
+otel_host_name =
+  System.get_env("HOSTNAME") ||
+    case :inet.gethostname() do
+      {:ok, name} -> List.to_string(name)
+      _ -> nil
+    end
+
+otel_resource_attributes =
+  [
+    {"service.name", otel_service_name},
+    {"service.namespace", "sheaf"},
+    {"deployment.environment", otel_deployment_env},
+    {"host.name", otel_host_name}
+  ]
+  |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+
+if otel_disabled? do
+  config :opentelemetry, traces_exporter: :none
+else
+  config :opentelemetry, resource: otel_resource_attributes
+
+  config :opentelemetry_exporter,
+    otlp_protocol: :http_protobuf,
+    otlp_endpoint: otel_endpoint
+end
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

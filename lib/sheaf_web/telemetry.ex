@@ -144,7 +144,9 @@ defmodule SheafWeb.Telemetry do
   defp socket_view(%Phoenix.LiveView.Socket{view: view}), do: module_tag(view)
   defp socket_view(_socket), do: :unknown
 
-  defp socket_connected?(%Phoenix.LiveView.Socket{} = socket), do: Phoenix.LiveView.connected?(socket)
+  defp socket_connected?(%Phoenix.LiveView.Socket{} = socket),
+    do: Phoenix.LiveView.connected?(socket)
+
   defp socket_connected?(_socket), do: false
 
   defp module_tag(module) when is_atom(module), do: module

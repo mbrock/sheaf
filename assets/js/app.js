@@ -45,7 +45,7 @@ const devSessionStorage = window.location.hostname.endsWith(".localhost") ?
 window.sessionStorage?.removeItem("phx:fallback:LongPoll")
 
 const liveSocket = new LiveSocket("/live", Socket, {
-  longPollFallbackMs: 2500,
+  longPollFallbackMs: 6000,
   sessionStorage: devSessionStorage,
   params: {_csrf_token: csrfToken},
   hooks: {...colocatedHooks, KnuthPlass, DocumentBreadcrumb},

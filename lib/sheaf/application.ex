@@ -7,10 +7,13 @@ defmodule Sheaf.Application do
 
   @impl true
   def start(_type, _args) do
+    setup_opentelemetry()
+
     children = [
       SheafWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:sheaf, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Sheaf.PubSub},
+      {Sheaf.Tracing.RedisSink, Application.get_env(:sheaf, Sheaf.Tracing.RedisSink, [])},
       {Finch, name: Sheaf.Finch},
       {Task.Supervisor, name: Sheaf.Assistant.TaskSupervisor},
       {Registry, keys: :unique, name: Sheaf.Assistant.ChatRegistry},
@@ -32,5 +35,21 @@ defmodule Sheaf.Application do
   def config_change(changed, _new, removed) do
     SheafWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  # Attach the OpenTelemetry span handlers for Phoenix and Bandit. Both packages
+  # work by subscribing to `:telemetry` events, so this only needs to run once
+  # per node at boot.
+  defp setup_opentelemetry do
+    OpentelemetryBandit.setup()
+    OpentelemetryPhoenix.setup(adapter: :bandit)
+    OpentelemetryFinch.setup()
+  rescue
+    # If the OTel apps failed to start (e.g. exporter misconfigured) we don't
+    # want the whole node to refuse to boot. Log and carry on without traces.
+    error ->
+      require Logger
+      Logger.warning("OpenTelemetry setup failed: #{Exception.message(error)}")
+      :ok
   end
 end
