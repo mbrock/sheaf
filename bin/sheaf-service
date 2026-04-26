@@ -217,17 +217,31 @@ print_sparql_diagnostics() {
 }
 
 print_tracing_diagnostics() {
+  local redis_url="${SHEAF_OTEL_REDIS_URL:-}"
   local stream="${SHEAF_OTEL_STREAM:-otel:spans}"
   local service_name="${OTEL_SERVICE_NAME:-${SHEAF_OTEL_SERVICE_NAME:-sheaf}}"
-  local disabled="${OTEL_SDK_DISABLED:-${SHEAF_OTEL_DISABLED:-false}}"
+  local force_disabled="${OTEL_SDK_DISABLED:-${SHEAF_OTEL_DISABLED:-false}}"
+
+  if [ -z "$redis_url" ]; then
+    print_kv "Tracing" "disabled (set SHEAF_OTEL_REDIS_URL to enable)"
+    return
+  fi
+
+  case "$(printf '%s' "$force_disabled" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on)
+      print_kv "Tracing" "disabled via OTEL_SDK_DISABLED"
+      print_kv "Redis URL" "$redis_url"
+      return
+      ;;
+  esac
 
   print_kv "Service name" "$service_name"
-  print_kv "SDK disabled" "$disabled"
+  print_kv "Redis URL" "$redis_url"
   print_kv "Redis stream" "$stream"
 
   if command -v redis-cli >/dev/null 2>&1; then
     local len
-    if len=$(redis-cli XLEN "$stream" 2>/dev/null); then
+    if len=$(redis-cli -u "$redis_url" XLEN "$stream" 2>/dev/null); then
       print_kv "Stream length" "$len"
     else
       print_kv "Stream length" "unavailable (redis-cli failed)"

@@ -7,21 +7,22 @@ defmodule Sheaf.Application do
 
   @impl true
   def start(_type, _args) do
-    setup_opentelemetry()
+    if tracing_enabled?(), do: setup_opentelemetry()
 
-    children = [
-      SheafWeb.Telemetry,
-      {DNSCluster, query: Application.get_env(:sheaf, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Sheaf.PubSub},
-      {Sheaf.Tracing.RedisSink, Application.get_env(:sheaf, Sheaf.Tracing.RedisSink, [])},
-      {Finch, name: Sheaf.Finch},
-      {Task.Supervisor, name: Sheaf.Assistant.TaskSupervisor},
-      {Registry, keys: :unique, name: Sheaf.Assistant.ChatRegistry},
-      {DynamicSupervisor, strategy: :one_for_one, name: Sheaf.Assistant.ChatSupervisor},
-      Sheaf.Assistant.Chats,
-      SheafWeb.Endpoint,
-      Sheaf.Readiness
-    ]
+    children =
+      tracing_children() ++
+        [
+          SheafWeb.Telemetry,
+          {DNSCluster, query: Application.get_env(:sheaf, :dns_cluster_query) || :ignore},
+          {Phoenix.PubSub, name: Sheaf.PubSub},
+          {Finch, name: Sheaf.Finch},
+          {Task.Supervisor, name: Sheaf.Assistant.TaskSupervisor},
+          {Registry, keys: :unique, name: Sheaf.Assistant.ChatRegistry},
+          {DynamicSupervisor, strategy: :one_for_one, name: Sheaf.Assistant.ChatSupervisor},
+          Sheaf.Assistant.Chats,
+          SheafWeb.Endpoint,
+          Sheaf.Readiness
+        ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -37,9 +38,29 @@ defmodule Sheaf.Application do
     :ok
   end
 
-  # Attach the OpenTelemetry span handlers for Phoenix and Bandit. Both packages
-  # work by subscribing to `:telemetry` events, so this only needs to run once
-  # per node at boot.
+  # Tracing is opt-in: it only runs when `SHEAF_OTEL_REDIS_URL` was set in the
+  # environment, which causes `config/runtime.exs` to populate
+  # `:sheaf, Sheaf.Tracing.RedisSink` with a `:redis_url`. With no URL we skip
+  # the sink and the instrumentation handlers entirely, so no spans are even
+  # created.
+  defp tracing_enabled? do
+    case Application.get_env(:sheaf, Sheaf.Tracing.RedisSink) do
+      nil -> false
+      opts -> is_binary(Keyword.get(opts, :redis_url))
+    end
+  end
+
+  defp tracing_children do
+    if tracing_enabled?() do
+      [{Sheaf.Tracing.RedisSink, Application.get_env(:sheaf, Sheaf.Tracing.RedisSink, [])}]
+    else
+      []
+    end
+  end
+
+  # Attach the OpenTelemetry span handlers for Phoenix, Bandit, and Finch. All
+  # three packages work by subscribing to `:telemetry` events, so this only
+  # needs to run once per node at boot.
   defp setup_opentelemetry do
     OpentelemetryBandit.setup()
     OpentelemetryPhoenix.setup(adapter: :bandit)

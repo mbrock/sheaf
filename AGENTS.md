@@ -210,12 +210,19 @@ service URL reported by `bin/status` (`Public URL` or `Phoenix HTTP`). Browser
 automation is appropriate for nondestructive UI checks, visual inspection, and
 screenshots of the running service.
 
-Sheaf emits OpenTelemetry spans via a custom span processor
-(`Sheaf.Tracing.RedisSinkProcessor`) that ships every ended span to a local
-Redis Stream (`otel:spans`) as JSON. The Go CLI in `tools/otel-tail` (built
-into `bin/otel-tail`) tails the stream live and prints colorized two-line
-summaries — that's the primary way to inspect spans during development, in
-place of any web UI.
+Sheaf can emit OpenTelemetry spans via a custom span processor
+(`Sheaf.Tracing.RedisSinkProcessor`) that ships every ended span to a Redis
+Stream as JSON. The Go CLI in `tools/otel-tail` (built into `bin/otel-tail`)
+tails the stream live and prints colorized two-line summaries — that's the
+primary way to inspect spans during development, in place of any web UI.
+
+Tracing is opt-in. To enable it, set `SHEAF_OTEL_REDIS_URL` in `.env` to your
+Redis URL (e.g. `redis://localhost:6379`). When that variable is unset, the
+instrumentation handlers don't attach, no `RedisSink` GenServer starts, and
+no spans are produced. The stream name defaults to `otel:spans` and is
+configurable via `SHEAF_OTEL_STREAM`. Setting `OTEL_SDK_DISABLED=true` (or
+`SHEAF_OTEL_DISABLED=true`) is a manual override that turns tracing off even
+when a Redis URL is configured.
 
 ```console
 $ bin/otel-tail
@@ -230,15 +237,14 @@ $ bin/otel-tail
 `--json` emits one JSON object per line for piping into `jq`; `-v` shows all
 attributes, not just the promoted ones; `--no-color` disables ANSI styling.
 
-The OTel SDK is configured at compile time in `config/config.exs` to use only
-the Redis sink (no OTLP exporter to Jaeger or anywhere else). Service name,
-deployment environment, and a kill switch are settable via the standard
-`OTEL_*` env vars (`OTEL_SERVICE_NAME`, `OTEL_SDK_DISABLED`) or
-`SHEAF_OTEL_*` equivalents. Span retention is bounded by Redis Streams'
+Service name and deployment environment are settable via the standard
+`OTEL_SERVICE_NAME` env var (or `SHEAF_OTEL_SERVICE_NAME` /
+`SHEAF_OTEL_ENVIRONMENT`). Span retention is bounded by Redis Streams'
 `MAXLEN ~ 1000000` trim — adjust in `Sheaf.Tracing.RedisSink` if needed.
 
-Redis is expected to run as a system service on localhost:6379 (`apt install
-redis-server`); `systemctl is-active redis-server` should report `active`.
+If you want tracing locally, install Redis as a system service
+(`apt install redis-server`) and add `SHEAF_OTEL_REDIS_URL=redis://localhost:6379`
+to `.env`. `systemctl is-active redis-server` should then report `active`.
 
 `bin/show [count]` captures one or more screenshots from the running service and
 sends them to the configured Telegram chat using the Bot API. It reads
