@@ -286,9 +286,9 @@ defmodule SheafWeb.AssistantChatComponent do
     tool_view("📖", "Reading", target, scope, message)
   end
 
-  defp tool_view(%{tool: "get_block", input: input} = message, titles) do
-    doc_id = tool_arg(input, :document_id)
-    block_ids = tool_block_ids(input)
+  defp tool_view(%{tool: "read", input: input} = message, _titles) do
+    block_ids = tool_blocks(input)
+    expanded? = tool_arg(input, :expand) in [true, "true"]
 
     target =
       case block_ids do
@@ -297,7 +297,7 @@ defmodule SheafWeb.AssistantChatComponent do
         _ids -> "a block"
       end
 
-    scope = title_or_id(doc_id, titles)
+    scope = if expanded?, do: "full contents", else: ""
 
     tool_view("📄", "Reading", target, scope, message)
   end
@@ -367,29 +367,13 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp tool_arg(_, _), do: nil
 
-  defp tool_block_ids(input) do
-    ids =
-      case tool_arg(input, :block_ids) do
-        ids when is_list(ids) -> ids
-        id when is_binary(id) -> [id]
-        _other -> []
-      end
-      |> Enum.filter(&is_binary/1)
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-
-    case ids do
-      [] ->
-        input
-        |> tool_arg(:block_id)
-        |> List.wrap()
-        |> Enum.filter(&is_binary/1)
-        |> Enum.map(&String.trim/1)
-        |> Enum.reject(&(&1 == ""))
-
-      ids ->
-        ids
-    end
+  defp tool_blocks(input) do
+    input
+    |> tool_arg(:blocks)
+    |> List.wrap()
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 
   defp ellipsize(text, limit) do

@@ -50,20 +50,27 @@ defmodule Sheaf.Assistant.CorpusTools do
         callback: instrument(notify, "get_document", &get_document_tool/1)
       ),
       Tool.new!(
-        name: "get_block",
+        name: "read",
         description:
-          "Return one or more blocks from a document. Sections come with their child handles " <>
-            "so you can drill further; paragraphs and extracted blocks come with " <>
-            "their full text. Every block includes its ancestry from the document root.",
+          "Read one or more blocks by id. Pass blocks as a list of 6-character ids. " <>
+            "Blocks may come from different documents; their documents are resolved automatically. " <>
+            "By default sections and documents are returned collapsed with child handles. " <>
+            "Set expand=true to read the full descendant contents of sections or whole documents. " <>
+            "Expanded output still tags every section, paragraph, excerpt, and row with its block id.",
         parameter_schema: [
-          document_id: [type: :string, required: true, doc: "Containing document id"],
-          block_id: [type: :string, doc: "Single block id to fetch"],
-          block_ids: [
+          blocks: [
             type: {:list, :string},
-            doc: "Several block ids to fetch from the same document"
+            required: true,
+            doc: "Block ids to read, without leading #. Blocks may belong to different documents."
+          ],
+          expand: [
+            type: :boolean,
+            default: false,
+            doc:
+              "When true, sections and document roots are expanded into their full descendant contents."
           ]
         ],
-        callback: instrument(notify, "get_block", &get_block_tool/1)
+        callback: instrument(notify, "read", &read_tool/1)
       ),
       Tool.new!(
         name: "search_text",
@@ -178,9 +185,9 @@ defmodule Sheaf.Assistant.CorpusTools do
     "Reading the outline of " <> quote_title(arg(args, :id), titles)
   end
 
-  def humanize("get_block", args, titles) do
-    doc_id = arg(args, :document_id)
-    block_ids = requested_block_ids(args)
+  def humanize("read", args, _titles) do
+    block_ids = requested_blocks(args)
+    expanded? = expand?(args)
 
     target =
       case block_ids do
@@ -189,7 +196,8 @@ defmodule Sheaf.Assistant.CorpusTools do
         _ids -> "a block"
       end
 
-    "Reading #{target} in " <> quote_title(doc_id, titles)
+    suffix = if expanded?, do: " with full contents", else: ""
+    "Reading #{target}" <> suffix
   end
 
   def humanize("search_text", args, titles) do
@@ -232,31 +240,32 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  def result_summary("get_block", {:ok, %ToolResults.Block{type: :section, children: children}}) do
+  def result_summary("read", {:ok, %ToolResults.Block{type: :section, children: children}}) do
     "section with " <> pluralize(length(children), "child", "children")
   end
 
-  def result_summary("get_block", {:ok, %ToolResults.Block{type: :paragraph, text: text}})
+  def result_summary("read", {:ok, %ToolResults.Block{type: :paragraph, text: text}})
       when is_binary(text) do
     excerpt_or_kind(text, "paragraph")
   end
 
-  def result_summary("get_block", {:ok, %ToolResults.Block{type: :extracted, text: text}})
+  def result_summary("read", {:ok, %ToolResults.Block{type: :extracted, text: text}})
       when is_binary(text) do
     excerpt_or_kind(text, "extracted block")
   end
 
-  def result_summary("get_block", {:ok, %ToolResults.Block{type: :row, text: text}})
+  def result_summary("read", {:ok, %ToolResults.Block{type: :row, text: text}})
       when is_binary(text) do
     excerpt_or_kind(text, "row")
   end
 
-  def result_summary("get_block", {:ok, %ToolResults.Block{type: :document, title: title}}) do
+  def result_summary("read", {:ok, %ToolResults.Block{type: :document, title: title}}) do
     "document" <> if(title in [nil, ""], do: "", else: ": " <> ellipsize(title, 60))
   end
 
-  def result_summary("get_block", {:ok, %ToolResults.Blocks{blocks: blocks}}) do
-    pluralize(length(blocks), "block", "blocks")
+  def result_summary("read", {:ok, %ToolResults.Blocks{blocks: blocks, expanded?: expanded?}}) do
+    summary = pluralize(length(blocks), "block", "blocks")
+    if expanded?, do: summary <> " expanded", else: summary
   end
 
   def result_summary("search_text", {:ok, %ToolResults.SearchResults{} = results}) do
@@ -340,36 +349,30 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp get_block_tool(args) do
-    doc_id = arg(args, :document_id)
-    block_ids = requested_block_ids(args)
+  defp read_tool(args) do
+    block_ids = requested_blocks(args)
+    expanded? = expand?(args)
 
-    cond do
-      not is_binary(doc_id) or doc_id == "" ->
-        {:error, "document_id is required"}
+    if block_ids == [] do
+      {:error, "blocks is required"}
+    else
+      case read_blocks(block_ids, expanded?) do
+        {:ok, [block]} when not expanded? ->
+          block
+          |> rendered_result()
+          |> then(&{:ok, &1})
 
-      block_ids == [] ->
-        {:error, "block_id or block_ids is required"}
+        {:ok, blocks} ->
+          %ToolResults.Blocks{blocks: blocks, expanded?: expanded?}
+          |> rendered_result()
+          |> then(&{:ok, &1})
 
-      true ->
-        with {:ok, graph} <- Corpus.graph(doc_id) do
-          root = Id.iri(doc_id)
+        {:error, {:not_found, block_id}} ->
+          {:error, "block #{block_id} not found"}
 
-          case blocks_from_graph(graph, doc_id, root, block_ids) do
-            {:ok, [block]} ->
-              block
-              |> rendered_result()
-              |> then(&{:ok, &1})
-
-            {:ok, blocks} ->
-              %ToolResults.Blocks{document_id: doc_id, blocks: blocks}
-              |> rendered_result()
-              |> then(&{:ok, &1})
-
-            {:error, {:not_found, block_id}} ->
-              {:error, "block #{block_id} not found in document #{doc_id}"}
-          end
-        end
+        {:error, {reason, block_id}} ->
+          {:error, "could not read block #{block_id}: #{inspect(reason)}"}
+      end
     end
   end
 
@@ -441,6 +444,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp include_spreadsheets?(args), do: arg(args, :include_spreadsheets) in [true, "true"]
+  defp expand?(args), do: arg(args, :expand) in [true, "true"]
 
   defp search_hit(result) do
     %ToolResults.SearchHit{
@@ -544,19 +548,11 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp assistant_list_document?(%{has_document?: false}), do: false
   defp assistant_list_document?(_doc), do: true
 
-  defp requested_block_ids(args) do
-    ids =
-      case arg(args, :block_ids) do
-        ids when is_list(ids) -> ids
-        id when is_binary(id) -> [id]
-        _other -> []
-      end
-      |> normalize_block_ids()
-
-    case ids do
-      [] -> args |> arg(:block_id) |> List.wrap() |> normalize_block_ids()
-      ids -> ids
-    end
+  defp requested_blocks(args) do
+    args
+    |> arg(:blocks)
+    |> List.wrap()
+    |> normalize_block_ids()
   end
 
   defp normalize_block_ids(ids) do
@@ -575,13 +571,80 @@ defmodule Sheaf.Assistant.CorpusTools do
     }
   end
 
-  defp blocks_from_graph(graph, document_id, root, block_ids) do
+  defp read_blocks(block_ids, expanded?) do
     Enum.reduce_while(block_ids, {:ok, []}, fn block_id, {:ok, blocks} ->
-      case block_from_graph(graph, document_id, root, block_id) do
+      case read_block(block_id, expanded?) do
+        {:ok, block} when is_list(block) -> {:cont, {:ok, blocks ++ block}}
         {:ok, block} -> {:cont, {:ok, blocks ++ [block]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  defp read_block(block_id, expanded?) do
+    with {:ok, document_id} <- document_for_block(block_id),
+         {:ok, graph} <- Corpus.graph(document_id) do
+      root = Id.iri(document_id)
+
+      if expanded? do
+        graph
+        |> expanded_blocks_from_graph(document_id, root, Id.iri(block_id))
+        |> prepend_document_header(graph, document_id, root)
+      else
+        block_from_graph(graph, document_id, root, block_id)
+      end
+    else
+      {:error, :not_found} -> {:error, {:not_found, block_id}}
+      {:error, reason} -> {:error, {reason, block_id}}
+    end
+  end
+
+  defp document_for_block(block_id) do
+    case Corpus.find_document(block_id) do
+      nil -> {:error, :not_found}
+      document_id -> {:ok, document_id}
+    end
+  end
+
+  defp prepend_document_header({:error, reason}, _graph, _document_id, _root),
+    do: {:error, reason}
+
+  defp prepend_document_header(
+         {:ok, [%ToolResults.Block{type: :document} | _blocks] = blocks},
+         _graph,
+         _document_id,
+         _root
+       ) do
+    {:ok, blocks}
+  end
+
+  defp prepend_document_header({:ok, blocks}, graph, document_id, root) do
+    case block_from_graph(graph, document_id, root, document_id) do
+      {:ok, document} -> {:ok, [document | blocks]}
+      {:error, _reason} -> {:ok, blocks}
+    end
+  end
+
+  defp expanded_blocks_from_graph(graph, document_id, root, iri) do
+    block_id = Id.id_from_iri(iri)
+
+    case block_from_graph(graph, document_id, root, block_id) do
+      {:ok, block} ->
+        descendants =
+          graph
+          |> Document.children(iri)
+          |> Enum.flat_map(fn child ->
+            case expanded_blocks_from_graph(graph, document_id, root, child) do
+              {:ok, blocks} -> blocks
+              {:error, _reason} -> []
+            end
+          end)
+
+        {:ok, [block | descendants]}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp block_from_graph(graph, document_id, root, block_id) do

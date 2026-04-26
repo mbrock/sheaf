@@ -100,6 +100,13 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
+  def to_text(%Blocks{expanded?: true, blocks: blocks}) do
+    blocks
+    |> Enum.map(&expanded_block_text/1)
+    |> Enum.reject(&blank?/1)
+    |> Enum.join("\n\n")
+  end
+
   def to_text(%Blocks{blocks: blocks}) do
     blocks
     |> Enum.map(&to_text/1)
@@ -340,6 +347,53 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> Enum.reject(&blank?/1)
     |> Enum.join("\n")
   end
+
+  defp expanded_block_text(%Block{type: :document} = block) do
+    """
+    #{document_heading(block.kind)} ##{block.id}
+    #{block.title}
+    """
+    |> String.trim()
+  end
+
+  defp expanded_block_text(%Block{type: :section} = block) do
+    "SECTION ##{block.id} #{block.title}"
+  end
+
+  defp expanded_block_text(%Block{type: :paragraph} = block) do
+    """
+    PARAGRAPH ##{block.id}
+    #{indent_text(block.text, 1)}
+    """
+    |> String.trim()
+  end
+
+  defp expanded_block_text(%Block{type: :extracted} = block) do
+    source = expanded_source(block)
+
+    """
+    EXCERPT ##{block.id}#{source}
+    #{indent_text(block.text, 1)}
+    """
+    |> String.trim()
+  end
+
+  defp expanded_block_text(%Block{type: :row} = block) do
+    coding =
+      case coding_inline(block.coding) do
+        nil -> ""
+        text -> " [" <> text <> "]"
+      end
+
+    """
+    CODED EXCERPT ##{block.id}#{coding}
+    #{indent_text(block.text, 1)}
+    """
+    |> String.trim()
+  end
+
+  defp expanded_source(%Block{source: %{page: page}}) when not is_nil(page), do: " p. #{page}"
+  defp expanded_source(_block), do: ""
 
   defp selected_block_heading(%Block{} = block) do
     "The user has selected #{type_label(block.type)} ##{block.id}:"

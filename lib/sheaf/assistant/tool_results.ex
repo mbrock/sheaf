@@ -67,7 +67,8 @@ defmodule Sheaf.Assistant.ToolResults do
   defmodule Blocks do
     defstruct [
       :document_id,
-      blocks: []
+      blocks: [],
+      expanded?: false
     ]
   end
 

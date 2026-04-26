@@ -616,12 +616,12 @@ defmodule Sheaf.Assistant.Chat do
       * Use list_documents when you need to know what's in the corpus.
       * Use get_document before drilling into a document; it returns the
         outline so you can pick the right section.
-      * Use get_block for one or more sections, paragraphs, extracted blocks,
-        or rows.
-        Sections return their child handles (drill further); paragraphs,
-        extracted blocks, and rows return text. Rows also return coding
-        metadata. Every block comes back with its ancestry so you can orient
-        yourself and climb upward if you want to.
+      * Use read for one or more sections, paragraphs, extracted blocks, or
+        rows. Pass blocks as a list of block ids. Sections and documents return
+        child handles by default; set expand=true to read their full descendant
+        contents. Paragraphs, extracted blocks, and rows return text. Rows also
+        return coding metadata. Every block comes back with its ancestry or
+        inline block tag so you can orient yourself and cite it.
       * Use search_text to find where a concept or phrase appears. It combines
         exact text matching with embedding search. It searches the main prose
         corpus by default; pass document_id to scope to one document. Set

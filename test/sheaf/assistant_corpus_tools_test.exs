@@ -158,15 +158,62 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert Enum.any?(tools, &(&1.name == "search_text"))
   end
 
-  test "get_block tool accepts either a single block id or block id list" do
-    tool = CorpusTools.tools(include_notes?: false) |> Enum.find(&(&1.name == "get_block"))
+  test "read tool accepts only a blocks list and optional expansion" do
+    tools = CorpusTools.tools(include_notes?: false)
+    tool = Enum.find(tools, &(&1.name == "read"))
 
-    assert [type: :string, doc: "Single block id to fetch"] = tool.parameter_schema[:block_id]
+    refute Enum.any?(tools, &(&1.name == "get_block"))
 
     assert [
              type: {:list, :string},
-             doc: "Several block ids to fetch from the same document"
-           ] = tool.parameter_schema[:block_ids]
+             required: true,
+             doc:
+               "Block ids to read, without leading #. Blocks may belong to different documents."
+           ] = tool.parameter_schema[:blocks]
+
+    assert [
+             type: :boolean,
+             default: false,
+             doc:
+               "When true, sections and document roots are expanded into their full descendant contents."
+           ] = tool.parameter_schema[:expand]
+
+    refute Keyword.has_key?(tool.parameter_schema, :document_id)
+    refute Keyword.has_key?(tool.parameter_schema, :block_id)
+    refute Keyword.has_key?(tool.parameter_schema, :block_ids)
+
+    assert {:error, %{tag: :parameter_validation}} = Tool.execute(tool, %{})
+  end
+
+  test "expanded read text keeps block tags on every rendered block" do
+    text =
+      ToolResultText.to_text(%ToolResults.Blocks{
+        expanded?: true,
+        blocks: [
+          %ToolResults.Block{
+            id: "SEC001",
+            type: :section,
+            title: "A section"
+          },
+          %ToolResults.Block{
+            id: "PAR001",
+            type: :paragraph,
+            text: "A paragraph."
+          },
+          %ToolResults.Block{
+            id: "EXT001",
+            type: :extracted,
+            text: "An excerpt.",
+            source: %ToolResults.Source{page: 12}
+          }
+        ]
+      })
+
+    assert text =~ "SECTION #SEC001 A section"
+    assert text =~ "PARAGRAPH #PAR001"
+    assert text =~ "EXCERPT #EXT001 p. 12"
+    assert text =~ "A paragraph."
+    assert text =~ "An excerpt."
   end
 
   test "selected block turn context omits the repeated document title" do
