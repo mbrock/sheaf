@@ -163,11 +163,38 @@ Read `docs/rdf-ex.md` for the Elixir RDF cheat sheet: builder DSL, IRI
 vocabulary namespace modules, graph/dataset structures, literals, and common
 RDF.ex idioms.
 
+Read `docs/ontology-labeling.md` before designing or changing RDF schemas,
+vocabulary terms, RDF data representations, or labels. The most important
+principles:
+
+- Labels are human terms, not machine identifiers; do not expose code spelling
+  or compact IRI mechanics as the preferred label.
+- Class labels should normally be singular lowercase common nouns or noun
+  phrases, with capitals reserved for proper names, standards, protocols, and
+  established acronyms.
+- Property labels should read as relations or attributes, such as `has source
+  file`, `mentions`, `is subclass of`, or `is same as`; avoid bare field names
+  when the property denotes a relation.
+- Prefer ontologically explicit labels when a word is ambiguous or a mass noun;
+  name the countable entity or relation the data actually represents.
+- Keep preferred labels univocal. If two meanings diverge, split the terms
+  rather than overloading one label.
+- Put usage notes, import quirks, and UI concerns in comments or definitions,
+  not in the label itself.
+
 Do not invent custom IRIs for resources. Use `Sheaf.mint/0` to make new IRIs in
 the configured resource base.
 
 The schema is defined in `priv/sheaf-schema.ttl`. Keep it up to date when the
 RDF vocabulary changes.
+
+External vocabulary labels, local alignments, and small extensions for imported
+ontologies live in `priv/sheaf-ext.ttl`. Use it when Sheaf needs display labels
+or bridge facts for terms from RDF/RDFS/OWL/SKOS/PROV, bibliographic
+vocabularies, BFO, or other non-Sheaf namespaces. Do not put external term
+labels in `priv/sheaf-schema.ttl`; keep that file for the Sheaf vocabulary
+itself. `mix sheaf.schema` uploads both the Sheaf schema graph and the external
+extension graph.
 
 To change RDF data or its schema, there is no need to write enduring migration
 modules. Run `mix sheaf.backup`, then alter the dataset in whatever way is most

@@ -1,9 +1,19 @@
 @prefix sheaf: <https://less.rest/sheaf/> .
 @prefix fabio: <http://purl.org/spar/fabio/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix vann: <http://purl.org/vocab/vann/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+sheaf: a owl:Ontology ;
+  rdfs:label "Sheaf ontology"@en ;
+  rdfs:comment "The local ontology for Sheaf documents, blocks, files, jobs, and research notes."@en ;
+  vann:preferredNamespacePrefix "sheaf" ;
+  vann:preferredNamespaceUri "https://less.rest/sheaf/"^^xsd:anyURI ;
+  owl:imports <http://www.w3.org/ns/prov#>,
+    <http://purl.org/spar/fabio/> .
 
 sheaf:Document a rdfs:Class ;
   rdfs:label "document"@en ;

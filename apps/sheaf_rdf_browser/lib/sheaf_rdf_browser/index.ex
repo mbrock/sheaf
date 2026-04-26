@@ -9,14 +9,23 @@ defmodule SheafRDFBrowser.Index do
   @rdf_type RDF.type() |> to_string()
   @rdfs_label RDFS.label() |> to_string()
   @skos_pref_label SKOS.prefLabel() |> to_string()
+  @dc_title "http://purl.org/dc/elements/1.1/title"
   @dcterms_title "http://purl.org/dc/terms/title"
   @rdfs_comment RDFS.comment() |> to_string()
   @skos_definition SKOS.definition() |> to_string()
+  @skos_scope_note "http://www.w3.org/2004/02/skos/core#scopeNote"
+  @skos_editorial_note "http://www.w3.org/2004/02/skos/core#editorialNote"
+  @dc_description "http://purl.org/dc/elements/1.1/description"
   @dcterms_description "http://purl.org/dc/terms/description"
+  @prov_definition "http://www.w3.org/ns/prov#definition"
+  @prov_editors_definition "http://www.w3.org/ns/prov#editorsDefinition"
   @rdfs_subclass RDFS.subClassOf() |> to_string()
   @rdfs_subproperty RDFS.subPropertyOf() |> to_string()
   @rdfs_domain RDFS.domain() |> to_string()
   @rdfs_range RDFS.range() |> to_string()
+  @owl_ontology "http://www.w3.org/2002/07/owl#Ontology"
+  @owl_imports "http://www.w3.org/2002/07/owl#imports"
+  @owl_thing "http://www.w3.org/2002/07/owl#Thing"
   @owl_class OWL.Class |> to_string()
   @rdfs_class RDFS.Class |> to_string()
   @bfo_entity "https://node.town/bfo#Entity"
@@ -24,6 +33,8 @@ defmodule SheafRDFBrowser.Index do
   @owl_datatype_property OWL.DatatypeProperty |> to_string()
   @owl_annotation_property OWL.AnnotationProperty |> to_string()
   @rdf_property "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
+  @vann_preferred_namespace_prefix "http://purl.org/vocab/vann/preferredNamespacePrefix"
+  @vann_preferred_namespace_uri "http://purl.org/vocab/vann/preferredNamespaceUri"
   @hidden_overview_namespaces [
     "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     "http://www.w3.org/2000/01/rdf-schema#",
@@ -34,17 +45,25 @@ defmodule SheafRDFBrowser.Index do
   @label_priority %{
     @skos_pref_label => 0,
     @rdfs_label => 1,
-    @dcterms_title => 2
+    @dc_title => 2,
+    @dcterms_title => 3
   }
 
   @comment_priority %{
     @skos_definition => 0,
-    @rdfs_comment => 1,
-    @dcterms_description => 2
+    @prov_definition => 1,
+    @rdfs_comment => 2,
+    @dc_description => 3,
+    @dcterms_description => 4,
+    @skos_scope_note => 5,
+    @skos_editorial_note => 6,
+    @prov_editors_definition => 7
   }
 
   defstruct labels: %{},
             comments: %{},
+            notes: %{},
+            ontologies: %{},
             class_counts: %{},
             class_members: %{},
             subclass_edges: MapSet.new(),
@@ -72,6 +91,7 @@ defmodule SheafRDFBrowser.Index do
     |> put_counts(:graph_counts, Map.get(rows, :graph_counts, %{}))
     |> index_label_rows(Map.get(rows, :labels, []))
     |> index_comment_rows(Map.get(rows, :comments, []))
+    |> index_ontology_rows(Map.get(rows, :ontologies, []))
     |> index_type_rows(Map.get(rows, :ontology_types, []))
     |> index_edge_rows(:subclass_edges, :class_terms, Map.get(rows, :subclass_edges, []))
     |> index_edge_rows(:subproperty_edges, :property_terms, Map.get(rows, :subproperty_edges, []))
@@ -173,6 +193,23 @@ defmodule SheafRDFBrowser.Index do
     |> Enum.take(limit)
   end
 
+  def class_schema_property_rows(%__MODULE__{} = index, class) when is_binary(class) do
+    %{
+      domain: schema_property_rows(index, index.domains, class),
+      range: schema_property_rows(index, index.ranges, class)
+    }
+  end
+
+  def ontology_rows(%__MODULE__{} = index) do
+    index.ontologies
+    |> Map.values()
+    |> Enum.map(&ontology_row(index, &1))
+    |> Enum.reject(&(Enum.empty?(&1.class_tree) and Enum.empty?(&1.property_tree)))
+    |> Enum.sort_by(fn ontology ->
+      {String.downcase(ontology.prefix || ""), String.downcase(ontology.label), ontology.id}
+    end)
+  end
+
   def label(%__MODULE__{} = index, term) do
     Map.get(index.labels, term) || compact(term)
   end
@@ -271,7 +308,17 @@ defmodule SheafRDFBrowser.Index do
 
   defp index_comment_rows(index, rows) do
     Enum.reduce(rows, index, fn row, acc ->
-      put_ranked_literal(acc, :comments, row.s, row.p, row.o, row.g, @comment_priority)
+      acc
+      |> put_ranked_literal(:comments, row.s, row.p, row.o, row.g, @comment_priority)
+      |> put_note(row.s, row.p, row.o, row.g)
+    end)
+  end
+
+  defp index_ontology_rows(index, rows) do
+    Enum.reduce(rows, index, fn %{ontology: ontology, p: predicate, o: object}, acc ->
+      acc
+      |> ensure_ontology(ontology)
+      |> update_ontology_metadata(ontology, predicate, object)
     end)
   end
 
@@ -334,6 +381,7 @@ defmodule SheafRDFBrowser.Index do
       compact: compact(class),
       count: Map.get(index.class_counts, class, 0),
       comment: Map.get(index.comments, class),
+      notes: Map.get(index.notes, class, %{}) |> note_rows(index),
       parents: visible_parents(index.subclass_edges, class)
     }
   end
@@ -351,10 +399,113 @@ defmodule SheafRDFBrowser.Index do
       compact: compact(property),
       count: count,
       comment: Map.get(index.comments, property),
+      notes: Map.get(index.notes, property, %{}) |> note_rows(index),
       domains: Map.get(index.domains, property, MapSet.new()) |> Enum.map(&label(index, &1)),
       ranges: Map.get(index.ranges, property, MapSet.new()) |> Enum.map(&label(index, &1)),
       parents: parents(index.subproperty_edges, property)
     }
+  end
+
+  defp ontology_row(index, ontology) do
+    display = display_term(index, ontology.id)
+    namespaces = ontology_namespaces(ontology)
+    class_terms = terms_in_namespaces(index.class_terms, namespaces)
+    property_terms = terms_in_namespaces(index.property_terms, namespaces)
+
+    %{
+      id: ontology.id,
+      label: display.label,
+      name: display.name,
+      prefix: ontology.preferred_namespace_prefix || display.prefix,
+      namespace: ontology.preferred_namespace_uri || display.namespace,
+      namespaces: namespaces,
+      labeled?: display.labeled?,
+      compact: compact(ontology.id),
+      comment: Map.get(index.comments, ontology.id),
+      notes: Map.get(index.notes, ontology.id, %{}) |> note_rows(index),
+      imports: ontology.imports |> Enum.sort() |> Enum.map(&display_import(index, &1)),
+      class_tree: class_tree_with_external_ancestors(index, class_terms),
+      property_tree:
+        term_tree(index, property_terms, index.subproperty_edges, fn index, property ->
+          property_row(index, property, Map.get(index.predicate_counts, property, 0))
+        end)
+    }
+  end
+
+  defp display_import(index, iri) do
+    index
+    |> display_term(iri)
+    |> Map.put(:id, iri)
+  end
+
+  defp class_tree_with_external_ancestors(index, class_terms) do
+    terms =
+      class_terms
+      |> Enum.reduce(class_terms, fn class, acc ->
+        add_class_ancestors(index, class, acc, MapSet.new())
+      end)
+
+    term_tree(index, terms, index.subclass_edges, fn index, class ->
+      index
+      |> class_row(class)
+      |> Map.put(:external_ancestor?, not MapSet.member?(class_terms, class))
+    end)
+  end
+
+  defp add_class_ancestors(index, class, terms, seen) do
+    if MapSet.member?(seen, class) do
+      terms
+    else
+      seen = MapSet.put(seen, class)
+
+      index.subclass_edges
+      |> parents(class)
+      |> Enum.reject(&excluded_external_parent?/1)
+      |> Enum.reduce(terms, fn parent, acc ->
+        index
+        |> add_class_ancestors(parent, MapSet.put(acc, parent), seen)
+      end)
+    end
+  end
+
+  defp term_tree(index, terms, edges, row_fun) do
+    visible_terms =
+      terms
+      |> Enum.reject(&blank_node?/1)
+      |> MapSet.new()
+
+    children_by_parent =
+      edges
+      |> Enum.filter(fn {child, parent} ->
+        MapSet.member?(visible_terms, child) and MapSet.member?(visible_terms, parent)
+      end)
+      |> Enum.reduce(%{}, fn {child, parent}, acc ->
+        Map.update(acc, parent, MapSet.new([child]), &MapSet.put(&1, child))
+      end)
+
+    visible_terms
+    |> Enum.reject(fn term ->
+      parents(edges, term)
+      |> Enum.any?(&MapSet.member?(visible_terms, &1))
+    end)
+    |> sort_terms(index)
+    |> Enum.map(&term_node(index, &1, children_by_parent, MapSet.new(), row_fun))
+  end
+
+  defp term_node(index, term, children_by_parent, path, row_fun) do
+    row = row_fun.(index, term)
+
+    children =
+      if MapSet.member?(path, term) do
+        []
+      else
+        children_by_parent
+        |> Map.get(term, MapSet.new())
+        |> sort_terms(index)
+        |> Enum.map(&term_node(index, &1, children_by_parent, MapSet.put(path, term), row_fun))
+      end
+
+    Map.put(row, :children, children)
   end
 
   defp sort_terms(terms, index) do
@@ -369,6 +520,15 @@ defmodule SheafRDFBrowser.Index do
     label = Map.get(property, :name) || property.label || property.id
 
     {String.downcase(namespace), String.downcase(label), -property.count, property.id}
+  end
+
+  defp schema_property_rows(index, property_class_map, class) do
+    property_class_map
+    |> Enum.filter(fn {_property, classes} -> MapSet.member?(classes, class) end)
+    |> Enum.map(fn {property, _classes} ->
+      property_row(index, property, Map.get(index.predicate_counts, property, 0))
+    end)
+    |> Enum.sort_by(&property_namespace_label_sort_key/1)
   end
 
   defp prioritize_bfo_entity(terms) do
@@ -417,13 +577,24 @@ defmodule SheafRDFBrowser.Index do
   end
 
   defp index_by_predicate(index, s, p, o, _o_id, graph)
-       when p in [@skos_pref_label, @rdfs_label, @dcterms_title] do
+       when p in [@skos_pref_label, @rdfs_label, @dc_title, @dcterms_title] do
     put_ranked_literal(index, :labels, s, p, o, graph, @label_priority)
   end
 
   defp index_by_predicate(index, s, p, o, _o_id, graph)
-       when p in [@skos_definition, @rdfs_comment, @dcterms_description] do
-    put_ranked_literal(index, :comments, s, p, o, graph, @comment_priority)
+       when p in [
+              @skos_definition,
+              @prov_definition,
+              @rdfs_comment,
+              @dc_description,
+              @dcterms_description,
+              @skos_scope_note,
+              @skos_editorial_note,
+              @prov_editors_definition
+            ] do
+    index
+    |> put_ranked_literal(:comments, s, p, o, graph, @comment_priority)
+    |> put_note(s, p, o, graph)
   end
 
   defp index_by_predicate(index, child, @rdfs_subclass, _o, parent, _graph) do
@@ -454,8 +625,23 @@ defmodule SheafRDFBrowser.Index do
     |> update_set(:class_terms, range)
   end
 
+  defp index_by_predicate(index, ontology, predicate, _o, object, _graph)
+       when predicate in [
+              @vann_preferred_namespace_prefix,
+              @vann_preferred_namespace_uri,
+              @owl_imports
+            ] do
+    index
+    |> ensure_ontology(ontology)
+    |> update_ontology_metadata(ontology, predicate, object)
+  end
+
   defp index_by_predicate(index, _s, p, _o, _o_id, _graph) do
     update_set(index, :property_terms, p)
+  end
+
+  defp maybe_mark_ontology_term(index, term, @owl_ontology) do
+    ensure_ontology(index, term)
   end
 
   defp maybe_mark_ontology_term(index, term, class)
@@ -477,6 +663,71 @@ defmodule SheafRDFBrowser.Index do
   end
 
   defp maybe_mark_ontology_term(index, _term, _class), do: index
+
+  defp ensure_ontology(index, ontology) when is_binary(ontology) do
+    update_in(index, [Access.key!(:ontologies), ontology], fn
+      nil ->
+        %{
+          id: ontology,
+          preferred_namespace_prefix: nil,
+          preferred_namespace_uri: nil,
+          imports: MapSet.new()
+        }
+
+      existing ->
+        existing
+    end)
+  end
+
+  defp ensure_ontology(index, _ontology), do: index
+
+  defp update_ontology_metadata(index, ontology, @vann_preferred_namespace_prefix, prefix) do
+    put_in(index, [Access.key!(:ontologies), ontology, :preferred_namespace_prefix], prefix)
+  end
+
+  defp update_ontology_metadata(index, ontology, @vann_preferred_namespace_uri, namespace) do
+    put_in(index, [Access.key!(:ontologies), ontology, :preferred_namespace_uri], namespace)
+  end
+
+  defp update_ontology_metadata(index, ontology, @owl_imports, imported) do
+    update_in(index, [Access.key!(:ontologies), ontology, :imports], &MapSet.put(&1, imported))
+  end
+
+  defp update_ontology_metadata(index, _ontology, _predicate, _object), do: index
+
+  defp ontology_namespaces(ontology) do
+    ontology.preferred_namespace_uri
+    |> namespace_candidates(ontology.id)
+    |> Enum.uniq()
+  end
+
+  defp namespace_candidates(nil, ontology_id), do: fallback_namespace_candidates(ontology_id)
+  defp namespace_candidates("", ontology_id), do: fallback_namespace_candidates(ontology_id)
+
+  defp namespace_candidates(namespace, ontology_id) do
+    ([namespace] ++ fallback_namespace_candidates(ontology_id))
+    |> Enum.reject(&(&1 in [nil, ""]))
+  end
+
+  defp fallback_namespace_candidates(ontology_id) when is_binary(ontology_id) do
+    cond do
+      String.ends_with?(ontology_id, ["/", "#"]) ->
+        [ontology_id]
+
+      true ->
+        [ontology_id <> "/", ontology_id <> "#"]
+    end
+  end
+
+  defp fallback_namespace_candidates(_ontology_id), do: []
+
+  defp terms_in_namespaces(terms, namespaces) do
+    terms
+    |> Enum.filter(fn term ->
+      is_binary(term) and Enum.any?(namespaces, &String.starts_with?(term, &1))
+    end)
+    |> MapSet.new()
+  end
 
   defp put_ranked_literal(index, field, subject, predicate, object, graph, priorities) do
     value = literal_text(object)
@@ -503,12 +754,75 @@ defmodule SheafRDFBrowser.Index do
     %{
       index
       | labels: unwrap_ranked(index.labels),
-        comments: unwrap_ranked(index.comments)
+        comments: unwrap_ranked(index.comments),
+        notes: unwrap_notes(index.notes)
     }
   end
 
   defp unwrap_ranked(values) do
     Map.new(values, fn {key, {_priority, value}} -> {key, value} end)
+  end
+
+  defp put_note(index, subject, predicate, object, graph) do
+    value = literal_text(object)
+
+    if value do
+      priority = graph_label_priority(subject, graph)
+
+      update_in(index, [Access.key!(:notes), subject], fn by_predicate ->
+        by_predicate = by_predicate || %{}
+        values = Map.get(by_predicate, predicate, %{})
+        Map.put(by_predicate, predicate, Map.put(values, {priority, value}, value))
+      end)
+    else
+      index
+    end
+  end
+
+  defp unwrap_notes(notes) do
+    Map.new(notes, fn {subject, by_predicate} ->
+      {
+        subject,
+        Map.new(by_predicate, fn {predicate, values} ->
+          values =
+            values
+            |> Map.keys()
+            |> Enum.sort()
+            |> Enum.map(fn {_priority, value} -> normalize_note_value(value) end)
+            |> Enum.uniq()
+
+          {predicate, values}
+        end)
+      }
+    end)
+  end
+
+  defp note_rows(notes, index) do
+    notes
+    |> Enum.map(fn {predicate, values} ->
+      %{
+        id: predicate,
+        label: note_label(index, predicate),
+        values: values
+      }
+    end)
+    |> Enum.sort_by(fn note ->
+      {Map.get(@comment_priority, note.id, 99), String.downcase(note.label), note.id}
+    end)
+  end
+
+  defp note_label(_index, @skos_definition), do: "definition"
+  defp note_label(_index, @prov_definition), do: "PROV definition"
+  defp note_label(_index, @rdfs_comment), do: "comment"
+  defp note_label(_index, @dc_description), do: "description"
+  defp note_label(_index, @dcterms_description), do: "description"
+  defp note_label(_index, @skos_scope_note), do: "scope note"
+  defp note_label(_index, @skos_editorial_note), do: "editorial note"
+  defp note_label(_index, @prov_editors_definition), do: "editors' definition"
+  defp note_label(index, predicate), do: label(index, predicate)
+
+  defp normalize_note_value(value) do
+    String.trim(value)
   end
 
   defp update_set(index, field, value) do
@@ -553,6 +867,8 @@ defmodule SheafRDFBrowser.Index do
   end
 
   defp hidden_overview_term?(_term), do: false
+
+  defp excluded_external_parent?(term), do: blank_node?(term) or term == @owl_thing
 
   defp split_compact(term) do
     prefixes()
@@ -640,15 +956,36 @@ defmodule SheafRDFBrowser.Index do
       {"biro", "http://purl.org/spar/biro/"},
       {"c4o", "http://purl.org/spar/c4o/"},
       {"cito", "http://purl.org/spar/cito/"},
+      {"co", "http://purl.org/co/"},
       {"deo", "http://purl.org/spar/deo/"},
       {"doco", "http://purl.org/spar/doco/"},
+      {"event", "http://purl.org/NET/c4dm/event.owl#"},
       {"fabio", "http://purl.org/spar/fabio/"},
       {"frbr", "http://purl.org/vocab/frbr/core#"},
+      {"orb", "http://purl.org/orb/1.0/"},
+      {"po", "http://www.essepuntato.it/2008/12/pattern#"},
       {"prism", "http://prismstandard.org/namespaces/basic/2.0/"},
       {"prism", "http://prismstandard.org/namespaces/basic/2.1/"},
       {"pro", "http://purl.org/spar/pro/"},
       {"pso", "http://purl.org/spar/pso/"},
       {"pwo", "http://purl.org/spar/pwo/"},
+      {"tvc", "http://www.essepuntato.it/2012/04/tvc/"},
+      {"agentrole", "http://www.ontologydesignpatterns.org/cp/owl/agentrole.owl#"},
+      {"basicplan", "http://www.ontologydesignpatterns.org/cp/owl/basicplan.owl#"},
+      {"bpd", "http://www.ontologydesignpatterns.org/cp/owl/basicplandescription.owl#"},
+      {"bpe", "http://www.ontologydesignpatterns.org/cp/owl/basicplanexecution.owl#"},
+      {"cpann", "http://www.ontologydesignpatterns.org/schemas/cpannotationschema.owl#"},
+      {"discourse", "http://purl.org/swan/2.0/discourse-relationships/"},
+      {"description", "http://www.ontologydesignpatterns.org/cp/owl/description.owl#"},
+      {"objectrole", "http://www.ontologydesignpatterns.org/cp/owl/objectrole.owl#"},
+      {"parameter", "http://www.ontologydesignpatterns.org/cp/owl/parameter.owl#"},
+      {"participation", "http://www.ontologydesignpatterns.org/cp/owl/participation.owl#"},
+      {"region", "http://www.ontologydesignpatterns.org/cp/owl/region.owl#"},
+      {"sequence", "http://www.ontologydesignpatterns.org/cp/owl/sequence.owl#"},
+      {"situation", "http://www.ontologydesignpatterns.org/cp/owl/situation.owl#"},
+      {"taskrole", "http://www.ontologydesignpatterns.org/cp/owl/taskrole.owl#"},
+      {"timeinterval", "http://www.ontologydesignpatterns.org/cp/owl/timeinterval.owl#"},
+      {"tis", "http://www.ontologydesignpatterns.org/cp/owl/timeindexedsituation.owl#"},
       {"vann", "http://purl.org/vocab/vann/"},
       {"sheaf", "https://less.rest/sheaf/"}
     ]

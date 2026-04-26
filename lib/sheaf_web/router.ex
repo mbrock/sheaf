@@ -39,6 +39,7 @@ defmodule SheafWeb.Router do
     pipe_through :browser
 
     live "/", BrowserLive
+    live "/ontologies", OntologiesLive
   end
 
   scope "/", SheafWeb do

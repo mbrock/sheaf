@@ -1,20 +1,244 @@
 @prefix bfo: <https://node.town/bfo#> .
 @prefix bibo: <http://purl.org/ontology/bibo/> .
+@prefix agentrole: <http://www.ontologydesignpatterns.org/cp/owl/agentrole.owl#> .
+@prefix basicplan: <http://www.ontologydesignpatterns.org/cp/owl/basicplan.owl#> .
+@prefix bpd: <http://www.ontologydesignpatterns.org/cp/owl/basicplandescription.owl#> .
+@prefix bpe: <http://www.ontologydesignpatterns.org/cp/owl/basicplanexecution.owl#> .
+@prefix co: <http://purl.org/co/> .
+@prefix cpann: <http://www.ontologydesignpatterns.org/schemas/cpannotationschema.owl#> .
 @prefix dc: <http://purl.org/dc/elements/1.1/> .
 @prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix discourse: <http://purl.org/swan/2.0/discourse-relationships/> .
+@prefix description: <http://www.ontologydesignpatterns.org/cp/owl/description.owl#> .
+@prefix event: <http://purl.org/NET/c4dm/event.owl#> .
 @prefix fabio: <http://purl.org/spar/fabio/> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix obo: <http://purl.obolibrary.org/obo/> .
+@prefix objectrole: <http://www.ontologydesignpatterns.org/cp/owl/objectrole.owl#> .
+@prefix orb: <http://purl.org/orb/1.0/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix participation: <http://www.ontologydesignpatterns.org/cp/owl/participation.owl#> .
+@prefix po: <http://www.essepuntato.it/2008/12/pattern#> .
 @prefix prism: <http://prismstandard.org/namespaces/basic/2.1/> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix region: <http://www.ontologydesignpatterns.org/cp/owl/region.owl#> .
+@prefix sequence: <http://www.ontologydesignpatterns.org/cp/owl/sequence.owl#> .
+@prefix situation: <http://www.ontologydesignpatterns.org/cp/owl/situation.owl#> .
 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 @prefix swrl: <http://www.w3.org/2003/11/swrl#> .
+@prefix taskrole: <http://www.ontologydesignpatterns.org/cp/owl/taskrole.owl#> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix tis: <http://www.ontologydesignpatterns.org/cp/owl/timeindexedsituation.owl#> .
+@prefix tvc: <http://www.essepuntato.it/2012/04/tvc/> .
 @prefix vann: <http://purl.org/vocab/vann/> .
 @prefix vs: <http://www.w3.org/2003/06/sw-vocab-status/ns#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://purl.org/NET/c4dm/event.owl>
+  a owl:Ontology ;
+  skos:prefLabel "Event Ontology"@en ;
+  vann:preferredNamespacePrefix "event" ;
+  vann:preferredNamespaceUri "http://purl.org/NET/c4dm/event.owl#"^^xsd:anyURI .
+
+<http://purl.org/co>
+  a owl:Ontology ;
+  skos:prefLabel "Collections Ontology"@en ;
+  vann:preferredNamespacePrefix "co" ;
+  vann:preferredNamespaceUri "http://purl.org/co/"^^xsd:anyURI .
+
+<http://purl.org/spar/po>
+  a owl:Ontology ;
+  skos:prefLabel "Pattern Ontology"@en ;
+  vann:preferredNamespacePrefix "po" ;
+  vann:preferredNamespaceUri "http://www.essepuntato.it/2008/12/pattern#"^^xsd:anyURI .
+
+<http://purl.org/spar/tvc>
+  a owl:Ontology ;
+  skos:prefLabel "Time-indexed Value in Context Ontology"@en ;
+  vann:preferredNamespacePrefix "tvc" ;
+  vann:preferredNamespaceUri "http://www.essepuntato.it/2012/04/tvc/"^^xsd:anyURI .
+
+<http://purl.org/orb/1.0/>
+  a owl:Ontology ;
+  skos:prefLabel "Ontology of Rhetorical Blocks"@en ;
+  vann:preferredNamespacePrefix "orb" ;
+  vann:preferredNamespaceUri "http://purl.org/orb/1.0/"^^xsd:anyURI .
+
+<http://www.ontologydesignpatterns.org/cp/owl/basicplandescription.owl>
+  a owl:Ontology ;
+  skos:prefLabel "Basic Plan Description Ontology"@en ;
+  vann:preferredNamespacePrefix "bpd" ;
+  vann:preferredNamespaceUri "http://www.ontologydesignpatterns.org/cp/owl/basicplandescription.owl#"^^xsd:anyURI .
+
+<http://www.ontologydesignpatterns.org/cp/owl/basicplanexecution.owl>
+  a owl:Ontology ;
+  skos:prefLabel "Basic Plan Execution Ontology"@en ;
+  vann:preferredNamespacePrefix "bpe" ;
+  vann:preferredNamespaceUri "http://www.ontologydesignpatterns.org/cp/owl/basicplanexecution.owl#"^^xsd:anyURI .
+
+<http://www.ontologydesignpatterns.org/cp/owl/participation.owl>
+  a owl:Ontology ;
+  skos:prefLabel "Participation Ontology"@en ;
+  vann:preferredNamespacePrefix "participation" ;
+  vann:preferredNamespaceUri "http://www.ontologydesignpatterns.org/cp/owl/participation.owl#"^^xsd:anyURI .
+
+<http://www.ontologydesignpatterns.org/cp/owl/taskrole.owl>
+  a owl:Ontology ;
+  skos:prefLabel "Task Role Ontology"@en ;
+  vann:preferredNamespacePrefix "taskrole" ;
+  vann:preferredNamespaceUri "http://www.ontologydesignpatterns.org/cp/owl/taskrole.owl#"^^xsd:anyURI .
+
+<http://www.ontologydesignpatterns.org/cp/owl/timeindexedsituation.owl>
+  a owl:Ontology ;
+  skos:prefLabel "Time-indexed Situation Ontology"@en ;
+  vann:preferredNamespacePrefix "tis" ;
+  vann:preferredNamespaceUri "http://www.ontologydesignpatterns.org/cp/owl/timeindexedsituation.owl#"^^xsd:anyURI .
+
+event:Event
+  a owl:Class ;
+  skos:prefLabel "event"@en .
+event:produced_in skos:prefLabel "is produced in"@en .
+
+orb:Conclusion skos:prefLabel "conclusion"@en .
+orb:Discussion skos:prefLabel "discussion"@en .
+orb:Header skos:prefLabel "header"@en .
+orb:Introduction skos:prefLabel "introduction"@en .
+orb:Methods skos:prefLabel "methods"@en .
+orb:References
+  a owl:Class ;
+  skos:prefLabel "references"@en .
+orb:Results skos:prefLabel "results"@en .
+
+bpd:Goal skos:prefLabel "goal"@en .
+bpd:Plan skos:prefLabel "plan"@en .
+bpd:hasMainGoal skos:prefLabel "has main goal"@en .
+bpd:isMainGoalIn skos:prefLabel "is main goal in"@en .
+bpe:Action skos:prefLabel "action"@en .
+bpe:PlanExecution skos:prefLabel "plan execution"@en .
+bpe:actionHasParticipant skos:prefLabel "has action participant"@en .
+bpe:includesAction skos:prefLabel "includes action"@en .
+bpe:includesAgent skos:prefLabel "includes agent"@en .
+bpe:includesObject skos:prefLabel "includes object"@en .
+bpe:includesRegion skos:prefLabel "includes region"@en .
+bpe:isActionIncludedIn skos:prefLabel "is action included in"@en .
+bpe:isAgentIncludedIn skos:prefLabel "is agent included in"@en .
+bpe:isObjectIncludedIn skos:prefLabel "is object included in"@en .
+bpe:isParticipantInAction skos:prefLabel "is participant in action"@en .
+bpe:isRegionIncludedIn skos:prefLabel "is region included in"@en .
+participation:Event skos:prefLabel "event"@en .
+participation:Object skos:prefLabel "object"@en .
+taskrole:Role skos:prefLabel "role"@en .
+taskrole:Task skos:prefLabel "task"@en .
+tis:TimeIndexedSituation skos:prefLabel "time-indexed situation"@en .
+
+agentrole:Agent skos:prefLabel "agent"@en .
+basicplan:isSatisfiedBy skos:prefLabel "is satisfied by"@en .
+description:isConceptUsedIn skos:prefLabel "is concept used in"@en .
+description:isDefinedIn skos:prefLabel "is defined in"@en .
+description:usesConcept skos:prefLabel "uses concept"@en .
+description:Concept skos:prefLabel "concept"@en .
+description:Description skos:prefLabel "description"@en .
+objectrole:Object skos:prefLabel "object"@en .
+region:Region skos:prefLabel "region"@en .
+sequence:directlyFollows skos:prefLabel "directly follows"@en .
+sequence:directlyPrecedes skos:prefLabel "directly precedes"@en .
+situation:hasSetting skos:prefLabel "has setting"@en .
+situation:isSettingFor skos:prefLabel "is setting for"@en .
+situation:Situation skos:prefLabel "situation"@en .
+time:TemporalEntity skos:prefLabel "temporal entity"@en .
+
+<http://purl.org/spar/biro>
+  a owl:Ontology ;
+  rdfs:label "Bibliographic Reference Ontology"@en ;
+  skos:prefLabel "Bibliographic Reference Ontology"@en ;
+  vann:preferredNamespacePrefix "biro" ;
+  vann:preferredNamespaceUri "http://purl.org/spar/biro/"^^xsd:anyURI .
+
+<http://purl.org/spar/c4o>
+  a owl:Ontology ;
+  rdfs:label "Citation Counting and Context Characterization Ontology"@en ;
+  skos:prefLabel "Citation Counting and Context Characterization Ontology"@en ;
+  vann:preferredNamespacePrefix "c4o" ;
+  vann:preferredNamespaceUri "http://purl.org/spar/c4o/"^^xsd:anyURI .
+
+<http://purl.org/spar/cito>
+  a owl:Ontology ;
+  rdfs:label "Citation Typing Ontology"@en ;
+  skos:prefLabel "Citation Typing Ontology"@en ;
+  vann:preferredNamespacePrefix "cito" ;
+  vann:preferredNamespaceUri "http://purl.org/spar/cito/"^^xsd:anyURI .
+
+<http://purl.org/spar/deo>
+  a owl:Ontology ;
+  rdfs:label "Discourse Elements Ontology"@en ;
+  skos:prefLabel "Discourse Elements Ontology"@en ;
+  vann:preferredNamespacePrefix "deo" ;
+  vann:preferredNamespaceUri "http://purl.org/spar/deo/"^^xsd:anyURI .
+
+<http://purl.org/spar/doco>
+  a owl:Ontology ;
+  rdfs:label "Document Components Ontology"@en ;
+  skos:prefLabel "Document Components Ontology"@en ;
+  vann:preferredNamespacePrefix "doco" ;
+  vann:preferredNamespaceUri "http://purl.org/spar/doco/"^^xsd:anyURI .
+
+<http://purl.org/spar/fabio>
+  a owl:Ontology ;
+  rdfs:label "FRBR-aligned Bibliographic Ontology"@en ;
+  skos:prefLabel "FRBR-aligned Bibliographic Ontology"@en ;
+  vann:preferredNamespacePrefix "fabio" ;
+  vann:preferredNamespaceUri "http://purl.org/spar/fabio/"^^xsd:anyURI .
+
+<http://purl.org/spar/frbr>
+  a owl:Ontology ;
+  rdfs:label "Essential FRBR Ontology"@en ;
+  skos:prefLabel "Essential FRBR Ontology"@en ;
+  vann:preferredNamespacePrefix "frbr" ;
+  vann:preferredNamespaceUri "http://purl.org/vocab/frbr/core#"^^xsd:anyURI .
+
+<http://purl.org/spar/pro/>
+  a owl:Ontology ;
+  rdfs:label "Publishing Roles Ontology"@en ;
+  skos:prefLabel "Publishing Roles Ontology"@en ;
+  vann:preferredNamespacePrefix "pro" ;
+  vann:preferredNamespaceUri "http://purl.org/spar/pro/"^^xsd:anyURI .
+
+<http://purl.org/spar/pso>
+  a owl:Ontology ;
+  rdfs:label "Publishing Status Ontology"@en ;
+  skos:prefLabel "Publishing Status Ontology"@en ;
+  vann:preferredNamespacePrefix "pso" ;
+  vann:preferredNamespaceUri "http://purl.org/spar/pso/"^^xsd:anyURI .
+
+<http://purl.org/spar/pwo>
+  a owl:Ontology ;
+  rdfs:label "Publishing Workflow Ontology"@en ;
+  skos:prefLabel "Publishing Workflow Ontology"@en ;
+  vann:preferredNamespacePrefix "pwo" ;
+  vann:preferredNamespaceUri "http://purl.org/spar/pwo/"^^xsd:anyURI .
+
+<http://purl.org/ontology/bibo/>
+  a owl:Ontology ;
+  rdfs:label "Bibliographic Ontology"@en ;
+  skos:prefLabel "Bibliographic Ontology"@en ;
+  vann:preferredNamespacePrefix "bibo" ;
+  vann:preferredNamespaceUri "http://purl.org/ontology/bibo/"^^xsd:anyURI .
+
+<http://xmlns.com/foaf/0.1/>
+  a owl:Ontology ;
+  rdfs:label "Friend of a Friend Ontology"@en ;
+  skos:prefLabel "Friend of a Friend Ontology"@en ;
+  vann:preferredNamespacePrefix "foaf" ;
+  vann:preferredNamespaceUri "http://xmlns.com/foaf/0.1/"^^xsd:anyURI .
+
+<http://www.w3.org/ns/prov#>
+  a owl:Ontology ;
+  rdfs:label "Provenance Ontology"@en ;
+  skos:prefLabel "Provenance Ontology"@en ;
+  vann:preferredNamespacePrefix "prov" ;
+  vann:preferredNamespaceUri "http://www.w3.org/ns/prov#"^^xsd:anyURI .
 
 bfo:Entity
   a owl:Class ;
@@ -327,6 +551,17 @@ bfo:OneDimensionalTemporalRegion owl:disjointWith bfo:ZeroDimensionalTemporalReg
 foaf:Agent
   rdfs:subClassOf prov:Agent .
 
+foaf:Document skos:prefLabel "document"@en .
+foaf:Group skos:prefLabel "group"@en .
+foaf:Image skos:prefLabel "image"@en .
+foaf:OnlineAccount skos:prefLabel "online account"@en .
+foaf:OnlineChatAccount skos:prefLabel "online chat account"@en .
+foaf:OnlineEcommerceAccount skos:prefLabel "online e-commerce account"@en .
+foaf:OnlineGamingAccount skos:prefLabel "online gaming account"@en .
+foaf:Organization skos:prefLabel "organization"@en .
+foaf:Person skos:prefLabel "person"@en .
+foaf:PersonalProfileDocument skos:prefLabel "personal profile document"@en .
+
 prov:Activity
   rdfs:subClassOf bfo:Occurrent ;
   skos:prefLabel "activity"@en ;
@@ -345,6 +580,69 @@ prov:Entity
 prov:SoftwareAgent
   skos:prefLabel "software agent"@en ;
   skos:definition "A software system acting as an agent in some activity."@en .
+
+prov:ActivityInfluence skos:prefLabel "activity influence"@en .
+prov:AgentInfluence skos:prefLabel "agent influence"@en .
+prov:Bundle skos:prefLabel "bundle"@en .
+prov:Collection skos:prefLabel "collection"@en .
+prov:End skos:prefLabel "end"@en .
+prov:EntityInfluence skos:prefLabel "entity influence"@en .
+prov:EmptyCollection skos:prefLabel "empty collection"@en .
+prov:Generation skos:prefLabel "generation"@en .
+prov:Influence skos:prefLabel "influence"@en .
+prov:InstantaneousEvent skos:prefLabel "instantaneous event"@en .
+prov:Invalidation skos:prefLabel "invalidation"@en .
+prov:Location skos:prefLabel "location"@en .
+prov:Organization skos:prefLabel "organization"@en .
+prov:Person skos:prefLabel "person"@en .
+prov:Plan skos:prefLabel "plan"@en .
+prov:PrimarySource skos:prefLabel "primary source"@en .
+prov:Role skos:prefLabel "role"@en .
+prov:Start skos:prefLabel "start"@en .
+prov:Usage skos:prefLabel "usage"@en .
+
+prov:actedOnBehalfOf skos:prefLabel "acted on behalf of"@en .
+prov:activity skos:prefLabel "has activity"@en .
+prov:agent skos:prefLabel "has agent"@en .
+prov:alternateOf skos:prefLabel "is alternate of"@en .
+prov:aq skos:prefLabel "has access and query service"@en .
+prov:atLocation skos:prefLabel "at location"@en .
+prov:atTime skos:prefLabel "at time"@en .
+prov:entity skos:prefLabel "has entity"@en .
+prov:hadActivity skos:prefLabel "had activity"@en .
+prov:hadGeneration skos:prefLabel "had generation"@en .
+prov:hadMember skos:prefLabel "had member"@en .
+prov:hadPlan skos:prefLabel "had plan"@en .
+prov:hadPrimarySource skos:prefLabel "had primary source"@en .
+prov:hadRole skos:prefLabel "had role"@en .
+prov:hadUsage skos:prefLabel "had usage"@en .
+prov:influenced skos:prefLabel "influenced"@en .
+prov:influencer skos:prefLabel "has influencer"@en .
+prov:invalidated skos:prefLabel "invalidated"@en .
+prov:invalidatedAtTime skos:prefLabel "invalidated at time"@en .
+prov:qualifiedAssociation skos:prefLabel "has qualified association"@en .
+prov:qualifiedAttribution skos:prefLabel "has qualified attribution"@en .
+prov:qualifiedCommunication skos:prefLabel "has qualified communication"@en .
+prov:qualifiedDelegation skos:prefLabel "has qualified delegation"@en .
+prov:qualifiedDerivation skos:prefLabel "has qualified derivation"@en .
+prov:qualifiedEnd skos:prefLabel "has qualified end"@en .
+prov:qualifiedGeneration skos:prefLabel "has qualified generation"@en .
+prov:qualifiedInfluence skos:prefLabel "has qualified influence"@en .
+prov:qualifiedInvalidation skos:prefLabel "has qualified invalidation"@en .
+prov:qualifiedPrimarySource skos:prefLabel "has qualified primary source"@en .
+prov:qualifiedQuotation skos:prefLabel "has qualified quotation"@en .
+prov:qualifiedRevision skos:prefLabel "has qualified revision"@en .
+prov:qualifiedStart skos:prefLabel "has qualified start"@en .
+prov:qualifiedUsage skos:prefLabel "has qualified usage"@en .
+prov:specializationOf skos:prefLabel "is specialization of"@en .
+prov:value skos:prefLabel "has value"@en .
+prov:wasAttributedTo skos:prefLabel "was attributed to"@en .
+prov:wasDerivedFrom skos:prefLabel "was derived from"@en .
+prov:wasEndedBy skos:prefLabel "was ended by"@en .
+prov:wasInfluencedBy skos:prefLabel "was influenced by"@en .
+prov:wasInvalidatedBy skos:prefLabel "was invalidated by"@en .
+prov:wasQuotedFrom skos:prefLabel "was quoted from"@en .
+prov:wasStartedBy skos:prefLabel "was started by"@en .
 
 prov:endedAtTime
   skos:prefLabel "ended at time"@en ;
@@ -396,17 +694,62 @@ dc:rights rdfs:label "has rights statement"@en .
 dc:title rdfs:label "has title"@en .
 
 dcterms:description rdfs:label "has description"@en .
+dcterms:isReferencedBy skos:prefLabel "is referenced by"@en .
+dcterms:isVersionOf skos:prefLabel "is version of"@en .
 
+discourse:refersTo skos:prefLabel "refers to"@en .
+
+cpann:coversRequirements skos:prefLabel "covers requirements"@en .
+cpann:extractedFrom skos:prefLabel "is extracted from"@en .
+cpann:hasAuthor skos:prefLabel "has author"@en .
+cpann:hasComponent skos:prefLabel "has component"@en .
+cpann:hasConsequences skos:prefLabel "has consequences"@en .
+cpann:hasIntent skos:prefLabel "has intent"@en .
+cpann:hasUnitTest skos:prefLabel "has unit test"@en .
+cpann:isSpecializationOf skos:prefLabel "is specialization of"@en .
+cpann:relatedCPs skos:prefLabel "has related content patterns"@en .
+
+bibo:Event skos:prefLabel "event"@en .
+bibo:affirmedBy skos:prefLabel "is affirmed by"@en .
 bibo:doi rdfs:label "has DOI"@en .
 bibo:issn rdfs:label "has ISSN"@en .
+bibo:reproducedIn skos:prefLabel "is reproduced in"@en .
+bibo:reversedBy skos:prefLabel "is reversed by"@en .
+bibo:shortDescription skos:prefLabel "has short description"@en .
+bibo:subsequentLegalDecision skos:prefLabel "has subsequent legal decision"@en .
 
 fabio:hasDOI rdfs:label "has DOI"@en .
 fabio:hasIssueIdentifier rdfs:label "has issue identifier"@en .
 fabio:hasPageRange rdfs:label "has page range"@en .
 fabio:hasVolumeIdentifier rdfs:label "has volume identifier"@en .
 
+<http://purl.org/spar/pwo/WorkflowExecution> skos:prefLabel "workflow execution"@en .
+
+foaf:aimChatID skos:prefLabel "has AIM chat ID"@en .
+foaf:dnaChecksum skos:prefLabel "has DNA checksum"@en .
+foaf:familyName skos:prefLabel "has family name"@en .
+foaf:family_name skos:prefLabel "has family name"@en .
+foaf:firstName skos:prefLabel "has first name"@en .
+foaf:givenName skos:prefLabel "has given name"@en .
+foaf:givenname skos:prefLabel "has given name"@en .
+foaf:icqChatID skos:prefLabel "has ICQ chat ID"@en .
+foaf:jabberID skos:prefLabel "has Jabber ID"@en .
+foaf:lastName skos:prefLabel "has last name"@en .
+foaf:membershipClass skos:prefLabel "has membership class"@en .
+foaf:msnChatID skos:prefLabel "has MSN chat ID"@en .
+foaf:myersBriggs skos:prefLabel "has Myers-Briggs type"@en .
+foaf:schoolHomepage skos:prefLabel "has school homepage"@en .
+foaf:sha1 skos:prefLabel "has SHA-1 digest"@en .
+foaf:skypeID skos:prefLabel "has Skype ID"@en .
+foaf:surname skos:prefLabel "has surname"@en .
+foaf:topic_interest skos:prefLabel "has topic interest"@en .
+foaf:yahooChatID skos:prefLabel "has Yahoo chat ID"@en .
+
 vann:preferredNamespacePrefix rdfs:label "has preferred namespace prefix"@en .
 vann:preferredNamespaceUri rdfs:label "has preferred namespace URI"@en .
+<http://purl.org/vocab/vann/preferredNamespaceURI>
+  skos:prefLabel "has preferred namespace URI"@en ;
+  rdfs:label "has preferred namespace URI"@en .
 
 rdf:first rdfs:label "has first item"@en .
 rdf:rest rdfs:label "has rest list"@en .
@@ -434,6 +777,8 @@ owl:disjointWith rdfs:label "is disjoint with"@en .
 owl:equivalentClass rdfs:label "is equivalent class to"@en .
 owl:equivalentProperty rdfs:label "is equivalent property to"@en .
 owl:imports rdfs:label "imports"@en .
+owl:backwardCompatibleWith skos:prefLabel "is backward compatible with"@en .
+owl:hasValue skos:prefLabel "has value"@en .
 owl:intersectionOf rdfs:label "has intersection operands"@en .
 owl:inverseOf rdfs:label "is inverse of"@en .
 owl:maxCardinality rdfs:label "has maximum cardinality"@en .
@@ -453,8 +798,12 @@ owl:unionOf rdfs:label "has union operands"@en .
 owl:versionIRI rdfs:label "has version IRI"@en .
 owl:versionInfo rdfs:label "has version information"@en .
 owl:withRestrictions rdfs:label "has restrictions"@en .
+owl:topDataProperty skos:prefLabel "top data property"@en .
+owl:topObjectProperty skos:prefLabel "top object property"@en .
 
 vs:term_status rdfs:label "has term status"@en .
+<http://www.w3.org/2003/06/sw-vocab-status/nsterm_status>
+  skos:prefLabel "has term status"@en .
 
 swrl:argument1 rdfs:label "has first argument"@en .
 swrl:argument2 rdfs:label "has second argument"@en .

@@ -22,6 +22,7 @@ defmodule SheafRDFBrowser.MixProject do
     [
       {:phoenix_live_view, "~> 1.1"},
       {:phoenix_html, "~> 4.1"},
+      {:mdex, "~> 0.12"},
       {:rdf, "~> 2.1"},
       {:req, "~> 0.5"}
     ]

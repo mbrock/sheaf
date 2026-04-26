@@ -97,4 +97,47 @@ defmodule SheafRDFBrowser.IndexTest do
 
     assert root.id == "https://node.town/bfo#Entity"
   end
+
+  test "ontology rows group classes and properties by namespace" do
+    dataset =
+      """
+      <https://less.rest/sheaf/> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2002/07/owl#Ontology> <https://less.rest/sheaf/> .
+      <https://less.rest/sheaf/> <http://www.w3.org/2000/01/rdf-schema#label> "Sheaf ontology"@en <https://less.rest/sheaf/> .
+      <https://less.rest/sheaf/> <http://purl.org/vocab/vann/preferredNamespacePrefix> "sheaf" <https://less.rest/sheaf/> .
+      <https://less.rest/sheaf/> <http://purl.org/vocab/vann/preferredNamespaceUri> "https://less.rest/sheaf/" <https://less.rest/sheaf/> .
+      <https://example.test/ExternalRoot> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://example.test/> .
+      <https://example.test/ExternalRoot> <http://www.w3.org/2000/01/rdf-schema#label> "external root"@en <https://example.test/> .
+      <https://less.rest/sheaf/Block> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://less.rest/sheaf/> .
+      <https://less.rest/sheaf/Block> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://example.test/ExternalRoot> <https://less.rest/sheaf/> .
+      <https://less.rest/sheaf/Section> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/2000/01/rdf-schema#Class> <https://less.rest/sheaf/> .
+      <https://less.rest/sheaf/Section> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <https://less.rest/sheaf/Block> <https://less.rest/sheaf/> .
+      <https://less.rest/sheaf/text> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/1999/02/22-rdf-syntax-ns#Property> <https://less.rest/sheaf/> .
+      <https://less.rest/sheaf/heading> <http://www.w3.org/2000/01/rdf-schema#subPropertyOf> <https://less.rest/sheaf/text> <https://less.rest/sheaf/> .
+      """
+      |> String.split("\n", trim: true)
+      |> Stream.map(&(&1 <> "\n"))
+      |> Serialization.read_stream!(media_type: "application/n-quads")
+
+    [ontology] =
+      dataset
+      |> Index.build()
+      |> Index.ontology_rows()
+
+    assert ontology.id == "https://less.rest/sheaf/"
+    assert ontology.prefix == "sheaf"
+    assert Enum.map(ontology.class_tree, & &1.id) == ["https://example.test/ExternalRoot"]
+
+    [block] = hd(ontology.class_tree).children
+    assert block.id == "https://less.rest/sheaf/Block"
+
+    assert block.children |> Enum.map(& &1.id) == [
+             "https://less.rest/sheaf/Section"
+           ]
+
+    assert Enum.map(ontology.property_tree, & &1.id) == ["https://less.rest/sheaf/text"]
+
+    assert hd(ontology.property_tree).children |> Enum.map(& &1.id) == [
+             "https://less.rest/sheaf/heading"
+           ]
+  end
 end

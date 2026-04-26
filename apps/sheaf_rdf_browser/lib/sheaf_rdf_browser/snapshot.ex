@@ -15,6 +15,7 @@ defmodule SheafRDFBrowser.Snapshot do
   PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+  PREFIX dc: <http://purl.org/dc/elements/1.1/>
   PREFIX dcterms: <http://purl.org/dc/terms/>
 
   SELECT ?g ?s ?p ?o
@@ -22,7 +23,7 @@ defmodule SheafRDFBrowser.Snapshot do
     GRAPH ?g {
       ?s ?p ?o .
       VALUES ?p {
-        rdfs:label skos:prefLabel dcterms:title
+        rdfs:label skos:prefLabel dc:title dcterms:title
       }
     }
   }
@@ -31,14 +32,18 @@ defmodule SheafRDFBrowser.Snapshot do
   @comment_query """
   PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
   PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+  PREFIX dc: <http://purl.org/dc/elements/1.1/>
   PREFIX dcterms: <http://purl.org/dc/terms/>
+  PREFIX prov: <http://www.w3.org/ns/prov#>
 
   SELECT ?g ?s ?p ?o
   WHERE {
     GRAPH ?g {
       ?s ?p ?o .
       VALUES ?p {
-        rdfs:comment skos:definition dcterms:description
+        rdfs:comment skos:definition skos:scopeNote skos:editorialNote
+        dc:description dcterms:description
+        prov:definition prov:editorsDefinition
       }
     }
   }
@@ -120,6 +125,18 @@ defmodule SheafRDFBrowser.Snapshot do
   SELECT ?s ?o
   WHERE {
     GRAPH ?g { ?s rdfs:range ?o }
+  }
+  """
+
+  @ontology_query """
+  PREFIX owl: <http://www.w3.org/2002/07/owl#>
+
+  SELECT ?ontology ?p ?o
+  WHERE {
+    GRAPH ?g {
+      ?ontology a owl:Ontology ;
+        ?p ?o .
+    }
   }
   """
 
@@ -256,7 +273,7 @@ defmodule SheafRDFBrowser.Snapshot do
           predicate_query_ms: predicate_query_ms,
           parse_ms: 0,
           index_ms: index_ms,
-         bytes: 0,
+          bytes: 0,
           quads: quads,
           graphs: map_size(rows.graph_counts),
           class_property_cache: class_property_cache(Map.get(rows, :class_property_usage, []))
@@ -278,9 +295,9 @@ defmodule SheafRDFBrowser.Snapshot do
 
   defp fingerprint(index, quads, graphs) do
     :erlang.phash2(
-      {quads, graphs, index.labels, index.comments, index.class_counts, index.predicate_counts,
-       index.class_terms, index.property_terms, index.subclass_edges, index.subproperty_edges,
-       index.domains, index.ranges}
+      {quads, graphs, index.labels, index.comments, index.ontologies, index.class_counts,
+       index.predicate_counts, index.class_terms, index.property_terms, index.subclass_edges,
+       index.subproperty_edges, index.domains, index.ranges}
     )
   end
 
@@ -293,6 +310,7 @@ defmodule SheafRDFBrowser.Snapshot do
          class_counts: counts(bindings(results, :class_counts), "class"),
          predicate_counts: counts(bindings(results, :predicate_counts), "p"),
          graph_counts: counts(bindings(results, :graph_counts), "g"),
+         ontologies: rows(bindings(results, :ontologies), ontology: "ontology", p: "p", o: "o"),
          ontology_types: rows(bindings(results, :ontology_types), [:s, {:class, "class"}]),
          subclass_edges:
            rows(bindings(results, :subclass_edges), child: "child", parent: "parent"),
@@ -354,6 +372,7 @@ defmodule SheafRDFBrowser.Snapshot do
       class_counts: @class_counts_query,
       predicate_counts: @predicate_counts_query,
       graph_counts: @graph_counts_query,
+      ontologies: @ontology_query,
       ontology_types: @ontology_types_query,
       subclass_edges: @subclass_query,
       subproperty_edges: @subproperty_query,
