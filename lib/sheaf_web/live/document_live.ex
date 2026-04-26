@@ -96,7 +96,7 @@ defmodule SheafWeb.DocumentLive do
 
       <article
         id="document-start"
-        class="min-h-0 min-w-0 overflow-y-auto px-12 pb-4 sm:px-8 lg:col-start-2 lg:row-start-2 [&_p]:text-justify [&_p]:hyphens-manual"
+        class="min-h-0 min-w-0 overflow-y-auto px-12 pb-4 sm:px-8 lg:col-start-2 lg:row-start-2 [&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
         <div class="mx-auto w-full max-w-prose pt-4">
@@ -133,7 +133,7 @@ defmodule SheafWeb.DocumentLive do
 
   defp reader_blocks(assigns) do
     ~H"""
-    <div class="space-y-4">
+    <div class="space-y-5">
       <.reader_block
         :for={block <- @blocks}
         graph={@graph}
@@ -152,10 +152,10 @@ defmodule SheafWeb.DocumentLive do
 
   defp reader_block(%{block: %{type: :document}} = assigns) do
     ~H"""
-    <section id={"block-#{Document.id(@block.iri)}"} class="space-y-6">
+    <section id={"block-#{Document.id(@block.iri)}"} class="scroll-mt-6 space-y-8">
       <h1
         class={[
-          "cursor-pointer rounded-sm font-sans text-2xl font-bold",
+          "cursor-pointer rounded-sm font-sans text-3xl font-bold tracking-tight",
           selected_class(@block, @selected_id)
         ]}
         phx-click="inspect_block"
@@ -178,7 +178,7 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <details
       id={"block-#{Document.id(@block.iri)}"}
-      class="space-y-3 [&:not([open])>summary]:text-stone-500 [&:not([open])>summary]:dark:text-stone-500 [&[open]>summary]:pb-2 [&[open]>summary]:text-stone-900 [&[open]>summary]:dark:text-stone-100 [&>summary::-webkit-details-marker]:hidden"
+      class="scroll-mt-6 space-y-4 pt-2 [&:not([open])>summary]:text-stone-500 [&:not([open])>summary]:dark:text-stone-500 [&[open]>summary]:pb-3 [&[open]>summary]:text-stone-900 [&[open]>summary]:dark:text-stone-100 [&>summary::-webkit-details-marker]:hidden"
       open={true}
     >
       <summary
@@ -189,7 +189,7 @@ defmodule SheafWeb.DocumentLive do
         phx-click="inspect_block"
         phx-value-id={Document.id(@block.iri)}
       >
-        <h2 class="font-sans text-lg font-semibold">
+        <h2 class="font-sans text-xl font-semibold tracking-tight">
           {section_title(@block.number, Document.heading(@graph, @block.iri))}
         </h2>
       </summary>
@@ -206,7 +206,7 @@ defmodule SheafWeb.DocumentLive do
 
   defp reader_block(%{block: %{type: :paragraph}} = assigns) do
     ~H"""
-    <article id={"block-#{Document.id(@block.iri)}"} class="relative max-w-prose">
+    <article id={"block-#{Document.id(@block.iri)}"} class="relative">
       <span class="absolute right-full top-1 mr-3 w-10 text-right font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
         §{@block.number}
       </span>
@@ -214,7 +214,7 @@ defmodule SheafWeb.DocumentLive do
       <p
         id={"text-#{Document.id(@block.iri)}"}
         class={[
-          "cursor-pointer rounded-sm font-serif leading-7",
+          "cursor-pointer rounded-sm font-serif leading-normal",
           selected_class(@block, @selected_id)
         ]}
         phx-click="inspect_block"
@@ -243,7 +243,7 @@ defmodule SheafWeb.DocumentLive do
     <article
       id={"block-#{Document.id(@block.iri)}"}
       class={[
-        "relative max-w-prose cursor-pointer rounded-sm py-1",
+        "relative cursor-pointer rounded-sm py-1",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
@@ -271,7 +271,7 @@ defmodule SheafWeb.DocumentLive do
 
       <p
         id={"text-#{Document.id(@block.iri)}"}
-        class="font-serif leading-7"
+        class="font-serif leading-normal"
         phx-update="ignore"
       >
         {Document.text(@graph, @block.iri)}
@@ -286,7 +286,7 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "relative max-w-prose cursor-pointer rounded-sm font-serif leading-7",
+        "relative cursor-pointer rounded-sm font-serif leading-normal",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
@@ -312,7 +312,7 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "relative max-w-prose cursor-pointer rounded-sm font-sans text-sm leading-6 text-stone-700 dark:text-stone-300",
+        "relative cursor-pointer rounded-sm font-sans text-sm leading-6 text-stone-700 dark:text-stone-300",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"

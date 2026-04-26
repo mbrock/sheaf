@@ -14,6 +14,12 @@
 @theme {
   --font-serif: "Equity", "Iowan Old Style", Georgia, serif;
   --font-mono: "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Widen the reading column from Tailwind's default 65ch. Equity at the
+     reader's body size handles longer measures comfortably, and the reader's
+     three-column layout leaves enough side space that we'd be wasting it
+     otherwise. Affects every `max-w-prose` usage in the app. */
+  --container-prose: 80ch;
 }
 
 /* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
