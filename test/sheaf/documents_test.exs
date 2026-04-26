@@ -3,7 +3,7 @@ defmodule Sheaf.DocumentsTest do
   use RDF
 
   alias Sheaf.Documents
-  alias Sheaf.NS.DOC
+  alias Sheaf.NS.{DOC, FABIO}
 
   setup do
     previous = Application.get_env(:sheaf, :resource_base)
@@ -152,6 +152,38 @@ defmodule Sheaf.DocumentsTest do
                  year: "2020"
                },
                title: "Article title"
+             }
+           ] = Documents.from_rows(rows)
+  end
+
+  test "builds non-navigable rows for cited metadata-only works" do
+    rows = [
+      %{
+        "doc" => ~I<https://example.com/sheaf/WORK1>,
+        "title" => RDF.literal("Metadata-only work"),
+        "kind" => RDF.iri(FABIO.ScholarlyWork),
+        "metadataKind" => ~I<http://purl.org/spar/fabio/Book>,
+        "authorName" => RDF.literal("Example Author"),
+        "year" => RDF.literal("1998"),
+        "metadataPageCount" => RDF.literal("180"),
+        "cited" => RDF.literal("true"),
+        "metadataOnly" => RDF.literal("true")
+      }
+    ]
+
+    assert [
+             %{
+               id: "WORK1",
+               title: "Metadata-only work",
+               path: nil,
+               cited?: true,
+               has_document?: false,
+               metadata: %{
+                 authors: ["Example Author"],
+                 kind: "Book",
+                 page_count: 180,
+                 year: "1998"
+               }
              }
            ] = Documents.from_rows(rows)
   end

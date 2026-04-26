@@ -1,5 +1,7 @@
 @prefix bfo: <https://node.town/bfo#> .
 @prefix bibo: <http://purl.org/ontology/bibo/> .
+@prefix biro: <http://purl.org/spar/biro/> .
+@prefix cito: <http://purl.org/spar/cito/> .
 @prefix agentrole: <http://www.ontologydesignpatterns.org/cp/owl/agentrole.owl#> .
 @prefix basicplan: <http://www.ontologydesignpatterns.org/cp/owl/basicplan.owl#> .
 @prefix bpd: <http://www.ontologydesignpatterns.org/cp/owl/basicplandescription.owl#> .
@@ -8,8 +10,10 @@
 @prefix cpann: <http://www.ontologydesignpatterns.org/schemas/cpannotationschema.owl#> .
 @prefix dc: <http://purl.org/dc/elements/1.1/> .
 @prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix deo: <http://purl.org/spar/deo/> .
 @prefix discourse: <http://purl.org/swan/2.0/discourse-relationships/> .
 @prefix description: <http://www.ontologydesignpatterns.org/cp/owl/description.owl#> .
+@prefix doco: <http://purl.org/spar/doco/> .
 @prefix event: <http://purl.org/NET/c4dm/event.owl#> .
 @prefix fabio: <http://purl.org/spar/fabio/> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
@@ -699,6 +703,19 @@ dcterms:isVersionOf skos:prefLabel "is version of"@en .
 
 discourse:refersTo skos:prefLabel "refers to"@en .
 
+biro:BibliographicReference skos:prefLabel "bibliographic reference"@en .
+biro:ReferenceList skos:prefLabel "reference list"@en .
+biro:references skos:prefLabel "references"@en .
+
+cito:Citation skos:prefLabel "citation"@en .
+cito:cites skos:prefLabel "cites"@en .
+cito:isCitedBy skos:prefLabel "is cited by"@en .
+
+deo:BibliographicReference skos:prefLabel "bibliographic reference"@en .
+
+doco:BibliographicReferenceList skos:prefLabel "bibliographic reference list"@en .
+doco:Bibliography skos:prefLabel "bibliography"@en .
+
 cpann:coversRequirements skos:prefLabel "covers requirements"@en .
 cpann:extractedFrom skos:prefLabel "is extracted from"@en .
 cpann:hasAuthor skos:prefLabel "has author"@en .
@@ -712,7 +729,9 @@ cpann:relatedCPs skos:prefLabel "has related content patterns"@en .
 bibo:Event skos:prefLabel "event"@en .
 bibo:affirmedBy skos:prefLabel "is affirmed by"@en .
 bibo:doi rdfs:label "has DOI"@en .
+bibo:isbn rdfs:label "has ISBN"@en .
 bibo:issn rdfs:label "has ISSN"@en .
+bibo:numPages rdfs:label "has page count"@en .
 bibo:reproducedIn skos:prefLabel "is reproduced in"@en .
 bibo:reversedBy skos:prefLabel "is reversed by"@en .
 bibo:shortDescription skos:prefLabel "has short description"@en .

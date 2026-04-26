@@ -7,8 +7,10 @@ defmodule SheafWeb.DocumentLive do
 
   alias Sheaf.Corpus
   alias Sheaf.Document
+  alias Sheaf.Documents
   alias Sheaf.Id
   alias SheafWeb.AppChrome
+  import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
@@ -88,7 +90,12 @@ defmodule SheafWeb.DocumentLive do
         class="min-h-0 min-w-0 overflow-y-auto px-12 pb-4 sm:px-8 lg:col-start-2 lg:row-start-2"
       >
         <div class="mx-auto w-full max-w-prose pt-4">
-          <.reader_blocks graph={@graph} blocks={@blocks} selected_id={@selected_block_id} />
+          <.reader_blocks
+            graph={@graph}
+            blocks={@blocks}
+            selected_id={@selected_block_id}
+            references_by_block={@references_by_block}
+          />
         </div>
       </article>
 
@@ -105,6 +112,7 @@ defmodule SheafWeb.DocumentLive do
   attr :blocks, :list, required: true
   attr :graph, :any, required: true
   attr :selected_id, :string, default: nil
+  attr :references_by_block, :map, default: %{}
 
   defp reader_blocks(assigns) do
     ~H"""
@@ -114,6 +122,7 @@ defmodule SheafWeb.DocumentLive do
         graph={@graph}
         block={block}
         selected_id={@selected_id}
+        references_by_block={@references_by_block}
       />
     </div>
     """
@@ -122,6 +131,7 @@ defmodule SheafWeb.DocumentLive do
   attr :block, :map, required: true
   attr :graph, :any, required: true
   attr :selected_id, :string, default: nil
+  attr :references_by_block, :map, default: %{}
 
   defp reader_block(%{block: %{type: :document}} = assigns) do
     ~H"""
@@ -137,7 +147,12 @@ defmodule SheafWeb.DocumentLive do
         {document_title(@graph, @block.iri)}
       </h1>
 
-      <.reader_blocks graph={@graph} blocks={@block.children} selected_id={@selected_id} />
+      <.reader_blocks
+        graph={@graph}
+        blocks={@block.children}
+        selected_id={@selected_id}
+        references_by_block={@references_by_block}
+      />
     </section>
     """
   end
@@ -162,35 +177,53 @@ defmodule SheafWeb.DocumentLive do
         </h2>
       </summary>
 
-      <.reader_blocks graph={@graph} blocks={@block.children} selected_id={@selected_id} />
+      <.reader_blocks
+        graph={@graph}
+        blocks={@block.children}
+        selected_id={@selected_id}
+        references_by_block={@references_by_block}
+      />
     </details>
     """
   end
 
   defp reader_block(%{block: %{type: :paragraph}} = assigns) do
     ~H"""
-    <p
-      id={"block-#{Document.id(@block.iri)}"}
-      class={[
-        "relative max-w-prose cursor-pointer rounded-sm font-serif leading-7",
-        selected_class(@block, @selected_id)
-      ]}
-      phx-click="inspect_block"
-      phx-value-id={Document.id(@block.iri)}
-    >
+    <article id={"block-#{Document.id(@block.iri)}"} class="relative max-w-prose">
       <span class="absolute right-full top-1 mr-3 w-10 text-right font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
         §{@block.number}
       </span>
-      <span
-        id={"text-#{Document.id(@block.iri)}"}
-        class="block"
-        phx-hook="PretextParagraph"
-        phx-update="ignore"
-        data-pretext-text
+
+      <p
+        class={[
+          "cursor-pointer rounded-sm font-serif leading-7",
+          selected_class(@block, @selected_id)
+        ]}
+        phx-click="inspect_block"
+        phx-value-id={Document.id(@block.iri)}
       >
-        {Document.paragraph_text(@graph, @block.iri)}
-      </span>
-    </p>
+        <span
+          id={"text-#{Document.id(@block.iri)}"}
+          class="block"
+          phx-hook="PretextParagraph"
+          phx-update="ignore"
+          data-pretext-text
+        >
+          {Document.paragraph_text(@graph, @block.iri)}
+        </span>
+      </p>
+
+      <div
+        :if={reference_documents(@references_by_block, @block.iri) != []}
+        class="mt-2 space-y-1 pl-4 font-sans"
+      >
+        <.document_entry
+          :for={document <- reference_documents(@references_by_block, @block.iri)}
+          document={document}
+          nested
+        />
+      </div>
+    </article>
     """
   end
 
@@ -368,17 +401,23 @@ defmodule SheafWeb.DocumentLive do
   defp load_document(socket, id, selected_block_id) do
     root = Id.iri(id)
 
-    with {:ok, graph} <- Sheaf.fetch_graph(root) do
+    with {:ok, graph} <- Sheaf.fetch_graph(root),
+         {:ok, references_by_block} <- Documents.references_for_document(root) do
       socket =
         socket
         |> assign(:page_title, page_title(graph, root))
         |> assign(:document_id, id)
         |> assign(:graph, graph)
         |> assign(:root, root)
+        |> assign(:references_by_block, references_by_block)
         |> assign(:selected_block_id, selected_block_id)
 
       {:ok, socket}
     end
+  end
+
+  defp reference_documents(references_by_block, iri) do
+    Map.get(references_by_block, Document.id(iri), [])
   end
 
   defp selected_block_id(%{"block" => block_id}) when is_binary(block_id) and block_id != "" do

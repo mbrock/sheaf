@@ -11,6 +11,7 @@ defmodule SheafWeb.DocumentIndexLive do
   alias Sheaf.Assistant.Notes
   alias Sheaf.Id
   alias SheafWeb.AppChrome
+  import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
 
   @mdex_opts [
     extension: [
@@ -100,7 +101,7 @@ defmodule SheafWeb.DocumentIndexLive do
 
             <ul class="space-y-0.5">
               <li :for={document <- documents}>
-                <.document_entry document={document} />
+                <.document_entry document={document} show_checkbox />
               </li>
             </ul>
           </section>
@@ -187,114 +188,6 @@ defmodule SheafWeb.DocumentIndexLive do
     """
   end
 
-  attr :document, :map, required: true
-
-  defp document_entry(assigns) do
-    ~H"""
-    <div class={[@document.excluded? && "opacity-45 grayscale"]}>
-      <.document_row document={@document} />
-    </div>
-    """
-  end
-
-  defp excludable?(%{kind: :thesis}), do: false
-  defp excludable?(_document), do: true
-
-  attr :document, :map, required: true
-
-  defp document_row(assigns) do
-    ~H"""
-    <div class="px-2 py-1 leading-snug">
-      <div class="truncate font-sans">
-        <input
-          :if={excludable?(@document)}
-          type="checkbox"
-          checked={!@document.excluded?}
-          phx-click="toggle_document_exclusion"
-          phx-value-id={@document.id}
-          phx-value-included={if(@document.excluded?, do: "true", else: "false")}
-          aria-label={
-            if(@document.excluded?, do: "Include in workspace", else: "Exclude from workspace")
-          }
-          title={if(@document.excluded?, do: "Include in workspace", else: "Exclude from workspace")}
-          class="mr-2 inline-block size-3.5 align-baseline rounded-sm border border-stone-400 bg-stone-100 text-stone-600 accent-stone-500 focus:ring-1 focus:ring-stone-400 dark:border-stone-500 dark:bg-stone-800 dark:text-stone-300 dark:accent-stone-400"
-        />
-        <.link :if={@document.path} navigate={@document.path} class="transition-colors">
-          {@document.title}
-        </.link>
-        <span :if={is_nil(@document.path)}>{@document.title}</span>
-      </div>
-
-      <div
-        :if={subline?(@document)}
-        class="flex min-w-0 items-baseline gap-3 text-[0.9375rem] text-stone-500 dark:text-stone-400"
-      >
-        <span :if={year_str(@document) != ""} class="shrink-0 tabular-nums">
-          {year_str(@document)}
-        </span>
-
-        <span class="small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300">
-          {authors_str(@document) || ""}
-        </span>
-
-        <span class="shrink-0 tabular-nums">{page_count_str(@document)}</span>
-      </div>
-
-      <div
-        :if={chapter_metadata?(@document)}
-        class="flex min-w-0 items-baseline gap-2 truncate font-sans text-xs text-stone-500 dark:text-stone-400"
-      >
-        <span class="min-w-0 truncate italic">{chapter_venue(@document)}</span>
-        <span :if={publisher_str(@document)} class="shrink-0">{publisher_str(@document)}</span>
-        <span :if={pages_str(@document)} class="shrink-0">{pages_str(@document)}</span>
-      </div>
-    </div>
-    """
-  end
-
-  defp subline?(document) do
-    authors_str(document) != nil or year_str(document) != "" or page_count_str(document) != ""
-  end
-
-  defp authors_str(document) do
-    case document |> Map.get(:metadata, %{}) |> Map.get(:authors, []) do
-      [] -> nil
-      authors -> Enum.join(authors, ", ")
-    end
-  end
-
-  defp year_str(document) do
-    case document |> Map.get(:metadata, %{}) |> Map.get(:year) do
-      nil -> ""
-      year -> to_string(year)
-    end
-  end
-
-  defp page_count_str(document) do
-    case document |> Map.get(:metadata, %{}) |> Map.get(:page_count) do
-      nil -> ""
-      count -> "#{count} pp."
-    end
-  end
-
-  defp chapter_metadata?(document), do: chapter_venue(document) != nil
-
-  defp chapter_venue(%{metadata: %{kind: "Book chapter", venue: venue}})
-       when is_binary(venue) and venue != "",
-       do: venue
-
-  defp chapter_venue(_document), do: nil
-
-  defp publisher_str(document), do: document |> Map.get(:metadata, %{}) |> Map.get(:publisher)
-
-  defp pages_str(document) do
-    case document |> Map.get(:metadata, %{}) |> Map.get(:pages) do
-      nil -> nil
-      "" -> nil
-      pages -> "pp. #{pages}"
-    end
-  end
-
   defp grouped_documents(documents) do
     documents
     |> Enum.group_by(&document_group/1)
@@ -306,7 +199,7 @@ defmodule SheafWeb.DocumentIndexLive do
     end)
   end
 
-  defp document_group(%{kind: :paper, metadata: %{kind: kind}}) when is_binary(kind) do
+  defp document_group(%{metadata: %{kind: kind}}) when is_binary(kind) do
     {:expression, kind}
   end
 

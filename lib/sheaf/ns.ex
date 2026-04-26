@@ -31,10 +31,28 @@ defmodule Sheaf.NS do
     terms: ~w[
       Journal
       doi
+      isbn
       issn
+      numPages
       pageEnd
       pageStart
       volume
+    ]
+  )
+
+  defvocab(BIRO,
+    base_iri: "http://purl.org/spar/biro/",
+    terms: ~w[
+      BibliographicReference
+      ReferenceList
+      references
+    ]
+  )
+
+  defvocab(CITO,
+    base_iri: "http://purl.org/spar/cito/",
+    terms: ~w[
+      cites
     ]
   )
 
@@ -48,6 +66,13 @@ defmodule Sheaf.NS do
       isPartOf
       publisher
       title
+    ]
+  )
+
+  defvocab(DEO,
+    base_iri: "http://purl.org/spar/deo/",
+    terms: ~w[
+      BibliographicReference
     ]
   )
 
