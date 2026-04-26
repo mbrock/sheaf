@@ -15,7 +15,7 @@ defmodule SheafWeb.AppChrome do
     ~H"""
     <div
       id={@id}
-      class="col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-4 py-2 backdrop-blur dark:border-stone-800/80 dark:bg-stone-950/90"
+      class="relative z-50 col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-4 py-2 backdrop-blur dark:border-stone-800/80 dark:bg-stone-950/90"
     >
       <div class="flex min-h-8 w-full items-center gap-3 overflow-visible">
         <.link

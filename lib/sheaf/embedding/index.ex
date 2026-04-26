@@ -22,6 +22,7 @@ defmodule Sheaf.Embedding.Index do
           required(:text_chars) => non_neg_integer(),
           optional(:doc_iri) => String.t() | nil,
           optional(:doc_title) => String.t() | nil,
+          optional(:doc_authors) => [String.t()],
           optional(:source_page) => integer() | nil,
           optional(:source_block_type) => String.t() | nil,
           optional(:spreadsheet_row) => integer() | nil,
@@ -131,6 +132,21 @@ defmodule Sheaf.Embedding.Index do
           Store.close(conn)
         end
       end
+    end
+  end
+
+  @doc """
+  Searches only exact lexical matches from the SQLite sidecar and hydrates them
+  with RDF metadata.
+  """
+  @spec exact_search(String.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
+  def exact_search(query, opts \\ []) when is_binary(query) do
+    query = String.trim(query)
+
+    if query == "" do
+      {:ok, []}
+    else
+      exact_matches(query, opts)
     end
   end
 
@@ -617,28 +633,40 @@ defmodule Sheaf.Embedding.Index do
     select = Keyword.get(opts, :select, &Sheaf.select/1)
 
     with {:ok, result} <- select.(descriptions_sparql(iris)),
-         {:ok, titles} <- document_titles(opts) do
+         {:ok, documents} <- document_metadata(opts) do
       graph = graph_from_description_rows(result.results)
       docs_by_iri = docs_by_iri(result.results)
 
       {:ok,
        iris
        |> Enum.uniq()
-       |> Enum.map(&unit_from_graph(graph, &1, docs_by_iri, titles))
+       |> Enum.map(&unit_from_graph(graph, &1, docs_by_iri, documents))
        |> Enum.reject(&is_nil/1)
        |> Map.new(&{&1.iri, &1})}
     end
   end
 
   @doc false
-  def document_titles(opts \\ []) do
+  def document_metadata(opts \\ []) do
     select = Keyword.get(opts, :select, &Sheaf.select/1)
 
-    case select.(document_titles_sparql()) do
+    case select.(document_metadata_sparql()) do
       {:ok, result} ->
         {:ok,
-         Map.new(result.results, fn row ->
-           {row |> Map.fetch!("doc") |> term_value(), row |> Map.fetch!("title") |> term_value()}
+         result.results
+         |> Enum.group_by(&(Map.fetch!(&1, "doc") |> term_value()))
+         |> Map.new(fn {doc, rows} ->
+           {doc,
+            %{
+              title: rows |> Enum.find_value(&(Map.get(&1, "title") && term_value(&1["title"]))),
+              authors:
+                rows
+                |> Enum.map(&Map.get(&1, "authorName"))
+                |> Enum.reject(&is_nil/1)
+                |> Enum.map(&term_value/1)
+                |> Enum.uniq()
+                |> Enum.sort()
+            }}
          end)}
 
       {:error, reason} ->
@@ -744,127 +772,29 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp exact_matches(query, opts) do
-    select = Keyword.get(opts, :select, &Sheaf.select/1)
-    model = Keyword.get(opts, :model, Sheaf.Embedding.model())
-    dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
-    source = source(opts)
+    search_opts =
+      opts
+      |> Keyword.take([:db_path, :document_id, :kinds])
+      |> Keyword.put(:limit, Keyword.get(opts, :limit, 60))
 
-    case select.(exact_matches_sparql(query, opts)) do
-      {:ok, result} ->
-        results =
-          result.results
-          |> Enum.map(fn row ->
-            row
-            |> unit_from_row(model, dimensions, source)
-            |> Map.merge(%{
-              score: exact_result_score(row),
-              semantic_score: nil,
-              lexical_score: exact_result_score(row),
-              match: :exact,
-              run_iri: nil
-            })
-          end)
-          |> Enum.flat_map(&searchable_result(&1, opts))
-
-        {:ok, results}
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, hits} <- Sheaf.Search.Index.search(query, search_opts),
+         {:ok, metadata} <- descriptions_for_iris(Enum.map(hits, & &1.iri), opts) do
+      {:ok,
+       hits
+       |> Enum.flat_map(fn hit ->
+         metadata
+         |> Map.get(hit.iri, hit)
+         |> Map.merge(%{
+           score: hit.score,
+           semantic_score: nil,
+           lexical_score: hit.lexical_score,
+           match: :exact,
+           run_iri: nil
+         })
+         |> searchable_result(opts)
+       end)}
     end
   end
-
-  defp exact_matches_sparql(query, opts) do
-    kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
-    limit = Keyword.get(opts, :limit, 60)
-    escaped = escape_sparql_string(query)
-    terms = search_terms(query)
-    match_filter = search_match_filter(escaped, terms)
-    score_bind = search_score_bind(escaped, terms)
-    scope_filter = document_scope_filter(Keyword.get(opts, :document_id))
-
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-    PREFIX prov: <http://www.w3.org/ns/prov#>
-
-    SELECT ?iri ?kind ?text ?doc ?docTitle ?sourcePage ?sourceBlockType ?spreadsheetRow ?spreadsheetSource ?codeCategoryTitle ?score WHERE {
-      GRAPH ?doc {
-        OPTIONAL { ?doc <http://www.w3.org/2000/01/rdf-schema#label> ?docTitle }
-        #{text_unit_unions(kinds)}
-        #{scope_filter}
-        BIND(LCASE(STR(?text)) AS ?haystack)
-        #{match_filter}
-        #{score_bind}
-      }
-    }
-    ORDER BY DESC(?score)
-    LIMIT #{limit}
-    """
-  end
-
-  defp search_terms(query) do
-    ~r/[\p{L}\p{N}]+/u
-    |> Regex.scan(String.downcase(query))
-    |> Enum.map(fn [term] -> term end)
-    |> Enum.uniq()
-  end
-
-  defp search_match_filter(escaped_query, []),
-    do: ~s/FILTER(CONTAINS(?haystack, LCASE("#{escaped_query}")))/
-
-  defp search_match_filter(escaped_query, terms) do
-    keyword_match =
-      terms
-      |> Enum.map(&~s/CONTAINS(?haystack, "#{escape_sparql_string(&1)}")/)
-      |> Enum.join(" || ")
-
-    ~s/FILTER(CONTAINS(?haystack, LCASE("#{escaped_query}")) || #{keyword_match})/
-  end
-
-  defp search_score_bind(escaped_query, []),
-    do: ~s/BIND(IF(CONTAINS(?haystack, LCASE("#{escaped_query}")), 100, 0) AS ?score)/
-
-  defp search_score_bind(escaped_query, terms) do
-    keyword_score =
-      terms
-      |> Enum.map(&~s/IF(CONTAINS(?haystack, "#{escape_sparql_string(&1)}"), 1, 0)/)
-      |> Enum.join(" + ")
-
-    """
-    BIND(IF(CONTAINS(?haystack, LCASE("#{escaped_query}")), 100, 0) AS ?exactScore)
-    BIND((?exactScore + #{keyword_score}) AS ?score)
-    """
-    |> String.trim()
-  end
-
-  defp escape_sparql_string(value) do
-    value
-    |> String.replace("\\", "\\\\")
-    |> String.replace("\"", "\\\"")
-    |> String.replace("\n", " ")
-  end
-
-  defp exact_result_score(row) do
-    case row |> Map.get("score") |> term_value() do
-      nil -> 0.75
-      score -> min(0.98, 0.72 + parse_score(score) / 120.0)
-    end
-  end
-
-  defp parse_score(score) when is_integer(score), do: score * 1.0
-  defp parse_score(score) when is_float(score), do: score
-
-  defp parse_score(score) when is_binary(score) do
-    case Float.parse(score) do
-      {value, _rest} -> value
-      :error -> 0.0
-    end
-  end
-
-  defp parse_score(_score), do: 0.0
-
-  defp document_scope_filter(nil), do: ""
-  defp document_scope_filter(""), do: ""
-  defp document_scope_filter(document_id), do: "FILTER(?doc = <#{Sheaf.Id.iri(document_id)}>)"
 
   defp searchable_result(result, opts) do
     if kind_allowed?(result, opts) and document_allowed?(result, opts) and
@@ -977,16 +907,26 @@ defmodule Sheaf.Embedding.Index do
     """
   end
 
-  defp document_titles_sparql do
+  defp document_metadata_sparql do
     """
+    PREFIX dcterms: <http://purl.org/dc/terms/>
+    PREFIX fabio: <http://purl.org/spar/fabio/>
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
     PREFIX sheaf: <https://less.rest/sheaf/>
 
-    SELECT ?doc ?title WHERE {
+    SELECT ?doc ?title ?authorName WHERE {
       GRAPH ?doc {
         ?doc a ?kind ;
           rdfs:label ?title .
         FILTER(?kind IN (sheaf:Document, sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
+      }
+      OPTIONAL {
+        GRAPH <https://less.rest/sheaf/metadata> {
+          ?doc fabio:isRepresentationOf ?expression .
+          ?expression dcterms:creator ?author .
+          OPTIONAL { ?author foaf:name ?authorName }
+        }
       }
     }
     """
@@ -1008,24 +948,24 @@ defmodule Sheaf.Embedding.Index do
     end)
   end
 
-  defp unit_from_graph(%Graph{} = graph, iri, docs_by_iri, titles) do
+  defp unit_from_graph(%Graph{} = graph, iri, docs_by_iri, documents) do
     subject = RDF.iri(iri)
     description = RDF.Data.description(graph, subject)
     doc_iri = Map.get(docs_by_iri, iri)
 
     cond do
       text = first_value(description, Sheaf.NS.DOC.sourceHtml()) ->
-        unit_from_description(description, "sourceHtml", text, doc_iri, titles)
+        unit_from_description(description, "sourceHtml", text, doc_iri, documents)
 
       text = first_value(description, Sheaf.NS.DOC.text()) ->
-        unit_from_description(description, "row", text, doc_iri, titles)
+        unit_from_description(description, "row", text, doc_iri, documents)
 
       paragraph = Description.first(description, Sheaf.NS.DOC.paragraph()) ->
         paragraph_description = RDF.Data.description(graph, paragraph)
 
         case first_value(paragraph_description, Sheaf.NS.DOC.text()) do
           nil -> nil
-          text -> unit_from_description(description, "paragraph", text, doc_iri, titles)
+          text -> unit_from_description(description, "paragraph", text, doc_iri, documents)
         end
 
       true ->
@@ -1033,9 +973,10 @@ defmodule Sheaf.Embedding.Index do
     end
   end
 
-  defp unit_from_description(%Description{} = description, kind, text, doc_iri, titles) do
+  defp unit_from_description(%Description{} = description, kind, text, doc_iri, documents) do
     model = Sheaf.Embedding.model()
-    doc_title = Map.get(titles, doc_iri)
+    doc = Map.get(documents, doc_iri, %{})
+    doc_title = Map.get(doc, :title)
 
     %{
       iri: description.subject |> RDF.Term.value() |> to_string(),
@@ -1046,6 +987,7 @@ defmodule Sheaf.Embedding.Index do
       text_chars: String.length(text),
       doc_iri: doc_iri,
       doc_title: doc_title,
+      doc_authors: Map.get(doc, :authors, []),
       source_page: description |> Description.first(Sheaf.NS.DOC.sourcePage()) |> integer_value(),
       source_block_type: first_value(description, Sheaf.NS.DOC.sourceBlockType()),
       spreadsheet_row:
