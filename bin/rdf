@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
+
+exec cargo run --quiet --release --manifest-path "$APP_ROOT/tools/rdfknife/Cargo.toml" -- "$@"

@@ -6,8 +6,9 @@ it has real runtime state, so orient yourself before changing behavior.
 ## Start Here
 
 Run `bin/status` early. It prints the facts an agent usually needs: service
-mode, node name, URLs, health, RDF base IRIs, SPARQL/Fuseki endpoints, dataset
-diagnostics, triple count, and current process status.
+mode, node name, URLs, health, RDF base IRIs, related deployed instances,
+SPARQL/Fuseki endpoints, dataset diagnostics, triple count, and current process
+status.
 
 ```console
 $ bin/status
@@ -17,7 +18,27 @@ Sheaf environment
   Node:              sheaf@temple
   Public URL:        https://sheaf.localhost/
   Phoenix HTTP:      http://127.0.0.1:4042/
+  Resource base:     https://sheaf.less.rest/
+  Ontology base:     https://less.rest/sheaf/
   Health check:      200 http://127.0.0.1:4042/health
+
+Related instances
+production
+  Public URL:        https://sheaf.less.rest/
+  SSH host:          igloo
+  App root:          /home/mbrock/sheaf
+  Env file:          /home/mbrock/sheaf/.env
+  Service:           systemd sheaf.service
+  SPARQL dataset:    http://localhost:3030/sheaf
+  Fuseki container:  fuseki
+staging
+  Public URL:        https://devsheaf.less.rest/
+  SSH host:          igloo
+  App root:          /home/mbrock/sheaf.dev
+  Env file:          /home/mbrock/sheaf.dev/.env
+  Service:           systemd sheaf-dev.service
+  SPARQL dataset:    http://localhost:3031/sheaf
+  Fuseki container:  sheaf-fuseki-dev
 
 SPARQL / Fuseki
   Dataset:           http://localhost:3030/sheaf
@@ -29,6 +50,31 @@ SPARQL / Fuseki
 Service process
 Sheaf is running in tmux session: sheaf-dev
 ```
+
+## Deployed Instances
+
+The real production instance is on the Tailscale host `igloo`. SSH access works
+with `ssh igloo` and does not require an interactive passphrase. The production
+checkout is `/home/mbrock/sheaf`; the staging checkout is the adjacent
+`/home/mbrock/sheaf.dev`.
+
+Local `.env` records non-secret orientation pointers for these instances under
+`SHEAF_PRODUCTION_*` and `SHEAF_STAGING_*`. Use those pointers to find the right
+host, checkout, service unit, public URL, and remote `.env`; do not copy remote
+secrets into tracked files.
+
+When comparing or backing up real data, run backup commands on the host that
+owns the target Fuseki container. `bin/triplestore backup` accepts named
+instances and uses SSH plus SCP for remote backups:
+
+```console
+$ bin/triplestore backup --instance local output/backups/local/
+$ bin/triplestore backup --instance staging output/backups/staging/
+$ bin/triplestore backup --instance production output/backups/production/
+```
+
+Fuseki backup files are N-Quads gzip files, so a first-pass dataset diff can
+sort both exports with `LC_ALL=C sort` and compare the sorted files.
 
 ## Local Commands
 
@@ -85,6 +131,16 @@ Stopped triple store container: sheaf-fuseki
 Started triple store container: sheaf-fuseki
 Waiting for Fuseki: http://127.0.0.1:3030/$/server
 Fuseki is ready: http://127.0.0.1:3030/$/server
+```
+
+`bin/rdf` runs the local Rust RDF utility in `tools/rdfknife`. It is useful for
+backup-level dataset inspection and semantic-ish diffs that handle ordinary
+blank-node trees better than raw N-Quads line diffs.
+
+```console
+$ bin/rdf analyze-bnodes output/backups/local/sheaf.nq.gz
+$ bin/rdf diff output/backups/production/sheaf.nq.gz output/backups/local/sheaf.nq.gz --output output/backups/diff/diff.trig
+$ bin/rdf diff output/backups/production/sheaf.nq.gz output/backups/local/sheaf.nq.gz --output output/backups/diff/diff.trig --pretty output/backups/diff/diff.txt
 ```
 
 `bin/rpc` evaluates Elixir on the running Sheaf node. Use this to inspect live
@@ -221,6 +277,14 @@ of guessing from UI state. Useful starting points are the workspace graph
 `https://less.rest/sheaf/workspace`, the metadata graph
 `https://less.rest/sheaf/metadata`, `cito:cites` for bibliography membership, and
 `biro:references` for paragraph/block-level evidence.
+
+## Known RDF Cleanup Notes
+
+Some document graphs contain shared RDF list blank nodes around `sheaf:children`
+and `rdf:rest`. These are artifacts from earlier manual list-pointer edits where
+the head was moved to skip previous list items. They can be cleaned up by
+deleting the now-unreachable old list tails rather than preserving them as
+meaningful data.
 
 ## Development Rules
 

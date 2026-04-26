@@ -30,7 +30,7 @@ ADMIN_PASSWORD="${SHEAF_SPARQL_PASSWORD:-admin}"
 ADMIN_USER="${SHEAF_SPARQL_USERNAME:-admin}"
 
 usage() {
-  printf 'Usage: %s {status|start|stop|restart|logs|datasets|server|backups|backup [OUTPUT]}\n' "$(basename "$0")" >&2
+  printf 'Usage: %s {status|start|stop|restart|logs|datasets|server|backups|backup [--instance local|staging|production] [OUTPUT]}\n' "$(basename "$0")" >&2
 }
 
 container_exists() {
@@ -201,6 +201,236 @@ backup_store() {
   fi
 }
 
+env_value() {
+  local name="$1"
+  printf '%s' "${!name:-}"
+}
+
+instance_prefix() {
+  case "$1" in
+    production|prod|live) printf 'SHEAF_PRODUCTION' ;;
+    staging|stage|dev) printf 'SHEAF_STAGING' ;;
+    local|this|"") printf 'LOCAL' ;;
+    *)
+      printf 'Unknown backup instance: %s\n' "$1" >&2
+      printf 'Supported instances: local, staging, production\n' >&2
+      return 2
+      ;;
+  esac
+}
+
+normalize_backup_output() {
+  local output="$1"
+  local file="$2"
+  local default_dir="$3"
+
+  if [ -z "$output" ]; then
+    printf '%s/%s\n' "$default_dir" "$file"
+  elif [ -d "$output" ] || [[ "$output" == */ ]]; then
+    printf '%s/%s\n' "${output%/}" "$file"
+  elif [[ "$output" == *.gz || "$output" == *.nq || "$output" == *.trig || "$output" == *.ttl ]]; then
+    printf '%s\n' "$output"
+  else
+    printf '%s/%s\n' "$output" "$file"
+  fi
+}
+
+remote_backup_store() {
+  local instance="$1"
+  local output="${2:-}"
+  local prefix ssh_host app_root remote_transfer remote_container remote_output remote_path file local_path
+
+  prefix="$(instance_prefix "$instance")"
+  [ "$prefix" != "LOCAL" ] || {
+    backup_store "$output"
+    return
+  }
+
+  ssh_host="$(env_value "${prefix}_SSH_HOST")"
+  app_root="$(env_value "${prefix}_APP_ROOT")"
+  remote_transfer="$(env_value "${prefix}_BACKUP_TRANSFER_DIR")"
+  remote_container="$(env_value "${prefix}_TRIPLESTORE_CONTAINER")"
+
+  if [ -z "$ssh_host" ] || [ -z "$app_root" ]; then
+    printf 'Missing %s_SSH_HOST or %s_APP_ROOT in .env\n' "$prefix" "$prefix" >&2
+    return 2
+  fi
+
+  if [ -z "$remote_transfer" ]; then
+    remote_transfer="$app_root/output/backups/remote-transfer"
+  fi
+
+  printf 'Starting %s Fuseki backup on %s:%s\n' "$instance" "$ssh_host" "$app_root"
+
+  remote_output="$(
+    ssh "$ssh_host" bash -s -- "$app_root" "$remote_transfer" "$remote_container" <<'REMOTE_BACKUP_SCRIPT'
+set -euo pipefail
+
+app_root="$1"
+output_dir="$2"
+container_override="${3:-}"
+
+cd "$app_root"
+
+if [ -f "$app_root/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$app_root/.env"
+  set +a
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  printf 'jq is required for Fuseki backup task polling.\n' >&2
+  exit 1
+fi
+
+dataset_url="${SHEAF_SPARQL_DATASET:-http://localhost:3030/sheaf}"
+dataset_path="${dataset_url#*://}"
+dataset_path="${dataset_path#*/}"
+derived_dataset="${dataset_path%%/*}"
+
+host="${SHEAF_TRIPLESTORE_HOST:-127.0.0.1}"
+port="${SHEAF_TRIPLESTORE_PORT:-3030}"
+dataset="${SHEAF_TRIPLESTORE_DATASET:-${derived_dataset:-sheaf}}"
+container="${container_override:-${SHEAF_TRIPLESTORE_CONTAINER:-sheaf-fuseki}}"
+admin_user="${SHEAF_SPARQL_USERNAME:-admin}"
+admin_password="${SHEAF_SPARQL_PASSWORD:-admin}"
+timeout="${SHEAF_TRIPLESTORE_BACKUP_TIMEOUT:-300}"
+server="http://${host}:${port}"
+
+backups_info() {
+  curl -fsS -u "${admin_user}:${admin_password}" "${server}/$/backups-list"
+}
+
+before_json="$(backups_info)"
+before_files="$(printf '%s' "$before_json" | jq -c '.backups // []')"
+
+task_json="$(
+  curl -fsS -u "${admin_user}:${admin_password}" \
+    -X POST "${server}/$/backup/${dataset}"
+)"
+task_id="$(printf '%s' "$task_json" | jq -r '.taskId // empty')"
+
+if [ -z "$task_id" ]; then
+  printf 'Fuseki did not return a backup task id: %s\n' "$task_json" >&2
+  exit 1
+fi
+
+printf 'Started Fuseki backup task: %s\n' "$task_id"
+start="$(date +%s)"
+
+while true; do
+  task_json_poll="$(
+    curl -fsS -u "${admin_user}:${admin_password}" \
+      "${server}/$/tasks/${task_id}"
+  )"
+
+  if printf '%s' "$task_json_poll" |
+    jq -e 'if type == "array" then .[0] else . end | .finished? // .finishPoint? // empty' >/dev/null; then
+    break
+  fi
+
+  if [ "$(($(date +%s) - start))" -ge "$timeout" ]; then
+    printf 'Timed out waiting for Fuseki backup task %s after %ss.\n' "$task_id" "$timeout" >&2
+    exit 1
+  fi
+
+  sleep 1
+done
+
+after_json="$(backups_info)"
+new_file="$(
+  printf '%s' "$after_json" |
+    jq -r --argjson before "$before_files" \
+      '.backups // [] | map(select(. as $file | ($before | index($file) | not))) | sort | last // empty'
+)"
+
+if [ -z "$new_file" ]; then
+  printf 'Backup task finished, but no new backup file appeared in Fuseki.\n' >&2
+  exit 1
+fi
+
+mkdir -p "$output_dir"
+remote_path="${output_dir%/}/$new_file"
+docker cp "$container:/fuseki/backups/$new_file" "$remote_path"
+
+printf 'Fuseki backup created: backups/%s\n' "$new_file"
+printf 'Copied remote backup to: %s\n' "$remote_path"
+printf 'REMOTE_BACKUP_PATH=%s\n' "$remote_path"
+REMOTE_BACKUP_SCRIPT
+  )"
+
+  printf '%s\n' "$remote_output"
+  remote_path="$(printf '%s\n' "$remote_output" | awk -F= '/^REMOTE_BACKUP_PATH=/ {print $2}' | tail -1)"
+
+  if [ -z "$remote_path" ]; then
+    printf 'Remote backup finished but did not report a transfer path.\n' >&2
+    return 1
+  fi
+
+  file="$(basename "$remote_path")"
+  local_path="$(normalize_backup_output "$output" "$file" "output/backups/$instance")"
+  mkdir -p "$(dirname "$local_path")"
+  scp "$ssh_host:$remote_path" "$local_path" >/dev/null
+  printf 'Copied backup from %s to: %s\n' "$instance" "$local_path"
+}
+
+backup_command() {
+  local instance="local"
+  local output=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --instance|-i)
+        if [ "$#" -lt 2 ]; then
+          printf '%s requires a value.\n' "$1" >&2
+          return 2
+        fi
+        instance="$2"
+        shift 2
+        ;;
+      --instance=*)
+        instance="${1#*=}"
+        shift
+        ;;
+      --local)
+        instance="local"
+        shift
+        ;;
+      --staging|--stage|--dev)
+        instance="staging"
+        shift
+        ;;
+      --production|--prod|--live)
+        instance="production"
+        shift
+        ;;
+      local|staging|stage|dev|production|prod|live)
+        instance="$1"
+        shift
+        ;;
+      -h|--help)
+        usage
+        return 0
+        ;;
+      *)
+        if [ -n "$output" ]; then
+          printf 'Unexpected backup argument: %s\n' "$1" >&2
+          return 2
+        fi
+        output="$1"
+        shift
+        ;;
+    esac
+  done
+
+  if [ "$(instance_prefix "$instance")" = "LOCAL" ]; then
+    backup_store "$output"
+  else
+    remote_backup_store "$instance" "$output"
+  fi
+}
+
 case "$COMMAND" in
   start)
     start_store
@@ -228,7 +458,7 @@ case "$COMMAND" in
     backups_info
     ;;
   backup)
-    backup_store "$@"
+    backup_command "$@"
     ;;
   *)
     usage

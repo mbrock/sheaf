@@ -1,0 +1,14 @@
+[package]
+name = "rdfknife"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1.0.100"
+clap = { version = "4.5.53", features = ["derive"] }
+flate2 = "1.1.5"
+hex = "0.4.3"
+oxrdf = { version = "0.3.3", features = ["rdf-12", "rdfc-10"] }
+oxrdfio = { version = "0.2.5", features = ["rdf-12"] }
+sha2 = "0.10.9"
