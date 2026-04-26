@@ -80,7 +80,7 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <div
       id="document-reader"
-      class="grid h-dvh grid-rows-[auto_minmax(0,16rem)_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 lg:grid-cols-[24rem_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_30rem] dark:bg-stone-950 dark:text-stone-50"
+      class="grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_30rem] xl:grid-rows-[auto_minmax(0,1fr)] dark:bg-stone-950 dark:text-stone-50"
       phx-hook="DocumentBreadcrumb"
     >
       <AppChrome.toolbar
@@ -89,17 +89,17 @@ defmodule SheafWeb.DocumentLive do
         copy_markdown?={true}
       />
 
-      <aside class="min-h-0 overflow-y-auto p-4 lg:col-start-1 lg:row-start-2">
-        <h1 class="font-bold text-lg">{document_title(@graph, @root)}</h1>
-        <.block_outline entries={@toc} emit_active_data class="mt-4 text-sm" />
+      <aside class="hidden min-h-0 overflow-y-auto p-4 lg:col-start-2 lg:row-start-2 lg:block xl:col-start-1 xl:row-start-2">
+        <h1 class="hidden font-bold text-lg xl:block">{document_title(@graph, @root)}</h1>
+        <.block_outline entries={@toc} emit_active_data class="text-sm xl:mt-4" />
       </aside>
 
       <article
         id="document-start"
-        class="min-h-0 min-w-0 overflow-y-auto px-12 pb-4 sm:px-8 lg:col-start-2 lg:row-start-2 [&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
+        class="min-h-0 min-w-0 overflow-y-auto px-4 pb-4 lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
-        <div class="mx-auto w-full max-w-prose pt-4">
+        <div class="mx-auto w-full max-w-prose pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:shadow-sm lg:dark:border-stone-800 lg:dark:bg-stone-900">
           <.reader_blocks
             graph={@graph}
             blocks={@blocks}
@@ -114,6 +114,7 @@ defmodule SheafWeb.DocumentLive do
         graph={@graph}
         root={@root}
         selected_id={@selected_block_id}
+        class="hidden lg:col-start-2 lg:row-start-3 lg:block lg:border-t xl:col-start-3 xl:row-start-2 xl:border-t-0 xl:border-l"
       >
         <AssistantHistoryComponents.note_history
           notes={@notes}

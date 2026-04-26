@@ -71,12 +71,12 @@ defmodule SheafWeb.AppChrome do
   attr :graph, :any, default: nil
   attr :root, :any, default: nil
   attr :selected_id, :string, default: nil
-  attr :class, :string, default: "xl:col-start-3 xl:row-start-2"
+  attr :class, :string, required: true
 
   def right_sidebar(assigns) do
     ~H"""
     <aside class={[
-      "hidden min-h-0 overflow-y-auto border-stone-200/80 px-5 py-4 xl:block xl:border-l dark:border-stone-800/80",
+      "min-h-0 overflow-y-auto border-stone-200/80 px-5 py-4 dark:border-stone-800/80",
       @class
     ]}>
       <.live_component

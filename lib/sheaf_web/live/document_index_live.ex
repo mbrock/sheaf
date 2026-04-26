@@ -89,7 +89,10 @@ defmodule SheafWeb.DocumentIndexLive do
         </div>
       </div>
 
-      <AppChrome.right_sidebar assistant_id="index-assistant" class="xl:col-start-2 xl:row-start-2">
+      <AppChrome.right_sidebar
+        assistant_id="index-assistant"
+        class="hidden xl:col-start-2 xl:row-start-2 xl:block xl:border-l"
+      >
         <AssistantHistoryComponents.note_history
           notes={@notes}
           notes_graph={@notes_graph}

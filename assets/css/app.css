@@ -18,8 +18,10 @@
   /* Widen the reading column from Tailwind's default 65ch. Equity at the
      reader's body size handles longer measures comfortably, and the reader's
      three-column layout leaves enough side space that we'd be wasting it
-     otherwise. Affects every `max-w-prose` usage in the app. */
-  --container-prose: 80ch;
+     otherwise. The 88ch total includes the paper's px-12 (6rem ≈ 8ch)
+     horizontal padding so the actual prose measure inside the paper stays
+     around 80ch. Affects every `max-w-prose` usage in the app. */
+  --container-prose: 88ch;
 }
 
 /* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
