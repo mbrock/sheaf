@@ -1,11 +1,20 @@
-// otel-tail prints OpenTelemetry spans from a local Redis Stream
-// (`otel:spans` by default) to stdout as they arrive.
+// otel-tail prints OpenTelemetry spans from a Redis Stream to stdout as they
+// arrive.
 //
 // The stream is populated by Sheaf's custom span processor
 // (Sheaf.Tracing.RedisSinkProcessor); this tool is the consumer side.
+//
+// To pick the right stream when no flag is passed, otel-tail looks at
+// SHEAF_OTEL_STREAM, then derives `otel:spans:<SHEAF_NODE_BASENAME>` (or
+// `otel:spans:sheaf` if neither is set). Because Sheaf is typically run as a
+// systemd service whose env doesn't leak into interactive shells, otel-tail
+// also auto-loads the `.env` file at the root of the checkout it lives in
+// before reading those vars, so running `bin/otel-tail` in a fresh shell
+// inside a sheaf checkout still hits that instance's stream.
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -13,6 +22,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -63,8 +73,10 @@ var inlineAttrs = []string{
 }
 
 func main() {
-	redisURL := flag.String("redis-url", "redis://localhost:6379", "Redis URL")
-	stream := flag.String("stream", "otel:spans", "Redis stream key")
+	loadDotEnvFromCheckout()
+
+	redisURL := flag.String("redis-url", envDefault("SHEAF_OTEL_REDIS_URL", "redis://localhost:6379"), "Redis URL")
+	stream := flag.String("stream", defaultStream(), "Redis stream key")
 	backfill := flag.Int("backfill", 0, "Print the last N spans before tailing live")
 	jsonOut := flag.Bool("json", false, "Output raw JSON, one object per line")
 	noColor := flag.Bool("no-color", false, "Disable ANSI colors")
@@ -143,6 +155,86 @@ func main() {
 				handleEntry(msg, *jsonOut, *verbose)
 				startID = msg.ID
 			}
+		}
+	}
+}
+
+// defaultStream picks the stream name when no -stream flag is passed. The
+// chain mirrors `config/runtime.exs`'s default so producer and consumer stay
+// in sync.
+func defaultStream() string {
+	if explicit := os.Getenv("SHEAF_OTEL_STREAM"); explicit != "" {
+		return explicit
+	}
+
+	basename := os.Getenv("SHEAF_NODE_BASENAME")
+	if basename == "" {
+		basename = "sheaf"
+	}
+	return "otel:spans:" + basename
+}
+
+func envDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// loadDotEnvFromCheckout walks up from the otel-tail executable looking for a
+// `.env` file at the root of a sheaf checkout, and merges its KEY=VALUE pairs
+// into the process env without overriding values that are already set. This
+// lets `bin/otel-tail` pick up SHEAF_OTEL_* and SHEAF_NODE_BASENAME from the
+// checkout's `.env` even when running from an interactive shell where the
+// systemd service env is not visible.
+func loadDotEnvFromCheckout() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+
+	dir := filepath.Dir(exe)
+	for i := 0; i < 6; i++ {
+		candidate := filepath.Join(dir, ".env")
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			mergeDotEnv(candidate)
+			return
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return
+		}
+		dir = parent
+	}
+}
+
+func mergeDotEnv(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		eq := strings.IndexByte(line, '=')
+		if eq <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		value := strings.TrimSpace(line[eq+1:])
+		if len(value) >= 2 {
+			first, last := value[0], value[len(value)-1]
+			if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+				value = value[1 : len(value)-1]
+			}
+		}
+		if _, present := os.LookupEnv(key); !present {
+			os.Setenv(key, value)
 		}
 	}
 }

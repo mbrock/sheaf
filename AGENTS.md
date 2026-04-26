@@ -219,10 +219,22 @@ primary way to inspect spans during development, in place of any web UI.
 Tracing is opt-in. To enable it, set `SHEAF_OTEL_REDIS_URL` in `.env` to your
 Redis URL (e.g. `redis://localhost:6379`). When that variable is unset, the
 instrumentation handlers don't attach, no `RedisSink` GenServer starts, and
-no spans are produced. The stream name defaults to `otel:spans` and is
-configurable via `SHEAF_OTEL_STREAM`. Setting `OTEL_SDK_DISABLED=true` (or
+no spans are produced. Setting `OTEL_SDK_DISABLED=true` (or
 `SHEAF_OTEL_DISABLED=true`) is a manual override that turns tracing off even
 when a Redis URL is configured.
+
+The stream name defaults to `otel:spans:<SHEAF_NODE_BASENAME>` so two Sheaf
+instances on the same Redis server (e.g. production and staging both on
+`igloo`) write to separate streams and don't evict each other's spans through
+`MAXLEN`. With the default `SHEAF_NODE_BASENAME=sheaf` production lands on
+`otel:spans:sheaf`; staging's `SHEAF_NODE_BASENAME=sheaf_dev` lands on
+`otel:spans:sheaf_dev`. Override the full stream name with `SHEAF_OTEL_STREAM`
+when you want explicit control.
+
+`bin/otel-tail` is a Go binary that auto-loads `.env` from its enclosing
+checkout before reading these vars, so running it in an interactive shell on
+a host that runs Sheaf as a systemd service still picks up the right stream
+without needing to source `.env` first.
 
 ```console
 $ bin/otel-tail

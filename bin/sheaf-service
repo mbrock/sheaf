@@ -218,7 +218,8 @@ print_sparql_diagnostics() {
 
 print_tracing_diagnostics() {
   local redis_url="${SHEAF_OTEL_REDIS_URL:-}"
-  local stream="${SHEAF_OTEL_STREAM:-otel:spans}"
+  local node_basename="${SHEAF_NODE_BASENAME:-sheaf}"
+  local stream="${SHEAF_OTEL_STREAM:-otel:spans:${node_basename}}"
   local service_name="${OTEL_SERVICE_NAME:-${SHEAF_OTEL_SERVICE_NAME:-sheaf}}"
   local force_disabled="${OTEL_SDK_DISABLED:-${SHEAF_OTEL_DISABLED:-false}}"
 

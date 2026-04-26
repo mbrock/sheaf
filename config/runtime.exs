@@ -206,9 +206,17 @@ if otel_enabled? do
   config :opentelemetry, resource: otel_resource_attributes
   config :opentelemetry, :processors, [{Sheaf.Tracing.RedisSinkProcessor, %{}}]
 
+  # Per-instance stream so a shared Redis on a single host (e.g. staging and
+  # production both writing to localhost:6379) doesn't have one instance evict
+  # the other's spans via MAXLEN. The default tracks SHEAF_NODE_BASENAME, which
+  # already drives the systemd unit and BEAM sname; SHEAF_OTEL_STREAM is the
+  # explicit override.
+  otel_node_basename = System.get_env("SHEAF_NODE_BASENAME", "sheaf")
+  otel_default_stream = "otel:spans:#{otel_node_basename}"
+
   config :sheaf, Sheaf.Tracing.RedisSink,
     redis_url: otel_redis_url,
-    stream: System.get_env("SHEAF_OTEL_STREAM", "otel:spans")
+    stream: System.get_env("SHEAF_OTEL_STREAM", otel_default_stream)
 end
 
 if config_env() == :prod do
