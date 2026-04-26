@@ -10,6 +10,7 @@ defmodule SheafWeb.DocumentLive do
   alias Sheaf.Documents
   alias Sheaf.Id
   alias SheafWeb.AppChrome
+  alias SheafWeb.AssistantHistoryComponents
   import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
 
   @impl true
@@ -104,7 +105,14 @@ defmodule SheafWeb.DocumentLive do
         graph={@graph}
         root={@root}
         selected_id={@selected_block_id}
-      />
+      >
+        <AssistantHistoryComponents.note_history
+          notes={@notes}
+          notes_graph={@notes_graph}
+          notes_error={@notes_error}
+          research_session_titles={@research_session_titles}
+        />
+      </AppChrome.right_sidebar>
     </div>
     """
   end
@@ -403,6 +411,8 @@ defmodule SheafWeb.DocumentLive do
 
     with {:ok, graph} <- Sheaf.fetch_graph(root),
          {:ok, references_by_block} <- Documents.references_for_document(root) do
+      {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes()
+
       socket =
         socket
         |> assign(:page_title, page_title(graph, root))
@@ -411,6 +421,10 @@ defmodule SheafWeb.DocumentLive do
         |> assign(:root, root)
         |> assign(:references_by_block, references_by_block)
         |> assign(:selected_block_id, selected_block_id)
+        |> assign(:notes, notes)
+        |> assign(:notes_graph, notes_graph)
+        |> assign(:notes_error, notes_error)
+        |> assign(:research_session_titles, AssistantHistoryComponents.research_session_titles())
 
       {:ok, socket}
     end
