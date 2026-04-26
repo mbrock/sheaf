@@ -1,3 +1,5 @@
+import {normalizeReaderText} from "./copy_normalize"
+
 // Band of the article viewport used to decide which section is "current". The
 // IntersectionObserver root is the article, so percentage rootMargin scales
 // with the article's size automatically — no resize handling needed.
@@ -284,11 +286,7 @@ function keepTocLinkVisible(hook, link) {
 }
 
 function text(element) {
-  return (element?.textContent ?? "")
-    .replaceAll("\u00AD", "")
-    .replaceAll("\u2011", "-")
-    .replaceAll("\u00A0", " ")
-    .trim()
+  return normalizeReaderText(element?.textContent ?? "").trim()
 }
 
 function flashCopied(button) {

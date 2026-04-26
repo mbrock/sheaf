@@ -6,17 +6,23 @@
 //   * non-breaking hyphens (U+2011) — written by KnuthPlass to keep hyphens
 //     attached to their word;
 //   * soft hyphens (U+00AD) — written by KnuthPlass at hyphenation points,
-//     visible only at line breaks but always in the text.
+//     visible only at line breaks but always in the text;
+//   * zero-width spaces (U+200B) and friends — inherited from PDF importers
+//     that sprinkle line-break hints inside long tokens like URLs.
 //
 // Browsers copy DOM text verbatim, so without this listener the clipboard
 // gets the typographic characters, which paste oddly into editors, search
 // boxes, and command lines. The dedicated "Copy as Markdown" button uses its
 // own normalization in document_breadcrumb.js; this module covers ordinary
 // keyboard/menu copy.
+//
+// We intentionally do NOT touch ZWJ (U+200D), ZWNJ (U+200C), or bidi marks:
+// those are content-bearing in some scripts and emoji sequences.
 const READER_SELECTOR = "#document-start"
 const SOFT_HYPHEN = "\u00AD"
 const NON_BREAKING_HYPHEN = "\u2011"
 const NBSP = "\u00A0"
+const ZERO_WIDTH = /[\u200B\u2060\uFEFF]/g
 
 export function installCopyNormalizer(target = document) {
   target.addEventListener("copy", handleCopy)
@@ -28,7 +34,7 @@ function handleCopy(event) {
   if (!selectionInsideReader(selection)) return
 
   const original = selection.toString()
-  const cleaned = normalize(original)
+  const cleaned = normalizeReaderText(original)
   if (cleaned === original) return
 
   event.clipboardData?.setData("text/plain", cleaned)
@@ -42,9 +48,10 @@ function selectionInsideReader(selection) {
   return !!element?.closest(READER_SELECTOR)
 }
 
-function normalize(text) {
+export function normalizeReaderText(text) {
   return text
     .replaceAll(SOFT_HYPHEN, "")
     .replaceAll(NON_BREAKING_HYPHEN, "-")
     .replaceAll(NBSP, " ")
+    .replace(ZERO_WIDTH, "")
 }
