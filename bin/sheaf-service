@@ -216,6 +216,27 @@ print_sparql_diagnostics() {
   fi
 }
 
+print_tracing_diagnostics() {
+  local stream="${SHEAF_OTEL_STREAM:-otel:spans}"
+  local service_name="${OTEL_SERVICE_NAME:-${SHEAF_OTEL_SERVICE_NAME:-sheaf}}"
+  local disabled="${OTEL_SDK_DISABLED:-${SHEAF_OTEL_DISABLED:-false}}"
+
+  print_kv "Service name" "$service_name"
+  print_kv "SDK disabled" "$disabled"
+  print_kv "Redis stream" "$stream"
+
+  if command -v redis-cli >/dev/null 2>&1; then
+    local len
+    if len=$(redis-cli XLEN "$stream" 2>/dev/null); then
+      print_kv "Stream length" "$len"
+    else
+      print_kv "Stream length" "unavailable (redis-cli failed)"
+    fi
+  else
+    print_kv "Stream length" "unavailable (redis-cli not installed)"
+  fi
+}
+
 print_status_context() {
   local host="${PHX_HOST:-localhost}"
   local port="${PORT:-4000}"
@@ -236,6 +257,8 @@ print_status_context() {
 
   printf '\nSPARQL / Fuseki\n'
   print_sparql_diagnostics
+  printf '\nTracing\n'
+  print_tracing_diagnostics
   printf '\nService process\n'
 }
 

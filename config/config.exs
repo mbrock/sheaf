@@ -54,6 +54,13 @@ config :phoenix, :json_library, Jason
 # same transport stack already running in the app.
 config :tesla, :adapter, {Tesla.Adapter.Finch, name: Sheaf.Finch}
 
+# OpenTelemetry: ship every ended span to a local Redis Stream (`otel:spans`)
+# via our custom span processor. The Go CLI in `tools/otel-tail` consumes from
+# there. No OTLP exporter is configured; Redis Streams is the only sink.
+config :opentelemetry, traces_exporter: :none
+
+config :opentelemetry, :processors, [{Sheaf.Tracing.RedisSinkProcessor, %{}}]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
