@@ -15,6 +15,8 @@ defmodule SheafWeb.DocumentEntryComponents do
       @document.excluded? && "opacity-45 grayscale",
       @document.cited? &&
         "rounded-sm border-l-2 border-amber-500 bg-amber-50/70 dark:border-amber-300 dark:bg-amber-950/25",
+      workspace_owner_authored?(@document) &&
+        "rounded-sm border-l-2 border-sky-500 bg-sky-50/70 dark:border-sky-300 dark:bg-sky-950/25",
       @nested &&
         "border-l border-stone-200 bg-stone-100/60 pl-2 dark:border-stone-700 dark:bg-stone-900/50"
     ]}>
@@ -122,6 +124,9 @@ defmodule SheafWeb.DocumentEntryComponents do
   defp excludable?(document), do: has_document?(document)
 
   defp has_document?(document), do: Map.get(document, :has_document?, true)
+
+  defp workspace_owner_authored?(document),
+    do: Map.get(document, :workspace_owner_authored?, false)
 
   defp subline?(document) do
     authors_str(document) != nil or year_str(document) != "" or page_count_str(document) != ""

@@ -208,6 +208,20 @@ Mutating RDF data is mostly for migrations and error corrections. Design actual
 domain operations so they add new facts to the graph monotonically rather than
 relying on destructive mutation.
 
+## Citation And Reference Notes
+
+The index distinguishes two related citation notions. `cito:cites` links a
+thesis-level document to works in its bibliography and drives the index-level
+`cited` highlight. `biro:references` links a specific document block to the work
+that block references; `Sheaf.Documents.references_for_document/1` returns those
+block-scoped reference rows for the reader.
+
+When working on citation behavior, inspect the live graph with `bin/rpc` instead
+of guessing from UI state. Useful starting points are the workspace graph
+`https://less.rest/sheaf/workspace`, the metadata graph
+`https://less.rest/sheaf/metadata`, `cito:cites` for bibliography membership, and
+`biro:references` for paragraph/block-level evidence.
+
 ## Development Rules
 
 For HTTP requests in Elixir, prefer `Req`.

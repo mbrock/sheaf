@@ -90,7 +90,7 @@ defmodule SheafWeb.DocumentIndexLive do
 
         <div :if={@documents != []} class="space-y-5">
           <section :for={{kind, documents} <- grouped_documents(@documents)}>
-            <div class="mb-1 flex items-baseline justify-between gap-3">
+            <div :if={kind} class="mb-1 flex items-baseline justify-between gap-3">
               <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                 {kind_label(kind)}
               </h2>
@@ -189,22 +189,31 @@ defmodule SheafWeb.DocumentIndexLive do
   end
 
   defp grouped_documents(documents) do
-    documents
-    |> Enum.group_by(&document_group/1)
-    |> Enum.map(fn {kind, documents} ->
-      {kind, Enum.sort_by(documents, &String.downcase(&1.title))}
-    end)
-    |> Enum.sort_by(fn {kind, documents} ->
-      {kind_order(kind), kind_label(kind), first_title(documents)}
-    end)
+    owner_documents = Enum.filter(documents, & &1.workspace_owner_authored?)
+    library_documents = Enum.reject(documents, & &1.workspace_owner_authored?)
+
+    owner_group =
+      case owner_documents do
+        [] -> []
+        documents -> [{nil, Enum.sort_by(documents, &document_sort_key/1)}]
+      end
+
+    library_groups =
+      library_documents
+      |> Enum.group_by(&document_group/1)
+      |> Enum.map(fn {kind, documents} ->
+        {kind, Enum.sort_by(documents, &document_sort_key/1)}
+      end)
+      |> Enum.sort_by(fn {kind, documents} ->
+        {kind_order(kind), kind_label(kind), first_title(documents)}
+      end)
+
+    owner_group ++ library_groups
   end
 
-  defp document_group(%{workspace_owner_authored?: true, workspace_owner_name: name})
-       when is_binary(name) and name != "" do
-    {:workspace_owner, name}
+  defp document_sort_key(document) do
+    {kind_order(document_group(document)), String.downcase(document.title)}
   end
-
-  defp document_group(%{workspace_owner_authored?: true}), do: :workspace_owner_documents
 
   defp document_group(%{metadata: %{kind: kind}}) when is_binary(kind) do
     {:expression, kind}
@@ -216,8 +225,6 @@ defmodule SheafWeb.DocumentIndexLive do
   defp first_title([]), do: ""
 
   defp kind_label({:expression, kind}), do: pluralize_expression_kind(kind)
-  defp kind_label({:workspace_owner, name}), do: name
-  defp kind_label(:workspace_owner_documents), do: "Workspace owner's work"
   defp kind_label(:thesis), do: "Thesis"
   defp kind_label(:paper), do: "Papers"
   defp kind_label(:transcript), do: "Transcripts"
@@ -231,9 +238,7 @@ defmodule SheafWeb.DocumentIndexLive do
   defp pluralize_expression_kind("Report document"), do: "Reports"
   defp pluralize_expression_kind(kind), do: kind <> "s"
 
-  defp kind_order({:workspace_owner, _name}), do: 0
-  defp kind_order(:workspace_owner_documents), do: 0
-  defp kind_order(:thesis), do: 1
+  defp kind_order(:thesis), do: 0
   defp kind_order({:expression, "Journal article"}), do: 1
   defp kind_order({:expression, "Book"}), do: 2
   defp kind_order({:expression, "Book chapter"}), do: 3
