@@ -6,28 +6,34 @@ export const DocumentBreadcrumb = {
     this.output = this.el.querySelector("#document-breadcrumb")
     this.copyButton = this.el.querySelector("#copy-markdown")
     this.activeSections = new Set()
+    this.observedSections = new Set()
+    this.sectionOrder = new Map()
     this.tocLinks = new Map()
+    this.rootMargin = ""
+    this.resizeFrame = null
+
     this.update = () => updateCurrentHeading(this)
-    this.observe = () => observeSections(this)
     this.copy = () => copyMarkdown(this)
     this.navigateAssistantBlock = event => navigateAssistantBlock(this, event)
 
-    window.addEventListener("resize", this.observe)
-    this.el.addEventListener("toggle", this.observe, true)
+    this.articleResizer = new ResizeObserver(() => scheduleResize(this))
+    if (this.article) this.articleResizer.observe(this.article)
+
     this.el.addEventListener("click", this.navigateAssistantBlock)
     this.copyButton?.addEventListener("click", this.copy)
     this.handleEvent("scroll-to-block", ({id}) => scheduleScrollToBlock(this, id))
     this.handleEvent("scroll-reader-to-top", () => scheduleScrollReaderToTop(this))
 
-    this.observe()
+    initObserver(this)
   },
   updated() {
-    this.observe()
+    refreshSections(this)
+    refreshTocLinks(this)
   },
   destroyed() {
     this.observer?.disconnect()
-    window.removeEventListener("resize", this.observe)
-    this.el.removeEventListener("toggle", this.observe, true)
+    this.articleResizer?.disconnect()
+    if (this.resizeFrame !== null) cancelAnimationFrame(this.resizeFrame)
     this.el.removeEventListener("click", this.navigateAssistantBlock)
     this.copyButton?.removeEventListener("click", this.copy)
   },
@@ -86,33 +92,84 @@ function cssEscape(value) {
   return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\$&")
 }
 
-function observeSections(hook) {
-  hook.observer?.disconnect()
-  hook.activeSections.clear()
-
+function initObserver(hook) {
   if (!hook.article) return
 
-  hook.sections = Array.from(hook.article.querySelectorAll("section[id], details[id]"))
-  hook.sectionOrder = new Map(hook.sections.map((section, index) => [section, index]))
-  hook.tocLinks = tocLinks(hook)
-  clearCurrentTocLink(hook)
-  hook.observer = new IntersectionObserver(entries => {
-    for (const entry of entries) {
-      if (entry.isIntersecting) {
-        hook.activeSections.add(entry.target)
-      } else {
-        hook.activeSections.delete(entry.target)
-      }
-    }
-
-    hook.update()
-  }, {
-    root: hook.article,
-    rootMargin: activationBandMargin(hook.article),
-  })
-
-  for (const section of hook.sections) hook.observer.observe(section)
+  hook.rootMargin = activationBandMargin(hook.article)
+  hook.observer = createObserver(hook, hook.rootMargin)
+  refreshSections(hook)
+  refreshTocLinks(hook)
   requestAnimationFrame(hook.update)
+}
+
+function createObserver(hook, rootMargin) {
+  return new IntersectionObserver(
+    entries => handleObserverEntries(hook, entries),
+    {root: hook.article, rootMargin}
+  )
+}
+
+function handleObserverEntries(hook, entries) {
+  for (const entry of entries) {
+    if (entry.isIntersecting) {
+      hook.activeSections.add(entry.target)
+    } else {
+      hook.activeSections.delete(entry.target)
+    }
+  }
+
+  hook.update()
+}
+
+function refreshSections(hook) {
+  if (!hook.article || !hook.observer) return
+
+  const sections = Array.from(hook.article.querySelectorAll("section[id], details[id]"))
+  const next = new Set(sections)
+
+  for (const section of hook.observedSections) {
+    if (next.has(section)) continue
+    hook.observer.unobserve(section)
+    hook.activeSections.delete(section)
+  }
+
+  for (const section of next) {
+    if (hook.observedSections.has(section)) continue
+    hook.observer.observe(section)
+  }
+
+  hook.observedSections = next
+  hook.sectionOrder = new Map(sections.map((section, index) => [section, index]))
+}
+
+function refreshTocLinks(hook) {
+  hook.tocLinks = tocLinks(hook)
+  if (hook.currentTocLink && !hook.currentTocLink.isConnected) {
+    hook.currentTocLink = null
+  }
+  hook.update()
+}
+
+function scheduleResize(hook) {
+  if (hook.resizeFrame !== null) return
+  hook.resizeFrame = requestAnimationFrame(() => {
+    hook.resizeFrame = null
+    applyResize(hook)
+  })
+}
+
+function applyResize(hook) {
+  if (!hook.article || !hook.observer) return
+
+  const margin = activationBandMargin(hook.article)
+  if (margin === hook.rootMargin) return
+
+  hook.observer.disconnect()
+  hook.rootMargin = margin
+  hook.observer = createObserver(hook, margin)
+  for (const section of hook.observedSections) {
+    hook.observer.observe(section)
+  }
 }
 
 function updateCurrentHeading(hook) {
