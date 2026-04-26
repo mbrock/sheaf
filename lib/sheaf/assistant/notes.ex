@@ -105,6 +105,7 @@ defmodule Sheaf.Assistant.Notes do
 
           note
           |> a(AS.Note)
+          |> a(DOC.ResearchNote)
           |> AS.attributedTo(agent)
           |> AS.context(session)
           |> AS.published(published_at)
@@ -118,7 +119,10 @@ defmodule Sheaf.Assistant.Notes do
 
           session
           |> a(DOC.ResearchSession)
+          |> a(AS.OrderedCollection)
           |> RDFS.label(session_label)
+          |> AS.name(session_label)
+          |> AS.items(note)
         end
 
       {:ok, graph}
@@ -161,6 +165,7 @@ defmodule Sheaf.Assistant.Notes do
 
     CONSTRUCT {
       ?note a as:Note ;
+        a sheaf:ResearchNote ;
         as:content ?content ;
         as:published ?published ;
         as:attributedTo ?agent ;
@@ -172,12 +177,31 @@ defmodule Sheaf.Assistant.Notes do
         rdfs:label ?agentLabel .
 
       ?context a sheaf:ResearchSession ;
-        rdfs:label ?contextLabel .
+        a as:OrderedCollection ;
+        rdfs:label ?contextLabel ;
+        as:items ?note ;
+        as:items ?question .
+
+      ?question a sheaf:Message ;
+        as:content ?questionContent ;
+        as:published ?questionPublished ;
+        as:attributedTo ?questionActor ;
+        as:context ?context .
+
+      ?questionActor rdfs:label ?questionActorLabel .
     }
     WHERE {
       {
         SELECT ?note ?published WHERE {
-          ?note a as:Note .
+          {
+            ?note a sheaf:ResearchNote .
+          }
+          UNION
+          {
+            ?note a as:Note ;
+              rdfs:label ?legacyTitle .
+            FILTER NOT EXISTS { ?note as:inReplyTo ?replyTarget }
+          }
           OPTIONAL { ?note as:published ?published }
         }
         ORDER BY DESC(?published)
@@ -194,6 +218,17 @@ defmodule Sheaf.Assistant.Notes do
       OPTIONAL {
         ?note as:context ?context .
         OPTIONAL { ?context rdfs:label ?contextLabel }
+        OPTIONAL {
+          ?question a sheaf:Message ;
+            as:context ?context ;
+            as:content ?questionContent .
+          FILTER NOT EXISTS { ?question as:inReplyTo ?questionReplyTarget }
+          OPTIONAL { ?question as:published ?questionPublished }
+          OPTIONAL {
+            ?question as:attributedTo ?questionActor .
+            OPTIONAL { ?questionActor rdfs:label ?questionActorLabel }
+          }
+        }
       }
       OPTIONAL { ?note sheaf:mentions ?mention }
     }

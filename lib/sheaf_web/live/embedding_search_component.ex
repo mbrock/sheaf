@@ -55,16 +55,8 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <section class="border-y border-stone-200/80 py-3 dark:border-stone-800/80">
-      <div class="mb-2 flex items-end justify-between gap-3">
-        <div class="min-w-0">
-          <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-            Search
-          </h2>
-          <p class="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
-            Semantic search across papers, thesis paragraphs, and coded rows
-          </p>
-        </div>
+    <section class="py-3">
+      <div class="mb-2 flex justify-end">
         <span
           :if={@searched?}
           class="shrink-0 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400"
@@ -95,7 +87,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
       <p
         :if={@error}
-        class="mt-2 border-l-2 border-rose-500 py-1 pl-3 text-xs leading-5 text-rose-700 dark:text-rose-300"
+        class="mt-2 py-1 text-xs leading-5 text-rose-700 dark:text-rose-300"
       >
         {@error}
       </p>
@@ -109,7 +101,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
       <ol
         :if={@results != []}
-        class="mt-3 max-h-[28rem] divide-y divide-stone-200/80 overflow-y-auto border-y border-stone-200/80 dark:divide-stone-800/80 dark:border-stone-800/80"
+        class="mt-3 max-h-[28rem] overflow-y-auto"
       >
         <li :for={result <- @results}>
           <.link
@@ -129,7 +121,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
             </div>
 
             <div class="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-sans text-[11px] leading-4 text-stone-500 dark:text-stone-400">
-              <span class="rounded-sm border border-stone-200 px-1.5 py-0.5 uppercase leading-none dark:border-stone-800">
+              <span class="rounded-sm bg-stone-200/70 px-1.5 py-0.5 uppercase leading-none dark:bg-stone-800/80">
                 {kind_label(result.kind)}
               </span>
               <span :if={context_label(result)} class="min-w-0 truncate">

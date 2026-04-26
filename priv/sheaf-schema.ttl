@@ -1,4 +1,5 @@
 @prefix sheaf: <https://less.rest/sheaf/> .
+@prefix as: <https://www.w3.org/ns/activitystreams#> .
 @prefix fabio: <http://purl.org/spar/fabio/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
@@ -12,7 +13,8 @@ sheaf: a owl:Ontology ;
   rdfs:comment "The local ontology for Sheaf documents, blocks, files, jobs, and research notes."@en ;
   vann:preferredNamespacePrefix "sheaf" ;
   vann:preferredNamespaceUri "https://less.rest/sheaf/"^^xsd:anyURI ;
-  owl:imports <http://www.w3.org/ns/prov#>,
+  owl:imports <https://www.w3.org/ns/activitystreams#>,
+    <http://www.w3.org/ns/prov#>,
     <http://purl.org/spar/fabio/> .
 
 sheaf:Document a rdfs:Class ;
@@ -92,8 +94,26 @@ sheaf:AudioBlob a rdfs:Class ;
 
 sheaf:ResearchSession a rdfs:Class ;
   rdfs:label "research session"@en ;
+  rdfs:subClassOf as:OrderedCollection,
+    prov:Entity ;
+  rdfs:comment "A durable context that orders user and assistant messages, assistant-authored research notes, and related research activity." .
+
+sheaf:Message a rdfs:Class ;
+  rdfs:label "message"@en ;
   rdfs:subClassOf prov:Entity ;
-  rdfs:comment "A durable context that groups assistant-authored research notes." .
+  rdfs:comment "A user or assistant turn in a research session or assistant chat, described with ActivityStreams content, actor, context, and publication-time properties." .
+
+sheaf:ResearchNote a rdfs:Class ;
+  rdfs:label "research note"@en ;
+  rdfs:subClassOf as:Note,
+    prov:Entity ;
+  rdfs:comment "A durable assistant-authored note written during a research session, distinct from ordinary chat messages." .
+
+sheaf:assistantModelName a rdf:Property ;
+  rdfs:label "has assistant model name"@en ;
+  rdfs:domain prov:SoftwareAgent ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Names the model used by a software agent for a particular assistant turn." .
 
 sheaf:BatchJob a rdfs:Class ;
   rdfs:label "batch job"@en ;

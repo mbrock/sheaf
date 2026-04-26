@@ -11,7 +11,7 @@ defmodule Sheaf.Assistant.Chat do
 
   alias ReqLLM.{Context, Response}
   alias Sheaf.Assistant
-  alias Sheaf.Assistant.{Chats, CorpusTools}
+  alias Sheaf.Assistant.{Activity, Chats, CorpusTools}
   alias Sheaf.Id
 
   @registry Sheaf.Assistant.ChatRegistry
@@ -28,6 +28,8 @@ defmodule Sheaf.Assistant.Chat do
     :error,
     :agent_iri,
     :session_iri,
+    :last_user_message_iri,
+    :activity_writer,
     title: @default_title,
     kind: @default_kind,
     messages: [],
@@ -104,6 +106,7 @@ defmodule Sheaf.Assistant.Chat do
     titles = Keyword.get_lazy(opts, :titles, &CorpusTools.titles/0)
     session_iri = Keyword.get_lazy(opts, :session_iri, fn -> Id.iri(id) end)
     agent_iri = Keyword.get_lazy(opts, :agent_iri, &Sheaf.mint/0)
+    activity_writer = Keyword.get(opts, :activity_writer, Activity)
 
     allow_notes? =
       Keyword.get(opts, :allow_notes?, Keyword.get(opts, :allow_notes, kind == :research))
@@ -140,6 +143,7 @@ defmodule Sheaf.Assistant.Chat do
            assistant: assistant,
            agent_iri: agent_iri,
            session_iri: session_iri,
+           activity_writer: activity_writer,
            model: model,
            llm_options: llm_options,
            max_tool_rounds: max_tool_rounds,
@@ -217,6 +221,8 @@ defmodule Sheaf.Assistant.Chat do
     chat = self()
     assistant = state.assistant
     input = user_input(text, turn_context)
+    state = maybe_title_from(state, text)
+    state = persist_user_message(state, text)
 
     case Task.Supervisor.start_child(state.task_supervisor, fn ->
            result = safe_run(assistant, input)
@@ -226,7 +232,6 @@ defmodule Sheaf.Assistant.Chat do
         state
         |> Map.put(:pending_ref, ref)
         |> Map.put(:status_line, "Thinking")
-        |> maybe_title_from(text)
         |> append_message(:user, text)
         |> touch_index()
         |> broadcast_snapshot()
@@ -248,6 +253,7 @@ defmodule Sheaf.Assistant.Chat do
     text = Response.text(response) |> blank_to_default()
 
     state
+    |> persist_assistant_message(text)
     |> Map.put(:pending_ref, nil)
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, nil)
@@ -333,6 +339,40 @@ defmodule Sheaf.Assistant.Chat do
   end
 
   defp maybe_title_from(state, _text), do: state
+
+  defp persist_user_message(state, text) do
+    message_iri = Sheaf.mint()
+
+    _result =
+      write_activity(state.activity_writer, :write_user_message, %{
+        message_iri: message_iri,
+        session_iri: state.session_iri,
+        session_label: session_label(state.kind, state.id),
+        text: text
+      })
+
+    %{state | last_user_message_iri: message_iri}
+  end
+
+  defp persist_assistant_message(state, text) do
+    _result =
+      write_activity(state.activity_writer, :write_assistant_message, %{
+        model_name: state.model,
+        session_iri: state.session_iri,
+        session_label: session_label(state.kind, state.id),
+        in_reply_to: state.last_user_message_iri,
+        text: text
+      })
+
+    state
+  end
+
+  defp write_activity(nil, _function, _attrs), do: :ok
+  defp write_activity(false, _function, _attrs), do: :ok
+
+  defp write_activity(writer, function, attrs) when is_atom(writer) do
+    apply(writer, function, [attrs])
+  end
 
   defp default_title(:research), do: "Research session"
   defp default_title(_kind), do: @default_title

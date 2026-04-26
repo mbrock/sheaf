@@ -26,6 +26,7 @@ defmodule Sheaf.Assistant.ChatTest do
        id: id,
        model: "test-model",
        titles: %{},
+       activity_writer: nil,
        generate_text: generate_text,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )
@@ -81,6 +82,7 @@ defmodule Sheaf.Assistant.ChatTest do
        kind: :research,
        model: "test-model",
        titles: %{},
+       activity_writer: nil,
        generate_text: generate_text,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )

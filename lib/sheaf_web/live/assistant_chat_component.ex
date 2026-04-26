@@ -188,7 +188,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
       <nav
         :if={not inline?(@variant) and @chats != []}
-        class="mt-3 max-h-28 space-y-1 overflow-y-auto border-y border-stone-200/80 py-2 dark:border-stone-800/80"
+        class="mt-3 max-h-28 space-y-1 overflow-y-auto py-2"
       >
         <button
           :for={chat <- @chats}
@@ -203,7 +203,7 @@ defmodule SheafWeb.AssistantChatComponent do
           <span class="min-w-0 flex-1 truncate">{chat.title}</span>
           <span
             :if={chat_kind(chat) == :research}
-            class="ml-2 shrink-0 rounded-sm border border-emerald-200 px-1.5 py-0.5 text-[0.625rem] uppercase leading-none text-emerald-700 dark:border-emerald-900 dark:text-emerald-300"
+            class="ml-2 shrink-0 rounded-sm bg-emerald-100 px-1.5 py-0.5 text-[0.625rem] uppercase leading-none text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300"
           >
             Research
           </span>
@@ -228,7 +228,7 @@ defmodule SheafWeb.AssistantChatComponent do
           :if={@chat.pending}
           class="flex items-center gap-2 px-1 py-2 text-sm leading-5 text-stone-500 dark:text-stone-400"
         >
-          <span class="size-3 shrink-0 animate-spin rounded-full border-2 border-stone-300 border-t-stone-700 dark:border-stone-700 dark:border-t-stone-200">
+          <span class="size-2.5 shrink-0 animate-pulse rounded-full bg-stone-500 dark:bg-stone-300">
           </span>
           <span class="min-w-0 flex-1 truncate">{@chat.status_line || "Thinking"}</span>
         </div>
@@ -251,7 +251,7 @@ defmodule SheafWeb.AssistantChatComponent do
         <div class="flex justify-end">
           <button
             type="submit"
-            class="grid size-8 place-items-center rounded-sm bg-stone-950 text-stone-50 transition-colors hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500 dark:bg-stone-50 dark:text-stone-950 dark:hover:bg-stone-300 dark:disabled:bg-stone-800 dark:disabled:text-stone-500"
+            class="grid size-8 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
             title="Send"
             aria-label="Send"
             disabled={@chat.pending or is_nil(@selected_chat_id)}
@@ -270,24 +270,19 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp inline_start(assigns) do
     ~H"""
-    <.form for={@form} phx-submit="send" phx-target={@myself} class="space-y-2">
-      <label
-        for={"#{@id}-assistant-message"}
-        class="block font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400"
-      >
-        Assistant
-      </label>
-      <div class="flex items-end gap-2">
-        <textarea
+    <.form for={@form} phx-submit="send" phx-target={@myself}>
+      <div class="flex items-center gap-2 rounded-sm border border-stone-300 bg-white px-2 py-1.5 dark:border-stone-700 dark:bg-stone-900">
+        <input
           id={"#{@id}-assistant-message"}
+          type="text"
           name="chat[message]"
-          rows="2"
-          class="block min-h-16 flex-1 resize-none rounded-sm border border-stone-300 bg-white px-3 py-2 text-sm leading-5 text-stone-950 outline-none transition-colors placeholder:text-stone-400 focus:border-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
+          autocomplete="off"
+          class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-sm leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 dark:text-stone-50 dark:placeholder:text-stone-500"
           placeholder="Ask the assistant"
-        ></textarea>
+        />
         <button
           type="submit"
-          class="grid size-8 shrink-0 place-items-center rounded-sm bg-stone-950 text-stone-50 transition-colors hover:bg-stone-700 dark:bg-stone-50 dark:text-stone-950 dark:hover:bg-stone-300"
+          class="grid size-6 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
           title="Send"
           aria-label="Send"
         >
@@ -352,7 +347,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :error}} = assigns) do
     ~H"""
-    <div class="rounded-sm border-l-2 border-red-500 bg-red-50/70 px-3 py-1 text-xs leading-5 text-red-800 dark:bg-red-950/30 dark:text-red-300">
+    <div class="rounded-sm bg-red-50/70 px-3 py-1 text-xs leading-5 text-red-800 dark:bg-red-950/30 dark:text-red-300">
       {@message.text}
     </div>
     """
@@ -580,13 +575,13 @@ defmodule SheafWeb.AssistantChatComponent do
   defp assistant_section_class(variant, selected_chat_id) do
     cond do
       inline?(variant) and is_nil(selected_chat_id) ->
-        "border-y border-stone-200/80 py-3 dark:border-stone-800/80"
+        "py-3"
 
       inline?(variant) ->
-        "flex min-h-[24rem] flex-col border-y border-stone-200/80 py-3 dark:border-stone-800/80"
+        "flex min-h-[24rem] flex-col py-3"
 
       true ->
-        "flex min-h-[24rem] flex-col border-t border-stone-200/80 pt-2 dark:border-stone-800/80"
+        "flex min-h-[24rem] flex-col pt-2"
     end
   end
 

@@ -38,6 +38,7 @@ defmodule Sheaf.Assistant.NotesTest do
              MapSet.new(~w[BLK111 BLK222 BLK333 BLK444])
 
     assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.AS.Note})
+    assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.DOC.ResearchNote})
     assert RDF.Data.include?(graph, {note, Sheaf.NS.AS.attributedTo(), agent})
     assert RDF.Data.include?(graph, {note, Sheaf.NS.AS.context(), session})
     assert RDF.Data.include?(graph, {note, Sheaf.NS.AS.published(), published_at})
@@ -45,6 +46,8 @@ defmodule Sheaf.Assistant.NotesTest do
     assert RDF.Data.include?(graph, {note, RDF.NS.RDFS.label(), "Circulation comparison"})
     assert RDF.Data.include?(graph, {agent, RDF.type(), PROV.SoftwareAgent})
     assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.DOC.ResearchSession})
+    assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.AS.OrderedCollection})
+    assert RDF.Data.include?(graph, {session, Sheaf.NS.AS.items(), note})
     assert RDF.Data.include?(graph, {note, Sheaf.NS.DOC.mentions(), Id.iri("BLK444")})
   end
 
