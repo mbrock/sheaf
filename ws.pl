@@ -65,7 +65,7 @@ sub send_frame {
             ? pack 'CC',   0x80|$opcode, 0x80|$len
             : $len < 65536
             ? pack 'CCn',  0x80|$opcode, 0x80|126, $len
-            : pack 'CCNN', 0x80|$opcode, 0x80|127, int($len / 2**32), $len % 2**32;
+            : pack 'CCQ>', 0x80|$opcode, 0x80|127, $len;
     my $mask  = pack 'V', int rand 2**32;
     my $key   = substr $mask x (1 + int($len / 4)), 0, $len;
     my $frame = $hdr . $mask . ($payload ^ $key);
@@ -87,9 +87,10 @@ sub send_frame {
 my $sel        = IO::Select->new($sock, \*STDIN);
 my $stdin_open = 1;
 my $linger     = 1.0;
-my $rbuf       = '';
 my ($msg_op, $msg_buf);
 my $closed     = 0;
+
+$_ = '';   # the read buffer; bytes accumulate here, frames come off the front
 
 my %esc = ("\\" => '\\\\', "\n" => '\\n', "\r" => '\\r');
 
@@ -113,45 +114,37 @@ REACTOR: while (!$closed) {
             next;
         }
 
-        # else: socket
-        my $n = sysread $sock, my $buf, 65536;
+        # else: socket -- append into $_ directly with the offset form
+        my $n = sysread $sock, $_, 65536, length;
         if (!defined $n) {
             $!{EAGAIN} || $!{EWOULDBLOCK} or die "read: $!";
             next;
         }
         if ($n == 0) { $closed = 1; last REACTOR }
-        $rbuf .= $buf;
 
         FRAME: while (1) {
-            last FRAME if length $rbuf < 2;
+            # peek 1: base header (length, unpack default to $_)
+            last FRAME if length() < 2;
+            my ($b1, $b2)   = unpack 'CC';
+            my $extlen_size = (2, 8, 0)[ index "~\x7F", chr($b2 & 0x7F) ];
+            my $mask_size   = $b2 & 0x80 ? 4 : 0;
+            my $head_size   = 2 + $extlen_size + $mask_size;
 
-            my ($b1, $b2) = unpack 'CC', $rbuf;
-            my $masked = $b2 & 0x80;
-            my $plen   = $b2 & 0x7F;
-            my $off    = 2;
+            # peek 2: rest of the header (extended length + mask)
+            last FRAME if length() < $head_size;
+            my $plen = $extlen_size == 0 ? ($b2 & 0x7F)
+                     : $extlen_size == 2 ?  unpack 'x2 n'
+                     :                      unpack 'x2 Q>';
 
-            if ($plen == 126) {
-                last FRAME if length $rbuf < $off + 2;
-                $plen = unpack 'n', substr $rbuf, $off, 2;
-                $off += 2;
-            } elsif ($plen == 127) {
-                last FRAME if length $rbuf < $off + 8;
-                my ($hi, $lo) = unpack 'NN', substr $rbuf, $off, 8;
-                $plen = $hi * 2**32 + $lo;
-                $off += 8;
-            }
+            # peek 3: payload
+            my $frame_size = $head_size + $plen;
+            last FRAME if length() < $frame_size;
 
-            my $mask = '';
-            if ($masked) {
-                last FRAME if length $rbuf < $off + 4;
-                $mask = substr $rbuf, $off, 4;
-                $off += 4;
-            }
-
-            last FRAME if length $rbuf < $off + $plen;
-            my $payload = $plen ? substr $rbuf, $off, $plen : '';
-            substr $rbuf, 0, $off + $plen, '';
-            $payload ^= substr $mask x (1 + int($plen / 4)), 0, $plen if $masked;
+            # commit
+            my $mask    = substr $_, 2 + $extlen_size, $mask_size;
+            my $payload = substr $_, $head_size,       $plen;
+            substr $_, 0, $frame_size, '';
+            $payload ^= substr $mask x (1 + int($plen / 4)), 0, $plen if $mask_size;
 
             my $fin    = $b1 & 0x80;
             my $opcode = $b1 & 0x0F;
