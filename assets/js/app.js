@@ -26,6 +26,7 @@ import {hooks as colocatedHooks} from "phoenix-colocated/sheaf"
 import topbar from "../vendor/topbar"
 import {KnuthPlass} from "./knuth_plass"
 import {DocumentBreadcrumb} from "./document_breadcrumb"
+import {installCopyNormalizer} from "./copy_normalize"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const devSessionStorage = window.location.hostname.endsWith(".localhost") ?
@@ -55,6 +56,8 @@ const liveSocket = new LiveSocket("/live", Socket, {
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+
+installCopyNormalizer()
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
