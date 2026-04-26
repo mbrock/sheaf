@@ -13,6 +13,11 @@ defmodule SheafWeb.DocumentLive do
   alias SheafWeb.AssistantHistoryComponents
   import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
 
+  # Knuth-Plass justification is O(n^2) per paragraph and snapshots every
+  # paragraph in the article on mount/resize. Disable it for documents whose
+  # paragraph count would make that too expensive.
+  @knuth_plass_block_limit 800
+
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, socket} <- load_document(socket, id, params["block"]) do
@@ -64,10 +69,13 @@ defmodule SheafWeb.DocumentLive do
 
   @impl true
   def render(assigns) do
+    blocks = document_blocks(assigns.graph, assigns.root)
+
     assigns =
       assigns
-      |> assign(:blocks, document_blocks(assigns.graph, assigns.root))
+      |> assign(:blocks, blocks)
       |> assign(:toc, Document.toc(assigns.graph, assigns.root))
+      |> assign(:knuth_plass?, paragraph_block_count(blocks) <= @knuth_plass_block_limit)
 
     ~H"""
     <div
@@ -89,7 +97,7 @@ defmodule SheafWeb.DocumentLive do
       <article
         id="document-start"
         class="min-h-0 min-w-0 overflow-y-auto px-12 pb-4 sm:px-8 lg:col-start-2 lg:row-start-2 [&_p]:text-justify [&_p]:hyphens-manual"
-        phx-hook="KnuthPlass"
+        phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
         <div class="mx-auto w-full max-w-prose pt-4">
           <.reader_blocks
@@ -315,6 +323,18 @@ defmodule SheafWeb.DocumentLive do
       </div>
     </div>
     """
+  end
+
+  @doc false
+  def paragraph_block_count(blocks) do
+    Enum.reduce(blocks, 0, fn
+      %{type: :document, children: children}, acc -> acc + paragraph_block_count(children)
+      %{type: :section, children: children}, acc -> acc + paragraph_block_count(children)
+      %{type: :paragraph}, acc -> acc + 1
+      %{type: :row}, acc -> acc + 1
+      %{type: :extracted, source_type: "Text"}, acc -> acc + 1
+      _other, acc -> acc
+    end)
   end
 
   @doc false

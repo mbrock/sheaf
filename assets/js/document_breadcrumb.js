@@ -1,3 +1,13 @@
+// Band of the article viewport used to decide which section is "current". The
+// IntersectionObserver root is the article, so percentage rootMargin scales
+// with the article's size automatically — no resize handling needed.
+//   - top: 9% from the top of the article (just under the toolbar)
+//   - height: 5% (a thin scan-line)
+const BAND_TOP_PCT = 9
+const BAND_HEIGHT_PCT = 5
+const BAND_BOTTOM_PCT = 100 - BAND_TOP_PCT - BAND_HEIGHT_PCT
+const BAND_ROOT_MARGIN = `-${BAND_TOP_PCT}% 0% -${BAND_BOTTOM_PCT}% 0%`
+
 export const DocumentBreadcrumb = {
   mounted() {
     this.article = this.el.querySelector("#document-start")
@@ -9,15 +19,10 @@ export const DocumentBreadcrumb = {
     this.observedSections = new Set()
     this.sectionOrder = new Map()
     this.tocLinks = new Map()
-    this.rootMargin = ""
-    this.resizeFrame = null
 
     this.update = () => updateCurrentHeading(this)
     this.copy = () => copyMarkdown(this)
     this.navigateAssistantBlock = event => navigateAssistantBlock(this, event)
-
-    this.articleResizer = new ResizeObserver(() => scheduleResize(this))
-    if (this.article) this.articleResizer.observe(this.article)
 
     this.el.addEventListener("click", this.navigateAssistantBlock)
     this.copyButton?.addEventListener("click", this.copy)
@@ -32,8 +37,6 @@ export const DocumentBreadcrumb = {
   },
   destroyed() {
     this.observer?.disconnect()
-    this.articleResizer?.disconnect()
-    if (this.resizeFrame !== null) cancelAnimationFrame(this.resizeFrame)
     this.el.removeEventListener("click", this.navigateAssistantBlock)
     this.copyButton?.removeEventListener("click", this.copy)
   },
@@ -95,18 +98,13 @@ function cssEscape(value) {
 function initObserver(hook) {
   if (!hook.article) return
 
-  hook.rootMargin = activationBandMargin(hook.article)
-  hook.observer = createObserver(hook, hook.rootMargin)
+  hook.observer = new IntersectionObserver(
+    entries => handleObserverEntries(hook, entries),
+    {root: hook.article, rootMargin: BAND_ROOT_MARGIN}
+  )
   refreshSections(hook)
   refreshTocLinks(hook)
   requestAnimationFrame(hook.update)
-}
-
-function createObserver(hook, rootMargin) {
-  return new IntersectionObserver(
-    entries => handleObserverEntries(hook, entries),
-    {root: hook.article, rootMargin}
-  )
 }
 
 function handleObserverEntries(hook, entries) {
@@ -150,28 +148,6 @@ function refreshTocLinks(hook) {
   hook.update()
 }
 
-function scheduleResize(hook) {
-  if (hook.resizeFrame !== null) return
-  hook.resizeFrame = requestAnimationFrame(() => {
-    hook.resizeFrame = null
-    applyResize(hook)
-  })
-}
-
-function applyResize(hook) {
-  if (!hook.article || !hook.observer) return
-
-  const margin = activationBandMargin(hook.article)
-  if (margin === hook.rootMargin) return
-
-  hook.observer.disconnect()
-  hook.rootMargin = margin
-  hook.observer = createObserver(hook, margin)
-  for (const section of hook.observedSections) {
-    hook.observer.observe(section)
-  }
-}
-
 function updateCurrentHeading(hook) {
   const section = currentSection(hook)
 
@@ -187,14 +163,6 @@ function currentSection(hook) {
 
     return (hook.sectionOrder.get(right) ?? 0) - (hook.sectionOrder.get(left) ?? 0)
   })[0]
-}
-
-function activationBandMargin(article) {
-  const top = Math.min(64, article.clientHeight * 0.1)
-  const height = 24
-  const bottom = Math.max(0, article.clientHeight - top - height)
-
-  return `-${top}px 0px -${bottom}px 0px`
 }
 
 function sectionDepth(section) {
