@@ -259,7 +259,11 @@ function keepTocLinkVisible(hook, link) {
 }
 
 function text(element) {
-  return element?.dataset?.pretextSourceText ?? element?.textContent.trim() ?? ""
+  return (element?.textContent ?? "")
+    .replaceAll("\u00AD", "")
+    .replaceAll("\u2011", "-")
+    .replaceAll("\u00A0", " ")
+    .trim()
 }
 
 function flashCopied(button) {

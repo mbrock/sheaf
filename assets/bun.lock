@@ -5,10 +5,16 @@
     "": {
       "dependencies": {
         "@chenglou/pretext": "^0.0.6",
+        "hyphenation.en-us": "^0.2.1",
+        "hypher": "^0.2.5",
       },
     },
   },
   "packages": {
     "@chenglou/pretext": ["@chenglou/pretext@0.0.6", "", {}, "sha512-U10s4tFeyu3oVHfXuNWwZSKqHXefhaigpcBkGj60qQFRJ+yUoQ+ez3cGJelP7BWDAB58HCgjcTSmOcg+77afBQ=="],
+
+    "hyphenation.en-us": ["hyphenation.en-us@0.2.1", "", { "dependencies": { "hypher": "*" } }, "sha512-ItXYgvIpfN8rfXl/GTBQC7DsSb5PPsKh9gGzViK/iWzCS5mvjDebFJ6xCcIYo8dal+nSp2rUzvTT7BosrKlL8A=="],
+
+    "hypher": ["hypher@0.2.5", "", {}, "sha512-kUTpuyzBWWDO2VakmjHC/cxesg4lKQP+Fdc+7lrK4yvjNjkV9vm5UTZMDAwOyyHTOpbkYrAMlNZHG61NnE9vYQ=="],
   }
 }

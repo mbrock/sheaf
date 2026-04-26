@@ -1,5 +1,7 @@
 {
   "dependencies": {
-    "@chenglou/pretext": "^0.0.6"
+    "@chenglou/pretext": "^0.0.6",
+    "hyphenation.en-us": "^0.2.1",
+    "hypher": "^0.2.5"
   }
 }

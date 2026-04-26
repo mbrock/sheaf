@@ -87,7 +87,8 @@ defmodule SheafWeb.DocumentLive do
 
       <article
         id="document-start"
-        class="min-h-0 min-w-0 overflow-y-auto px-12 pb-4 sm:px-8 lg:col-start-2 lg:row-start-2"
+        class="min-h-0 min-w-0 overflow-y-auto px-12 pb-4 sm:px-8 lg:col-start-2 lg:row-start-2 [&_p]:text-justify [&_p]:hyphens-manual"
+        phx-hook="KnuthPlass"
       >
         <div class="mx-auto w-full max-w-prose pt-4">
           <.reader_blocks
@@ -195,22 +196,16 @@ defmodule SheafWeb.DocumentLive do
       </span>
 
       <p
+        id={"text-#{Document.id(@block.iri)}"}
         class={[
           "cursor-pointer rounded-sm font-serif leading-7",
           selected_class(@block, @selected_id)
         ]}
         phx-click="inspect_block"
         phx-value-id={Document.id(@block.iri)}
+        phx-update="ignore"
       >
-        <span
-          id={"text-#{Document.id(@block.iri)}"}
-          class="block"
-          phx-hook="PretextParagraph"
-          phx-update="ignore"
-          data-pretext-text
-        >
-          {Document.paragraph_text(@graph, @block.iri)}
-        </span>
+        {Document.paragraph_text(@graph, @block.iri)}
       </p>
 
       <div
@@ -258,15 +253,13 @@ defmodule SheafWeb.DocumentLive do
         </span>
       </div>
 
-      <span
+      <p
         id={"text-#{Document.id(@block.iri)}"}
-        class="block font-serif leading-7"
-        phx-hook="PretextParagraph"
+        class="font-serif leading-7"
         phx-update="ignore"
-        data-pretext-text
       >
         {Document.text(@graph, @block.iri)}
-      </span>
+      </p>
     </article>
     """
   end
@@ -289,9 +282,7 @@ defmodule SheafWeb.DocumentLive do
       <div
         id={"text-#{Document.id(@block.iri)}"}
         class={["block" | extracted_text_block_classes()]}
-        phx-hook="PretextParagraph"
         phx-update="ignore"
-        data-pretext-text
       >
         {raw(Document.source_html(@graph, @block.iri))}
       </div>
