@@ -104,8 +104,11 @@ defmodule RDFKnife.Diff do
   @spec to_sparql!(t()) :: String.t()
   def to_sparql!(%__MODULE__{} = diff) do
     case to_sparql(diff) do
-      {:ok, sparql} -> sparql
-      {:error, reason} -> raise ArgumentError, "failed to render RDF diff patch: #{inspect(reason)}"
+      {:ok, sparql} ->
+        sparql
+
+      {:error, reason} ->
+        raise ArgumentError, "failed to render RDF diff patch: #{inspect(reason)}"
     end
   end
 
