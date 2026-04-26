@@ -245,7 +245,6 @@ defmodule SheafRDFBrowserWeb.OntologiesLive do
       assigns
       |> assign(:show_namespace, class_namespace?(assigns.class, assigns.ontology_prefix))
       |> assign(:popover_id, class_popover_id(assigns.class.id))
-      |> assign(:anchor_name, class_anchor_name(assigns.class.id))
       |> assign(:has_notes, class_notes?(assigns.class))
 
     ~H"""
@@ -258,7 +257,7 @@ defmodule SheafRDFBrowserWeb.OntologiesLive do
             "flex min-w-0 cursor-pointer items-baseline gap-1.5 bg-transparent p-0 text-left leading-tight hover:text-slate-100",
             Map.get(@class, :external_ancestor?, false) && "opacity-45"
           ]}
-          style={"padding-left: #{@indent}; anchor-name: #{@anchor_name}"}
+          style={"padding-left: #{@indent}"}
         >
           <.class_heading_content class={@class} show_namespace={@show_namespace} />
         </button>
@@ -267,7 +266,6 @@ defmodule SheafRDFBrowserWeb.OntologiesLive do
           id={@popover_id}
           popover="auto"
           class="rdf-class-popover max-w-xl bg-slate-900 px-3 py-2 font-mono text-[0.68rem] leading-normal text-slate-300 shadow-xl"
-          style={"position-anchor: #{@anchor_name}"}
         >
           <.class_notes notes={@class.notes} />
         </div>
@@ -403,7 +401,6 @@ defmodule SheafRDFBrowserWeb.OntologiesLive do
   defp class_notes?(class), do: Map.get(class, :notes, []) != []
 
   defp class_popover_id(class_id), do: "class-popover-#{class_hash(class_id)}"
-  defp class_anchor_name(class_id), do: "--class-anchor-#{class_hash(class_id)}"
   defp class_hash(class_id), do: :erlang.phash2(class_id)
 
   defp render_markdown(text) do
