@@ -10,7 +10,7 @@ defmodule SheafWeb.AssistantChatComponent do
   use SheafWeb, :live_component
 
   alias Sheaf.BlockRefs
-  alias Sheaf.Assistant.{Chat, Chats}
+  alias Sheaf.Assistant.{Chat, Chats, CorpusTools}
   alias Sheaf.{Document, Id}
 
   @mdex_opts [
@@ -288,8 +288,15 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp tool_view(%{tool: "get_block", input: input} = message, titles) do
     doc_id = tool_arg(input, :document_id)
-    block_id = tool_arg(input, :block_id)
-    target = "block ##{block_id || "?"}"
+    block_ids = tool_block_ids(input)
+
+    target =
+      case block_ids do
+        [block_id] -> "block ##{block_id}"
+        ids when ids != [] -> "#{length(ids)} blocks"
+        _ids -> "a block"
+      end
+
     scope = title_or_id(doc_id, titles)
 
     tool_view("📄", "Reading", target, scope, message)
@@ -359,6 +366,31 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp tool_arg(_, _), do: nil
+
+  defp tool_block_ids(input) do
+    ids =
+      case tool_arg(input, :block_ids) do
+        ids when is_list(ids) -> ids
+        id when is_binary(id) -> [id]
+        _other -> []
+      end
+      |> Enum.filter(&is_binary/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    case ids do
+      [] ->
+        input
+        |> tool_arg(:block_id)
+        |> List.wrap()
+        |> Enum.filter(&is_binary/1)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+
+      ids ->
+        ids
+    end
+  end
 
   defp ellipsize(text, limit) do
     if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 1) <> "…"
@@ -517,15 +549,20 @@ defmodule SheafWeb.AssistantChatComponent do
     %{}
     |> maybe_put_open_document(assigns)
     |> maybe_put_selected(assigns)
+    |> maybe_put_selected_block_context(assigns)
   end
 
   defp maybe_put_open_document(context, %{graph: graph, root: root})
        when not is_nil(graph) and not is_nil(root) do
-    Map.put(context, :open_document, %{
+    document = %{
       title: Document.title(graph, root),
       kind: Document.kind(graph, root),
       id: Id.id_from_iri(root)
-    })
+    }
+
+    context
+    |> Map.put(:working_document, document)
+    |> Map.put(:open_document, document)
   end
 
   defp maybe_put_open_document(context, _assigns), do: context
@@ -536,6 +573,20 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp maybe_put_selected(context, _assigns), do: context
+
+  defp maybe_put_selected_block_context(
+         context,
+         %{graph: graph, root: root, selected_id: selected_id}
+       )
+       when not is_nil(graph) and not is_nil(root) and is_binary(selected_id) and
+              selected_id != "" do
+    case CorpusTools.selected_block_context_text(graph, root, selected_id) do
+      {:ok, text} -> Map.put(context, :selected_block_context, text)
+      {:error, _reason} -> context
+    end
+  end
+
+  defp maybe_put_selected_block_context(context, _assigns), do: context
 
   defp put_local_error(socket, text) do
     update(socket, :chat, fn chat ->

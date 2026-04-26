@@ -6,9 +6,11 @@ defmodule Sheaf.Assistant.CorpusTools do
   embedding search index. No cached snapshot: each call reads current data.
   """
 
-  alias ReqLLM.Tool
+  alias ReqLLM.{Tool, ToolResult}
+  alias ReqLLM.Message.ContentPart
   alias Sheaf.{Corpus, Document, Documents, Id}
   alias Sheaf.Assistant.Notes
+  alias Sheaf.Assistant.{ToolResultText, ToolResults}
 
   @search_result_limit 10
   @default_search_kinds ~w(paragraph sourceHtml)
@@ -26,6 +28,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   def tools(opts) when is_list(opts) do
     notify = Keyword.get(opts, :notify, fn _event -> :ok end)
     search = Keyword.get(opts, :search, &Sheaf.Embedding.Index.search/2)
+    exact_search = Keyword.get(opts, :exact_search, &Sheaf.Embedding.Index.exact_search/2)
     include_notes? = Keyword.get(opts, :include_notes?, true)
 
     tools = [
@@ -49,12 +52,16 @@ defmodule Sheaf.Assistant.CorpusTools do
       Tool.new!(
         name: "get_block",
         description:
-          "Return one block's content. Sections come with their child handles " <>
+          "Return one or more blocks from a document. Sections come with their child handles " <>
             "so you can drill further; paragraphs and extracted blocks come with " <>
             "their full text. Every block includes its ancestry from the document root.",
         parameter_schema: [
           document_id: [type: :string, required: true, doc: "Containing document id"],
-          block_id: [type: :string, required: true, doc: "Block id to fetch"]
+          block_id: [type: :string, doc: "Single block id to fetch"],
+          block_ids: [
+            type: {:list, :string},
+            doc: "Several block ids to fetch from the same document"
+          ]
         ],
         callback: instrument(notify, "get_block", &get_block_tool/1)
       ),
@@ -81,9 +88,9 @@ defmodule Sheaf.Assistant.CorpusTools do
             default: false,
             doc: "Explicitly include sheaf:Row spreadsheet excerpts and coding metadata."
           ],
-          limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits"]
+          limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits per category"]
         ],
-        callback: instrument(notify, "search_text", &search_text_tool(&1, search))
+        callback: instrument(notify, "search_text", &search_text_tool(&1, search, exact_search))
       )
     ]
 
@@ -135,6 +142,36 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
+  def block_context_text(graph, root, block_id)
+      when is_binary(block_id) and block_id != "" do
+    case block_from_graph(graph, Id.id_from_iri(root), root, block_id) do
+      {:ok, block} ->
+        block
+        |> ToolResultText.to_text()
+        |> then(&{:ok, &1})
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def block_context_text(_graph, _root, _block_id), do: {:error, :invalid_block_id}
+
+  def selected_block_context_text(graph, root, block_id)
+      when is_binary(block_id) and block_id != "" do
+    case block_from_graph(graph, Id.id_from_iri(root), root, block_id) do
+      {:ok, block} ->
+        block
+        |> ToolResultText.selected_block_text()
+        |> then(&{:ok, &1})
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def selected_block_context_text(_graph, _root, _block_id), do: {:error, :invalid_block_id}
+
   def humanize("list_documents", _args, _titles), do: "Checking the library"
 
   def humanize("get_document", args, titles) do
@@ -143,8 +180,16 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   def humanize("get_block", args, titles) do
     doc_id = arg(args, :document_id)
-    block_id = arg(args, :block_id)
-    "Reading ##{block_id} in " <> quote_title(doc_id, titles)
+    block_ids = requested_block_ids(args)
+
+    target =
+      case block_ids do
+        [block_id] -> "##{block_id}"
+        ids when is_list(ids) and ids != [] -> "#{length(ids)} blocks"
+        _ids -> "a block"
+      end
+
+    "Reading #{target} in " <> quote_title(doc_id, titles)
   end
 
   def humanize("search_text", args, titles) do
@@ -169,11 +214,15 @@ defmodule Sheaf.Assistant.CorpusTools do
   Builds a short human-readable summary of a finished tool result,
   suitable for the right-hand side of a compact tool-call row.
   """
-  def result_summary("list_documents", {:ok, %{documents: docs}}) do
+  def result_summary(name, {:ok, %ToolResult{metadata: %{sheaf_result: result}}}) do
+    result_summary(name, {:ok, result})
+  end
+
+  def result_summary("list_documents", {:ok, %ToolResults.ListDocuments{documents: docs}}) do
     pluralize(length(docs), "document", "documents")
   end
 
-  def result_summary("get_document", {:ok, %{title: title, outline: outline}}) do
+  def result_summary("get_document", {:ok, %ToolResults.Document{title: title, outline: outline}}) do
     sections = "outline with " <> pluralize(length(outline), "section", "sections")
 
     case title do
@@ -183,34 +232,39 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  def result_summary("get_block", {:ok, %{type: :section, children: children}}) do
+  def result_summary("get_block", {:ok, %ToolResults.Block{type: :section, children: children}}) do
     "section with " <> pluralize(length(children), "child", "children")
   end
 
-  def result_summary("get_block", {:ok, %{type: :paragraph, text: text}})
+  def result_summary("get_block", {:ok, %ToolResults.Block{type: :paragraph, text: text}})
       when is_binary(text) do
     excerpt_or_kind(text, "paragraph")
   end
 
-  def result_summary("get_block", {:ok, %{type: :extracted, text: text}})
+  def result_summary("get_block", {:ok, %ToolResults.Block{type: :extracted, text: text}})
       when is_binary(text) do
     excerpt_or_kind(text, "extracted block")
   end
 
-  def result_summary("get_block", {:ok, %{type: :row, text: text}})
+  def result_summary("get_block", {:ok, %ToolResults.Block{type: :row, text: text}})
       when is_binary(text) do
     excerpt_or_kind(text, "row")
   end
 
-  def result_summary("get_block", {:ok, %{type: :document, title: title}}) do
+  def result_summary("get_block", {:ok, %ToolResults.Block{type: :document, title: title}}) do
     "document" <> if(title in [nil, ""], do: "", else: ": " <> ellipsize(title, 60))
   end
 
-  def result_summary("search_text", {:ok, %{results: results}}) do
-    pluralize(length(results), "hit", "hits")
+  def result_summary("get_block", {:ok, %ToolResults.Blocks{blocks: blocks}}) do
+    pluralize(length(blocks), "block", "blocks")
   end
 
-  def result_summary("write_note", {:ok, _}), do: "note saved"
+  def result_summary("search_text", {:ok, %ToolResults.SearchResults{} = results}) do
+    count = length(results.exact_results) + length(results.approximate_results)
+    pluralize(count, "hit", "hits")
+  end
+
+  def result_summary("write_note", {:ok, %ToolResults.Note{}}), do: "note saved"
 
   def result_summary(_name, {:error, reason}) when is_binary(reason) do
     "error: " <> ellipsize(reason, 80)
@@ -243,10 +297,22 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
+  defp rendered_result(result) do
+    %ToolResult{
+      content: [ContentPart.text(ToolResultText.to_text(result))],
+      metadata: %{sheaf_result: result}
+    }
+  end
+
   defp list_documents_tool(_args) do
     case Documents.list(include_excluded: false) do
       {:ok, documents} ->
-        {:ok, %{documents: Enum.map(documents, &document_summary/1)}}
+        {:ok,
+         documents
+         |> Enum.filter(&assistant_list_document?/1)
+         |> Enum.map(&document_summary/1)
+         |> then(&%ToolResults.ListDocuments{documents: &1})
+         |> rendered_result()}
 
       {:error, reason} ->
         {:error, "could not list documents: #{inspect(reason)}"}
@@ -259,13 +325,14 @@ defmodule Sheaf.Assistant.CorpusTools do
         with {:ok, graph} <- Corpus.graph(id) do
           root = Id.iri(id)
 
-          {:ok,
-           %{
-             id: id,
-             title: Document.title(graph, root),
-             kind: Document.kind(graph, root),
-             outline: Enum.map(Document.toc(graph, root), &outline_entry/1)
-           }}
+          %ToolResults.Document{
+            id: id,
+            title: Document.title(graph, root),
+            kind: Document.kind(graph, root),
+            outline: Enum.map(Document.toc(graph, root), &outline_entry/1)
+          }
+          |> rendered_result()
+          |> then(&{:ok, &1})
         end
 
       _ ->
@@ -275,53 +342,38 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   defp get_block_tool(args) do
     doc_id = arg(args, :document_id)
-    block_id = arg(args, :block_id)
+    block_ids = requested_block_ids(args)
 
     cond do
       not is_binary(doc_id) or doc_id == "" ->
         {:error, "document_id is required"}
 
-      not is_binary(block_id) or block_id == "" ->
-        {:error, "block_id is required"}
+      block_ids == [] ->
+        {:error, "block_id or block_ids is required"}
 
       true ->
         with {:ok, graph} <- Corpus.graph(doc_id) do
           root = Id.iri(doc_id)
-          iri = Id.iri(block_id)
 
-          cond do
-            iri == root ->
-              {:ok,
-               %{
-                 document_id: doc_id,
-                 id: Id.id_from_iri(root),
-                 type: :document,
-                 title: Document.title(graph, root),
-                 kind: Document.kind(graph, root),
-                 ancestry: [
-                   %{
-                     id: Id.id_from_iri(root),
-                     type: :document,
-                     title: Document.title(graph, root)
-                   }
-                 ],
-                 outline: Enum.map(Document.toc(graph, root), &outline_entry/1)
-               }}
+          case blocks_from_graph(graph, doc_id, root, block_ids) do
+            {:ok, [block]} ->
+              block
+              |> rendered_result()
+              |> then(&{:ok, &1})
 
-            type = Document.block_type(graph, iri) ->
-              payload = render_block(graph, doc_id, iri, type)
+            {:ok, blocks} ->
+              %ToolResults.Blocks{document_id: doc_id, blocks: blocks}
+              |> rendered_result()
+              |> then(&{:ok, &1})
 
-              ancestry = Corpus.ancestry(graph, root, iri)
-              {:ok, Map.put(payload, :ancestry, ancestry)}
-
-            true ->
+            {:error, {:not_found, block_id}} ->
               {:error, "block #{block_id} not found in document #{doc_id}"}
           end
         end
     end
   end
 
-  defp search_text_tool(args, search) do
+  defp search_text_tool(args, search, exact_search) do
     query = arg(args, :query)
 
     if is_binary(query) do
@@ -330,8 +382,16 @@ defmodule Sheaf.Assistant.CorpusTools do
         |> maybe_add_scope(args)
         |> maybe_include_spreadsheets(args)
 
-      case search.(query, opts) do
-        {:ok, results} -> {:ok, %{query: query, results: Enum.map(results, &search_hit/1)}}
+      with {:ok, exact_results} <- exact_search.(query, opts),
+           {:ok, approximate_results} <- search.(query, Keyword.put(opts, :exact_limit, 0)) do
+        %ToolResults.SearchResults{
+          exact_results: exact_results |> Enum.map(&search_hit/1) |> add_search_contexts(),
+          approximate_results:
+            approximate_results |> Enum.map(&search_hit/1) |> add_search_contexts()
+        }
+        |> rendered_result()
+        |> then(&{:ok, &1})
+      else
         {:error, reason} -> {:error, "search failed: #{inspect(reason)}"}
       end
     else
@@ -351,7 +411,9 @@ defmodule Sheaf.Assistant.CorpusTools do
 
     case note_writer.(attrs) do
       {:ok, %RDF.IRI{} = note} ->
-        {:ok, %{id: Id.id_from_iri(note), iri: to_string(note)}}
+        %ToolResults.Note{id: Id.id_from_iri(note), iri: to_string(note)}
+        |> rendered_result()
+        |> then(&{:ok, &1})
 
       {:error, reason} ->
         {:error, "could not write note: #{inspect(reason)}"}
@@ -381,9 +443,10 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp include_spreadsheets?(args), do: arg(args, :include_spreadsheets) in [true, "true"]
 
   defp search_hit(result) do
-    %{
+    %ToolResults.SearchHit{
       document_id: result.doc_iri && Id.id_from_iri(result.doc_iri),
       document_title: result.doc_title,
+      document_authors: Map.get(result, :doc_authors, []),
       block_id: Id.id_from_iri(result.iri),
       kind: search_hit_kind(result.kind),
       text: search_hit_text(result),
@@ -404,7 +467,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp search_hit_text(%{text: text}), do: normalize_text(text)
 
   defp maybe_add_search_coding(hit, %{kind: "row"} = result) do
-    Map.put(hit, :coding, %{
+    Map.put(hit, :coding, %ToolResults.Coding{
       row: result.spreadsheet_row,
       source: result.spreadsheet_source,
       category: Map.get(result, :code_category),
@@ -414,21 +477,97 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   defp maybe_add_search_coding(hit, _result), do: hit
 
+  defp add_search_contexts(hits) do
+    hits
+    |> Enum.group_by(& &1.document_id)
+    |> Enum.flat_map(fn {_document_id, document_hits} ->
+      add_document_contexts(document_hits)
+    end)
+  end
+
+  defp add_document_contexts([%ToolResults.SearchHit{document_id: document_id} | _] = hits)
+       when is_binary(document_id) and document_id != "" do
+    try do
+      case Corpus.graph(document_id) do
+        {:ok, graph} ->
+          root = Id.iri(document_id)
+
+          Enum.map(hits, fn hit ->
+            context =
+              graph
+              |> Corpus.ancestry(root, Id.iri(hit.block_id))
+              |> Enum.map(&context_entry/1)
+              |> section_context(hit.block_id)
+
+            %{hit | context: context}
+          end)
+
+        _ ->
+          hits
+      end
+    rescue
+      _error -> hits
+    end
+  end
+
+  defp add_document_contexts(hits), do: hits
+
+  defp section_context(entries, block_id) do
+    Enum.reject(entries, fn
+      %ToolResults.ContextEntry{type: :document} -> true
+      %ToolResults.ContextEntry{id: ^block_id} -> true
+      _entry -> false
+    end)
+  end
+
   defp document_summary(doc) do
-    %{
+    %ToolResults.DocumentSummary{
       id: doc.id,
       kind: doc.kind,
+      metadata_kind: Map.get(doc.metadata, :kind),
       title: doc.title,
       authors: Map.get(doc.metadata, :authors, []),
       year: Map.get(doc.metadata, :year),
       page_count: Map.get(doc.metadata, :page_count),
       doi: Map.get(doc.metadata, :doi),
-      venue: Map.get(doc.metadata, :venue)
+      venue: Map.get(doc.metadata, :venue),
+      publisher: Map.get(doc.metadata, :publisher),
+      pages: Map.get(doc.metadata, :pages),
+      status: Map.get(doc.metadata, :status),
+      cited?: Map.get(doc, :cited?, false),
+      has_document?: Map.get(doc, :has_document?, true),
+      workspace_owner_authored?: Map.get(doc, :workspace_owner_authored?, false)
     }
   end
 
+  defp assistant_list_document?(%{kind: kind}) when kind in [:transcript, :spreadsheet], do: false
+  defp assistant_list_document?(%{has_document?: false}), do: false
+  defp assistant_list_document?(_doc), do: true
+
+  defp requested_block_ids(args) do
+    ids =
+      case arg(args, :block_ids) do
+        ids when is_list(ids) -> ids
+        id when is_binary(id) -> [id]
+        _other -> []
+      end
+      |> normalize_block_ids()
+
+    case ids do
+      [] -> args |> arg(:block_id) |> List.wrap() |> normalize_block_ids()
+      ids -> ids
+    end
+  end
+
+  defp normalize_block_ids(ids) do
+    ids
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
   defp outline_entry(%{id: id, title: title, number: number, children: children}) do
-    %{
+    %ToolResults.OutlineEntry{
       id: id,
       number: Enum.join(number, "."),
       title: title,
@@ -436,8 +575,55 @@ defmodule Sheaf.Assistant.CorpusTools do
     }
   end
 
+  defp blocks_from_graph(graph, document_id, root, block_ids) do
+    Enum.reduce_while(block_ids, {:ok, []}, fn block_id, {:ok, blocks} ->
+      case block_from_graph(graph, document_id, root, block_id) do
+        {:ok, block} -> {:cont, {:ok, blocks ++ [block]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp block_from_graph(graph, document_id, root, block_id) do
+    iri = Id.iri(block_id)
+
+    cond do
+      iri == root ->
+        {:ok,
+         %ToolResults.Block{
+           document_id: document_id,
+           id: Id.id_from_iri(root),
+           type: :document,
+           title: Document.title(graph, root),
+           kind: Document.kind(graph, root),
+           ancestry: [
+             %ToolResults.ContextEntry{
+               id: Id.id_from_iri(root),
+               type: :document,
+               title: Document.title(graph, root)
+             }
+           ],
+           outline: Enum.map(Document.toc(graph, root), &outline_entry/1)
+         }}
+
+      type = Document.block_type(graph, iri) ->
+        block =
+          graph
+          |> render_block(document_id, iri, type)
+          |> Map.put(
+            :ancestry,
+            graph |> Corpus.ancestry(root, iri) |> Enum.map(&context_entry/1)
+          )
+
+        {:ok, block}
+
+      true ->
+        {:error, {:not_found, block_id}}
+    end
+  end
+
   defp render_block(graph, document_id, iri, type) do
-    base = %{
+    base = %ToolResults.Block{
       document_id: document_id,
       id: Id.id_from_iri(iri),
       type: type,
@@ -469,18 +655,32 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp child_handle(graph, iri) do
     type = Document.block_type(graph, iri)
 
-    %{
+    %ToolResults.Child{
       id: Id.id_from_iri(iri),
       type: type,
-      title: block_title(graph, iri, type)
+      title: block_title(graph, iri, type),
+      preview: block_preview(graph, iri, type)
     }
+  end
+
+  defp context_entry(%{id: id, type: type, title: title}) do
+    %ToolResults.ContextEntry{id: id, type: type, title: title}
   end
 
   defp block_title(graph, iri, :section), do: Document.heading(graph, iri)
   defp block_title(_graph, _iri, _type), do: nil
 
+  defp block_preview(graph, iri, :paragraph),
+    do: graph |> Document.paragraph_text(iri) |> preview()
+
+  defp block_preview(graph, iri, :extracted),
+    do: graph |> Document.source_html(iri) |> plain_text() |> preview()
+
+  defp block_preview(graph, iri, :row), do: graph |> Document.text(iri) |> preview()
+  defp block_preview(_graph, _iri, _type), do: nil
+
   defp block_source(graph, iri) do
-    %{
+    %ToolResults.Source{
       key: Document.source_key(graph, iri),
       page: Document.source_page(graph, iri),
       type: Document.source_block_type(graph, iri)
@@ -488,7 +688,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp row_coding(graph, iri) do
-    %{
+    %ToolResults.Coding{
       row: Document.spreadsheet_row(graph, iri),
       source: Document.spreadsheet_source(graph, iri),
       category: Document.code_category(graph, iri),
@@ -508,6 +708,14 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   defp ellipsize(text, limit) do
     if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 1) <> "…"
+  end
+
+  defp preview(nil), do: nil
+
+  defp preview(text) do
+    text
+    |> normalize_text()
+    |> ellipsize(180)
   end
 
   defp arg(args, key) do

@@ -1,8 +1,9 @@
 defmodule Sheaf.Assistant.CorpusToolsTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Tool
-  alias Sheaf.Assistant.CorpusTools
+  alias ReqLLM.{Tool, ToolResult}
+  alias ReqLLM.Message.ContentPart
+  alias Sheaf.Assistant.{CorpusTools, ToolResultText, ToolResults}
   alias Sheaf.Id
 
   test "search_text tool uses embedding index search and preserves assistant hit shape" do
@@ -26,10 +27,28 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
        ]}
     end
 
-    tools = CorpusTools.tools(search: search)
+    exact_search = fn query, opts ->
+      send(test_pid, {:exact_search_args, query, opts})
+
+      {:ok,
+       [
+         %{
+           iri: to_string(Id.iri("EXACT1")),
+           doc_iri: to_string(Id.iri("DOC123")),
+           doc_title: "A paper",
+           kind: "paragraph",
+           text: "Plastic appears exactly here.",
+           source_page: nil,
+           match: :exact,
+           score: 0.95
+         }
+       ]}
+    end
+
+    tools = CorpusTools.tools(search: search, exact_search: exact_search)
     tool = Enum.find(tools, &(&1.name == "search_text"))
 
-    assert {:ok, %{query: "plastic", results: [hit]}} =
+    assert {:ok, %ToolResult{} = result} =
              Tool.execute(tool, %{
                "query" => "plastic",
                "document_id" => "DOC123",
@@ -37,14 +56,43 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
                "limit" => 5
              })
 
+    assert %ToolResults.SearchResults{
+             exact_results: [exact_hit],
+             approximate_results: [hit]
+           } = sheaf_result(result)
+
+    assert tool_text(result) =~ "Exact matches"
+    assert tool_text(result) =~ "Matching paragraph #EXACT1:"
+    assert tool_text(result) =~ "Approximate matches"
+    assert tool_text(result) =~ "Related excerpt #BLK123:"
+
     assert_received {:search_args, "plastic", opts}
     assert Keyword.get(opts, :limit) == 5
     assert Keyword.get(opts, :document_id) == "DOC123"
     assert Keyword.get(opts, :kinds) == ["paragraph", "sourceHtml"]
+    assert Keyword.get(opts, :exact_limit) == 0
 
-    assert hit == %{
+    assert_received {:exact_search_args, "plastic", exact_opts}
+    assert Keyword.get(exact_opts, :limit) == 5
+    assert Keyword.get(exact_opts, :document_id) == "DOC123"
+    assert Keyword.get(exact_opts, :kinds) == ["paragraph", "sourceHtml"]
+
+    assert exact_hit == %ToolResults.SearchHit{
              document_id: "DOC123",
              document_title: "A paper",
+             document_authors: [],
+             block_id: "EXACT1",
+             kind: :paragraph,
+             text: "Plastic appears exactly here.",
+             source_page: nil,
+             match: :exact,
+             score: 0.95
+           }
+
+    assert hit == %ToolResults.SearchHit{
+             document_id: "DOC123",
+             document_title: "A paper",
+             document_authors: [],
              block_id: "BLK123",
              kind: :extracted,
              text: "Plastic packaging.",
@@ -98,10 +146,9 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert_receive {:tool_finished, "write_note", {:ok, ^result}}
 
-    assert result == %{
-             id: "NOTE03",
-             iri: to_string(Id.iri("NOTE03"))
-           }
+    assert %ToolResults.Note{id: "NOTE03", iri: iri} = sheaf_result(result)
+    assert iri == to_string(Id.iri("NOTE03"))
+    assert tool_text(result) =~ "NOTE SAVED #NOTE03"
   end
 
   test "write_note tool can be omitted" do
@@ -110,4 +157,39 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     refute Enum.any?(tools, &(&1.name == "write_note"))
     assert Enum.any?(tools, &(&1.name == "search_text"))
   end
+
+  test "get_block tool accepts either a single block id or block id list" do
+    tool = CorpusTools.tools(include_notes?: false) |> Enum.find(&(&1.name == "get_block"))
+
+    assert [type: :string, doc: "Single block id to fetch"] = tool.parameter_schema[:block_id]
+
+    assert [
+             type: {:list, :string},
+             doc: "Several block ids to fetch from the same document"
+           ] = tool.parameter_schema[:block_ids]
+  end
+
+  test "selected block turn context omits the repeated document title" do
+    text =
+      ToolResultText.selected_block_text(%ToolResults.Block{
+        document_id: "ABC123",
+        id: "DEF456",
+        type: :paragraph,
+        text: "Selected paragraph text.",
+        ancestry: [
+          %ToolResults.ContextEntry{id: "ABC123", type: :document, title: "Draft chapter"},
+          %ToolResults.ContextEntry{id: "SEC001", type: :section, title: "A section"},
+          %ToolResults.ContextEntry{id: "DEF456", type: :paragraph, title: "paragraph"}
+        ]
+      })
+
+    assert text =~ "The user has selected paragraph #DEF456:"
+    assert text =~ "#SEC001 A section"
+    assert text =~ "Selected paragraph text."
+    refute text =~ "Draft chapter"
+  end
+
+  defp sheaf_result(%ToolResult{metadata: %{sheaf_result: result}}), do: result
+
+  defp tool_text(%ToolResult{content: [%ContentPart{text: text} | _]}), do: text
 end

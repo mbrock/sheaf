@@ -404,48 +404,115 @@ defmodule Sheaf.Assistant.Chat do
   end
 
   defp user_input(text, turn_context) do
-    lines =
+    context_sections =
       []
+      |> maybe_add_working_document(turn_context)
       |> maybe_add_open_document(turn_context)
       |> maybe_add_selected(turn_context)
 
-    case lines do
+    case context_sections do
       [] ->
         Context.user(text)
 
-      context_lines ->
+      sections ->
         Context.user("""
         [context for this turn]
-        #{Enum.join(context_lines, "\n")}
+        #{Enum.join(sections, "\n\n")}
 
         #{text}
         """)
     end
   end
 
-  defp maybe_add_open_document(lines, %{open_document: %{title: title, kind: kind, id: id}}) do
-    lines ++ ["Currently open: \"#{title}\" (id #{id}, kind #{kind})"]
+  defp maybe_add_working_document(lines, turn_context) do
+    case context_document(turn_context, :working_document) ||
+           context_document(turn_context, :open_document) do
+      nil -> lines
+      document -> lines ++ [working_document_context(document)]
+    end
   end
 
-  defp maybe_add_open_document(lines, %{
-         "open_document" => %{"title" => title, "kind" => kind, "id" => id}
-       }) do
-    lines ++ ["Currently open: \"#{title}\" (id #{id}, kind #{kind})"]
+  defp maybe_add_open_document(lines, turn_context) do
+    open_document = context_document(turn_context, :open_document)
+    working_document = context_document(turn_context, :working_document) || open_document
+
+    cond do
+      is_nil(open_document) ->
+        lines
+
+      same_document?(open_document, working_document) ->
+        lines ++ ["The user has this document open."]
+
+      true ->
+        lines ++ [open_document_context(open_document)]
+    end
   end
 
-  defp maybe_add_open_document(lines, _turn_context), do: lines
+  defp working_document_context(%{title: title, kind: kind, id: id}) do
+    """
+    The user is working on:
+      #{document_context_line(title, kind, id)}
+    """
+    |> String.trim()
+  end
+
+  defp open_document_context(%{title: title, kind: kind, id: id}) do
+    """
+    The user has open:
+      #{document_context_line(title, kind, id)}
+    """
+    |> String.trim()
+  end
+
+  defp document_context_line(title, kind, id) do
+    [title, "(##{id}, #{kind})"]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+  end
+
+  defp context_document(turn_context, key) do
+    case context_value(turn_context, key) do
+      %{title: _title, kind: _kind, id: _id} = document ->
+        document
+
+      %{"title" => title, "kind" => kind, "id" => id} ->
+        %{title: title, kind: kind, id: id}
+
+      _other ->
+        nil
+    end
+  end
+
+  defp same_document?(%{id: id}, %{id: id}), do: true
+  defp same_document?(_left, _right), do: false
+
+  defp maybe_add_selected(lines, %{selected_block_context: text})
+       when is_binary(text) and text != "" do
+    lines ++ [text]
+  end
+
+  defp maybe_add_selected(lines, %{"selected_block_context" => text})
+       when is_binary(text) and text != "" do
+    lines ++ [text]
+  end
 
   defp maybe_add_selected(lines, %{selected_id: selected_id})
        when is_binary(selected_id) and selected_id != "" do
-    lines ++ ["Currently selected block: ##{selected_id}"]
+    lines ++ ["Selected block: ##{selected_id}"]
   end
 
   defp maybe_add_selected(lines, %{"selected_id" => selected_id})
        when is_binary(selected_id) and selected_id != "" do
-    lines ++ ["Currently selected block: ##{selected_id}"]
+    lines ++ ["Selected block: ##{selected_id}"]
   end
 
   defp maybe_add_selected(lines, _turn_context), do: lines
+
+  defp context_value(map, key) when is_map(map) do
+    Map.get(map, key) || Map.get(map, Atom.to_string(key))
+  end
+
+  defp context_value(_value, _key), do: nil
 
   defp blank_to_default(nil), do: "(no text response)"
   defp blank_to_default(""), do: "(no text response)"
@@ -549,7 +616,8 @@ defmodule Sheaf.Assistant.Chat do
       * Use list_documents when you need to know what's in the corpus.
       * Use get_document before drilling into a document; it returns the
         outline so you can pick the right section.
-      * Use get_block for a single section, paragraph, extracted block, or row.
+      * Use get_block for one or more sections, paragraphs, extracted blocks,
+        or rows.
         Sections return their child handles (drill further); paragraphs,
         extracted blocks, and rows return text. Rows also return coding
         metadata. Every block comes back with its ancestry so you can orient
@@ -573,6 +641,9 @@ defmodule Sheaf.Assistant.Chat do
       * Clarify concepts from practice theory grounded in the actual corpus
         when possible.
       * Keep answers short by default; go deeper only when she asks.
+      * Do not end by offering optional follow-up help like "If you want, I can
+        also...". Finish with the answer or the concrete next step already
+        taken.
       * When you cite, use simple block ids: "(Evans 2020, #4C3K1P)" for
         papers, "(#4C3K1P)" for her own prose, or "(4C3K1P)" when the hash
         would read awkwardly.

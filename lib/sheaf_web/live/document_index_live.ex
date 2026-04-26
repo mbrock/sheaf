@@ -62,10 +62,13 @@ defmodule SheafWeb.DocumentIndexLive do
 
   defp fetch_documents do
     case Sheaf.Documents.list() do
-      {:ok, documents} -> {documents, nil}
+      {:ok, documents} -> {Enum.filter(documents, &index_document?/1), nil}
       {:error, reason} -> {[], inspect(reason)}
     end
   end
+
+  defp index_document?(%{kind: kind}) when kind in [:transcript, :spreadsheet], do: false
+  defp index_document?(_document), do: true
 
   defp fetch_notes do
     case Notes.list_graph(limit: 30) do

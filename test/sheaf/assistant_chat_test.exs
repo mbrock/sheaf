@@ -36,13 +36,25 @@ defmodule Sheaf.Assistant.ChatTest do
     assert :ok =
              Chat.send_user_message(id, "What should I do next?", %{
                open_document: %{title: "Draft chapter", kind: :thesis, id: "ABC123"},
-               selected_id: "DEF456"
+               working_document: %{title: "Draft chapter", kind: :thesis, id: "ABC123"},
+               selected_id: "DEF456",
+               selected_block_context: """
+               The user has selected paragraph #DEF456:
+                 Text:
+                   Selected paragraph text.
+               """
              })
 
     assert_receive {:inference_started, task_pid, context}
-    assert user_text(context) =~ ~s|Currently open: "Draft chapter" (id ABC123, kind thesis)|
-    assert user_text(context) =~ "Currently selected block: #DEF456"
+    assert user_text(context) =~ "The user is working on:"
+    assert user_text(context) =~ "Draft chapter (#ABC123, thesis)"
+    assert user_text(context) =~ "The user has this document open."
+    assert user_text(context) =~ "The user has selected paragraph #DEF456:"
+    assert user_text(context) =~ "Selected paragraph text."
+    refute user_text(context) =~ "Workspace:"
+    refute user_text(context) =~ "Document: #ABC123 Draft chapter"
     refute system_text(context) =~ "write_note"
+    assert system_text(context) =~ "Do not end by offering optional follow-up help"
 
     assert %{
              title: "What should I do next?",
