@@ -1,5 +1,4 @@
-// otel-tail prints OpenTelemetry spans from a Redis Stream to stdout as they
-// arrive.
+// otel prints OpenTelemetry spans from a Redis Stream to stdout as they arrive.
 //
 // The stream is populated by Sheaf's custom span processor
 // (Sheaf.Tracing.RedisSinkProcessor); this tool is the consumer side.
@@ -7,10 +6,10 @@
 // To pick the right stream when no flag is passed, otel-tail looks at
 // SHEAF_OTEL_STREAM, then derives `otel:spans:<SHEAF_NODE_BASENAME>` (or
 // `otel:spans:sheaf` if neither is set). Because Sheaf is typically run as a
-// systemd service whose env doesn't leak into interactive shells, otel-tail
-// also auto-loads the `.env` file at the root of the checkout it lives in
-// before reading those vars, so running `bin/otel-tail` in a fresh shell
-// inside a sheaf checkout still hits that instance's stream.
+// systemd service whose env doesn't leak into interactive shells, otel also
+// auto-loads the `.env` file at the root of the checkout it lives in before
+// reading those vars, so running `bin/otel` in a fresh shell inside a sheaf
+// checkout still hits that instance's stream.
 package main
 
 import (
@@ -32,6 +31,8 @@ func main() {
 	stream := flag.String("stream", otelstream.DefaultStream(), "Redis stream key")
 	backfill := flag.Int64("backfill", 0, "Print the last N spans before tailing live")
 	jsonOut := flag.Bool("json", false, "Output raw JSON, one object per line")
+	jsonLines := flag.Bool("jsonl", false, "Output raw JSON Lines, one span event per line")
+	tui := flag.Bool("tui", false, "Run an interactive terminal UI")
 	noColor := flag.Bool("no-color", false, "Disable ANSI colors")
 	verbose := flag.Bool("v", false, "Print all attributes, not just promoted ones")
 	flag.Parse()
@@ -63,7 +64,7 @@ func main() {
 	}
 
 	printer := NewSpanPrinter(os.Stdout, os.Stderr, SpanPrinterOptions{
-		JSON:    *jsonOut,
+		JSON:    *jsonOut || *jsonLines,
 		Verbose: *verbose,
 	})
 	tailer := otelstream.RedisTailer{
@@ -72,6 +73,14 @@ func main() {
 		OnReadError: func(err error) {
 			log.Printf("xread: %v (retrying)", err)
 		},
+	}
+
+	if *tui {
+		err = runTUI(ctx, tailer, otelstream.TailOptions{Backfill: *backfill})
+		if err != nil && ctx.Err() == nil {
+			log.Fatalf("otel tail tui: %v", err)
+		}
+		return
 	}
 
 	err = tailer.Tail(ctx, otelstream.TailOptions{Backfill: *backfill}, printer.PrintEntry)

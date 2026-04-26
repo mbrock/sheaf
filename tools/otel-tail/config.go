@@ -14,12 +14,12 @@ func envDefault(key, fallback string) string {
 	return fallback
 }
 
-// loadDotEnvFromCheckout walks up from the otel-tail executable looking for a
-// `.env` file at the root of a sheaf checkout, and merges its KEY=VALUE pairs
-// into the process env without overriding values that are already set. This
-// lets `bin/otel-tail` pick up SHEAF_OTEL_* and SHEAF_NODE_BASENAME from the
-// checkout's `.env` even when running from an interactive shell where the
-// systemd service env is not visible.
+// loadDotEnvFromCheckout walks up from the otel executable looking for a `.env`
+// file at the root of a sheaf checkout, and merges its KEY=VALUE pairs into
+// the process env without overriding values that are already set. This lets
+// `bin/otel` pick up SHEAF_OTEL_* and SHEAF_NODE_BASENAME from the checkout's
+// `.env` even when running from an interactive shell where the systemd service
+// env is not visible.
 func loadDotEnvFromCheckout() {
 	exe, err := os.Executable()
 	if err != nil {
