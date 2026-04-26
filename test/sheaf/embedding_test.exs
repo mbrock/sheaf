@@ -23,6 +23,7 @@ defmodule Sheaf.EmbeddingTest do
 
     assert {:ok, %{dimensions: 3, model: "gemini-embedding-2", values: [0.1, 0.2, 0.3]}} =
              Embedding.embed_text("A paragraph.",
+               provider: :gemini,
                api_key: "secret",
                output_dimensionality: 768,
                req_options: [plug: {Req.Test, __MODULE__}]
@@ -56,7 +57,64 @@ defmodule Sheaf.EmbeddingTest do
 
     assert {:ok, [%{values: [1.0]}, %{values: [2.0]}]} =
              Embedding.embed_texts(["First.", "Second."],
+               provider: :gemini,
+               model: "gemini-embedding-2",
                api_key: "secret",
+               req_options: [plug: {Req.Test, __MODULE__}]
+             )
+  end
+
+  test "embeds OpenAI text with embeddings endpoint" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+      assert conn.request_path == "/v1/embeddings"
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer openai-secret"]
+
+      assert %{
+               "model" => "text-embedding-3-small",
+               "input" => "A paragraph.",
+               "dimensions" => 768
+             } = Jason.decode!(IO.iodata_to_binary(Req.Test.raw_body(conn)))
+
+      Req.Test.json(conn, %{
+        "data" => [
+          %{"embedding" => [0.1, 0.2, 0.3], "index" => 0}
+        ]
+      })
+    end)
+
+    assert {:ok, %{dimensions: 3, model: "text-embedding-3-small", values: [0.1, 0.2, 0.3]}} =
+             Embedding.embed_text("A paragraph.",
+               provider: :openai,
+               model: "text-embedding-3-small",
+               api_key: "openai-secret",
+               output_dimensionality: 768,
+               req_options: [plug: {Req.Test, __MODULE__}]
+             )
+  end
+
+  test "embeds OpenAI document batches as input arrays" do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.request_path == "/v1/embeddings"
+
+      assert %{
+               "model" => "text-embedding-3-small",
+               "input" => ["First.", "Second."]
+             } = Jason.decode!(IO.iodata_to_binary(Req.Test.raw_body(conn)))
+
+      Req.Test.json(conn, %{
+        "data" => [
+          %{"embedding" => [1.0], "index" => 0},
+          %{"embedding" => [2.0], "index" => 1}
+        ]
+      })
+    end)
+
+    assert {:ok, [%{values: [1.0]}, %{values: [2.0]}]} =
+             Embedding.embed_texts(["First.", "Second."],
+               provider: :openai,
+               model: "text-embedding-3-small",
+               api_key: "openai-secret",
                req_options: [plug: {Req.Test, __MODULE__}]
              )
   end
@@ -179,7 +237,26 @@ defmodule Sheaf.EmbeddingTest do
     Application.put_env(:sheaf, Embedding, api_key: nil)
 
     try do
-      assert {:error, :missing_gemini_api_key} = Embedding.embed_text("No key.")
+      assert {:error, :missing_openai_api_key} = Embedding.embed_text("No key.")
+    after
+      if previous do
+        Application.put_env(:sheaf, Embedding, previous)
+      else
+        Application.delete_env(:sheaf, Embedding)
+      end
+    end
+  end
+
+  test "returns a useful error when the OpenAI API key is missing" do
+    previous = Application.get_env(:sheaf, Embedding)
+    Application.put_env(:sheaf, Embedding, openai_api_key: nil)
+
+    try do
+      assert {:error, :missing_openai_api_key} =
+               Embedding.embed_text("No key.",
+                 provider: :openai,
+                 model: "text-embedding-3-small"
+               )
     after
       if previous do
         Application.put_env(:sheaf, Embedding, previous)

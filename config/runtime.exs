@@ -70,18 +70,27 @@ gemini_api_key =
   |> Enum.map(&System.get_env/1)
   |> Enum.find(&(is_binary(&1) and String.trim(&1) != ""))
 
+openai_api_key =
+  ["OPENAI_API_KEY", "SHEAF_OPENAI_API_KEY"]
+  |> Enum.map(&System.get_env/1)
+  |> Enum.find(&(is_binary(&1) and String.trim(&1) != ""))
+
 if gemini_api_key do
   config :req_llm, google_api_key: gemini_api_key
 end
 
 config :sheaf, Sheaf.Embedding,
+  provider: System.get_env("SHEAF_EMBEDDING_PROVIDER", "openai"),
   api_key: gemini_api_key,
+  openai_api_key: openai_api_key,
   base_url:
     System.get_env(
       "SHEAF_GEMINI_EMBEDDING_BASE_URL",
       "https://generativelanguage.googleapis.com/v1beta"
     ),
-  model: System.get_env("SHEAF_GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
+  openai_base_url: System.get_env("SHEAF_OPENAI_EMBEDDING_BASE_URL", "https://api.openai.com/v1"),
+  model: System.get_env("SHEAF_GEMINI_EMBEDDING_MODEL", "gemini-embedding-2"),
+  openai_model: System.get_env("SHEAF_OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
 
 config :sheaf, Sheaf.Embedding.Store,
   path: System.get_env("SHEAF_EMBEDDINGS_DB", "var/sheaf-embeddings.sqlite3")

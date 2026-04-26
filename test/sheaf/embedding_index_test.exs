@@ -1,34 +1,58 @@
 defmodule Sheaf.Embedding.IndexTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Sheaf.Embedding.Index
+  alias Sheaf.Embedding.Store
+
+  setup do
+    Req.Test.verify_on_exit!()
+  end
 
   test "builds text units from all text-bearing block shapes" do
-    select = fn sparql ->
-      assert sparql =~ "sheaf:paragraph"
-      assert sparql =~ "sheaf:sourceHtml"
-      assert sparql =~ "sheaf:Row"
+    test_pid = self()
 
-      {:ok,
-       %{
-         results: [
+    select = fn sparql ->
+      send(test_pid, {:sparql, sparql})
+      assert sparql =~ "sheaf:excludesDocument"
+      refute sparql =~ " UNION "
+
+      cond do
+        sparql =~ "sheaf:paragraph" ->
+          {:ok,
            %{
-             "iri" => RDF.iri("https://sheaf.less.rest/BLOCK1"),
-             "kind" => RDF.literal("paragraph"),
-             "text" => RDF.literal("Paragraph text.")
-           },
+             results: [
+               %{
+                 "iri" => RDF.iri("https://sheaf.less.rest/BLOCK1"),
+                 "kind" => RDF.literal("paragraph"),
+                 "text" => RDF.literal("Paragraph text.")
+               }
+             ]
+           }}
+
+        sparql =~ "sheaf:sourceHtml" ->
+          {:ok,
            %{
-             "iri" => RDF.iri("https://sheaf.less.rest/BLOCK2"),
-             "kind" => RDF.literal("sourceHtml"),
-             "text" => RDF.literal("<p>PDF text.</p>")
-           },
+             results: [
+               %{
+                 "iri" => RDF.iri("https://sheaf.less.rest/BLOCK2"),
+                 "kind" => RDF.literal("sourceHtml"),
+                 "text" => RDF.literal("<p>PDF text.</p>")
+               }
+             ]
+           }}
+
+        sparql =~ "sheaf:Row" ->
+          {:ok,
            %{
-             "iri" => RDF.iri("https://sheaf.less.rest/ROW1"),
-             "kind" => RDF.literal("row"),
-             "text" => RDF.literal("Spreadsheet text.")
-           }
-         ]
-       }}
+             results: [
+               %{
+                 "iri" => RDF.iri("https://sheaf.less.rest/ROW1"),
+                 "kind" => RDF.literal("row"),
+                 "text" => RDF.literal("Spreadsheet text.")
+               }
+             ]
+           }}
+      end
     end
 
     assert {:ok, [paragraph, source, row]} =
@@ -42,6 +66,14 @@ defmodule Sheaf.Embedding.IndexTest do
     assert source.text == "<p>PDF text.</p>"
     assert row.iri == "https://sheaf.less.rest/ROW1"
     assert String.length(row.text_hash) == 64
+
+    assert_received {:sparql, paragraph_sparql}
+    assert_received {:sparql, source_sparql}
+    assert_received {:sparql, row_sparql}
+
+    assert paragraph_sparql =~ "sheaf:paragraph"
+    assert source_sparql =~ "sheaf:sourceHtml"
+    assert row_sparql =~ "sheaf:Row"
   end
 
   test "can restrict text unit kinds" do
@@ -54,5 +86,164 @@ defmodule Sheaf.Embedding.IndexTest do
     end
 
     assert {:ok, []} = Index.text_units(kinds: ["sourceHtml"], select: select)
+  end
+
+  test "importing an async batch skips units whose documents are now excluded" do
+    db_path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-embedding-index-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    on_exit(fn ->
+      File.rm(db_path)
+      File.rm(db_path <> "-shm")
+      File.rm(db_path <> "-wal")
+    end)
+
+    run_iri = "https://sheaf.less.rest/RUN-BATCH"
+    included_block = "https://sheaf.less.rest/BLOCK-INCLUDED"
+    excluded_block = "https://sheaf.less.rest/BLOCK-EXCLUDED"
+
+    {:ok, conn} = Store.open(db_path: db_path)
+
+    try do
+      :ok =
+        Store.create_run(conn, %{
+          iri: run_iri,
+          model: "gemini-embedding-2",
+          dimensions: 2,
+          source: "search-v1",
+          status: "running",
+          target_count: 2,
+          metadata: %{
+            batch_name: "batches/test-import",
+            batch_units: [
+              %{
+                iri: included_block,
+                text_hash: "hash-included",
+                text_chars: 13
+              },
+              %{
+                iri: excluded_block,
+                text_hash: "hash-excluded",
+                text_chars: 13
+              }
+            ]
+          }
+        })
+    after
+      Store.close(conn)
+    end
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/v1beta/batches/test-import"
+
+      Req.Test.json(conn, %{
+        "name" => "batches/test-import",
+        "metadata" => %{
+          "name" => "batches/test-import",
+          "state" => "BATCH_STATE_SUCCEEDED",
+          "output" => %{
+            "inlinedResponses" => %{
+              "inlinedResponses" => [
+                %{"response" => %{"embedding" => %{"values" => [1.0, 0.0]}}},
+                %{"response" => %{"embedding" => %{"values" => [0.0, 1.0]}}}
+              ]
+            }
+          }
+        }
+      })
+    end)
+
+    select = fn sparql ->
+      cond do
+        sparql =~ "VALUES ?iri" ->
+          {:ok,
+           %{
+             results: [
+               description_row(included_block, "DOC-INCLUDED"),
+               description_row(excluded_block, "DOC-EXCLUDED")
+             ]
+           }}
+
+        sparql =~ "SELECT ?doc ?title ?authorName ?excluded" ->
+          {:ok,
+           %{
+             results: [
+               metadata_row("DOC-INCLUDED", "Included"),
+               metadata_row("DOC-EXCLUDED", "Excluded", excluded?: true)
+             ]
+           }}
+      end
+    end
+
+    assert {:ok,
+            %{
+              status: "completed",
+              embedded_count: 1,
+              skipped_count: 1,
+              error_count: 0
+            }} =
+             Index.sync(
+               db_path: db_path,
+               import_run: run_iri,
+               api_key: "secret",
+               model: "gemini-embedding-2",
+               output_dimensionality: 2,
+               poll_interval_ms: 0,
+               req_options: [plug: {Req.Test, __MODULE__}],
+               select: select
+             )
+
+    {:ok, conn} = Store.open(db_path: db_path)
+
+    try do
+      assert {:ok, %{iri: ^included_block}} =
+               Store.latest_embedding(
+                 conn,
+                 included_block,
+                 "hash-included",
+                 "gemini-embedding-2",
+                 2,
+                 "search-v1"
+               )
+
+      assert {:ok, nil} =
+               Store.latest_embedding(
+                 conn,
+                 excluded_block,
+                 "hash-excluded",
+                 "gemini-embedding-2",
+                 2,
+                 "search-v1"
+               )
+    after
+      Store.close(conn)
+    end
+  end
+
+  defp description_row(block_iri, doc_id) do
+    %{
+      "iri" => RDF.iri(block_iri),
+      "doc" => RDF.iri(Sheaf.Id.iri(doc_id)),
+      "s" => RDF.iri(block_iri),
+      "p" => Sheaf.NS.DOC.sourceHtml(),
+      "o" => RDF.literal("<p>Text.</p>")
+    }
+  end
+
+  defp metadata_row(doc_id, title, opts \\ []) do
+    row = %{
+      "doc" => RDF.iri(Sheaf.Id.iri(doc_id)),
+      "title" => RDF.literal(title)
+    }
+
+    if Keyword.get(opts, :excluded?, false) do
+      Map.put(row, "excluded", RDF.literal("true"))
+    else
+      row
+    end
   end
 end

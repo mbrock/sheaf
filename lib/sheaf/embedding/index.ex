@@ -11,7 +11,7 @@ defmodule Sheaf.Embedding.Index do
   @default_dimensions 768
   @default_max_concurrency 8
   @default_batch_size 32
-  @default_source "search-v1"
+  @default_source "openai-text-embedding-3-large-v1"
   @valid_kinds ~w(paragraph sourceHtml row)
 
   @type text_unit :: %{
@@ -64,17 +64,27 @@ defmodule Sheaf.Embedding.Index do
   @spec text_units(keyword()) :: {:ok, [text_unit()]} | {:error, term()}
   def text_units(opts \\ []) do
     select = Keyword.get(opts, :select, &Sheaf.select/1)
+    kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
 
-    case select.(text_units_sparql(opts)) do
-      {:ok, result} ->
+    kinds
+    |> Enum.reduce_while({:ok, []}, fn kind, {:ok, acc} ->
+      case select.(text_units_sparql(kind, opts)) do
+        {:ok, result} -> {:cont, {:ok, acc ++ result.results}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, rows} ->
         model = Keyword.get(opts, :model, Sheaf.Embedding.model())
         dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
         source = source(opts)
 
         units =
-          result.results
+          rows
           |> Enum.map(&unit_from_row(&1, model, dimensions, source))
           |> Enum.reject(&(&1.text == ""))
+          |> Enum.sort_by(& &1.iri)
+          |> maybe_limit_units(opts)
 
         {:ok, units}
 
@@ -180,7 +190,7 @@ defmodule Sheaf.Embedding.Index do
         "Embedding sync #{run_iri}: #{length(units)} current text units, #{length(skipped)} reusable, #{length(missing)} to embed"
       )
 
-      if batch_api_mode?(opts) and Keyword.get(opts, :submit_only, false) and missing != [] do
+      if async_batch_api_mode?(opts) and Keyword.get(opts, :submit_only, false) and missing != [] do
         submit_batch_run(
           conn,
           run_iri,
@@ -283,6 +293,18 @@ defmodule Sheaf.Embedding.Index do
          status: "submitted",
          batch_name: batch.name
        }}
+    else
+      {:error, reason} = error ->
+        :ok =
+          Store.finish_run(conn, run_iri, %{
+            status: "failed",
+            embedded_count: 0,
+            skipped_count: length(skipped),
+            error_count: length(missing),
+            metadata: Map.put(metadata, :error, inspect(reason))
+          })
+
+        error
     end
   end
 
@@ -298,12 +320,12 @@ defmodule Sheaf.Embedding.Index do
                model: run.model,
                output_dimensionality: run.dimensions
              )
-           ) do
-      embedded = min(length(units), length(embeddings))
+           ),
+         {:ok, import_pairs, current_skipped} <-
+           current_import_pairs(Enum.zip(units, embeddings), opts) do
+      embedded = length(import_pairs)
 
-      units
-      |> Enum.zip(embeddings)
-      |> Enum.each(fn {unit, embedding} ->
+      Enum.each(import_pairs, fn {unit, embedding} ->
         :ok =
           Store.insert_embedding(conn, %{
             iri: unit.iri,
@@ -315,6 +337,7 @@ defmodule Sheaf.Embedding.Index do
       end)
 
       errors = max(length(units) - embedded, 0)
+      errors = max(errors - current_skipped, 0)
       status = if errors == 0, do: "completed", else: "partial"
 
       metadata =
@@ -324,12 +347,13 @@ defmodule Sheaf.Embedding.Index do
           DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
         )
         |> Map.put("imported_count", embedded)
+        |> Map.put("import_skipped_current_count", current_skipped)
 
       with :ok <-
              Store.finish_run(conn, run_iri, %{
                status: status,
                embedded_count: embedded,
-               skipped_count: run.skipped_count,
+               skipped_count: run.skipped_count + current_skipped,
                error_count: errors,
                metadata: metadata
              }),
@@ -346,7 +370,7 @@ defmodule Sheaf.Embedding.Index do
            dimensions: run.dimensions,
            target_count: run.target_count,
            embedded_count: embedded,
-           skipped_count: run.skipped_count,
+           skipped_count: run.skipped_count + current_skipped,
            error_count: errors,
            status: status
          }}
@@ -359,7 +383,7 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp embed_missing(conn, run_iri, units, dimensions, opts) do
-    if batch_api_mode?(opts) do
+    if async_batch_api_mode?(opts) do
       embed_missing_with_batch_api(conn, run_iri, units, dimensions, opts)
     else
       embed_missing_with_sync_batches(conn, run_iri, units, dimensions, opts)
@@ -501,6 +525,7 @@ defmodule Sheaf.Embedding.Index do
   defp batch_unit_metadata(unit) do
     %{
       iri: unit.iri,
+      doc_iri: unit.doc_iri,
       text_hash: unit.text_hash,
       text_chars: unit.text_chars
     }
@@ -519,6 +544,7 @@ defmodule Sheaf.Embedding.Index do
      Enum.map(units, fn unit ->
        %{
          iri: Map.fetch!(unit, "iri"),
+         doc_iri: Map.get(unit, "doc_iri"),
          text_hash: Map.fetch!(unit, "text_hash"),
          text_chars: Map.fetch!(unit, "text_chars")
        }
@@ -526,6 +552,25 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp batch_units_from_run(run), do: {:error, {:missing_batch_units, run.iri}}
+
+  defp current_import_pairs([], _opts), do: {:ok, [], 0}
+
+  defp current_import_pairs(pairs, opts) do
+    iris = Enum.map(pairs, fn {unit, _embedding} -> unit.iri end)
+
+    with {:ok, current_units} <- descriptions_for_iris(iris, opts) do
+      {included, skipped} =
+        Enum.split_with(pairs, fn {unit, _embedding} ->
+          case Map.get(current_units, unit.iri) do
+            %{doc_excluded?: true} -> false
+            nil -> false
+            _unit -> true
+          end
+        end)
+
+      {:ok, included, length(skipped)}
+    end
+  end
 
   defp embed_units(units, dimensions, opts) do
     documents = documents_for_batch(units)
@@ -547,18 +592,23 @@ defmodule Sheaf.Embedding.Index do
     Keyword.get(opts, :api_mode) in [:batch, "batch", :batch_api, "batch_api", "async_batch"]
   end
 
-  defp text_units_sparql(opts) do
-    kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
+  defp async_batch_api_mode?(opts) do
+    batch_api_mode?(opts) and Sheaf.Embedding.provider(opts) == :gemini
+  end
+
+  defp text_units_sparql(kind, opts) when kind in @valid_kinds do
     limit = Keyword.get(opts, :limit)
 
     """
     PREFIX sheaf: <https://less.rest/sheaf/>
     PREFIX prov: <http://www.w3.org/ns/prov#>
 
-    SELECT ?iri ?kind ?text ?doc ?docTitle ?sourcePage ?sourceBlockType ?spreadsheetRow ?spreadsheetSource ?codeCategoryTitle WHERE {
+    SELECT DISTINCT ?iri ?kind ?text ?doc ?docTitle ?sourcePage ?sourceBlockType ?spreadsheetRow ?spreadsheetSource ?codeCategoryTitle WHERE {
       GRAPH ?doc {
+        ?doc a ?docKind .
+        FILTER(?docKind IN (sheaf:Document, sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
         OPTIONAL { ?doc <http://www.w3.org/2000/01/rdf-schema#label> ?docTitle }
-        #{text_unit_unions(kinds)}
+        #{text_unit_pattern(kind)}
       }
       #{Sheaf.Workspace.exclusion_filter("?doc")}
     }
@@ -567,38 +617,46 @@ defmodule Sheaf.Embedding.Index do
     """
   end
 
-  defp text_unit_unions(kinds) do
-    [
-      {"paragraph",
-       """
-       ?iri sheaf:paragraph ?para .
-       ?para sheaf:text ?text .
-       FILTER NOT EXISTS { ?para prov:wasInvalidatedBy ?_inv }
-       BIND("paragraph" AS ?kind)
-       """},
-      {"sourceHtml",
-       """
-       ?iri sheaf:sourceHtml ?text .
-       OPTIONAL { ?iri sheaf:sourcePage ?sourcePage }
-       OPTIONAL { ?iri sheaf:sourceBlockType ?sourceBlockType }
-       FILTER(!BOUND(?sourceBlockType) || STR(?sourceBlockType) = "Text")
-       FILTER(!CONTAINS(STR(?text), ";base64,"))
-       FILTER(!CONTAINS(STR(?text), "data:image/"))
-       BIND("sourceHtml" AS ?kind)
-       """},
-      {"row",
-       """
-       ?iri a sheaf:Row ;
-         sheaf:text ?text .
-       OPTIONAL { ?iri sheaf:spreadsheetRow ?spreadsheetRow }
-       OPTIONAL { ?iri sheaf:spreadsheetSource ?spreadsheetSource }
-       OPTIONAL { ?iri sheaf:codeCategoryTitle ?codeCategoryTitle }
-       BIND("row" AS ?kind)
-       """}
-    ]
-    |> Enum.filter(fn {kind, _query} -> kind in kinds end)
-    |> Enum.map(fn {_kind, query} -> "{\n#{String.trim(query)}\n}" end)
-    |> Enum.join(" UNION ")
+  defp text_unit_pattern("paragraph") do
+    """
+    ?iri sheaf:paragraph ?para .
+    ?para sheaf:text ?text .
+    FILTER NOT EXISTS { ?para prov:wasInvalidatedBy ?_inv }
+    BIND("paragraph" AS ?kind)
+    """
+    |> String.trim()
+  end
+
+  defp text_unit_pattern("sourceHtml") do
+    """
+    ?iri sheaf:sourceHtml ?text .
+    OPTIONAL { ?iri sheaf:sourcePage ?sourcePage }
+    OPTIONAL { ?iri sheaf:sourceBlockType ?sourceBlockType }
+    FILTER(!BOUND(?sourceBlockType) || STR(?sourceBlockType) = "Text")
+    FILTER(!CONTAINS(STR(?text), ";base64,"))
+    FILTER(!CONTAINS(STR(?text), "data:image/"))
+    BIND("sourceHtml" AS ?kind)
+    """
+    |> String.trim()
+  end
+
+  defp text_unit_pattern("row") do
+    """
+    ?iri a sheaf:Row ;
+      sheaf:text ?text .
+    OPTIONAL { ?iri sheaf:spreadsheetRow ?spreadsheetRow }
+    OPTIONAL { ?iri sheaf:spreadsheetSource ?spreadsheetSource }
+    OPTIONAL { ?iri sheaf:codeCategoryTitle ?codeCategoryTitle }
+    BIND("row" AS ?kind)
+    """
+    |> String.trim()
+  end
+
+  defp maybe_limit_units(units, opts) do
+    case Keyword.get(opts, :limit) do
+      limit when is_integer(limit) and limit > 0 -> Enum.take(units, limit)
+      _limit -> units
+    end
   end
 
   defp unit_from_row(row, model, dimensions, source) do

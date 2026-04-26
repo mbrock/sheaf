@@ -20,6 +20,7 @@ defmodule Mix.Tasks.Sheaf.Embeddings.Sync do
           batch_size: :integer,
           limit: :integer,
           kind: :keep,
+          provider: :string,
           model: :string,
           source: :string,
           profile: :string,
@@ -43,6 +44,7 @@ defmodule Mix.Tasks.Sheaf.Embeddings.Sync do
       |> put_if_present(:max_concurrency, Keyword.get(opts, :concurrency))
       |> put_if_present(:batch_size, Keyword.get(opts, :batch_size))
       |> put_if_present(:limit, Keyword.get(opts, :limit))
+      |> put_if_present(:provider, Keyword.get(opts, :provider))
       |> put_if_present(:model, Keyword.get(opts, :model))
       |> put_if_present(:source, Keyword.get(opts, :source))
       |> put_if_present(:profile, Keyword.get(opts, :profile))

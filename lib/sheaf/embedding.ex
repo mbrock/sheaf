@@ -1,14 +1,16 @@
 defmodule Sheaf.Embedding do
   @moduledoc """
-  Raw HTTP client for Gemini embeddings.
+  Raw HTTP client for embedding providers.
 
   This intentionally uses Req directly instead of ReqLLM because embeddings are
   a data-plane operation for Sheaf: callers should get vectors, not chat-model
   abstractions.
   """
 
-  @default_base_url "https://generativelanguage.googleapis.com/v1beta"
-  @default_model "gemini-embedding-2"
+  @default_gemini_base_url "https://generativelanguage.googleapis.com/v1beta"
+  @default_openai_base_url "https://api.openai.com/v1"
+  @default_gemini_model "gemini-embedding-2"
+  @default_openai_model "text-embedding-3-large"
   @default_receive_timeout 120_000
   @default_max_retries 5
   @default_batch_poll_interval_ms 10_000
@@ -25,27 +27,53 @@ defmodule Sheaf.Embedding do
   @type response :: {:ok, embedding()} | {:error, term()}
 
   @doc """
-  Returns the configured Gemini embedding model.
+  Returns the configured embedding provider.
   """
-  @spec model(keyword()) :: String.t()
-  def model(opts \\ []) do
+  @spec provider(keyword()) :: :gemini | :openai
+  def provider(opts \\ []) do
     configured =
       :sheaf
       |> Application.get_env(__MODULE__, [])
-      |> Keyword.get(:model, @default_model)
+      |> Keyword.get(:provider)
+
+    case Keyword.get(opts, :provider) do
+      nil ->
+        case Keyword.get(opts, :model) do
+          nil -> normalize_provider(configured, nil)
+          model -> provider_from_model(model)
+        end
+
+      provider ->
+        normalize_provider(provider, Keyword.get(opts, :model))
+    end
+  end
+
+  @doc """
+  Returns the configured embedding model.
+  """
+  @spec model(keyword()) :: String.t()
+  def model(opts \\ []) do
+    provider = provider(opts)
+
+    configured =
+      :sheaf
+      |> Application.get_env(__MODULE__, [])
+      |> Keyword.get(model_config_key(provider), default_model(provider))
 
     Keyword.get(opts, :model, configured)
   end
 
   @doc """
-  Returns the configured Gemini API base URL.
+  Returns the configured embedding API base URL.
   """
   @spec base_url(keyword()) :: String.t()
   def base_url(opts \\ []) do
+    provider = provider(opts)
+
     configured =
       :sheaf
       |> Application.get_env(__MODULE__, [])
-      |> Keyword.get(:base_url, @default_base_url)
+      |> Keyword.get(base_url_config_key(provider), default_base_url(provider))
 
     Keyword.get(opts, :base_url, configured)
   end
@@ -55,7 +83,8 @@ defmodule Sheaf.Embedding do
 
   Options:
 
-    * `:model` - Gemini model id, defaulting to `gemini-embedding-2`.
+    * `:provider` - `:gemini` or `:openai`.
+    * `:model` - embedding model id.
     * `:output_dimensionality` - optional vector size from 128 to 3072.
     * `:task` - `:search`, `:semantic_similarity`, `:classification`, or `:clustering`.
     * `:input_role` - `:query` or `:document`.
@@ -63,9 +92,8 @@ defmodule Sheaf.Embedding do
     * `:api_key`, `:base_url`, `:receive_timeout` - request configuration.
     * `:req_options` - extra Req options, mostly useful in tests.
 
-  For `gemini-embedding-2`, task information is translated to the prompt
-  formats Google documents for text-only retrieval. For `gemini-embedding-001`,
-  task information is translated to `taskType` and `title` request parameters.
+  For Gemini models, task information is translated to the model-appropriate
+  retrieval format. OpenAI embeddings receive plain input text.
   """
   @spec embed_text(String.t(), keyword()) :: response()
   def embed_text(text, opts \\ []) when is_binary(text) do
@@ -174,6 +202,14 @@ defmodule Sheaf.Embedding do
   """
   @spec create_async_embed_batch([map()], keyword()) :: {:ok, map()} | {:error, term()}
   def create_async_embed_batch(documents, opts \\ []) when is_list(documents) do
+    if provider(opts) == :gemini do
+      create_gemini_async_embed_batch(documents, opts)
+    else
+      {:error, {:unsupported_async_batch_provider, provider(opts)}}
+    end
+  end
+
+  defp create_gemini_async_embed_batch(documents, opts) do
     with {:ok, api_key} <- api_key(opts),
          {:ok, input_config} <- async_batch_input_config(documents, opts),
          {:ok, body} <- post_async_embed_batch(api_key, input_config, documents, opts),
@@ -187,13 +223,17 @@ defmodule Sheaf.Embedding do
   """
   @spec get_batch(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def get_batch(name, opts \\ []) when is_binary(name) do
-    with {:ok, api_key} <- api_key(opts),
-         {:ok, body} <-
-           client(api_key, opts)
-           |> Req.get(url: "/#{String.trim_leading(name, "/")}")
-           |> handle_response(),
-         {:ok, batch} <- normalize_batch(body) do
-      {:ok, batch}
+    if provider(opts) == :gemini do
+      with {:ok, api_key} <- api_key(opts),
+           {:ok, body} <-
+             client(api_key, opts)
+             |> Req.get(url: "/#{String.trim_leading(name, "/")}")
+             |> handle_response(),
+           {:ok, batch} <- normalize_batch(body) do
+        {:ok, batch}
+      end
+    else
+      {:error, {:unsupported_async_batch_provider, provider(opts)}}
     end
   end
 
@@ -286,15 +326,40 @@ defmodule Sheaf.Embedding do
   end
 
   defp post_embedding(api_key, parts, opts) do
-    client(api_key, opts)
-    |> Req.post(url: embedding_path(model(opts)), json: request_body(parts, opts))
-    |> handle_response()
+    case provider(opts) do
+      :gemini ->
+        client(api_key, opts)
+        |> Req.post(url: embedding_path(model(opts)), json: request_body(parts, opts))
+        |> handle_response()
+
+      :openai ->
+        text =
+          parts
+          |> Enum.map(&Map.get(&1, :text))
+          |> Enum.reject(&is_nil/1)
+          |> Enum.join("\n")
+
+        client(api_key, opts)
+        |> Req.post(url: "/embeddings", json: openai_embedding_body(text, opts))
+        |> handle_response()
+    end
   end
 
   defp post_embedding_batch(api_key, documents, opts) do
-    client(api_key, opts)
-    |> Req.post(url: batch_embedding_path(model(opts)), json: batch_request_body(documents, opts))
-    |> handle_response()
+    case provider(opts) do
+      :gemini ->
+        client(api_key, opts)
+        |> Req.post(
+          url: batch_embedding_path(model(opts)),
+          json: batch_request_body(documents, opts)
+        )
+        |> handle_response()
+
+      :openai ->
+        client(api_key, opts)
+        |> Req.post(url: "/embeddings", json: openai_embedding_batch_body(documents, opts))
+        |> handle_response()
+    end
   end
 
   defp post_async_embed_batch(api_key, input_config, documents, opts) do
@@ -320,7 +385,7 @@ defmodule Sheaf.Embedding do
 
     [
       base_url: base_url(opts),
-      headers: [{"x-goog-api-key", api_key}],
+      headers: auth_headers(provider(opts), api_key),
       receive_timeout: Keyword.get(opts, :receive_timeout, @default_receive_timeout),
       http_errors: :return
     ]
@@ -342,9 +407,18 @@ defmodule Sheaf.Embedding do
   defp extract_embeddings(%{"embedding" => embedding}) when is_map(embedding),
     do: {:ok, [embedding]}
 
+  defp extract_embeddings(%{"data" => data}) when is_list(data) do
+    {:ok, Enum.map(data, &Map.fetch!(&1, "embedding"))}
+  end
+
   defp extract_embeddings(body), do: {:error, {:missing_embedding, body}}
 
   defp normalize_embedding(%{"values" => values}, model) when is_list(values) do
+    values = Enum.map(values, &(&1 * 1.0))
+    {:ok, %{values: values, dimensions: length(values), model: model}}
+  end
+
+  defp normalize_embedding(values, model) when is_list(values) do
     values = Enum.map(values, &(&1 * 1.0))
     {:ok, %{values: values, dimensions: length(values), model: model}}
   end
@@ -621,13 +695,18 @@ defmodule Sheaf.Embedding do
 
   defp normalize_task_options(opts) do
     model = model(opts)
+    provider = provider(Keyword.put(opts, :model, model))
     task = opts |> Keyword.get(:task) |> normalize_task()
     input_role = opts |> Keyword.get(:input_role) |> normalize_input_role()
 
     opts
+    |> Keyword.put(:provider, provider)
     |> Keyword.put(:task, task)
     |> Keyword.put(:input_role, input_role)
-    |> Keyword.put(:gemini_2_task_prompt?, gemini_embedding_2?(model) and task != nil)
+    |> Keyword.put(
+      :gemini_2_task_prompt?,
+      provider == :gemini and gemini_embedding_2?(model) and task != nil
+    )
   end
 
   defp format_text_for_model(text, opts) do
@@ -657,7 +736,7 @@ defmodule Sheaf.Embedding do
   end
 
   defp task_type(opts) do
-    if gemini_embedding_2?(model(opts)) do
+    if provider(opts) != :gemini or gemini_embedding_2?(model(opts)) do
       nil
     else
       case {Keyword.get(opts, :task), Keyword.get(opts, :input_role)} do
@@ -707,6 +786,8 @@ defmodule Sheaf.Embedding do
     do: model |> String.trim() |> String.trim_leading("models/") == "gemini-embedding-2"
 
   defp api_key(opts) do
+    provider = provider(opts)
+
     opts
     |> Keyword.get(:api_key)
     |> blank_to_nil()
@@ -714,10 +795,10 @@ defmodule Sheaf.Embedding do
       nil ->
         :sheaf
         |> Application.get_env(__MODULE__, [])
-        |> Keyword.get(:api_key)
+        |> Keyword.get(api_key_config_key(provider))
         |> blank_to_nil()
         |> case do
-          nil -> {:error, :missing_gemini_api_key}
+          nil -> {:error, missing_api_key_error(provider)}
           api_key -> {:ok, api_key}
         end
 
@@ -729,6 +810,68 @@ defmodule Sheaf.Embedding do
   defp embedding_path(model), do: "/#{model_resource(model)}:embedContent"
   defp batch_embedding_path(model), do: "/#{model_resource(model)}:batchEmbedContents"
   defp async_batch_embedding_path(model), do: "/#{model_resource(model)}:asyncBatchEmbedContent"
+
+  defp openai_embedding_body(text, opts) do
+    %{
+      model: model(opts),
+      input: text
+    }
+    |> maybe_put(:dimensions, Keyword.get(opts, :output_dimensionality))
+  end
+
+  defp openai_embedding_batch_body(documents, opts) do
+    %{
+      model: model(opts),
+      input:
+        Enum.map(documents, fn document ->
+          document
+          |> document_text()
+          |> prepare_text(Keyword.merge(opts, document_options(document)))
+          |> Map.fetch!(:text)
+        end)
+    }
+    |> maybe_put(:dimensions, Keyword.get(opts, :output_dimensionality))
+  end
+
+  defp auth_headers(:gemini, api_key), do: [{"x-goog-api-key", api_key}]
+  defp auth_headers(:openai, api_key), do: [{"authorization", "Bearer #{api_key}"}]
+
+  defp normalize_provider(nil, model), do: provider_from_model(model)
+  defp normalize_provider(:gemini, _model), do: :gemini
+  defp normalize_provider("gemini", _model), do: :gemini
+  defp normalize_provider(:openai, _model), do: :openai
+  defp normalize_provider("openai", _model), do: :openai
+  defp normalize_provider(_provider, model), do: provider_from_model(model)
+
+  defp provider_from_model(model) when is_binary(model) do
+    model = model |> String.trim() |> String.trim_leading("models/")
+
+    if String.starts_with?(model, "text-embedding") do
+      :openai
+    else
+      :gemini
+    end
+  end
+
+  defp provider_from_model(_model), do: :openai
+
+  defp model_config_key(:gemini), do: :model
+  defp model_config_key(:openai), do: :openai_model
+
+  defp base_url_config_key(:gemini), do: :base_url
+  defp base_url_config_key(:openai), do: :openai_base_url
+
+  defp api_key_config_key(:gemini), do: :api_key
+  defp api_key_config_key(:openai), do: :openai_api_key
+
+  defp default_model(:gemini), do: @default_gemini_model
+  defp default_model(:openai), do: @default_openai_model
+
+  defp default_base_url(:gemini), do: @default_gemini_base_url
+  defp default_base_url(:openai), do: @default_openai_base_url
+
+  defp missing_api_key_error(:gemini), do: :missing_gemini_api_key
+  defp missing_api_key_error(:openai), do: :missing_openai_api_key
 
   defp upload_files_url(opts), do: "#{api_origin(opts)}/upload/v1beta/files"
 
