@@ -97,6 +97,10 @@ struct DiffArgs {
     #[arg(short, long)]
     output: PathBuf,
 
+    /// Also write a simple JSON patch with positive/negative N-Quads strings.
+    #[arg(long)]
+    patch: Option<PathBuf>,
+
     /// Also write a human-readable diff. Use '-' for stdout.
     #[arg(long)]
     pretty: Option<PathBuf>,
@@ -171,8 +175,10 @@ fn diff(args: DiffArgs) -> Result<()> {
         "[{:>8}] comparing normalized quads",
         format_duration(total_start.elapsed())
     );
-    let removed = dataset_difference_count(&left, &right);
-    let added = dataset_difference_count(&right, &left);
+    let removed_quads = dataset_difference_quads(&left, &right);
+    let added_quads = dataset_difference_quads(&right, &left);
+    let removed = removed_quads.len();
+    let added = added_quads.len();
 
     println!("RDF diff");
     println!("  Left:             {}", args.left.display());
@@ -189,6 +195,10 @@ fn diff(args: DiffArgs) -> Result<()> {
     let diff_quads = rdf12_diff_quads(&left, &right)?;
     write_rdf12_diff(&args.output, &diff_quads)?;
     println!("  Wrote RDF 1.2:    {}", args.output.display());
+    if let Some(path) = args.patch.as_deref() {
+        write_patch_json(path, &added_quads, &removed_quads)?;
+        println!("  Wrote patch:      {}", display_path(Some(path)));
+    }
     if let Some(path) = args.pretty.as_deref() {
         write_pretty_diff(path, &diff_quads, args.color)?;
         println!("  Wrote pretty:     {}", display_path(Some(path)));
@@ -740,8 +750,14 @@ fn inline_blank_iri(description: &str) -> String {
     format!("urn:rdfknife:inline:{hash}")
 }
 
-fn dataset_difference_count(left: &Dataset, right: &Dataset) -> usize {
-    left.iter().filter(|quad| !right.contains(*quad)).count()
+fn dataset_difference_quads(left: &Dataset, right: &Dataset) -> Vec<Quad> {
+    let mut quads = left
+        .iter()
+        .filter(|quad| !right.contains(*quad))
+        .map(|quad| quad.into_owned())
+        .collect::<Vec<_>>();
+    quads.sort_by_key(quad_sort_key);
+    quads
 }
 
 fn rdf12_diff_quads(left: &Dataset, right: &Dataset) -> Result<Vec<Quad>> {
@@ -757,6 +773,47 @@ fn rdf12_diff_quads(left: &Dataset, right: &Dataset) -> Result<Vec<Quad>> {
     }
     diff_quads.sort_by_key(quad_sort_key);
     Ok(diff_quads)
+}
+
+fn serialize_nquads(quads: &[Quad]) -> Result<String> {
+    let mut encoded = Vec::new();
+    {
+        let mut serializer = RdfSerializer::from_format(RdfFormat::NQuads).for_writer(&mut encoded);
+        for quad in quads {
+            serializer
+                .serialize_quad(quad)
+                .context("failed to serialize patch N-Quads")?;
+        }
+        serializer
+            .finish()
+            .context("failed to finish patch N-Quads serialization")?;
+    }
+    String::from_utf8(encoded).context("patch N-Quads serializer emitted invalid UTF-8")
+}
+
+fn write_patch_json(path: &Path, added_quads: &[Quad], removed_quads: &[Quad]) -> Result<()> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+
+    let patch = serde_json::json!({
+        "format": "rdfknife.patch.v1",
+        "positive": serialize_nquads(added_quads)?,
+        "negative": serialize_nquads(removed_quads)?,
+        "positive_count": added_quads.len(),
+        "negative_count": removed_quads.len(),
+    });
+
+    let mut writer = output_writer(Some(path))?;
+    serde_json::to_writer_pretty(&mut writer, &patch)
+        .with_context(|| format!("failed to write patch JSON to {}", display_path(Some(path))))?;
+    writer.write_all(b"\n")?;
+    writer.flush()?;
+    Ok(())
 }
 
 fn write_rdf12_diff(path: &Path, diff_quads: &[Quad]) -> Result<()> {
