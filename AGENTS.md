@@ -212,7 +212,7 @@ screenshots of the running service.
 
 Sheaf can emit OpenTelemetry spans via a custom span processor
 (`Sheaf.Tracing.RedisSinkProcessor`) that ships every ended span to a Redis
-Stream as JSON. The Go CLI in `tools/otel-tail` (built into `bin/otel-tail`)
+Stream as JSON. The Go CLI in `tools/otel-tail` (built into `bin/otel`)
 tails the stream live and prints colorized two-line summaries — that's the
 primary way to inspect spans during development, in place of any web UI.
 
@@ -231,13 +231,13 @@ instances on the same Redis server (e.g. production and staging both on
 `otel:spans:sheaf_dev`. Override the full stream name with `SHEAF_OTEL_STREAM`
 when you want explicit control.
 
-`bin/otel-tail` is a Go binary that auto-loads `.env` from its enclosing
+`bin/otel` is a Go binary that auto-loads `.env` from its enclosing
 checkout before reading these vars, so running it in an interactive shell on
 a host that runs Sheaf as a systemd service still picks up the right stream
 without needing to source `.env` first.
 
 ```console
-$ bin/otel-tail
+$ bin/otel
 16:14:19.426  sheaf.select                              123.88ms  client
   row_count: 334   operation: select   system: fuseki   address: http://localhost:3031/sheaf/sparql
 16:14:19.447  SheafWeb.DocumentIndexLive.mount          144.71ms  server
@@ -245,7 +245,7 @@ $ bin/otel-tail
   status_code: 200   method: GET   route: /   address: 127.0.0.1   port: 4043
 ```
 
-`bin/otel-tail --backfill N` prints the last N spans before tailing live;
+`bin/otel --backfill N` prints the last N spans before tailing live;
 `--json` emits one JSON object per line for piping into `jq`; `-v` shows all
 attributes, not just the promoted ones; `--no-color` disables ANSI styling.
 
@@ -301,12 +301,12 @@ ontologies live in `priv/sheaf-ext.ttl`. Use it when Sheaf needs display labels
 or bridge facts for terms from RDF/RDFS/OWL/SKOS/PROV, bibliographic
 vocabularies, BFO, or other non-Sheaf namespaces. Do not put external term
 labels in `priv/sheaf-schema.ttl`; keep that file for the Sheaf vocabulary
-itself. `mix sheaf.schema` uploads both the Sheaf schema graph and the external
-extension graph.
+itself. `bin/sheaf-admin schema upload` uploads both the Sheaf schema graph and
+the external extension graph.
 
 To change RDF data or its schema, there is no need to write enduring migration
-modules. Run `mix sheaf.backup`, then alter the dataset in whatever way is most
-convenient.
+modules. Run `bin/sheaf-admin backup`, then alter the dataset in whatever way
+is most convenient.
 
 Mutating RDF data is mostly for migrations and error corrections. Design actual
 domain operations so they add new facts to the graph monotonically rather than

@@ -50,4 +50,7 @@ npm-debug.log
 /assets/node_modules/
 
 # Compiled Go binaries from tools/, built into bin/ on demand.
-/bin/otel-tail
+/bin/otel
+
+# Compiled Elixir admin escript.
+/bin/sheaf-admin

@@ -70,11 +70,11 @@ Use separate task kinds so risky mutation is last:
 
 ## Runner
 
-Start with Mix tasks, not a supervised always-on worker:
+Start with explicit admin commands, not a supervised always-on worker:
 
-- `mix sheaf.tasks.enqueue_metadata_scan`
-- `mix sheaf.tasks.work metadata --limit 100`
-- `mix sheaf.tasks.list metadata`
+- `bin/sheaf-admin metadata enqueue`
+- `bin/sheaf-admin metadata work --limit 100`
+- `bin/sheaf-admin metadata list --tasks`
 
 Workers claim work with `BEGIN IMMEDIATE`: find runnable task, mark it running,
 set a lease, then commit. Completion updates SQLite first. Batch completion

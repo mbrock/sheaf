@@ -1,15 +1,12 @@
-defmodule Mix.Tasks.Sheaf.DatalabBatch do
+defmodule Sheaf.Admin.Datalab do
   @moduledoc """
-  Submits and polls Datalab conversions with state stored in the Sheaf jobs graph.
+  Admin commands for RDF-backed Datalab batch jobs.
   """
-
-  use Mix.Task
 
   alias RDF.Description
   alias Sheaf.{DatalabJobs, Files}
   alias Sheaf.NS.DOC
 
-  @shortdoc "Manages RDF-backed Datalab batch jobs"
   @default_output_dir "var/datalab"
   @default_await_interval 5_000
   @execution_page_size 100
@@ -24,10 +21,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
   }
   """
 
-  @impl Mix.Task
   def run(args) do
-    Mix.Task.run("app.start")
-
     {command, args} = command(args)
 
     {opts, _positional, invalid} =
@@ -46,7 +40,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
 
     cond do
       invalid != [] ->
-        Mix.raise("Unrecognized arguments: #{inspect(invalid)}")
+        fail!("Unrecognized arguments: #{inspect(invalid)}")
 
       command == "submit" ->
         submit(opts)
@@ -61,8 +55,8 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
         status(opts)
 
       true ->
-        Mix.raise(
-          "Usage: mix sheaf.datalab_batch {submit|poll|import|status} [--job IRI] [--limit N] [--await]"
+        fail!(
+          "Usage: sheaf-admin datalab {submit|poll|import|status} [--job IRI] [--limit N] [--await]"
         )
     end
   end
@@ -76,7 +70,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     job = get_or_create_job(opts)
     pending = DatalabJobs.pending_file_jobs(job)
 
-    Mix.shell().info("Submitting #{length(pending)} files for #{job.iri}")
+    info("Submitting #{length(pending)} files for #{job.iri}")
 
     pending
     |> Enum.reduce(%{submitted: 0, errors: 0}, fn file_job, stats ->
@@ -90,11 +84,11 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
                execution_id: execution_id,
                submitted_at: now()
              ) do
-        Mix.shell().info("submitted #{execution_id} #{file_name(file)}")
+        info("submitted #{execution_id} #{file_name(file)}")
         %{stats | submitted: stats.submitted + 1}
       else
         {:error, reason} ->
-          Mix.shell().error("ERROR #{file_name(file)}: #{inspect(reason)}")
+          error("ERROR #{file_name(file)}: #{inspect(reason)}")
 
           DatalabJobs.update_file_job(job.iri, file_job.source_file,
             error: inspect(reason),
@@ -105,7 +99,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
       end
     end)
     |> then(fn stats ->
-      Mix.shell().info("Done. Submitted #{stats.submitted}, errors #{stats.errors}.")
+      info("Done. Submitted #{stats.submitted}, errors #{stats.errors}.")
     end)
 
     if opts[:await] do
@@ -127,11 +121,11 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     output_dir = Keyword.get(opts, :output_dir, @default_output_dir)
     submitted = DatalabJobs.submitted_file_jobs(job)
 
-    Mix.shell().info("Checking #{length(submitted)} active Datalab executions...")
+    info("Checking #{length(submitted)} active Datalab executions...")
 
     with {:ok, executions} <- execution_index(submitted, opts) do
       remote_stats = remote_stats(submitted, executions)
-      Mix.shell().info(remote_stats_line(remote_stats))
+      info(remote_stats_line(remote_stats))
 
       stats =
         Enum.reduce(submitted, %{completed: 0, failed: 0, running: 0, errors: 0}, fn file_job,
@@ -141,10 +135,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
               handle_poll_status(job, file_job, body, output_dir, stats)
 
             :error ->
-              Mix.shell().error(
-                "ERROR #{file_job.execution_id}: not found in pipeline executions"
-              )
-
+              error("ERROR #{file_job.execution_id}: not found in pipeline executions")
               %{stats | errors: stats.errors + 1}
           end
         end)
@@ -152,7 +143,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
       print_job_progress(job.iri, cycle: stats)
     else
       {:error, reason} ->
-        Mix.shell().error("ERROR list pipeline executions: #{inspect(reason)}")
+        error("ERROR list pipeline executions: #{inspect(reason)}")
 
         print_job_progress(job.iri,
           cycle: %{
@@ -238,7 +229,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
         ""
       end
 
-    Mix.shell().info(Enum.join(fields, "  ") <> suffix)
+    info(Enum.join(fields, "  ") <> suffix)
 
     job
   end
@@ -282,8 +273,8 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
           end
         end)
 
-      if MapSet.subset?(wanted, MapSet.new(Map.keys(acc))) or offset + length(executions) >= total or
-           executions == [] do
+      if MapSet.subset?(wanted, MapSet.new(Map.keys(acc))) or
+           offset + length(executions) >= total or executions == [] do
         {:ok, acc}
       else
         fetch_execution_pages(wanted, opts, offset + @execution_page_size, acc)
@@ -293,7 +284,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
 
   defp await(job_iri, opts) do
     interval = await_interval(opts)
-    Mix.shell().info("Awaiting #{job_iri}; polling every #{div(interval, 1000)}s.")
+    info("Awaiting #{job_iri}; polling every #{div(interval, 1000)}s.")
     await_loop(job_iri, opts, interval)
   end
 
@@ -304,7 +295,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     {:ok, job} = DatalabJobs.get_job(job_iri)
 
     if DatalabJobs.submitted_file_jobs(job) == [] do
-      Mix.shell().info("Await complete for #{job_iri}.")
+      info("Await complete for #{job_iri}.")
       print_job(job)
       stats
     else
@@ -317,7 +308,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     with {:ok, status} <- Datalab.status(body) do
       cond do
         Datalab.complete_status?(status) ->
-          Mix.shell().info("Saving #{file_job.execution_id}...")
+          info("Saving #{file_job.execution_id}...")
           complete_file_job(job, file_job, output_dir, stats)
 
         Datalab.failed_status?(status) ->
@@ -333,7 +324,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
       end
     else
       {:error, reason} ->
-        Mix.shell().error("ERROR #{file_job.execution_id}: #{inspect(reason)}")
+        error("ERROR #{file_job.execution_id}: #{inspect(reason)}")
         %{stats | errors: stats.errors + 1}
     end
   end
@@ -350,7 +341,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
       %{stats | completed: stats.completed + 1}
     else
       {:error, reason} ->
-        Mix.shell().error("ERROR #{file_job.execution_id}: #{inspect(reason)}")
+        error("ERROR #{file_job.execution_id}: #{inspect(reason)}")
         %{stats | errors: stats.errors + 1}
     end
   end
@@ -388,7 +379,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
     already_imported = length(all_completed) - length(importable)
     limited = length(importable) - length(candidates)
 
-    Mix.shell().info(
+    info(
       "Importing #{length(candidates)} completed Datalab outputs; #{already_imported} already imported, #{limited} limited."
     )
 
@@ -398,30 +389,30 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
       fn {job, file_job}, stats ->
         cond do
           opts[:dry_run] ->
-            Mix.shell().info("would import #{file_job.output_path} from #{file_job.source_file}")
+            info("would import #{file_job.output_path} from #{file_job.source_file}")
             stats
 
           not is_binary(file_job.output_path) ->
-            Mix.shell().error("ERROR #{file_job.iri}: missing output path")
+            error("ERROR #{file_job.iri}: missing output path")
             %{stats | errors: stats.errors + 1}
 
           not File.exists?(file_job.output_path) ->
-            Mix.shell().error("ERROR #{file_job.output_path}: output file does not exist")
+            error("ERROR #{file_job.output_path}: output file does not exist")
             %{stats | errors: stats.errors + 1}
 
           true ->
-            Mix.shell().info(import_metadata_line(file_job))
+            info(import_metadata_line(file_job))
 
             case Sheaf.PDF.import_file(file_job.output_path,
                    source_file_iri: file_job.source_file
                  ) do
               {:ok, result} ->
                 id = Sheaf.Id.id_from_iri(result.document)
-                Mix.shell().info("imported /#{id} #{result.title || "(no title)"}")
+                info("imported /#{id} #{result.title || "(no title)"}")
                 %{stats | imported: stats.imported + 1}
 
               {:error, reason} ->
-                Mix.shell().error("ERROR #{job.iri} #{file_job.output_path}: #{inspect(reason)}")
+                error("ERROR #{job.iri} #{file_job.output_path}: #{inspect(reason)}")
 
                 %{stats | errors: stats.errors + 1}
             end
@@ -429,11 +420,11 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
       end
     )
     |> then(fn stats ->
-      Mix.shell().info(
+      info(
         "Done. Imported #{stats.imported}, already imported #{stats.already_imported}, limited #{stats.limited}, errors #{stats.errors}."
       )
 
-      if stats.errors > 0, do: Mix.raise("Some Datalab outputs failed to import.")
+      if stats.errors > 0, do: fail!("Some Datalab outputs failed to import.")
     end)
   end
 
@@ -534,7 +525,7 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
 
   defp require_job(opts) do
     case Keyword.get(opts, :job) do
-      nil -> Mix.raise("--job IRI is required")
+      nil -> fail!("--job IRI is required")
       job_iri -> DatalabJobs.get_job(job_iri) |> elem(1)
     end
   end
@@ -620,11 +611,14 @@ defmodule Mix.Tasks.Sheaf.DatalabBatch do
         seconds * 1000
 
       other ->
-        Mix.raise(
+        fail!(
           "--await-interval must be a positive integer number of seconds, got #{inspect(other)}"
         )
     end
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
+  defp info(message), do: IO.puts(message)
+  defp error(message), do: IO.puts(:stderr, message)
+  defp fail!(message), do: raise(Sheaf.Admin.Error, message)
 end

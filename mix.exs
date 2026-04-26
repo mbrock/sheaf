@@ -7,6 +7,7 @@ defmodule Sheaf.MixProject do
       version: "0.1.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
+      escript: [main_module: Sheaf.Admin.CLI, path: "bin/sheaf-admin", app: nil],
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -109,7 +110,8 @@ defmodule Sheaf.MixProject do
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
-        "sheaf.schema",
+        "escript.build",
+        "cmd bin/sheaf-admin schema upload",
         "test"
       ]
     ]

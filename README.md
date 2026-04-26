@@ -48,12 +48,14 @@ source snippets, which is often faster than spelunking generated HTML docs.
 Useful graph commands:
 
 ```bash
-mix sheaf.backup
-mix sheaf.schema
+mix escript.build
+bin/sheaf-admin backup
+bin/sheaf-admin schema upload
 ```
 
-`mix sheaf.backup` writes a TriG backup of the configured dataset under `output/backups/`.
-`mix sheaf.schema` uploads `priv/sheaf-schema.ttl` to the schema named graph.
+`bin/sheaf-admin backup` writes a Fuseki backup of the configured dataset under
+`output/backups/`. `bin/sheaf-admin schema upload` uploads
+`priv/sheaf-schema.ttl` and supporting ontology graphs.
 
 ## Storage
 
