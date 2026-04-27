@@ -1,10 +1,13 @@
 defmodule Quadlog do
   use GenServer
 
-  def start_link(path, opts \\ []), do: GenServer.start_link(__MODULE__, {path, opts})
+  def start_link(path, opts \\ []) do
+    GenServer.start_link(__MODULE__, {path, opts}, Keyword.take(opts, [:name]))
+  end
+
   def dataset(pid), do: GenServer.call(pid, :dataset)
   def ask(pid, fun), do: GenServer.call(pid, {:ask, fun})
-  def load_graphs(pid, graphs), do: GenServer.call(pid, {:load_graphs, graphs})
+  def load(pid, pattern), do: GenServer.call(pid, {:load, pattern})
   def assert(pid, tx, graph), do: transact(pid, tx, [{:assert, graph}])
   def retract(pid, tx, graph), do: transact(pid, tx, [{:retract, graph}])
   def transact(pid, tx, changes), do: GenServer.call(pid, {:transact, tx, changes})
@@ -13,7 +16,7 @@ defmodule Quadlog do
   def init({path, opts}) do
     with {:ok, conn} <- Exqlite.start_link(database: path),
          :ok <- migrate(conn),
-         {:ok, dataset} <- load(conn, Keyword.get(opts, :graphs, :all)) do
+         {:ok, dataset} <- load(conn, load_pattern(opts), RDF.dataset()) do
       {:ok, %{conn: conn, dataset: dataset}}
     end
   end
@@ -22,15 +25,8 @@ defmodule Quadlog do
   def handle_call(:dataset, _from, state), do: {:reply, state.dataset, state}
   def handle_call({:ask, fun}, _from, state), do: {:reply, fun.(state.dataset), state}
 
-  def handle_call({:load_graphs, graphs}, _from, state) do
-    with {:ok, dataset} <- load(state.conn, graphs) do
-      graph_names = graph_names(graphs)
-
-      dataset =
-        state.dataset
-        |> RDF.Dataset.delete_graph(graph_names)
-        |> RDF.Dataset.add(dataset)
-
+  def handle_call({:load, pattern}, _from, state) do
+    with {:ok, dataset} <- load(state.conn, pattern, state.dataset) do
       {:reply, :ok, %{state | dataset: dataset}}
     else
       error -> {:reply, error, state}
@@ -81,37 +77,35 @@ defmodule Quadlog do
     """)
   end
 
-  defp load(conn, :all) do
+  defp load(conn, pattern, dataset)
+
+  defp load(conn, {nil, nil, nil, nil}, dataset) do
     case Exqlite.query(conn, select_sql("ORDER BY seq")) do
-      {:ok, result} -> {:ok, apply_sqlite_result(RDF.dataset(), result.rows)}
+      {:ok, result} -> {:ok, apply_sqlite_result(dataset, result.rows)}
       error -> error
     end
   end
 
-  defp load(conn, graphs) do
-    graph_values = graph_values(graphs)
-    named_graphs = Enum.reject(graph_values, &is_nil/1)
+  defp load(conn, {subject, predicate, object, graph}, dataset) do
+    {where, params} =
+      [
+        {"subject_iri", subject},
+        {"predicate_iri", predicate},
+        {"object_iri", object},
+        {"graph_iri", graph}
+      ]
+      |> Enum.reject(fn {_column, term} -> is_nil(term) end)
+      |> Enum.map(fn {column, term} -> {"#{column} = ?", value(term)} end)
+      |> Enum.unzip()
 
-    cond do
-      graph_values == [] ->
-        {:ok, RDF.dataset()}
+    suffix =
+      case where do
+        [] -> "ORDER BY seq"
+        where -> "WHERE #{Enum.join(where, " AND ")} ORDER BY seq"
+      end
 
-      named_graphs == [] ->
-        select_graphs(conn, "graph_iri IS NULL", [])
-
-      nil in graph_values ->
-        placeholders = named_graphs |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
-        select_graphs(conn, "graph_iri IS NULL OR graph_iri IN (#{placeholders})", named_graphs)
-
-      true ->
-        placeholders = named_graphs |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
-        select_graphs(conn, "graph_iri IN (#{placeholders})", named_graphs)
-    end
-  end
-
-  defp select_graphs(conn, where, params) do
-    case Exqlite.query(conn, select_sql("WHERE #{where} ORDER BY seq"), params) do
-      {:ok, result} -> {:ok, apply_sqlite_result(RDF.dataset(), result.rows)}
+    case Exqlite.query(conn, select_sql(suffix), params) do
+      {:ok, result} -> {:ok, apply_sqlite_result(dataset, result.rows)}
       error -> error
     end
   end
@@ -229,15 +223,7 @@ defmodule Quadlog do
   defp value(nil), do: nil
   defp value(term), do: RDF.Term.value(term) |> to_string()
 
-  defp graph_values(graphs) when is_list(graphs), do: Enum.map(graphs, &value/1)
-  defp graph_values(graph), do: [value(graph)]
-
-  defp graph_names(graphs) do
-    Enum.map(graph_values(graphs), fn
-      nil -> nil
-      graph_iri -> RDF.iri(graph_iri)
-    end)
-  end
+  defp load_pattern(opts), do: Keyword.get(opts, :pattern, {nil, nil, nil, nil})
 
   defp execute(conn, sql, params \\ []) do
     case Exqlite.query(conn, sql, params) do

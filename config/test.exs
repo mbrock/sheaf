@@ -7,6 +7,8 @@ config :sheaf, SheafWeb.Endpoint,
   secret_key_base: "Z2ZkvX8ko1S9+Zubart4+TnDiklyOpJOzpkOCXo/+PrUmbOGkyyAkFEJXNjtDFpR",
   server: false
 
+config :sheaf, Sheaf.Repo, start?: false, path: ":memory:"
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

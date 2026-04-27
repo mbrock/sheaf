@@ -15,7 +15,10 @@ defmodule Sheaf.Application do
           SheafWeb.Telemetry,
           {DNSCluster, query: Application.get_env(:sheaf, :dns_cluster_query) || :ignore},
           {Phoenix.PubSub, name: Sheaf.PubSub},
-          {Finch, name: Sheaf.Finch},
+          {Finch, name: Sheaf.Finch}
+        ] ++
+        repo_children() ++
+        [
           {Task.Supervisor, name: Sheaf.Assistant.TaskSupervisor},
           {Registry, keys: :unique, name: Sheaf.Assistant.ChatRegistry},
           {DynamicSupervisor, strategy: :one_for_one, name: Sheaf.Assistant.ChatSupervisor},
@@ -53,6 +56,14 @@ defmodule Sheaf.Application do
   defp tracing_children do
     if tracing_enabled?() do
       [{Sheaf.Tracing.RedisSink, Application.get_env(:sheaf, Sheaf.Tracing.RedisSink, [])}]
+    else
+      []
+    end
+  end
+
+  defp repo_children do
+    if Application.get_env(:sheaf, Sheaf.Repo, []) |> Keyword.get(:start?, true) do
+      [Sheaf.Repo]
     else
       []
     end
