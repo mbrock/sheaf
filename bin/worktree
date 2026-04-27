@@ -16,14 +16,16 @@ overrides only per-worktree runtime identity.
 
 Options:
   --source DIR       Source checkout whose .env should be inherited.
-                     Defaults to SHEAF_WORKTREE_SOURCE_ROOT, /Users/mbrock/sheaf
-                     when present, otherwise this checkout.
+                     Defaults to SHEAF_WORKTREE_SOURCE_ROOT, then the
+                     repository's primary Git worktree.
   --name NAME        Runtime identity suffix. Defaults to the worktree path name.
   --port PORT        Phoenix port. Defaults to the first free port after the
                      source PORT, or after 4042.
   --redis-db N       Redis database for SHEAF_OTEL_REDIS_URL. Defaults to the
                      first unused DB found in nearby Sheaf worktree .env files.
   --no-redis-db      Do not rewrite SHEAF_OTEL_REDIS_URL for a separate DB.
+  --sqlite-local     Leave SQLite DB paths relative to the worktree instead of
+                     pointing them at the source checkout.
   --force-env        Replace an existing PATH/.env.
 
 Create-only options:
@@ -32,7 +34,7 @@ Create-only options:
 
 Examples:
   bin/worktree setup
-  bin/worktree setup . --source /Users/mbrock/sheaf --redis-db 3
+  bin/worktree setup . --source ../sheaf --redis-db 3
   bin/worktree create parser
 USAGE
 }
@@ -54,13 +56,34 @@ sanitize_name() {
   printf '%s' "$value"
 }
 
+primary_git_worktree() {
+  local target="${1:-$APP_ROOT}"
+  local target_root git_context line
+
+  target_root="$(CDPATH= cd -- "$target" 2>/dev/null && pwd)" || target_root="$target"
+  if git -C "$target_root" rev-parse --git-common-dir >/dev/null 2>&1; then
+    git_context="$target_root"
+  else
+    git_context="$APP_ROOT"
+  fi
+
+  line="$(git -C "$git_context" worktree list --porcelain 2>/dev/null | sed -n '1p' || true)"
+  case "$line" in
+    "worktree "*)
+      CDPATH= cd -- "${line#worktree }" 2>/dev/null && pwd
+      ;;
+  esac
+}
+
 default_source_root() {
+  local target="${1:-$APP_ROOT}"
+  local discovered
+
   if [ -n "${SHEAF_WORKTREE_SOURCE_ROOT:-}" ]; then
     printf '%s' "$SHEAF_WORKTREE_SOURCE_ROOT"
-  elif [ -d /Users/mbrock/sheaf/.git ] || [ -f /Users/mbrock/sheaf/.git ]; then
-    printf '%s' /Users/mbrock/sheaf
   else
-    printf '%s' "$APP_ROOT"
+    discovered="$(primary_git_worktree "$target")"
+    printf '%s' "${discovered:-$target}"
   fi
 }
 
@@ -190,6 +213,16 @@ next_redis_db() {
   printf '1'
 }
 
+source_path() {
+  local source_root="$1"
+  local path="$2"
+
+  case "$path" in
+    /*) printf '%s' "$path" ;;
+    *) printf '%s' "$source_root/$path" ;;
+  esac
+}
+
 write_worktree_env() {
   local target="$1"
   local source_root="$2"
@@ -197,8 +230,9 @@ write_worktree_env() {
   local port="$4"
   local redis_db_mode="$5"
   local redis_db="$6"
-  local force_env="$7"
-  local command_label="$8"
+  local sqlite_mode="$7"
+  local force_env="$8"
+  local command_label="$9"
 
   source_root="$(CDPATH= cd -- "$source_root" && pwd)" || die "source does not exist: $source_root"
   target="$(CDPATH= cd -- "$target" && pwd)" || die "target does not exist: $target"
@@ -225,12 +259,15 @@ write_worktree_env() {
   fi
 
   local node_base tmux_session service_name otel_stream source_redis_url worktree_redis_url
+  local source_embeddings_db source_task_queue_db worktree_embeddings_db worktree_task_queue_db
   node_base="sheaf-$safe_name"
   tmux_session="sheaf-$safe_name"
   service_name="sheaf-$safe_name"
   otel_stream="otel:spans:$node_base"
   source_redis_url="$(load_env_value "$source_env" SHEAF_OTEL_REDIS_URL || true)"
   worktree_redis_url=""
+  worktree_embeddings_db=""
+  worktree_task_queue_db=""
 
   if [ "$redis_db_mode" != "disabled" ] && [ -n "$source_redis_url" ]; then
     if worktree_redis_url="$(redis_url_with_db "$source_redis_url" "$redis_db")"; then
@@ -238,6 +275,17 @@ write_worktree_env() {
     else
       printf 'Warning: SHEAF_OTEL_REDIS_URL is not a redis:// URL; leaving it inherited.\n' >&2
       worktree_redis_url=""
+    fi
+  fi
+
+  if [ "$sqlite_mode" = "source" ]; then
+    source_embeddings_db="$(load_env_value "$source_env" SHEAF_EMBEDDINGS_DB || true)"
+    source_embeddings_db="${source_embeddings_db:-var/sheaf-embeddings.sqlite3}"
+    worktree_embeddings_db="$(source_path "$source_root" "$source_embeddings_db")"
+
+    source_task_queue_db="$(load_env_value "$source_env" SHEAF_TASK_QUEUE_DB || true)"
+    if [ -n "$source_task_queue_db" ]; then
+      worktree_task_queue_db="$(source_path "$source_root" "$source_task_queue_db")"
     fi
   fi
 
@@ -259,6 +307,13 @@ write_worktree_env() {
     if [ -n "$worktree_redis_url" ]; then
       printf 'SHEAF_OTEL_REDIS_URL=%s\n' "$(quote_sh "$worktree_redis_url")"
     fi
+    if [ -n "$worktree_embeddings_db" ]; then
+      printf '\n# Share local SQLite state with the source checkout that uses the same Fuseki dataset.\n'
+      printf 'SHEAF_EMBEDDINGS_DB=%s\n' "$(quote_sh "$worktree_embeddings_db")"
+      if [ -n "$worktree_task_queue_db" ]; then
+        printf 'SHEAF_TASK_QUEUE_DB=%s\n' "$(quote_sh "$worktree_task_queue_db")"
+      fi
+    fi
   } > "$env_path"
 
   printf 'Configured Sheaf worktree\n'
@@ -270,6 +325,9 @@ write_worktree_env() {
   if [ -n "$worktree_redis_url" ]; then
     printf '  Redis URL:     %s\n' "$worktree_redis_url"
   fi
+  if [ -n "$worktree_embeddings_db" ]; then
+    printf '  SQLite DB:     %s\n' "$worktree_embeddings_db"
+  fi
   printf '\nNext:\n'
   printf '  cd %s\n' "$target"
   printf '  bin/start\n'
@@ -277,13 +335,14 @@ write_worktree_env() {
 }
 
 setup_worktree() {
-  local target source_root name port redis_db redis_db_mode force_env
+  local target source_root name port redis_db redis_db_mode sqlite_mode force_env
   target="$APP_ROOT"
-  source_root="$(default_source_root)"
+  source_root=""
   name=""
   port=""
   redis_db=""
   redis_db_mode="auto"
+  sqlite_mode="source"
   force_env="false"
 
   if [ "${1:-}" != "" ] && [[ "${1:-}" != --* ]]; then
@@ -318,6 +377,10 @@ setup_worktree() {
         redis_db_mode="disabled"
         shift
         ;;
+      --sqlite-local)
+        sqlite_mode="local"
+        shift
+        ;;
       --force-env)
         force_env="true"
         shift
@@ -333,9 +396,10 @@ setup_worktree() {
   done
 
   target="$(CDPATH= cd -- "$target" && pwd)" || die "target does not exist: $target"
+  [ -n "$source_root" ] || source_root="$(default_source_root "$target")"
   [ -n "$name" ] || name="$(default_setup_name "$target")"
 
-  write_worktree_env "$target" "$source_root" "$(sanitize_name "$name")" "$port" "$redis_db_mode" "$redis_db" "$force_env" "setup"
+  write_worktree_env "$target" "$source_root" "$(sanitize_name "$name")" "$port" "$redis_db_mode" "$redis_db" "$sqlite_mode" "$force_env" "setup"
 }
 
 create_worktree() {
@@ -346,7 +410,7 @@ create_worktree() {
 
   local safe_name target source_root branch base setup_args
   safe_name="$(sanitize_name "$name")"
-  source_root="$(default_source_root)"
+  source_root=""
   branch="codex/$safe_name"
   base="HEAD"
   setup_args=()
@@ -355,6 +419,7 @@ create_worktree() {
     target="$1"
     shift
   else
+    source_root="$(default_source_root "$APP_ROOT")"
     target="$(dirname "$source_root")/sheaf-$safe_name"
   fi
 
@@ -379,7 +444,7 @@ create_worktree() {
         setup_args+=("$1" "${2:-}")
         shift 2
         ;;
-      --no-redis-db|--force-env)
+      --no-redis-db|--sqlite-local|--force-env)
         setup_args+=("$1")
         shift
         ;;
@@ -395,6 +460,7 @@ create_worktree() {
 
   mkdir -p "$(dirname "$target")"
   target="$(CDPATH= cd -- "$(dirname "$target")" && pwd)/$(basename "$target")"
+  [ -n "$source_root" ] || source_root="$(default_source_root "$APP_ROOT")"
   source_root="$(CDPATH= cd -- "$source_root" && pwd)" || die "source does not exist: $source_root"
 
   if [ -e "$target" ]; then

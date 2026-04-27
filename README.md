@@ -32,7 +32,9 @@ bin/deploy
 
 Fresh development worktrees created by Codex or another harness can inherit the
 main checkout's `.env` while keeping their tmux session, BEAM node, Phoenix
-port, OpenTelemetry stream, and Redis DB separate:
+port, OpenTelemetry stream, and Redis DB separate. Because the worktree usually
+targets the same Fuseki dataset, `bin/worktree setup` also pins the SQLite
+embedding/task DB paths to absolute paths in the source checkout:
 
 ```bash
 bin/worktree setup
@@ -43,9 +45,9 @@ bin/status
 `bin/worktree create parser` is also available when you want the script to create
 the Git worktree itself.
 
-By default, `bin/worktree` inherits `/Users/mbrock/sheaf/.env` when that checkout
-exists. Use `--source DIR`, `--port PORT`, or `--redis-db N` for explicit
-control.
+By default, `bin/worktree` inherits `.env` from the repository's primary Git
+worktree. Use `--source DIR`, `--port PORT`, or `--redis-db N` for explicit
+control. Use `--sqlite-local` when a worktree should keep its own SQLite DBs.
 
 These use `SHEAF_SERVICE_MODE` from `.env`. Supported modes are `tmux`,
 `systemd`, and `launchd`; `tmux` is the convenient local default. `bin/status`
