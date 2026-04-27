@@ -43,7 +43,7 @@ defmodule Quadlog do
 
     rows = sqlite_rows(tx, changes)
 
-    case DBConnection.transaction(state.conn, fn conn -> insert_rows(conn, rows) end) do
+    case Exqlite.transaction(state.conn, fn conn -> insert_rows(conn, rows) end) do
       {:ok, :ok} ->
         dataset =
           Enum.reduce(changes, state.dataset, fn
@@ -190,7 +190,7 @@ defmodule Quadlog do
         end
 
       [
-        tx,
+        value(tx),
         polarity,
         value(graph.name),
         subject_iri,
@@ -205,7 +205,14 @@ defmodule Quadlog do
     end
   end
 
-  defp insert_rows(conn, rows), do: Enum.each(rows, &insert_row(conn, &1))
+  defp insert_rows(conn, rows) do
+    Enum.reduce_while(rows, :ok, fn row, :ok ->
+      case insert_row(conn, row) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
   defp insert_row(conn, row) do
     execute(
