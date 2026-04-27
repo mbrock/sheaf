@@ -21,6 +21,7 @@ defmodule Sheaf.Admin.CLI do
 
   def main(args) do
     checkout_root = checkout_root()
+    System.put_env("SHEAF_CHECKOUT_ROOT", checkout_root)
     load_dot_env_from_checkout(checkout_root)
     prepend_build_paths(checkout_root)
 

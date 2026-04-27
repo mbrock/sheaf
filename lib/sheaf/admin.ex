@@ -516,18 +516,33 @@ defmodule Sheaf.Admin do
     end
   end
 
-  defp schema_path, do: Application.app_dir(:sheaf, "priv/sheaf-schema.ttl")
-  defp extension_path, do: Application.app_dir(:sheaf, "priv/sheaf-ext.ttl")
+  defp schema_path, do: priv_path("sheaf-schema.ttl")
+  defp extension_path, do: priv_path("sheaf-ext.ttl")
   defp extension_graph, do: "https://less.rest/sheaf/ext"
   defp imported_ontologies_graph, do: "https://less.rest/sheaf/imported-ontologies"
 
   defp imported_ontologies do
-    :sheaf
-    |> Application.app_dir("priv/ontologies/*")
+    "ontologies/*"
+    |> priv_path()
     |> Path.wildcard()
     |> Enum.sort()
     |> Enum.map(&Serialization.read_file!/1)
     |> Enum.reduce(RDF.Graph.new(), &RDF.Graph.add(&2, &1))
+  end
+
+  defp priv_path(path) do
+    checkout_root = System.get_env("SHEAF_CHECKOUT_ROOT") || System.get_env("SHEAF_APP_ROOT")
+
+    cond do
+      is_binary(checkout_root) and File.dir?(Path.join(checkout_root, "priv")) ->
+        Path.join([checkout_root, "priv", path])
+
+      File.dir?(Path.join(File.cwd!(), "priv")) ->
+        Path.join([File.cwd!(), "priv", path])
+
+      true ->
+        Application.app_dir(:sheaf, Path.join("priv", path))
+    end
   end
 
   defp ingest!(files, opts) do

@@ -1,0 +1,427 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+
+usage() {
+  cat >&2 <<'USAGE'
+Usage:
+  bin/worktree setup [PATH] [options]
+  bin/worktree create NAME [PATH] [options]
+
+`setup` is the usual path for Codex or other harness-created worktrees. It
+writes PATH/.env so the worktree inherits the source checkout's .env, then
+overrides only per-worktree runtime identity.
+
+Options:
+  --source DIR       Source checkout whose .env should be inherited.
+                     Defaults to SHEAF_WORKTREE_SOURCE_ROOT, /Users/mbrock/sheaf
+                     when present, otherwise this checkout.
+  --name NAME        Runtime identity suffix. Defaults to the worktree path name.
+  --port PORT        Phoenix port. Defaults to the first free port after the
+                     source PORT, or after 4042.
+  --redis-db N       Redis database for SHEAF_OTEL_REDIS_URL. Defaults to the
+                     first unused DB found in nearby Sheaf worktree .env files.
+  --no-redis-db      Do not rewrite SHEAF_OTEL_REDIS_URL for a separate DB.
+  --force-env        Replace an existing PATH/.env.
+
+Create-only options:
+  --branch NAME      Branch to create. Defaults to codex/NAME.
+  --base REF         Git ref to base the worktree on. Defaults to HEAD.
+
+Examples:
+  bin/worktree setup
+  bin/worktree setup . --source /Users/mbrock/sheaf --redis-db 3
+  bin/worktree create parser
+USAGE
+}
+
+die() {
+  printf 'bin/worktree: %s\n' "$*" >&2
+  exit 1
+}
+
+quote_sh() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+sanitize_name() {
+  local value="$1"
+  value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  value="$(printf '%s' "$value" | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+  [ -n "$value" ] || value="worktree"
+  printf '%s' "$value"
+}
+
+default_source_root() {
+  if [ -n "${SHEAF_WORKTREE_SOURCE_ROOT:-}" ]; then
+    printf '%s' "$SHEAF_WORKTREE_SOURCE_ROOT"
+  elif [ -d /Users/mbrock/sheaf/.git ] || [ -f /Users/mbrock/sheaf/.git ]; then
+    printf '%s' /Users/mbrock/sheaf
+  else
+    printf '%s' "$APP_ROOT"
+  fi
+}
+
+default_setup_name() {
+  local target="$1"
+  local base parent
+
+  base="$(basename "$target")"
+  if [ "$base" = "sheaf" ]; then
+    parent="$(basename "$(dirname "$target")")"
+    base="$parent-sheaf"
+  fi
+
+  sanitize_name "$base"
+}
+
+load_env_value() {
+  local env_file="$1"
+  local name="$2"
+
+  if [ ! -f "$env_file" ]; then
+    return 0
+  fi
+
+  (
+    set -a
+    # shellcheck disable=SC1090
+    . "$env_file"
+    set +a
+    printf '%s' "${!name:-}"
+  )
+}
+
+port_available() {
+  local port="$1"
+
+  if command -v lsof >/dev/null 2>&1; then
+    ! lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+  else
+    ! nc -z 127.0.0.1 "$port" >/dev/null 2>&1
+  fi
+}
+
+next_free_port() {
+  local start="$1"
+  local port
+
+  port="$((start + 1))"
+  while [ "$port" -lt 65535 ]; do
+    if port_available "$port"; then
+      printf '%s' "$port"
+      return 0
+    fi
+    port="$((port + 1))"
+  done
+
+  return 1
+}
+
+redis_url_with_db() {
+  local url="$1"
+  local db="$2"
+  local without_query query authority
+
+  case "$url" in
+    redis://*|rediss://*) ;;
+    *) return 1 ;;
+  esac
+
+  query=""
+  without_query="$url"
+  if [[ "$url" == *\?* ]]; then
+    query="?${url#*\?}"
+    without_query="${url%%\?*}"
+  fi
+
+  authority="${without_query#*://}"
+  authority="${authority%%/*}"
+
+  printf '%s://%s/%s%s' "${without_query%%://*}" "$authority" "$db" "$query"
+}
+
+redis_db_from_url() {
+  local url="$1"
+  local without_query authority path db
+
+  without_query="${url%%\?*}"
+  authority="${without_query#*://}"
+  authority="${authority%%/*}"
+  path="${without_query#*://$authority}"
+  db="${path#/}"
+
+  case "$db" in
+    ''|*[!0-9]*) return 0 ;;
+    *) printf '%s\n' "$db" ;;
+  esac
+}
+
+used_redis_dbs() {
+  local env_file url db root
+
+  for root in "$@"; do
+    [ -d "$root" ] || continue
+    find "$root" -maxdepth 4 -name .env -type f 2>/dev/null | while IFS= read -r env_file; do
+      url="$(load_env_value "$env_file" SHEAF_OTEL_REDIS_URL || true)"
+      [ -n "$url" ] || continue
+      db="$(redis_db_from_url "$url" || true)"
+      [ -n "$db" ] && printf '%s\n' "$db"
+    done
+  done
+}
+
+next_redis_db() {
+  local source_root="$1"
+  local target_root="$2"
+  local db used
+
+  used="$(used_redis_dbs "$(dirname "$source_root")" "$(dirname "$target_root")" | sort -n | uniq || true)"
+
+  for db in $(seq 1 15); do
+    if ! printf '%s\n' "$used" | grep -qx "$db"; then
+      printf '%s' "$db"
+      return 0
+    fi
+  done
+
+  printf '1'
+}
+
+write_worktree_env() {
+  local target="$1"
+  local source_root="$2"
+  local safe_name="$3"
+  local port="$4"
+  local redis_db_mode="$5"
+  local redis_db="$6"
+  local force_env="$7"
+  local command_label="$8"
+
+  source_root="$(CDPATH= cd -- "$source_root" && pwd)" || die "source does not exist: $source_root"
+  target="$(CDPATH= cd -- "$target" && pwd)" || die "target does not exist: $target"
+
+  local source_env="$source_root/.env"
+  local env_path="$target/.env"
+  [ -f "$source_env" ] || die "source .env does not exist: $source_env"
+  [ "$source_env" != "$env_path" ] || die "source and target .env are the same file; choose a different --source"
+
+  if [ -e "$env_path" ] && [ "$force_env" != "true" ]; then
+    die "$env_path already exists; rerun with --force-env to replace it"
+  fi
+
+  if [ -z "$port" ]; then
+    local source_port
+    source_port="$(load_env_value "$source_env" PORT || true)"
+    source_port="${source_port:-4042}"
+    [[ "$source_port" =~ ^[0-9]+$ ]] || source_port=4042
+    port="$(next_free_port "$source_port")" || die "could not find a free port"
+  fi
+
+  if [ "$redis_db_mode" = "auto" ]; then
+    redis_db="$(next_redis_db "$source_root" "$target")"
+  fi
+
+  local node_base tmux_session service_name otel_stream source_redis_url worktree_redis_url
+  node_base="sheaf-$safe_name"
+  tmux_session="sheaf-$safe_name"
+  service_name="sheaf-$safe_name"
+  otel_stream="otel:spans:$node_base"
+  source_redis_url="$(load_env_value "$source_env" SHEAF_OTEL_REDIS_URL || true)"
+  worktree_redis_url=""
+
+  if [ "$redis_db_mode" != "disabled" ] && [ -n "$source_redis_url" ]; then
+    if worktree_redis_url="$(redis_url_with_db "$source_redis_url" "$redis_db")"; then
+      :
+    else
+      printf 'Warning: SHEAF_OTEL_REDIS_URL is not a redis:// URL; leaving it inherited.\n' >&2
+      worktree_redis_url=""
+    fi
+  fi
+
+  {
+    printf '# Generated by bin/worktree %s\n' "$command_label"
+    printf '# Inherit shared local secrets, Fuseki endpoints, API keys, and base IRIs.\n'
+    printf 'SHEAF_WORKTREE_SOURCE_ROOT=%s\n' "$(quote_sh "$source_root")"
+    printf 'SHEAF_WORKTREE_SOURCE_ENV=%s\n' "$(quote_sh "$source_env")"
+    printf '. "$SHEAF_WORKTREE_SOURCE_ENV"\n\n'
+    printf '# Per-worktree runtime identity.\n'
+    printf 'SHEAF_APP_ROOT=%s\n' "$(quote_sh "$target")"
+    printf 'SHEAF_SERVICE_MODE=tmux\n'
+    printf 'SHEAF_NODE_BASENAME=%s\n' "$(quote_sh "$node_base")"
+    printf 'SHEAF_TMUX_SESSION=%s\n' "$(quote_sh "$tmux_session")"
+    printf 'PORT=%s\n' "$(quote_sh "$port")"
+    printf 'OTEL_SERVICE_NAME=%s\n' "$(quote_sh "$service_name")"
+    printf 'SHEAF_OTEL_SERVICE_NAME=%s\n' "$(quote_sh "$service_name")"
+    printf 'SHEAF_OTEL_STREAM=%s\n' "$(quote_sh "$otel_stream")"
+    if [ -n "$worktree_redis_url" ]; then
+      printf 'SHEAF_OTEL_REDIS_URL=%s\n' "$(quote_sh "$worktree_redis_url")"
+    fi
+  } > "$env_path"
+
+  printf 'Configured Sheaf worktree\n'
+  printf '  Path:          %s\n' "$target"
+  printf '  Source env:    %s\n' "$source_env"
+  printf '  Phoenix port:  %s\n' "$port"
+  printf '  tmux session:  %s\n' "$tmux_session"
+  printf '  BEAM node:     %s\n' "$node_base"
+  if [ -n "$worktree_redis_url" ]; then
+    printf '  Redis URL:     %s\n' "$worktree_redis_url"
+  fi
+  printf '\nNext:\n'
+  printf '  cd %s\n' "$target"
+  printf '  bin/start\n'
+  printf '  bin/status\n'
+}
+
+setup_worktree() {
+  local target source_root name port redis_db redis_db_mode force_env
+  target="$APP_ROOT"
+  source_root="$(default_source_root)"
+  name=""
+  port=""
+  redis_db=""
+  redis_db_mode="auto"
+  force_env="false"
+
+  if [ "${1:-}" != "" ] && [[ "${1:-}" != --* ]]; then
+    target="$1"
+    shift
+  fi
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --source)
+        source_root="${2:-}"
+        [ -n "$source_root" ] || die "--source requires a directory"
+        shift 2
+        ;;
+      --name)
+        name="${2:-}"
+        [ -n "$name" ] || die "--name requires a value"
+        shift 2
+        ;;
+      --port)
+        port="${2:-}"
+        [[ "$port" =~ ^[0-9]+$ ]] || die "--port requires a numeric port"
+        shift 2
+        ;;
+      --redis-db)
+        redis_db="${2:-}"
+        [[ "$redis_db" =~ ^[0-9]+$ ]] || die "--redis-db requires a numeric database"
+        redis_db_mode="explicit"
+        shift 2
+        ;;
+      --no-redis-db)
+        redis_db_mode="disabled"
+        shift
+        ;;
+      --force-env)
+        force_env="true"
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown option: $1"
+        ;;
+    esac
+  done
+
+  target="$(CDPATH= cd -- "$target" && pwd)" || die "target does not exist: $target"
+  [ -n "$name" ] || name="$(default_setup_name "$target")"
+
+  write_worktree_env "$target" "$source_root" "$(sanitize_name "$name")" "$port" "$redis_db_mode" "$redis_db" "$force_env" "setup"
+}
+
+create_worktree() {
+  local name="${1:-}"
+  shift || true
+
+  [ -n "$name" ] || die "missing worktree NAME"
+
+  local safe_name target source_root branch base setup_args
+  safe_name="$(sanitize_name "$name")"
+  source_root="$(default_source_root)"
+  branch="codex/$safe_name"
+  base="HEAD"
+  setup_args=()
+
+  if [ "${1:-}" != "" ] && [[ "${1:-}" != --* ]]; then
+    target="$1"
+    shift
+  else
+    target="$(dirname "$source_root")/sheaf-$safe_name"
+  fi
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --branch)
+        branch="${2:-}"
+        [ -n "$branch" ] || die "--branch requires a branch name"
+        shift 2
+        ;;
+      --base)
+        base="${2:-}"
+        [ -n "$base" ] || die "--base requires a git ref"
+        shift 2
+        ;;
+      --source)
+        source_root="${2:-}"
+        [ -n "$source_root" ] || die "--source requires a directory"
+        shift 2
+        ;;
+      --port|--redis-db|--name)
+        setup_args+=("$1" "${2:-}")
+        shift 2
+        ;;
+      --no-redis-db|--force-env)
+        setup_args+=("$1")
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown option: $1"
+        ;;
+    esac
+  done
+
+  mkdir -p "$(dirname "$target")"
+  target="$(CDPATH= cd -- "$(dirname "$target")" && pwd)/$(basename "$target")"
+  source_root="$(CDPATH= cd -- "$source_root" && pwd)" || die "source does not exist: $source_root"
+
+  if [ -e "$target" ]; then
+    die "target already exists: $target"
+  fi
+
+  git -C "$source_root" worktree add -b "$branch" "$target" "$base"
+  printf 'Created Git worktree\n'
+  printf '  Path:   %s\n' "$target"
+  printf '  Branch: %s\n\n' "$branch"
+
+  setup_worktree "$target" --source "$source_root" --name "$safe_name" "${setup_args[@]}"
+}
+
+case "${1:-}" in
+  setup)
+    shift
+    setup_worktree "$@"
+    ;;
+  create|new)
+    shift
+    create_worktree "$@"
+    ;;
+  -h|--help|"")
+    usage
+    ;;
+  *)
+    die "unknown command: $1"
+    ;;
+esac

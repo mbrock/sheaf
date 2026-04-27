@@ -30,6 +30,23 @@ bin/docs Sheaf.mint/0
 bin/deploy
 ```
 
+Fresh development worktrees created by Codex or another harness can inherit the
+main checkout's `.env` while keeping their tmux session, BEAM node, Phoenix
+port, OpenTelemetry stream, and Redis DB separate:
+
+```bash
+bin/worktree setup
+bin/start
+bin/status
+```
+
+`bin/worktree create parser` is also available when you want the script to create
+the Git worktree itself.
+
+By default, `bin/worktree` inherits `/Users/mbrock/sheaf/.env` when that checkout
+exists. Use `--source DIR`, `--port PORT`, or `--redis-db N` for explicit
+control.
+
 These use `SHEAF_SERVICE_MODE` from `.env`. Supported modes are `tmux`,
 `systemd`, and `launchd`; `tmux` is the convenient local default. `bin/status`
 also prints derived app URLs, RDF base IRIs, SPARQL endpoints, Fuseki server
