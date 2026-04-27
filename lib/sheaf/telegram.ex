@@ -37,9 +37,8 @@ defmodule Sheaf.Telegram do
   end
 
   defp credentials(opts) do
-    env = dotenv()
-    token = Keyword.get(opts, :token) || env_value("TELEGRAM_BOT_TOKEN", env)
-    chat_id = Keyword.get(opts, :chat_id) || env_value("TELEGRAM_CHAT_ID", env)
+    token = Keyword.get(opts, :token) || System.get_env("TELEGRAM_BOT_TOKEN")
+    chat_id = Keyword.get(opts, :chat_id) || System.get_env("TELEGRAM_CHAT_ID")
 
     if present?(token) and present?(chat_id) do
       {:ok, token, chat_id}
@@ -48,46 +47,5 @@ defmodule Sheaf.Telegram do
     end
   end
 
-  defp env_value(key, dotenv), do: System.get_env(key) || Map.get(dotenv, key)
-
   defp present?(value), do: is_binary(value) and String.trim(value) != ""
-
-  defp dotenv do
-    path = Path.expand(".env")
-
-    if File.exists?(path) do
-      path
-      |> File.read!()
-      |> String.split("\n")
-      |> Enum.reduce(%{}, &parse_env_line/2)
-    else
-      %{}
-    end
-  end
-
-  defp parse_env_line(line, acc) do
-    line = String.trim(line)
-
-    cond do
-      line == "" or String.starts_with?(line, "#") ->
-        acc
-
-      true ->
-        case String.split(line, "=", parts: 2) do
-          [key, value] -> Map.put(acc, key, unquote_env(value))
-          _ -> acc
-        end
-    end
-  end
-
-  defp unquote_env(value) do
-    value = String.trim(value)
-
-    if String.length(value) >= 2 and String.first(value) == String.last(value) and
-         String.first(value) in ["\"", "'"] do
-      value |> String.slice(1..-2//1)
-    else
-      value
-    end
-  end
 end

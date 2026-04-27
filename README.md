@@ -11,6 +11,12 @@ mix setup
 bin/start
 ```
 
+Sheaf commands expect the environment to already be loaded. Human shells can use
+direnv; this repository's `.envrc` sources `.env`. Non-interactive callers can
+use `bin/env COMMAND...`, for example `bin/env mix precommit` or
+`bin/env bin/status`. Normal commands run `bin/env check` and fail when the
+current environment is missing or differs from `.env`.
+
 The local route is `http://localhost:4000/` by default. On this machine, Caddy
 terminates TLS for `https://sheaf.localhost/` and proxies to the configured
 Phoenix port.
@@ -49,9 +55,7 @@ By default, `bin/worktree` inherits `.env` from the repository's primary Git
 worktree. Use `--source DIR`, `--port PORT`, or `--redis-db N` for explicit
 control. Use `--sqlite-local` when a worktree should keep its own SQLite DBs.
 
-These use `SHEAF_SERVICE_MODE` from `.env`. Sheaf treats `.env` as a shell
-fragment so local worktree envs can source a primary checkout env; Elixir
-entrypoints use the same shell semantics as the bin scripts. Supported modes are
+These use `SHEAF_SERVICE_MODE` from the loaded environment. Supported modes are
 `tmux`, `systemd`, and `launchd`; `tmux` is the convenient local default.
 `bin/status` also prints derived app URLs, RDF base IRIs, SPARQL endpoints,
 Fuseki server metadata, dataset names, and a quick triple count before checking

@@ -6,21 +6,17 @@ export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
-ENV_FILE="${SHEAF_ENV_FILE:-$APP_ROOT/.env}"
 COUNT="${1:-1}"
 
 cd "$APP_ROOT"
 
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/runtime_env.sh"
+require_sheaf_env "$APP_ROOT"
+
 if ! [[ "$COUNT" =~ ^[0-9]+$ ]] || [ "$COUNT" -lt 1 ]; then
   printf 'Usage: %s [screenshot-count]\n' "$(basename "$0")" >&2
   exit 2
-fi
-
-if [ -f "$ENV_FILE" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
 fi
 
 require_cmd() {
@@ -35,7 +31,7 @@ require_cmd jq
 require_cmd uvx
 
 if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
-  printf 'TELEGRAM_BOT_TOKEN is missing in %s\n' "$ENV_FILE" >&2
+  printf 'TELEGRAM_BOT_TOKEN is missing from the loaded Sheaf environment.\n' >&2
   exit 2
 fi
 
@@ -45,11 +41,12 @@ api_url() {
 
 save_chat_id() {
   local chat_id="$1"
+  local env_file="${SHEAF_ENV_FILE:-${SHEAF_ENV_LOADED:-$APP_ROOT/.env}}"
 
-  if grep -q '^TELEGRAM_CHAT_ID=' "$ENV_FILE"; then
-    sed -i "s/^TELEGRAM_CHAT_ID=.*/TELEGRAM_CHAT_ID=$chat_id/" "$ENV_FILE"
+  if grep -q '^TELEGRAM_CHAT_ID=' "$env_file"; then
+    sed -i "s/^TELEGRAM_CHAT_ID=.*/TELEGRAM_CHAT_ID=$chat_id/" "$env_file"
   else
-    printf '\nTELEGRAM_CHAT_ID=%s\n' "$chat_id" >>"$ENV_FILE"
+    printf '\nTELEGRAM_CHAT_ID=%s\n' "$chat_id" >>"$env_file"
   fi
 }
 
@@ -80,7 +77,7 @@ if [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
   fi
 
   save_chat_id "$TELEGRAM_CHAT_ID"
-  printf 'Saved TELEGRAM_CHAT_ID to %s\n' "$ENV_FILE"
+  printf 'Saved TELEGRAM_CHAT_ID to %s\n' "${SHEAF_ENV_FILE:-${SHEAF_ENV_LOADED:-$APP_ROOT/.env}}"
 fi
 
 BASE_URL="${SHEAF_SHOW_URL:-http://${SHEAF_HTTP_IP:-127.0.0.1}:${PORT:-4000}/}"

@@ -13,12 +13,9 @@ fi
 
 cd "$APP_ROOT"
 
-if [ -f "$APP_ROOT/.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . "$APP_ROOT/.env"
-  set +a
-fi
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/runtime_env.sh"
+require_sheaf_env "$APP_ROOT"
 
 CONTAINER="${SHEAF_TRIPLESTORE_CONTAINER:-sheaf-fuseki}"
 IMAGE="${SHEAF_TRIPLESTORE_IMAGE:-stain/jena-fuseki}"
@@ -263,7 +260,7 @@ remote_backup_store() {
   printf 'Starting %s Fuseki backup on %s:%s\n' "$instance" "$ssh_host" "$app_root"
 
   remote_output="$(
-    ssh "$ssh_host" bash -s -- "$app_root" "$remote_transfer" "$remote_container" <<'REMOTE_BACKUP_SCRIPT'
+    ssh "$ssh_host" "$app_root/bin/env" bash -s -- "$app_root" "$remote_transfer" "$remote_container" <<'REMOTE_BACKUP_SCRIPT'
 set -euo pipefail
 
 app_root="$1"
@@ -271,13 +268,6 @@ output_dir="$2"
 container_override="${3:-}"
 
 cd "$app_root"
-
-if [ -f "$app_root/.env" ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . "$app_root/.env"
-  set +a
-fi
 
 if ! command -v jq >/dev/null 2>&1; then
   printf 'jq is required for Fuseki backup task polling.\n' >&2

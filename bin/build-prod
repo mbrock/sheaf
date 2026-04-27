@@ -9,6 +9,11 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
 
 cd "$APP_ROOT"
+
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/runtime_env.sh"
+require_sheaf_env "$APP_ROOT"
+
 export MIX_ENV=prod
 
 mix deps.get

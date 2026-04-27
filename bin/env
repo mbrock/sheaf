@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export HOME="${HOME:-$(eval echo ~$(whoami))}"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+
+if [ -f "$HOME/.asdf/asdf.sh" ]; then
+  . "$HOME/.asdf/asdf.sh"
+elif command -v brew >/dev/null 2>&1 && [ -f "$(brew --prefix asdf)/libexec/asdf.sh" ]; then
+  . "$(brew --prefix asdf)/libexec/asdf.sh"
+fi
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
+
+if [ -n "${SHEAF_ENV_FILE:-}" ]; then
+  ENV_FILE="$SHEAF_ENV_FILE"
+else
+  ENV_FILE="$APP_ROOT/.env"
+fi
+
+usage() {
+  printf 'Usage: %s {check|COMMAND [ARG...]}\n' "$(basename "$0")" >&2
+}
+
+if [ "$#" -eq 0 ]; then
+  usage
+  exit 2
+fi
+
+if [ ! -f "$ENV_FILE" ]; then
+  printf 'Sheaf env file does not exist: %s\n' "$ENV_FILE" >&2
+  exit 2
+fi
+
+cd "$APP_ROOT"
+
+resolved_env() {
+  env -i HOME="${HOME:-}" PATH="${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}" bash -c '
+    set -euo pipefail
+    set -a
+    . "$1"
+    set +a
+    env -0
+  ' sheaf-env "$ENV_FILE"
+}
+
+check_env() {
+  local entry key value actual failed
+
+  failed=0
+
+  while IFS= read -r -d '' entry; do
+    key="${entry%%=*}"
+    value="${entry#*=}"
+
+    case "$key" in
+      _|HOME|OLDPWD|PATH|PWD|SHLVL)
+        continue
+        ;;
+    esac
+
+    actual="${!key-}"
+    if [ "${!key+x}" != "x" ]; then
+      printf 'Sheaf environment mismatch: %s is not set; expected value from %s.\n' "$key" "$ENV_FILE" >&2
+      failed=1
+    elif [ "$actual" != "$value" ]; then
+      printf 'Sheaf environment mismatch: %s differs from %s.\n' "$key" "$ENV_FILE" >&2
+      failed=1
+    fi
+  done < <(resolved_env)
+
+  if [ "$failed" -ne 0 ]; then
+    printf 'Load the environment with direnv, source %s, or run the command through %s/bin/env.\n' "$ENV_FILE" "$APP_ROOT" >&2
+    return 2
+  fi
+}
+
+if [ "${1:-}" = "check" ]; then
+  shift
+  if [ "$#" -ne 0 ]; then
+    usage
+    exit 2
+  fi
+  check_env
+  exit 0
+fi
+
+set -a
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+set +a
+
+export SHEAF_APP_ROOT="$APP_ROOT"
+export SHEAF_ENV_LOADED="$ENV_FILE"
+
+exec "$@"

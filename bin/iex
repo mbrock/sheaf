@@ -12,7 +12,7 @@ APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
 
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/runtime_env.sh"
-load_sheaf_env "$APP_ROOT"
+require_sheaf_env "$APP_ROOT"
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'USAGE'

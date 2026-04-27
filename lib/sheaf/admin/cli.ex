@@ -22,7 +22,6 @@ defmodule Sheaf.Admin.CLI do
   def main(args) do
     checkout_root = checkout_root()
     System.put_env("SHEAF_CHECKOUT_ROOT", checkout_root)
-    load_dot_env_from_checkout(checkout_root)
     prepend_build_paths(checkout_root)
 
     case dispatch(args) do
@@ -30,6 +29,7 @@ defmodule Sheaf.Admin.CLI do
         IO.write(@usage)
 
       {:run, fun} ->
+        require_sheaf_env!(checkout_root)
         start_app!()
         fun.()
 
@@ -107,19 +107,6 @@ defmodule Sheaf.Admin.CLI do
     end
   end
 
-  defp load_dot_env_from_checkout(checkout_root) do
-    checkout_root
-    |> checkout_dirs()
-    |> Enum.find_value(fn dir ->
-      path = Path.join(dir, ".env")
-      if File.regular?(path), do: path
-    end)
-    |> case do
-      nil -> :ok
-      path -> Sheaf.Env.load_file!(path)
-    end
-  end
-
   defp prepend_build_paths(checkout_root) do
     mix_env = System.get_env("MIX_ENV", "dev")
     lib_dir = Path.join([checkout_root, "_build", mix_env, "lib"])
@@ -142,5 +129,18 @@ defmodule Sheaf.Admin.CLI do
         true -> {:cont, [current | acc]}
       end
     end)
+  end
+
+  defp require_sheaf_env!(checkout_root) do
+    env = Path.join([checkout_root, "bin", "env"])
+
+    case System.cmd(env, ["check"], stderr_to_stdout: true) do
+      {_output, 0} ->
+        :ok
+
+      {output, _status} ->
+        raise Sheaf.Admin.Error,
+              String.trim(output)
+    end
   end
 end

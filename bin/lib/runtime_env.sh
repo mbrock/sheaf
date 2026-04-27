@@ -1,13 +1,7 @@
-load_sheaf_env() {
+require_sheaf_env() {
   local app_root="${1:?app root is required}"
-  local env_file="${SHEAF_ENV_FILE:-$app_root/.env}"
 
-  if [ -f "$env_file" ]; then
-    set -a
-    # shellcheck disable=SC1090
-    . "$env_file"
-    set +a
-  fi
+  "$app_root/bin/env" check
 }
 
 sheaf_node_name() {

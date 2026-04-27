@@ -10,7 +10,7 @@ cd "$APP_ROOT"
 
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/runtime_env.sh"
-load_sheaf_env "$APP_ROOT"
+require_sheaf_env "$APP_ROOT"
 
 if [ "${SHEAF_SERVICE_MODE:-tmux}" = "systemd" ] && command -v systemctl >/dev/null 2>&1; then
   UNIT="${SHEAF_SYSTEMD_UNIT:-sheaf.service}"

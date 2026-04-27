@@ -12,7 +12,7 @@ cd "$APP_ROOT"
 
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/runtime_env.sh"
-load_sheaf_env "$APP_ROOT"
+require_sheaf_env "$APP_ROOT"
 
 MODE="${SHEAF_SERVICE_MODE:-tmux}"
 

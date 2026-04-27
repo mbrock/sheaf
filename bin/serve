@@ -17,7 +17,7 @@ cd "$APP_ROOT"
 
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/runtime_env.sh"
-load_sheaf_env "$APP_ROOT"
+require_sheaf_env "$APP_ROOT"
 
 NODE="${SHEAF_NODE:-$(sheaf_node_name)}"
 set_sheaf_elixir_node_args "$NODE"
