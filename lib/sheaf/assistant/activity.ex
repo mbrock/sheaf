@@ -96,7 +96,9 @@ defmodule Sheaf.Assistant.Activity do
 
     """
     INSERT DATA {
-    #{indent(triples)}
+      GRAPH <#{Sheaf.Workspace.graph()}> {
+    #{indent(triples, 4)}
+      }
     }
     """
   end
@@ -207,12 +209,15 @@ defmodule Sheaf.Assistant.Activity do
     end
   end
 
-  defp indent(""), do: ""
+  defp indent(text, spaces)
+  defp indent("", _spaces), do: ""
 
-  defp indent(text) do
+  defp indent(text, spaces) do
+    padding = String.duplicate(" ", spaces)
+
     text
     |> String.split("\n")
-    |> Enum.map_join("\n", &("  " <> &1))
+    |> Enum.map_join("\n", &(padding <> &1))
   end
 
   defp arg(attrs, key), do: Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))

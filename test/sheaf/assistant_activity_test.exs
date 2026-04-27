@@ -78,4 +78,27 @@ defmodule Sheaf.Assistant.ActivityTest do
              {assistant, Sheaf.NS.DOC.assistantModelName(), "test-model"}
            )
   end
+
+  test "insert_data writes assistant activity to the workspace graph" do
+    message = Id.iri("MSG003")
+    session = Id.iri("SESS03")
+
+    assert {:ok, graph} =
+             Activity.build_message(
+               :user,
+               %{
+                 message_iri: message,
+                 session_iri: session,
+                 text: "Track this in RDF."
+               },
+               published_at: ~U[2026-04-26 11:00:00Z]
+             )
+
+    sparql = Activity.insert_data(graph)
+
+    assert sparql =~ "INSERT DATA"
+    assert sparql =~ "GRAPH <#{Sheaf.Workspace.graph()}>"
+    assert sparql =~ "<#{message}>"
+    assert sparql =~ "<https://less.rest/sheaf/Message>"
+  end
 end

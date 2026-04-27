@@ -51,7 +51,7 @@ defmodule Sheaf.Assistant.NotesTest do
     assert RDF.Data.include?(graph, {note, Sheaf.NS.DOC.mentions(), Id.iri("BLK444")})
   end
 
-  test "write persists an INSERT DATA update and omits the graph from the result" do
+  test "write persists an INSERT DATA update in the workspace graph" do
     test_pid = self()
 
     update = fn label, sparql ->
@@ -76,6 +76,7 @@ defmodule Sheaf.Assistant.NotesTest do
 
     assert_receive {:sparql_update, sparql}
     assert sparql =~ "INSERT DATA"
+    assert sparql =~ "GRAPH <#{Sheaf.Workspace.graph()}>"
     assert sparql =~ "<https://www.w3.org/ns/activitystreams#Note>"
     assert sparql =~ "<https://less.rest/sheaf/mentions>"
     assert sparql =~ "<#{Id.iri("ABC123")}>"

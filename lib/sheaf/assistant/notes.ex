@@ -4,7 +4,8 @@ defmodule Sheaf.Assistant.Notes do
 
   Notes are stored as RDF facts with ActivityStreams vocabulary for the note
   shape and Sheaf vocabulary for block mentions. The writer appends facts with
-  SPARQL `INSERT DATA`; it does not revise or delete older notes.
+  SPARQL `INSERT DATA` in the workspace graph; it does not revise or delete
+  older notes.
   """
 
   alias RDF.{Description, Graph}
@@ -143,7 +144,9 @@ defmodule Sheaf.Assistant.Notes do
 
     """
     INSERT DATA {
-    #{indent(triples)}
+      GRAPH <#{Sheaf.Workspace.graph()}> {
+    #{indent(triples, 4)}
+      }
     }
     """
   end
@@ -359,12 +362,15 @@ defmodule Sheaf.Assistant.Notes do
 
   defp normalize_block_id(_other), do: []
 
-  defp indent(""), do: ""
+  defp indent(text, spaces)
+  defp indent("", _spaces), do: ""
 
-  defp indent(text) do
+  defp indent(text, spaces) do
+    padding = String.duplicate(" ", spaces)
+
     text
     |> String.split("\n")
-    |> Enum.map_join("\n", &("  " <> &1))
+    |> Enum.map_join("\n", &(padding <> &1))
   end
 
   defp arg(attrs, key), do: Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
