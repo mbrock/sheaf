@@ -395,7 +395,7 @@ func (m tuiModel) padRow(row string) string {
 
 func (m tuiModel) renderSpanLine(s otelstream.Span, traceStart int64, entryID string) string {
 	st := m.styles
-	body := st.spanMark.Render(shortEntryID(entryID)) + " " + st.spanName.Render(s.Name)
+	body := st.spanMark.Render(displayEntryID(entryID)) + " " + st.spanName.Render(s.Name)
 	body += "  " + st.spanDurationStyle(s.DurationUs).Render(formatDuration(s.DurationUs))
 	if off := formatOffset(traceStart, s.StartUnixNano); off != "" {
 		body += "  " + st.spanMeta.Render(off)
@@ -407,7 +407,10 @@ func (m tuiModel) renderSpanLine(s otelstream.Span, traceStart int64, entryID st
 }
 
 func (m tuiModel) predicatesFor(s otelstream.Span, entryID string) []predicate {
-	return predicatesOf(s, entryID)
+	if s.Status != nil && s.Status.Code == "error" {
+		return []predicate{{verb: "errored:", value: s.Status.Message, valueFor: "error"}}
+	}
+	return nil
 }
 
 func (m tuiModel) renderPredicateLine(p predicate) string {
@@ -434,22 +437,18 @@ func (m tuiModel) detailPanelString() string {
 	}
 
 	lines := []string{
-		m.styles.predVerb.Render("entry") + " " + m.styles.valueStyle("info").Render(displayEntryID(item.entry.ID)+" ("+item.entry.ID+")"),
+		m.styles.spanName.Render(item.span.Name) + "  " +
+			m.styles.spanDurationStyle(item.span.DurationUs).Render(formatDuration(item.span.DurationUs)) + "  " +
+			m.styles.spanMeta.Render(item.span.Kind),
+		m.styles.predVerb.Render("entry") + " " + m.styles.valueStyle("info").Render(displayEntryID(item.entry.ID)+" ("+item.entry.ID+")") +
+			"   " + m.styles.predVerb.Render("span") + " " + m.styles.valueStyle("info").Render(item.span.SpanID),
 		m.styles.predVerb.Render("trace") + " " + m.styles.valueStyle("info").Render(item.span.TraceID),
-		m.styles.predVerb.Render("span") + " " + m.styles.valueStyle("info").Render(item.span.SpanID),
+		m.styles.predVerb.Render("time") + " " + m.styles.valueStyle("info").Render(formatUnixNano(item.span.StartUnixNano)+" -> "+formatUnixNano(item.span.EndUnixNano)),
 	}
 	if item.span.ParentSpanID != "" {
 		lines = append(lines, m.styles.predVerb.Render("parent")+" "+m.styles.valueStyle("info").Render(item.span.ParentSpanID))
 	}
-	lines = append(lines,
-		m.styles.predVerb.Render("name")+" "+m.styles.valueStyle("info").Render(item.span.Name),
-		m.styles.predVerb.Render("kind")+" "+m.styles.valueStyle("info").Render(item.span.Kind),
-		m.styles.predVerb.Render("duration")+" "+m.styles.valueStyle("info").Render(formatDuration(item.span.DurationUs)),
-	)
-	for _, p := range (cliInspectRenderer{}).predicatesFor(item.span, item.entry.ID) {
-		if p.verb == "entry" || p.verb == "trace" || p.verb == "span" || p.verb == "parent" || p.verb == "kind" {
-			continue
-		}
+	for _, p := range inspectorPredicates(item.span, item.entry.ID) {
 		value := strings.ReplaceAll(p.value, "\n", "\\n")
 		lines = append(lines, m.styles.predVerb.Render(p.verb)+" "+m.styles.valueStyle(p.valueFor).Render(value))
 	}

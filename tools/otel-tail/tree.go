@@ -196,7 +196,7 @@ type predicate struct {
 // Promoted attributes follow in inlineAttrs order; status errors come last
 // so they stay visible.
 func predicatesOf(s otelstream.Span, entryID string) []predicate {
-	out := []predicate{{verb: "entry", value: displayEntryID(entryID), valueFor: "info"}}
+	out := []predicate{}
 	for _, key := range inlineAttrs {
 		v, ok := s.Attributes[key]
 		if !ok {
@@ -220,6 +220,40 @@ func predicatesOf(s otelstream.Span, entryID string) []predicate {
 
 func predicateFor(key, value string) predicate {
 	switch key {
+	case "attr.http.response.status_code":
+		return predicateFor("http.response.status_code", value)
+	case "attr.http.request.method":
+		return predicateFor("http.request.method", value)
+	case "attr.http.route":
+		return predicateFor("http.route", value)
+	case "attr.sheaf.row_count":
+		return predicateFor("sheaf.row_count", value)
+	case "attr.sheaf.statement_count":
+		return predicateFor("sheaf.statement_count", value)
+	case "attr.sheaf.statement_bytes":
+		return predicateFor("sheaf.statement_bytes", value)
+	case "attr.sheaf.response_bytes":
+		return predicateFor("sheaf.response_bytes", value)
+	case "attr.sheaf.response_content_type":
+		return predicateFor("sheaf.response_content_type", value)
+	case "attr.sheaf.body_bytes":
+		return predicateFor("sheaf.body_bytes", value)
+	case "attr.sheaf.graph":
+		return predicateFor("sheaf.graph", value)
+	case "attr.sheaf.media_type":
+		return predicateFor("sheaf.media_type", value)
+	case "attr.db.operation":
+		return predicateFor("db.operation", value)
+	case "attr.db.system":
+		return predicateFor("db.system", value)
+	case "attr.server.address":
+		return predicateFor("server.address", value)
+	case "attr.server.port":
+		return predicateFor("server.port", value)
+	case "attr.net.peer.name":
+		return predicateFor("net.peer.name", value)
+	case "attr.net.peer.port":
+		return predicateFor("net.peer.port", value)
 	case "http.response.status_code":
 		role := "info"
 		if strings.HasPrefix(value, "4") || strings.HasPrefix(value, "5") {
@@ -261,6 +295,15 @@ func predicateFor(key, value string) predicate {
 	default:
 		return predicate{verb: shortKey(key), value: value, valueFor: ""}
 	}
+}
+
+func isInlineAttr(key string) bool {
+	for _, inline := range inlineAttrs {
+		if key == inline {
+			return true
+		}
+	}
+	return false
 }
 
 // formatOffset returns "T+x.ys" relative to the trace's earliest seen

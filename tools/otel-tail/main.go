@@ -31,7 +31,7 @@ func main() {
 
 	redisURL := flag.String("redis-url", envDefault("SHEAF_OTEL_REDIS_URL", "redis://localhost:6379"), "Redis URL")
 	stream := flag.String("stream", otelstream.DefaultStream(), "Redis stream key")
-	backfillArg := flag.String("backfill", "10m", "Backfill count or duration like 200, 5m, 1h")
+	backfillArg := flag.String("backfill", "100", "Backfill count or duration like 200, 5m, 1h")
 	jsonOut := flag.Bool("json", false, "Output raw JSON, one object per line")
 	jsonLines := flag.Bool("jsonl", false, "Output raw JSON Lines, one span event per line")
 	tree := flag.Bool("tree", false, "Render a one-shot trace tree from backfilled spans and exit")

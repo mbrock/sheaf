@@ -76,7 +76,7 @@ func renderTreeLines(out io.Writer, lines []renderedLine) error {
 }
 
 func (cliTreeRenderer) renderSpanLine(s otelstream.Span, traceStart int64, entryID string) string {
-	body := colorBlue + shortEntryID(entryID) + colorReset + " " + s.Name
+	body := colorBlue + displayEntryID(entryID) + colorReset + " " + s.Name
 	body += "  " + formatDuration(s.DurationUs)
 	if off := formatOffset(traceStart, s.StartUnixNano); off != "" {
 		body += "  " + colorDim + off + colorReset
@@ -126,12 +126,25 @@ func (cliInspectRenderer) predicatesFor(s otelstream.Span, entryID string) []pre
 	}
 	out = append(out,
 		predicate{verb: "kind", value: s.Kind, valueFor: "info"},
-		predicate{verb: "started", value: fmt.Sprintf("%d", s.StartUnixNano), valueFor: "info"},
-		predicate{verb: "ended", value: fmt.Sprintf("%d", s.EndUnixNano), valueFor: "info"},
+		predicate{verb: "started", value: formatUnixNano(s.StartUnixNano), valueFor: "info"},
+		predicate{verb: "ended", value: formatUnixNano(s.EndUnixNano), valueFor: "info"},
+		predicate{verb: "duration", value: formatDuration(s.DurationUs), valueFor: "info"},
 	)
 	if s.Status != nil {
 		out = append(out, predicate{verb: "status", value: s.Status.Code + " " + s.Status.Message, valueFor: "error"})
 	}
+	out = append(out, inspectorPredicates(s, entryID)...)
+	return out
+}
+
+func inspectorPredicates(s otelstream.Span, entryID string) []predicate {
+	out := []predicate{}
+	for _, key := range inlineAttrs {
+		if v, ok := s.Attributes[key]; ok {
+			out = append(out, predicateFor("attr."+key, formatInspectValue(v)))
+		}
+	}
+
 	appendMap := func(prefix string, m map[string]any) {
 		keys := make([]string, 0, len(m))
 		for key := range m {
@@ -139,6 +152,9 @@ func (cliInspectRenderer) predicatesFor(s otelstream.Span, entryID string) []pre
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
+			if prefix == "attr" && isInlineAttr(key) {
+				continue
+			}
 			out = append(out, predicate{verb: prefix + "." + key, value: formatInspectValue(m[key]), valueFor: "info"})
 		}
 	}

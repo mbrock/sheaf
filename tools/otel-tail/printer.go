@@ -33,6 +33,13 @@ var inlineAttrs = []string{
 	"net.peer.port",
 }
 
+func formatUnixNano(ns int64) string {
+	if ns == 0 {
+		return ""
+	}
+	return time.Unix(0, ns).Local().Format("2006-01-02 15:04:05.000")
+}
+
 type SpanPrinterOptions struct {
 	JSON    bool
 	Verbose bool
