@@ -4,36 +4,72 @@ defmodule Quadlog do
   require OpenTelemetry.Tracer, as: Tracer
 
   def start_link(path, opts \\ []) do
+    opts = Keyword.put_new_lazy(opts, :otel_ctx, &:otel_ctx.get_current/0)
     GenServer.start_link(__MODULE__, {path, opts}, Keyword.take(opts, [:name]))
   end
 
   def dataset(pid), do: GenServer.call(pid, :dataset)
-  def ask(pid, fun), do: GenServer.call(pid, {:ask, fun})
-  def load(pid, pattern), do: GenServer.call(pid, {:load, pattern})
-  def load_once(pid, pattern), do: GenServer.call(pid, {:load_once, pattern})
-  def clear_cache(pid), do: GenServer.call(pid, :clear_cache)
+  def ask(pid, fun), do: GenServer.call(pid, {:ask, :otel_ctx.get_current(), fun})
+  def load(pid, pattern), do: GenServer.call(pid, {:load, :otel_ctx.get_current(), pattern})
+
+  def load_once(pid, pattern),
+    do: GenServer.call(pid, {:load_once, :otel_ctx.get_current(), pattern})
+
+  def clear_cache(pid), do: GenServer.call(pid, {:clear_cache, :otel_ctx.get_current()})
   def assert(pid, tx, graph), do: transact(pid, tx, [{:assert, graph}])
   def retract(pid, tx, graph), do: transact(pid, tx, [{:retract, graph}])
-  def transact(pid, tx, changes), do: GenServer.call(pid, {:transact, tx, changes})
+
+  def transact(pid, tx, changes),
+    do: GenServer.call(pid, {:transact, :otel_ctx.get_current(), tx, changes})
 
   @impl true
   def init({path, opts}) do
-    with {:ok, conn} <- Exqlite.start_link(database: path),
-         :ok <- migrate(conn),
-         pattern = load_pattern(opts),
-         {:ok, dataset} <- load(conn, pattern, RDF.dataset()) do
-      {:ok, %{conn: conn, dataset: dataset, loaded_patterns: MapSet.new([pattern])}}
-    end
+    with_context(Keyword.fetch!(opts, :otel_ctx), fn ->
+      with {:ok, conn} <- Exqlite.start_link(database: path),
+           :ok <- migrate(conn),
+           pattern = load_pattern(opts),
+           {:ok, dataset} <- load(conn, pattern, RDF.dataset()) do
+        {:ok, %{conn: conn, dataset: dataset, loaded_patterns: MapSet.new([pattern])}}
+      end
+    end)
   end
 
   @impl true
   def handle_call(:dataset, _from, state), do: {:reply, state.dataset, state}
-  def handle_call({:ask, fun}, _from, state), do: {:reply, fun.(state.dataset), state}
 
-  def handle_call(:clear_cache, _from, state),
-    do: {:reply, :ok, %{state | dataset: RDF.dataset(), loaded_patterns: MapSet.new()}}
+  def handle_call({:ask, ctx, fun}, _from, state) do
+    with_context(ctx, fn -> {:reply, fun.(state.dataset), state} end)
+  end
 
-  def handle_call({:load, pattern}, _from, state) do
+  def handle_call({:clear_cache, ctx}, _from, state) do
+    with_context(ctx, fn ->
+      {:reply, :ok, %{state | dataset: RDF.dataset(), loaded_patterns: MapSet.new()}}
+    end)
+  end
+
+  def handle_call({:load, ctx, pattern}, _from, state) do
+    with_context(ctx, fn ->
+      load_reply(pattern, state)
+    end)
+  end
+
+  def handle_call({:load_once, ctx, pattern}, _from, state) do
+    with_context(ctx, fn ->
+      if MapSet.member?(state.loaded_patterns, pattern) do
+        {:reply, :ok, state}
+      else
+        load_reply(pattern, state)
+      end
+    end)
+  end
+
+  def handle_call({:transact, ctx, tx, changes_or_fun}, _from, state) do
+    with_context(ctx, fn ->
+      transact_reply(tx, changes_or_fun, state)
+    end)
+  end
+
+  defp load_reply(pattern, state) do
     with {:ok, dataset} <- load(state.conn, pattern, state.dataset) do
       {:reply, :ok,
        %{state | dataset: dataset, loaded_patterns: MapSet.put(state.loaded_patterns, pattern)}}
@@ -42,15 +78,7 @@ defmodule Quadlog do
     end
   end
 
-  def handle_call({:load_once, pattern}, _from, state) do
-    if MapSet.member?(state.loaded_patterns, pattern) do
-      {:reply, :ok, state}
-    else
-      handle_call({:load, pattern}, nil, state)
-    end
-  end
-
-  def handle_call({:transact, tx, changes_or_fun}, _from, state) do
+  defp transact_reply(tx, changes_or_fun, state) do
     changes =
       if is_function(changes_or_fun, 1) do
         changes_or_fun.(state.dataset)
@@ -72,6 +100,16 @@ defmodule Quadlog do
 
       error ->
         {:reply, error, state}
+    end
+  end
+
+  defp with_context(ctx, fun) do
+    token = :otel_ctx.attach(ctx)
+
+    try do
+      fun.()
+    after
+      :otel_ctx.detach(token)
     end
   end
 
