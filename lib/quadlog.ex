@@ -8,6 +8,7 @@ defmodule Quadlog do
   def dataset(pid), do: GenServer.call(pid, :dataset)
   def ask(pid, fun), do: GenServer.call(pid, {:ask, fun})
   def load(pid, pattern), do: GenServer.call(pid, {:load, pattern})
+  def load_once(pid, pattern), do: GenServer.call(pid, {:load_once, pattern})
   def assert(pid, tx, graph), do: transact(pid, tx, [{:assert, graph}])
   def retract(pid, tx, graph), do: transact(pid, tx, [{:retract, graph}])
   def transact(pid, tx, changes), do: GenServer.call(pid, {:transact, tx, changes})
@@ -16,8 +17,9 @@ defmodule Quadlog do
   def init({path, opts}) do
     with {:ok, conn} <- Exqlite.start_link(database: path),
          :ok <- migrate(conn),
-         {:ok, dataset} <- load(conn, load_pattern(opts), RDF.dataset()) do
-      {:ok, %{conn: conn, dataset: dataset}}
+         pattern = load_pattern(opts),
+         {:ok, dataset} <- load(conn, pattern, RDF.dataset()) do
+      {:ok, %{conn: conn, dataset: dataset, loaded_patterns: MapSet.new([pattern])}}
     end
   end
 
@@ -27,9 +29,18 @@ defmodule Quadlog do
 
   def handle_call({:load, pattern}, _from, state) do
     with {:ok, dataset} <- load(state.conn, pattern, state.dataset) do
-      {:reply, :ok, %{state | dataset: dataset}}
+      {:reply, :ok,
+       %{state | dataset: dataset, loaded_patterns: MapSet.put(state.loaded_patterns, pattern)}}
     else
       error -> {:reply, error, state}
+    end
+  end
+
+  def handle_call({:load_once, pattern}, _from, state) do
+    if MapSet.member?(state.loaded_patterns, pattern) do
+      {:reply, :ok, state}
+    else
+      handle_call({:load, pattern}, nil, state)
     end
   end
 

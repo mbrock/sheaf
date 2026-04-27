@@ -61,6 +61,15 @@ defmodule Sheaf.Repo do
     end
   end
 
+  def load_once(pattern) do
+    Tracer.with_span "sheaf.repo.load_once", %{
+      kind: :internal,
+      attributes: pattern_attributes(pattern)
+    } do
+      Quadlog.load_once(__MODULE__, pattern)
+    end
+  end
+
   def assert(graph), do: assert(Sheaf.mint(), graph)
 
   def assert(tx, graph),

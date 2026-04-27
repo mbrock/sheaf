@@ -5,8 +5,12 @@ defmodule Sheaf.Documents do
   Lists document resources stored in the dataset.
   """
 
+  require OpenTelemetry.Tracer, as: Tracer
+
   alias Sheaf.Id
-  alias Sheaf.NS.DOC
+  alias Sheaf.NS.{BIBO, CITO, DCTERMS, FABIO, FOAF, FRBR, DOC}
+  alias RDF.{Description, Graph, Literal}
+  alias RDF.NS.RDFS
 
   @query """
   PREFIX sheaf: <https://less.rest/sheaf/>
@@ -336,9 +340,22 @@ defmodule Sheaf.Documents do
   }
   """
 
+  @doc false
+  def legacy_document_index_sparql, do: @query
+
   def list(opts \\ []) do
-    with {:ok, result} <- Sheaf.select("document index select", @query) do
-      {:ok, from_rows(result.results, opts)}
+    Tracer.with_span "Sheaf.Documents.list", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "quadlog"},
+        {"sheaf.include_excluded", Keyword.get(opts, :include_excluded, true)}
+      ]
+    } do
+      with :ok <- load_document_index_cache() do
+        documents = Sheaf.Repo.ask(&from_dataset(&1, opts))
+        Tracer.set_attribute("sheaf.document_count", length(documents))
+        {:ok, documents}
+      end
     end
   end
 
@@ -359,6 +376,360 @@ defmodule Sheaf.Documents do
     |> maybe_reject_excluded(opts)
     |> Enum.sort_by(&document_sort_key/1)
   end
+
+  @doc false
+  def from_dataset(dataset, opts \\ []) do
+    dataset
+    |> dataset_rows()
+    |> from_rows(opts)
+  end
+
+  defp load_document_index_cache do
+    patterns =
+      [
+        {nil, RDF.type(), RDF.iri(DOC.Document), nil},
+        {nil, RDF.type(), RDF.iri(DOC.Paper), nil},
+        {nil, RDF.type(), RDF.iri(DOC.Thesis), nil},
+        {nil, RDF.type(), RDF.iri(DOC.Transcript), nil},
+        {nil, RDF.type(), RDF.iri(DOC.Spreadsheet), nil},
+        {nil, RDFS.label(), nil, nil},
+        {nil, DOC.sourcePage(), nil, nil},
+        {nil, CITO.cites(), nil, nil}
+      ]
+
+    Enum.reduce_while(patterns, :ok, fn pattern, :ok ->
+      case Sheaf.Repo.load_once(pattern) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp dataset_rows(dataset) do
+    metadata = dataset |> RDF.Dataset.graph(Sheaf.Repo.metadata_graph()) |> graph_index()
+    workspace = dataset |> RDF.Dataset.graph(Sheaf.Repo.workspace_graph()) |> graph_index()
+    descriptions = document_descriptions(dataset)
+    document_iris = descriptions |> Enum.map(fn {doc, _description} -> doc end) |> MapSet.new()
+    cited_docs = cited_documents(dataset)
+
+    document_rows =
+      descriptions
+      |> Enum.flat_map(fn {doc, description} ->
+        rows_for_document(dataset, metadata, workspace, cited_docs, doc, description)
+      end)
+
+    metadata_only_rows =
+      cited_docs
+      |> Enum.reject(&MapSet.member?(document_iris, &1))
+      |> Enum.flat_map(&rows_for_metadata_only_document(metadata, workspace, &1))
+
+    document_rows ++ metadata_only_rows
+  end
+
+  defp document_descriptions(dataset) do
+    dataset
+    |> RDF.Dataset.graphs()
+    |> Enum.flat_map(fn graph ->
+      graph
+      |> Graph.descriptions()
+      |> Enum.filter(&document_description?/1)
+      |> Enum.map(&{Description.subject(&1), &1})
+    end)
+  end
+
+  defp document_description?(description) do
+    Enum.any?(document_kinds(), &Description.include?(description, {RDF.type(), &1}))
+  end
+
+  defp rows_for_document(dataset, metadata, workspace, cited_docs, doc, description) do
+    kinds = document_row_kinds(description)
+    page_count = page_count(dataset, doc)
+    metadata_values = document_metadata(metadata, doc)
+    workspace_owner = workspace_owner(workspace)
+
+    workspace_owner_authored? =
+      workspace_owner_authored?(metadata, doc, workspace_owner, :document)
+
+    kinds
+    |> Enum.flat_map(fn kind ->
+      row =
+        %{"doc" => doc, "kind" => kind}
+        |> put_optional("title", Description.first(description, RDFS.label()))
+        |> put_optional("pageCount", literal_integer(page_count))
+        |> put_flag("excluded", excluded?(workspace, doc))
+        |> put_flag("cited", MapSet.member?(cited_docs, doc))
+        |> put_flag("workspaceOwnerAuthored", workspace_owner_authored?)
+        |> put_optional("workspaceOwnerName", resource_name(metadata, workspace_owner))
+        |> Map.merge(metadata_values)
+
+      expand_author_rows(row, metadata_values)
+    end)
+  end
+
+  defp rows_for_metadata_only_document(metadata, workspace, doc) do
+    workspace_owner = workspace_owner(workspace)
+
+    workspace_owner_authored? =
+      workspace_owner_authored?(metadata, doc, workspace_owner, :metadata_only)
+
+    metadata_values = metadata_only_document_metadata(metadata, doc)
+
+    row =
+      %{"doc" => doc, "kind" => RDF.iri(FABIO.ScholarlyWork)}
+      |> put_optional("title", metadata_only_title(metadata, doc, metadata_values))
+      |> put_flag("cited", true)
+      |> put_flag("metadataOnly", true)
+      |> put_flag("workspaceOwnerAuthored", workspace_owner_authored?)
+      |> put_optional("workspaceOwnerName", resource_name(metadata, workspace_owner))
+      |> Map.merge(metadata_values)
+
+    expand_author_rows(row, metadata_values)
+  end
+
+  defp document_row_kinds(description) do
+    specific =
+      Enum.filter(specific_document_kinds(), &Description.include?(description, {RDF.type(), &1}))
+
+    cond do
+      specific != [] ->
+        specific
+
+      Description.include?(description, {RDF.type(), RDF.iri(DOC.Document)}) ->
+        [RDF.iri(DOC.Document)]
+
+      true ->
+        []
+    end
+  end
+
+  defp document_metadata(metadata, doc) do
+    case first_object(metadata, doc, FABIO.isRepresentationOf()) do
+      nil -> %{}
+      expression -> expression_metadata(metadata, expression)
+    end
+  end
+
+  defp metadata_only_document_metadata(metadata, doc) do
+    expression =
+      metadata
+      |> subjects_with(FRBR.realizationOf(), doc)
+      |> List.first()
+
+    expression_values = if expression, do: expression_metadata(metadata, expression), else: %{}
+    status = first_object(metadata, doc, bibo_status())
+    status_label = if status, do: first_object(metadata, status, RDFS.label())
+
+    expression_values
+    |> put_optional("status", expression_values["status"] || status)
+    |> put_optional("statusLabel", expression_values["statusLabel"] || status_label)
+  end
+
+  defp expression_metadata(metadata, expression) do
+    venue = first_object(metadata, expression, DCTERMS.isPartOf())
+    publisher = first_object(metadata, expression, DCTERMS.publisher())
+    status = first_object(metadata, expression, bibo_status())
+
+    %{}
+    |> put_optional("metadataTitle", first_object(metadata, expression, DCTERMS.title()))
+    |> put_optional("metadataKind", first_object(metadata, expression, RDF.type()))
+    |> put_optional("year", first_object(metadata, expression, FABIO.hasPublicationYear()))
+    |> put_optional("venueTitle", first_object(metadata, venue, DCTERMS.title()))
+    |> put_optional("publisherTitle", publisher_title(metadata, publisher))
+    |> put_optional("doi", first_object(metadata, expression, FABIO.hasDOI()))
+    |> put_optional("volume", first_object(metadata, expression, FABIO.hasVolumeIdentifier()))
+    |> put_optional("issue", first_object(metadata, expression, FABIO.hasIssueIdentifier()))
+    |> put_optional("pages", first_object(metadata, expression, FABIO.hasPageRange()))
+    |> put_optional("metadataPageCount", first_object(metadata, expression, BIBO.numPages()))
+    |> put_optional("status", status)
+    |> put_optional("statusLabel", first_object(metadata, status, RDFS.label()))
+    |> Map.put(:author_names, author_names(metadata, expression))
+  end
+
+  defp metadata_only_title(metadata, doc, metadata_values) do
+    first_object(metadata, doc, RDFS.label()) ||
+      first_object(metadata, doc, DCTERMS.title()) ||
+      metadata_values["metadataTitle"]
+  end
+
+  defp expand_author_rows(row, %{author_names: []}), do: [Map.delete(row, :author_names)]
+
+  defp expand_author_rows(row, %{author_names: author_names}) do
+    row = Map.delete(row, :author_names)
+    Enum.map(author_names, &Map.put(row, "authorName", RDF.literal(&1)))
+  end
+
+  defp expand_author_rows(row, _metadata_values), do: [row]
+
+  defp author_names(metadata, expression) do
+    metadata
+    |> objects_for(expression, DCTERMS.creator())
+    |> Enum.flat_map(fn
+      %Literal{} = literal -> [Literal.lexical(literal)]
+      resource -> resource_name(metadata, resource) |> List.wrap()
+    end)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp publisher_title(_metadata, nil), do: nil
+  defp publisher_title(_metadata, %Literal{} = literal), do: literal
+
+  defp publisher_title(metadata, publisher),
+    do: first_object(metadata, publisher, DCTERMS.title())
+
+  defp resource_name(_metadata, nil), do: nil
+  defp resource_name(metadata, resource), do: first_object(metadata, resource, FOAF.name())
+
+  defp workspace_owner(workspace) do
+    workspace
+    |> subjects_with(RDF.type(), RDF.iri(DOC.Workspace))
+    |> Enum.find_value(&first_object(workspace, &1, DOC.hasWorkspaceOwner()))
+  end
+
+  defp workspace_owner_authored?(_metadata, _doc, nil, _mode), do: false
+
+  defp workspace_owner_authored?(metadata, doc, owner, :document) do
+    metadata
+    |> objects_for(doc, FABIO.isRepresentationOf())
+    |> Enum.any?(&(owner in objects_for(metadata, &1, DCTERMS.creator())))
+  end
+
+  defp workspace_owner_authored?(metadata, doc, owner, :metadata_only) do
+    owner in objects_for(metadata, doc, DCTERMS.creator())
+  end
+
+  defp excluded?(workspace, doc) do
+    workspace
+    |> subjects_with(RDF.type(), RDF.iri(DOC.Workspace))
+    |> Enum.any?(&(doc in objects_for(workspace, &1, DOC.excludesDocument())))
+  end
+
+  defp cited_documents(dataset) do
+    dataset
+    |> RDF.Dataset.graphs()
+    |> Enum.flat_map(fn graph ->
+      theses =
+        graph
+        |> Graph.descriptions()
+        |> Enum.filter(&Description.include?(&1, {RDF.type(), RDF.iri(DOC.Thesis)}))
+        |> Enum.map(&Description.subject/1)
+        |> MapSet.new()
+
+      graph
+      |> Graph.triples()
+      |> Enum.flat_map(fn
+        {thesis, predicate, doc} ->
+          if MapSet.member?(theses, thesis) and predicate == CITO.cites(), do: [doc], else: []
+
+        _triple ->
+          []
+      end)
+    end)
+    |> MapSet.new()
+  end
+
+  defp page_count(dataset, doc) do
+    case RDF.Dataset.graph(dataset, doc) do
+      nil ->
+        nil
+
+      graph ->
+        pages =
+          graph
+          |> Graph.triples()
+          |> Enum.flat_map(fn
+            {_subject, predicate, object} ->
+              if predicate == DOC.sourcePage() do
+                object
+                |> term_value()
+                |> Integer.parse()
+                |> case do
+                  {page, _rest} -> [page]
+                  :error -> []
+                end
+              else
+                []
+              end
+
+            _triple ->
+              []
+          end)
+
+        case pages do
+          [] -> nil
+          pages -> Enum.max(pages) - Enum.min(pages) + 1
+        end
+    end
+  end
+
+  defp first_object(nil, _subject, _predicate), do: nil
+  defp first_object(_graph, nil, _predicate), do: nil
+
+  defp first_object(graph, subject, predicate),
+    do: graph |> objects_for(subject, predicate) |> List.first()
+
+  defp objects_for(nil, _subject, _predicate), do: []
+
+  defp objects_for(%{by_sp: by_sp}, subject, predicate),
+    do: Map.get(by_sp, {subject, predicate}, [])
+
+  defp objects_for(graph, subject, predicate) do
+    graph
+    |> Graph.triples()
+    |> Enum.flat_map(fn
+      {^subject, ^predicate, object} -> [object]
+      _triple -> []
+    end)
+  end
+
+  defp subjects_with(nil, _predicate, _object), do: []
+
+  defp subjects_with(%{by_po: by_po}, predicate, object),
+    do: Map.get(by_po, {predicate, object}, [])
+
+  defp subjects_with(graph, predicate, object) do
+    graph
+    |> Graph.triples()
+    |> Enum.flat_map(fn
+      {subject, ^predicate, ^object} -> [subject]
+      _triple -> []
+    end)
+  end
+
+  defp graph_index(nil), do: %{by_sp: %{}, by_po: %{}}
+
+  defp graph_index(graph) do
+    Enum.reduce(Graph.triples(graph), %{by_sp: %{}, by_po: %{}}, fn {subject, predicate, object},
+                                                                    index ->
+      index
+      |> Map.update!(
+        :by_sp,
+        &Map.update(&1, {subject, predicate}, [object], fn objects -> [object | objects] end)
+      )
+      |> Map.update!(
+        :by_po,
+        &Map.update(&1, {predicate, object}, [subject], fn subjects -> [subject | subjects] end)
+      )
+    end)
+  end
+
+  defp put_flag(row, _key, false), do: row
+  defp put_flag(row, key, true), do: Map.put(row, key, RDF.literal("true"))
+
+  defp put_optional(row, _key, nil), do: row
+  defp put_optional(row, key, value), do: Map.put(row, key, value)
+
+  defp literal_integer(nil), do: nil
+  defp literal_integer(integer), do: RDF.literal(integer)
+
+  defp document_kinds, do: [RDF.iri(DOC.Document) | specific_document_kinds()]
+
+  defp specific_document_kinds do
+    [RDF.iri(DOC.Paper), RDF.iri(DOC.Thesis), RDF.iri(DOC.Transcript), RDF.iri(DOC.Spreadsheet)]
+  end
+
+  defp bibo_status, do: RDF.iri("http://purl.org/ontology/bibo/status")
 
   defp document_sort_key(document) do
     {if(document.workspace_owner_authored?, do: 0, else: 1), kind_order(document.kind),

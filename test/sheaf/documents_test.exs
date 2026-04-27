@@ -3,7 +3,8 @@ defmodule Sheaf.DocumentsTest do
   use RDF
 
   alias Sheaf.Documents
-  alias Sheaf.NS.{DOC, FABIO}
+  alias Sheaf.NS.{CITO, DCTERMS, DOC, FABIO, FOAF}
+  alias RDF.NS.RDFS
 
   setup do
     previous = Application.get_env(:sheaf, :resource_base)
@@ -216,5 +217,81 @@ defmodule Sheaf.DocumentsTest do
                }
              }
            ] = Documents.from_rows(rows)
+  end
+
+  test "builds document rows from an RDF dataset" do
+    doc = ~I<https://example.com/sheaf/PAPER1>
+    expression = ~I<https://example.com/work/PAPER1-expression>
+    author = ~I<https://example.com/people/alpha>
+    workspace = ~I<https://example.com/workspace>
+    block_a = ~I<https://example.com/sheaf/PAPER1/block-a>
+    block_b = ~I<https://example.com/sheaf/PAPER1/block-b>
+    thesis = ~I<https://example.com/sheaf/THESIS>
+
+    document_graph =
+      RDF.Graph.new(
+        [
+          {doc, RDF.type(), DOC.Document},
+          {doc, RDF.type(), DOC.Paper},
+          {doc, RDFS.label(), "Imported PDF title"},
+          {block_a, DOC.sourcePage(), 3},
+          {block_b, DOC.sourcePage(), 5}
+        ],
+        name: doc
+      )
+
+    metadata_graph =
+      RDF.Graph.new(
+        [
+          {doc, FABIO.isRepresentationOf(), expression},
+          {expression, DCTERMS.title(), "Article title"},
+          {expression, DCTERMS.creator(), author},
+          {expression, FABIO.hasPublicationYear(), "2020"},
+          {author, FOAF.name(), "Alpha Author"}
+        ],
+        name: Sheaf.Repo.metadata_graph()
+      )
+
+    workspace_graph =
+      RDF.Graph.new(
+        [
+          {workspace, RDF.type(), DOC.Workspace},
+          {workspace, DOC.excludesDocument(), doc},
+          {workspace, DOC.hasWorkspaceOwner(), author}
+        ],
+        name: Sheaf.Repo.workspace_graph()
+      )
+
+    citation_graph =
+      RDF.Graph.new(
+        [
+          {thesis, RDF.type(), DOC.Thesis},
+          {thesis, CITO.cites(), doc}
+        ],
+        name: thesis
+      )
+
+    dataset =
+      RDF.Dataset.new()
+      |> RDF.Dataset.add(document_graph)
+      |> RDF.Dataset.add(metadata_graph)
+      |> RDF.Dataset.add(workspace_graph)
+      |> RDF.Dataset.add(citation_graph)
+
+    assert %{
+             id: "PAPER1",
+             kind: :paper,
+             title: "Article title",
+             cited?: true,
+             excluded?: true,
+             workspace_owner_authored?: true,
+             workspace_owner_name: "Alpha Author",
+             metadata: %{
+               authors: ["Alpha Author"],
+               page_count: 3,
+               title: "Article title",
+               year: "2020"
+             }
+           } = Enum.find(Documents.from_dataset(dataset), &(&1.id == "PAPER1"))
   end
 end
