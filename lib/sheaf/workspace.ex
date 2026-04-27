@@ -31,14 +31,23 @@ defmodule Sheaf.Workspace do
 
     if excluded? do
       with {:ok, workspace} <- ensure_default() do
-        workspace
-        |> RDF.iri()
-        |> exclusion_graph(document)
+        workspace = RDF.iri(workspace)
+
+        Graph.new(name: @graph)
+        |> Graph.add(workspace_description(workspace))
+        |> Graph.add({workspace, DOC.excludesDocument(), document})
         |> Sheaf.Repo.assert()
       end
     else
-      document
-      |> exclusion_retraction_graph()
+      Sheaf.Repo.ask(fn dataset ->
+        dataset
+        |> workspace_graph()
+        |> RDF.Data.descriptions()
+        |> Enum.filter(&Description.include?(&1, {DOC.excludesDocument(), document}))
+        |> Enum.reduce(Graph.new(name: @graph), fn description, graph ->
+          Graph.add(graph, {Description.subject(description), DOC.excludesDocument(), document})
+        end)
+      end)
       |> Sheaf.Repo.retract()
     end
   end
@@ -51,11 +60,18 @@ defmodule Sheaf.Workspace do
 
     with {:ok, workspace} <- ensure_default() do
       workspace = RDF.iri(workspace)
-      previous = Sheaf.Repo.ask(&workspace_owners(&1, workspace))
+      description = Sheaf.Repo.ask(&(&1 |> workspace_graph() |> Graph.description(workspace)))
+      previous = Description.get(description, DOC.hasWorkspaceOwner(), [])
+
+      next =
+        Graph.new(name: @graph)
+        |> Graph.add(workspace_description(workspace))
+        |> Graph.add({workspace, DOC.hasWorkspaceOwner(), person})
 
       changes =
-        Enum.map(previous, &{:retract, owner_graph(workspace, &1)}) ++
-          [{:assert, owner_graph(workspace, person)}]
+        Enum.map(previous, fn owner ->
+          {:retract, Graph.new({workspace, DOC.hasWorkspaceOwner(), owner}, name: @graph)}
+        end) ++ [{:assert, next}]
 
       Sheaf.Repo.transact(changes)
     end
@@ -78,7 +94,7 @@ defmodule Sheaf.Workspace do
   defp create_default do
     workspace = Sheaf.mint()
 
-    case Sheaf.Repo.assert(workspace_resource_graph(workspace)) do
+    case Sheaf.Repo.assert(Graph.new(workspace_description(workspace), name: @graph)) do
       :ok -> {:ok, workspace |> RDF.Term.value() |> to_string()}
       {:error, reason} -> {:error, reason}
       other -> {:error, other}
@@ -91,7 +107,7 @@ defmodule Sheaf.Workspace do
 
   defp default_workspace(dataset) do
     dataset
-    |> dataset_workspace_graph()
+    |> workspace_graph()
     |> RDF.Data.descriptions()
     |> Enum.filter(&Description.include?(&1, {RDF.type(), DOC.Workspace}))
     |> Enum.map(&Description.subject/1)
@@ -99,49 +115,17 @@ defmodule Sheaf.Workspace do
     |> List.first()
   end
 
-  defp dataset_workspace_graph(dataset) do
+  defp workspace_graph(dataset) do
     RDF.Dataset.graph(dataset, @graph) || Graph.new()
   end
 
-  defp workspace_resource_graph(workspace) do
-    RDF.Graph.new(
-      RDF.Graph.build workspace: workspace, label: @label do
-        @prefix RDF.NS.RDFS
+  defp workspace_description(workspace) do
+    RDF.Graph.build workspace: workspace, label: @label do
+      @prefix RDF.NS.RDFS
 
-        workspace
-        |> a(Sheaf.NS.DOC.Workspace)
-        |> RDFS.label(label)
-      end,
-      name: @graph
-    )
-  end
-
-  defp exclusion_graph(workspace, document) do
-    workspace_resource_graph(workspace)
-    |> Graph.add({workspace, DOC.excludesDocument(), document})
-  end
-
-  defp exclusion_retraction_graph(document) do
-    Sheaf.Repo.ask(fn dataset ->
-      dataset
-      |> dataset_workspace_graph()
-      |> RDF.Data.descriptions()
-      |> Enum.filter(&Description.include?(&1, {DOC.excludesDocument(), document}))
-      |> Enum.reduce(Graph.new(name: @graph), fn description, graph ->
-        Graph.add(graph, {Description.subject(description), DOC.excludesDocument(), document})
-      end)
-    end)
-  end
-
-  defp owner_graph(workspace, person) do
-    workspace_resource_graph(workspace)
-    |> Graph.add({workspace, DOC.hasWorkspaceOwner(), person})
-  end
-
-  defp workspace_owners(dataset, workspace) do
-    dataset
-    |> dataset_workspace_graph()
-    |> RDF.Data.description(workspace)
-    |> Description.get(DOC.hasWorkspaceOwner(), [])
+      workspace
+      |> a(Sheaf.NS.DOC.Workspace)
+      |> RDFS.label(label)
+    end
   end
 end
