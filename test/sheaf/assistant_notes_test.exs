@@ -121,7 +121,7 @@ defmodule Sheaf.Assistant.NotesTest do
              MapSet.new([Id.iri("BLK200"), Id.iri("BLK201")])
   end
 
-  test "builds the list graph from an RDF dataset" do
+  test "returns the workspace graph from an RDF dataset" do
     session = Id.iri("SESS05")
     note = Id.iri("NOTE50")
     legacy_note = Id.iri("NOTE40")
@@ -186,16 +186,14 @@ defmodule Sheaf.Assistant.NotesTest do
       )
 
     dataset = RDF.Dataset.new() |> RDF.Dataset.add(workspace_graph)
-    graph = Notes.from_dataset(dataset, 2)
+    graph = Notes.from_dataset(dataset)
 
     assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.AS.Note})
     assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.DOC.ResearchNote})
-    assert RDF.Data.include?(graph, {legacy_note, RDF.type(), Sheaf.NS.DOC.ResearchNote})
-    assert RDF.Data.include?(graph, {agent, RDF.type(), PROV.SoftwareAgent})
-    assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.DOC.AssistantConversation})
-    assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.AS.OrderedCollection})
-    assert RDF.Data.include?(graph, {session, Sheaf.NS.AS.items(), note})
-    assert RDF.Data.include?(graph, {session, Sheaf.NS.AS.items(), question})
+    assert RDF.Data.include?(graph, {legacy_note, RDF.type(), Sheaf.NS.AS.Note})
+    refute RDF.Data.include?(graph, {legacy_note, RDF.type(), Sheaf.NS.DOC.ResearchNote})
+    assert RDF.Data.include?(graph, {agent, RDF.NS.RDFS.label(), "Paper reader"})
+    assert RDF.Data.include?(graph, {session, RDF.NS.RDFS.label(), "Research session SESS05"})
     assert RDF.Data.include?(graph, {question, RDF.type(), Sheaf.NS.DOC.Message})
 
     assert RDF.Data.include?(
@@ -204,7 +202,7 @@ defmodule Sheaf.Assistant.NotesTest do
            )
 
     assert RDF.Data.include?(graph, {user, RDF.NS.RDFS.label(), "Reader"})
-    refute RDF.Data.include?(graph, {session, Sheaf.NS.AS.items(), reply})
-    refute RDF.Data.include?(graph, {reply, RDF.type(), Sheaf.NS.DOC.Message})
+    assert RDF.Data.include?(graph, {reply, RDF.type(), Sheaf.NS.DOC.Message})
+    assert RDF.Data.include?(graph, {reply, Sheaf.NS.AS.inReplyTo(), question})
   end
 end

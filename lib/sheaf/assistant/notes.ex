@@ -28,18 +28,13 @@ defmodule Sheaf.Assistant.Notes do
   @doc """
   Returns a graph describing recently published assistant notes.
   """
-  def list_graph(opts \\ []) do
-    limit = opts |> Keyword.get(:limit, @default_limit) |> normalize_limit()
-
+  def list_graph(_opts \\ []) do
     Tracer.with_span "Sheaf.Assistant.Notes.list_graph", %{
       kind: :internal,
-      attributes: [
-        {"db.system", "quadlog"},
-        {"sheaf.limit", limit}
-      ]
+      attributes: [{"db.system", "quadlog"}]
     } do
       with :ok <- load_notes_cache() do
-        graph = Sheaf.Repo.ask(&from_dataset(&1, limit))
+        graph = Sheaf.Repo.ask(&from_dataset/1)
         Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(graph))
         {:ok, graph}
       end
@@ -174,35 +169,14 @@ defmodule Sheaf.Assistant.Notes do
   end
 
   @doc false
-  def from_dataset(dataset, limit \\ @default_limit) do
-    limit = normalize_limit(limit)
-
+  def from_dataset(dataset, _limit \\ @default_limit) do
     Tracer.with_span "Sheaf.Assistant.Notes.from_dataset", %{
       kind: :internal,
-      attributes: [
-        {"sheaf.limit", limit},
-        {"sheaf.statement_count", RDF.Data.statement_count(dataset)}
-      ]
+      attributes: [{"sheaf.statement_count", RDF.Data.statement_count(dataset)}]
     } do
-      graph = union_graph(dataset)
-      index = graph_index(graph)
-
-      notes =
-        graph
-        |> RDF.Data.descriptions()
-        |> Enum.filter(&note_candidate?/1)
-        |> Enum.sort_by(&sort_key/1, :desc)
-        |> Enum.take(limit)
-
-      Tracer.set_attribute("sheaf.note_candidate_count", length(notes))
-
-      output =
-        Enum.reduce(notes, Graph.new(), fn note, output ->
-          add_note_neighborhood(output, index, note)
-        end)
-
-      Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(output))
-      output
+      graph = workspace_graph(dataset)
+      Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(graph))
+      graph
     end
   end
 
@@ -210,154 +184,8 @@ defmodule Sheaf.Assistant.Notes do
     Sheaf.Repo.load_once({nil, nil, nil, RDF.iri(Sheaf.Repo.workspace_graph())})
   end
 
-  defp union_graph(dataset) do
-    dataset
-    |> RDF.Dataset.graphs()
-    |> Enum.flat_map(&Graph.triples/1)
-    |> Graph.new()
-  end
-
-  defp add_note_neighborhood(output, index, %Description{} = note) do
-    subject = Description.subject(note)
-    content = first_object(index, subject, Sheaf.NS.AS.content())
-
-    if Description.include?(note, {RDF.type(), Sheaf.NS.AS.Note}) and content do
-      output
-      |> add(subject, RDF.type(), Sheaf.NS.AS.Note)
-      |> add(subject, RDF.type(), Sheaf.NS.DOC.ResearchNote)
-      |> add(subject, Sheaf.NS.AS.content(), content)
-      |> add_first(index, subject, Sheaf.NS.AS.published())
-      |> add_first(index, subject, Sheaf.NS.AS.attributedTo())
-      |> add_first(index, subject, Sheaf.NS.AS.context())
-      |> add_first(index, subject, RDF.NS.RDFS.label())
-      |> add_all(index, subject, Sheaf.NS.DOC.mentions())
-      |> add_agent_neighborhood(index, first_object(index, subject, Sheaf.NS.AS.attributedTo()))
-      |> add_context_neighborhood(
-        index,
-        subject,
-        first_object(index, subject, Sheaf.NS.AS.context())
-      )
-    else
-      output
-    end
-  end
-
-  defp add_agent_neighborhood(output, _index, nil), do: output
-
-  defp add_agent_neighborhood(output, index, agent) do
-    output
-    |> add(agent, RDF.type(), Sheaf.NS.PROV.SoftwareAgent)
-    |> add_first(index, agent, RDF.NS.RDFS.label())
-  end
-
-  defp add_context_neighborhood(output, _index, _note, nil), do: output
-
-  defp add_context_neighborhood(output, index, note, context) do
-    output =
-      output
-      |> add(context, RDF.type(), Sheaf.NS.DOC.AssistantConversation)
-      |> add(context, RDF.type(), Sheaf.NS.AS.OrderedCollection)
-      |> add_first(index, context, RDF.NS.RDFS.label())
-      |> add_first(index, context, Sheaf.NS.DOC.conversationMode())
-      |> add(context, Sheaf.NS.AS.items(), note)
-
-    index
-    |> subjects_with(Sheaf.NS.AS.context(), context)
-    |> Enum.map(&description(index, &1))
-    |> Enum.filter(&question?/1)
-    |> Enum.reduce(output, fn question, output ->
-      add_question_neighborhood(output, index, context, question)
-    end)
-  end
-
-  defp add_question_neighborhood(output, index, context, %Description{} = question) do
-    subject = Description.subject(question)
-    actor = first_object(index, subject, Sheaf.NS.AS.attributedTo())
-
-    output
-    |> add(context, Sheaf.NS.AS.items(), subject)
-    |> add(subject, RDF.type(), Sheaf.NS.DOC.Message)
-    |> add(subject, Sheaf.NS.AS.context(), context)
-    |> add_first(index, subject, Sheaf.NS.AS.content())
-    |> add_first(index, subject, Sheaf.NS.AS.published())
-    |> add_first(index, subject, Sheaf.NS.AS.attributedTo())
-    |> add_actor_label(index, actor)
-  end
-
-  defp add_actor_label(output, _index, nil), do: output
-
-  defp add_actor_label(output, index, actor),
-    do: add_first(output, index, actor, RDF.NS.RDFS.label())
-
-  defp add_first(output, index, subject, predicate),
-    do: add(output, subject, predicate, first_object(index, subject, predicate))
-
-  defp add_all(output, index, subject, predicate) do
-    index
-    |> objects_for(subject, predicate)
-    |> Enum.reduce(output, &add(&2, subject, predicate, &1))
-  end
-
-  defp add(output, _subject, _predicate, nil), do: output
-
-  defp add(output, subject, predicate, object),
-    do: Graph.add(output, {subject, predicate, object})
-
-  defp note_candidate?(%Description{} = description) do
-    Description.include?(description, {RDF.type(), Sheaf.NS.DOC.ResearchNote}) or
-      legacy_note?(description)
-  end
-
-  defp legacy_note?(%Description{} = description) do
-    Description.include?(description, {RDF.type(), Sheaf.NS.AS.Note}) and
-      Description.first(description, RDF.NS.RDFS.label()) != nil and
-      Description.first(description, Sheaf.NS.AS.inReplyTo()) == nil
-  end
-
-  defp question?(%Description{} = description) do
-    Description.include?(description, {RDF.type(), Sheaf.NS.DOC.Message}) and
-      Description.first(description, Sheaf.NS.AS.content()) != nil and
-      Description.first(description, Sheaf.NS.AS.inReplyTo()) == nil
-  end
-
-  defp description(index, subject) do
-    index
-    |> objects_for(subject, nil)
-    |> Enum.map(fn {predicate, object} -> {subject, predicate, object} end)
-    |> Graph.new()
-    |> RDF.Data.description(subject)
-  end
-
-  defp first_object(index, subject, predicate),
-    do: index |> objects_for(subject, predicate) |> List.first()
-
-  defp objects_for(%{by_sp: by_sp}, subject, nil) do
-    by_sp
-    |> Enum.flat_map(fn
-      {{^subject, predicate}, objects} -> Enum.map(objects, &{predicate, &1})
-      _other -> []
-    end)
-  end
-
-  defp objects_for(%{by_sp: by_sp}, subject, predicate),
-    do: Map.get(by_sp, {subject, predicate}, [])
-
-  defp subjects_with(%{by_po: by_po}, predicate, object),
-    do: Map.get(by_po, {predicate, object}, [])
-
-  defp graph_index(graph) do
-    Enum.reduce(Graph.triples(graph), %{by_sp: %{}, by_po: %{}}, fn {subject, predicate, object},
-                                                                    index ->
-      index
-      |> Map.update!(
-        :by_sp,
-        &Map.update(&1, {subject, predicate}, [object], fn objects -> [object | objects] end)
-      )
-      |> Map.update!(
-        :by_po,
-        &Map.update(&1, {predicate, object}, [subject], fn subjects -> [subject | subjects] end)
-      )
-    end)
+  defp workspace_graph(dataset) do
+    RDF.Dataset.graph(dataset, Sheaf.Repo.workspace_graph()) || Graph.new()
   end
 
   defp note?(%Description{} = description) do
@@ -447,9 +275,6 @@ defmodule Sheaf.Assistant.Notes do
       _other -> {:error, "published_at must be a DateTime"}
     end
   end
-
-  defp normalize_limit(limit) when is_integer(limit) and limit > 0, do: min(limit, 100)
-  defp normalize_limit(_limit), do: @default_limit
 
   defp block_ids(attrs, text) do
     explicit =
