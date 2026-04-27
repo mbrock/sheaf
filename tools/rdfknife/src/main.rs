@@ -12,6 +12,7 @@ use flate2::write::GzEncoder;
 use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
 use oxrdf::{BlankNode, Dataset, GraphName, NamedNode, NamedOrBlankNode, Quad, Term, Triple};
 use oxrdfio::{RdfFormat, RdfParser, RdfSerializer};
+use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Parser)]
@@ -31,6 +32,9 @@ enum Command {
 
     /// Diff two RDF datasets with RDF-aware blank-node normalization.
     Diff(DiffArgs),
+
+    /// Insert an N-Quads file into a Quadlog SQLite database.
+    QuadlogImport(QuadlogImportArgs),
 }
 
 #[derive(Debug, Parser)]
@@ -114,6 +118,27 @@ struct DiffArgs {
     lenient: bool,
 }
 
+#[derive(Debug, Parser)]
+struct QuadlogImportArgs {
+    /// Input N-Quads file. Use '-' to read stdin.
+    input: PathBuf,
+
+    /// Quadlog SQLite database path.
+    database: PathBuf,
+
+    /// Transaction id written to every imported row.
+    #[arg(long, default_value = "rdfknife-import")]
+    tx: String,
+
+    /// Print progress after this many quads.
+    #[arg(long, default_value_t = 10_000)]
+    progress_every: usize,
+
+    /// Attempt to keep parsing even if the input is slightly invalid.
+    #[arg(long)]
+    lenient: bool,
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ColorMode {
     Auto,
@@ -140,6 +165,161 @@ fn main() -> Result<()> {
         Command::Canonicalize(args) => canonicalize(args),
         Command::AnalyzeBnodes(args) => analyze_bnodes(args),
         Command::Diff(args) => diff(args),
+        Command::QuadlogImport(args) => quadlog_import(args),
+    }
+}
+
+fn quadlog_import(args: QuadlogImportArgs) -> Result<()> {
+    let total_start = Instant::now();
+    let input_path = Some(args.input.as_path());
+    eprintln!(
+        "[{:>8}] starting quadlog import input={} database={} tx={}",
+        format_duration(total_start.elapsed()),
+        display_path(input_path),
+        args.database.display(),
+        args.tx
+    );
+
+    let mut conn = Connection::open(&args.database)
+        .with_context(|| format!("failed to open {}", args.database.display()))?;
+    create_quadlog_schema(&conn)?;
+
+    let reader = input_reader(input_path)?;
+    let mut parser = RdfParser::from_format(RdfFormat::NQuads);
+    if args.lenient {
+        parser = parser.lenient();
+    }
+
+    let tx = conn
+        .transaction()
+        .context("failed to start SQLite transaction")?;
+    let mut inserted = 0usize;
+    {
+        let mut insert = tx
+            .prepare(
+                "
+                INSERT INTO changes
+                  (tx, polarity, graph_iri, subject_iri, subject_bnode, predicate_iri,
+                   object_iri, object_bnode, object_text, object_datatype, object_lang)
+                VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ",
+            )
+            .context("failed to prepare Quadlog insert")?;
+
+        for quad in parser.for_reader(reader) {
+            let quad = quad.context("failed to parse N-Quads input")?;
+            let row = QuadlogRow::from_quad(&quad)?;
+            insert
+                .execute(params![
+                    args.tx,
+                    row.graph_iri,
+                    row.subject_iri,
+                    row.subject_bnode,
+                    row.predicate_iri,
+                    row.object_iri,
+                    row.object_bnode,
+                    row.object_text,
+                    row.object_datatype,
+                    row.object_lang,
+                ])
+                .context("failed to insert Quadlog row")?;
+
+            inserted += 1;
+            if args.progress_every > 0 && inserted % args.progress_every == 0 {
+                eprintln!(
+                    "[{:>8}] inserted {inserted} quads",
+                    format_duration(total_start.elapsed())
+                );
+            }
+        }
+    }
+
+    eprintln!(
+        "[{:>8}] committing {inserted} rows",
+        format_duration(total_start.elapsed())
+    );
+    tx.commit().context("failed to commit SQLite transaction")?;
+    eprintln!(
+        "[{:>8}] done: inserted {inserted} quads into {}",
+        format_duration(total_start.elapsed()),
+        args.database.display()
+    );
+    Ok(())
+}
+
+fn create_quadlog_schema(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS changes (
+          seq INTEGER PRIMARY KEY AUTOINCREMENT,
+          tx TEXT NOT NULL,
+          polarity INTEGER NOT NULL CHECK (polarity IN (-1, 1)),
+          graph_iri TEXT,
+          subject_iri TEXT,
+          subject_bnode TEXT,
+          predicate_iri TEXT NOT NULL,
+          object_iri TEXT,
+          object_bnode TEXT,
+          object_text TEXT,
+          object_datatype TEXT,
+          object_lang TEXT
+        );
+        ",
+    )
+    .context("failed to create Quadlog schema")?;
+    Ok(())
+}
+
+struct QuadlogRow<'a> {
+    graph_iri: Option<&'a str>,
+    subject_iri: Option<&'a str>,
+    subject_bnode: Option<&'a str>,
+    predicate_iri: &'a str,
+    object_iri: Option<&'a str>,
+    object_bnode: Option<&'a str>,
+    object_text: Option<&'a str>,
+    object_datatype: Option<&'a str>,
+    object_lang: Option<&'a str>,
+}
+
+impl<'a> QuadlogRow<'a> {
+    fn from_quad(quad: &'a Quad) -> Result<Self> {
+        let graph_iri = match &quad.graph_name {
+            GraphName::DefaultGraph => None,
+            GraphName::NamedNode(node) => Some(node.as_str()),
+            GraphName::BlankNode(_) => bail!("Quadlog does not support blank-node graph names"),
+        };
+
+        let (subject_iri, subject_bnode) = match &quad.subject {
+            NamedOrBlankNode::NamedNode(node) => (Some(node.as_str()), None),
+            NamedOrBlankNode::BlankNode(node) => (None, Some(node.as_str())),
+        };
+
+        let (object_iri, object_bnode, object_text, object_datatype, object_lang) =
+            match &quad.object {
+                Term::NamedNode(node) => (Some(node.as_str()), None, None, None, None),
+                Term::BlankNode(node) => (None, Some(node.as_str()), None, None, None),
+                Term::Literal(literal) => (
+                    None,
+                    None,
+                    Some(literal.value()),
+                    Some(literal.datatype().as_str()),
+                    literal.language(),
+                ),
+                Term::Triple(_) => bail!("Quadlog does not support quoted triple terms"),
+            };
+
+        Ok(Self {
+            graph_iri,
+            subject_iri,
+            subject_bnode,
+            predicate_iri: quad.predicate.as_str(),
+            object_iri,
+            object_bnode,
+            object_text,
+            object_datatype,
+            object_lang,
+        })
     }
 }
 

@@ -1,18 +1,19 @@
 defmodule Quadlog do
   use GenServer
 
-  def start_link(path), do: GenServer.start_link(__MODULE__, path)
+  def start_link(path, opts \\ []), do: GenServer.start_link(__MODULE__, {path, opts})
   def dataset(pid), do: GenServer.call(pid, :dataset)
   def ask(pid, fun), do: GenServer.call(pid, {:ask, fun})
+  def load_graphs(pid, graphs), do: GenServer.call(pid, {:load_graphs, graphs})
   def assert(pid, tx, graph), do: transact(pid, tx, [{:assert, graph}])
   def retract(pid, tx, graph), do: transact(pid, tx, [{:retract, graph}])
   def transact(pid, tx, changes), do: GenServer.call(pid, {:transact, tx, changes})
 
   @impl true
-  def init(path) do
+  def init({path, opts}) do
     with {:ok, conn} <- Exqlite.start_link(database: path),
          :ok <- migrate(conn),
-         {:ok, dataset} <- load(conn) do
+         {:ok, dataset} <- load(conn, Keyword.get(opts, :graphs, :all)) do
       {:ok, %{conn: conn, dataset: dataset}}
     end
   end
@@ -20,6 +21,21 @@ defmodule Quadlog do
   @impl true
   def handle_call(:dataset, _from, state), do: {:reply, state.dataset, state}
   def handle_call({:ask, fun}, _from, state), do: {:reply, fun.(state.dataset), state}
+
+  def handle_call({:load_graphs, graphs}, _from, state) do
+    with {:ok, dataset} <- load(state.conn, graphs) do
+      graph_names = graph_names(graphs)
+
+      dataset =
+        state.dataset
+        |> RDF.Dataset.delete_graph(graph_names)
+        |> RDF.Dataset.add(dataset)
+
+      {:reply, :ok, %{state | dataset: dataset}}
+    else
+      error -> {:reply, error, state}
+    end
+  end
 
   def handle_call({:transact, tx, changes_or_fun}, _from, state) do
     changes =
@@ -65,16 +81,48 @@ defmodule Quadlog do
     """)
   end
 
-  defp load(conn) do
-    case Exqlite.query(conn, """
-         SELECT tx, polarity, graph_iri, subject_iri, subject_bnode, predicate_iri,
-                object_iri, object_bnode, object_text, object_datatype, object_lang
-         FROM changes
-         ORDER BY seq
-         """) do
+  defp load(conn, :all) do
+    case Exqlite.query(conn, select_sql("ORDER BY seq")) do
       {:ok, result} -> {:ok, apply_sqlite_result(RDF.dataset(), result.rows)}
       error -> error
     end
+  end
+
+  defp load(conn, graphs) do
+    graph_values = graph_values(graphs)
+    named_graphs = Enum.reject(graph_values, &is_nil/1)
+
+    cond do
+      graph_values == [] ->
+        {:ok, RDF.dataset()}
+
+      named_graphs == [] ->
+        select_graphs(conn, "graph_iri IS NULL", [])
+
+      nil in graph_values ->
+        placeholders = named_graphs |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
+        select_graphs(conn, "graph_iri IS NULL OR graph_iri IN (#{placeholders})", named_graphs)
+
+      true ->
+        placeholders = named_graphs |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
+        select_graphs(conn, "graph_iri IN (#{placeholders})", named_graphs)
+    end
+  end
+
+  defp select_graphs(conn, where, params) do
+    case Exqlite.query(conn, select_sql("WHERE #{where} ORDER BY seq"), params) do
+      {:ok, result} -> {:ok, apply_sqlite_result(RDF.dataset(), result.rows)}
+      error -> error
+    end
+  end
+
+  defp select_sql(suffix) do
+    """
+    SELECT tx, polarity, graph_iri, subject_iri, subject_bnode, predicate_iri,
+           object_iri, object_bnode, object_text, object_datatype, object_lang
+    FROM changes
+    #{suffix}
+    """
   end
 
   defp apply_sqlite_result(dataset, rows) do
@@ -180,6 +228,16 @@ defmodule Quadlog do
 
   defp value(nil), do: nil
   defp value(term), do: RDF.Term.value(term) |> to_string()
+
+  defp graph_values(graphs) when is_list(graphs), do: Enum.map(graphs, &value/1)
+  defp graph_values(graph), do: [value(graph)]
+
+  defp graph_names(graphs) do
+    Enum.map(graph_values(graphs), fn
+      nil -> nil
+      graph_iri -> RDF.iri(graph_iri)
+    end)
+  end
 
   defp execute(conn, sql, params \\ []) do
     case Exqlite.query(conn, sql, params) do
