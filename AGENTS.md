@@ -51,30 +51,48 @@ Service process
 Sheaf is running in tmux session: sheaf-dev
 ```
 
-## Deployed Instances
+## Development Rules
 
-The real production instance is on the Tailscale host `igloo`. SSH access works
-with `ssh igloo` and does not require an interactive passphrase. The production
-checkout is `/home/mbrock/sheaf`; the staging checkout is the adjacent
-`/home/mbrock/sheaf.dev`.
+Instrument code with OpenTelemetry spans to make it easier to understand and debug.
+Include significant parameters and values as attributes.
+Avoid truncating metadata values or formatting them in arbitrary ways;
+access to full values is invaluable for debugging and analysis.
 
-Local `.env` records non-secret orientation pointers for these instances under
-`SHEAF_PRODUCTION_*` and `SHEAF_STAGING_*`. Use those pointers to find the right
-host, checkout, service unit, public URL, and remote `.env`; do not copy remote
-secrets into tracked files.
+For HTTP requests in Elixir, prefer `Req`.  It takes care of telemetry for the
+HTTP request and responses, but it's usually good to wrap such low level spans
+in meaningful domain spans.
 
-When comparing or backing up real data, run backup commands on the host that
-owns the target Fuseki container. `bin/triplestore backup` accepts named
-instances and uses SSH plus SCP for remote backups:
+When the dev server is running, do not run `bin/deploy`, `mix compile`, or other
+manual compile/reload commands for changes that Phoenix's dev reloader handles.
+It recompiles modified Elixir modules and rebuilds CSS/JS assets automatically.
+(It does not restart GenServers or other long-running processes.)
 
-```console
-$ bin/triplestore backup --instance local output/backups/local/
-$ bin/triplestore backup --instance staging output/backups/staging/
-$ bin/triplestore backup --instance production output/backups/production/
-```
+For Python commands, always use `uv` or `uvx`; do not call `python`,
+`python3`, or `pip` directly.
 
-Fuseki backup files are N-Quads gzip files, so a first-pass dataset diff can
-sort both exports with `LC_ALL=C sort` and compare the sorted files.
+Client JavaScript assets are installed with Bun.
+
+Bun is also the preferred JS runtime rather than Node in case you want to
+run JS code in the shell.
+
+Sheaf's triple store is Dockerized Fuseki. Use `bin/triplestore` rather than
+inventing ad hoc Docker commands when checking status, logs, datasets, or
+restarting it.
+
+In tests, prefer `start_supervised!/1` for OTP processes so ExUnit owns cleanup.
+Avoid fixed sleeps when a monitor, message assertion, or explicit readiness
+check will do.
+
+Codex agents: note that your shell tool lets you run commands in parallel,
+which is efficient but only makes sense when the commands are causally independent.
+
+Keep deployment-specific hosts and secrets out of tracked files. See `.env` for
+local `PHX_HOST`, ports, SPARQL endpoints, and other machine-specific settings.
+
+Commit liberally when you've completed a task. Even if the user may want
+to change something or continue working, it's good to have checkpoints.
+It's also fine to commit in the middle of a complex task when the code is
+in a coherent state and you're about to embark on a new sub-task.
 
 ## Local Commands
 
@@ -114,34 +132,37 @@ $ bin/logs
 [info] Sent 200 in 1ms
 ```
 
-`bin/triplestore` manages the Dockerized Fuseki dependency. Sheaf is expected to
-use Docker for the triple store in local and deployed environments.
+Sheaf emits OpenTelemetry spans. The `bin/otel` tool is a great way to
+see what's happening in the running service.
 
 ```console
-$ bin/triplestore status
-NAMES          IMAGE              STATUS
-sheaf-fuseki   stain/jena-fuseki  Up 2 minutes
-{
-  "version": "5.1.0",
-  "datasets": [{"ds.name": "/sheaf"}]
-}
-
-$ bin/triplestore restart
-Stopped triple store container: sheaf-fuseki
-Started triple store container: sheaf-fuseki
-Waiting for Fuseki: http://127.0.0.1:3030/$/server
-Fuseki is ready: http://127.0.0.1:3030/$/server
+$ bin/otel # shows a good amount of recent telemetry
+[...]
+1kq6yr2ye GET  962.55ms  T+0.0s
+  ¶ returned status 101
+  ¶ had method GET
+  ¶ at 127.0.0.1
+  ¶ on port 4042
+1kq6yr48g SheafWeb.DocumentIndexLive.mount  1.34s  T+0.0s
+  1kq6yr43a sheaf.select  1.17s  T+0.0s
+    ¶ statement size 6551 bytes
+    ¶ returned 334 rows
+    ¶ did select
+    ¶ spoke to fuseki
+    ¶ at http://localhost:3030/sheaf/sparql
+    1kq6yr42c HTTP POST  1.15s  T+0.0s
+      ¶ peered with localhost
+      ¶ via port 3030
+    1kq6yr43a sheaf.sparql.parse  22.90ms  T+1.1s
+      ¶ returned 334 rows
+      ¶ response size 357857 bytes
+      ¶ decoded "application/sparql-results+json; charset=utf-8"
+      ¶ did select
+      ¶ spoke to fuseki
+[...]
 ```
 
-`bin/rdf` runs the local Rust RDF utility in `tools/rdfknife`. It is useful for
-backup-level dataset inspection and semantic-ish diffs that handle ordinary
-blank-node trees better than raw N-Quads line diffs.
-
-```console
-$ bin/rdf analyze-bnodes output/backups/local/sheaf.nq.gz
-$ bin/rdf diff output/backups/production/sheaf.nq.gz output/backups/local/sheaf.nq.gz --output output/backups/diff/diff.trig
-$ bin/rdf diff output/backups/production/sheaf.nq.gz output/backups/local/sheaf.nq.gz --output output/backups/diff/diff.trig --pretty output/backups/diff/diff.txt
-```
+See `bin/otel --help` for more options (raw JSON output, span details by ID, etc).
 
 `bin/rpc` evaluates Elixir on the running Sheaf node. Use this to inspect live
 state without starting a second application instance.
@@ -154,8 +175,10 @@ $ bin/rpc 'Process.whereis(Sheaf.Supervisor)'
 #PID<12496.294.0>
 ```
 
-`bin/docs` asks the running node for module and function docs. It is a quick way
-to discover Sheaf modules and dependency APIs.
+Use `bin/docs` to learn about modules and functions in both Sheaf and its dependencies.
+It is designed for agent use.
+This is much faster than searching the web and a great way to get oriented before
+going to the source code.
 
 ```console
 $ bin/docs
@@ -200,70 +223,13 @@ No BEAM code changes to reload. Asset build completed.
 Run `mix precommit` before committing. It runs compile checks, formatting,
 schema upload, and tests.
 
-```console
-$ mix precommit
-...
-```
-
 For browser checks, use Playwright with Chrome via `uvx`/`uv` against the
-service URL reported by `bin/status` (`Public URL` or `Phoenix HTTP`). Browser
-automation is appropriate for nondestructive UI checks, visual inspection, and
-screenshots of the running service.
-
-Sheaf can emit OpenTelemetry spans via a custom span processor
-(`Sheaf.Tracing.RedisSinkProcessor`) that ships every ended span to a Redis
-Stream as JSON. The Go CLI in `tools/otel-tail` (built into `bin/otel`)
-tails the stream live and prints colorized two-line summaries — that's the
-primary way to inspect spans during development, in place of any web UI.
-
-Tracing is opt-in. To enable it, set `SHEAF_OTEL_REDIS_URL` in `.env` to your
-Redis URL (e.g. `redis://localhost:6379`). When that variable is unset, the
-instrumentation handlers don't attach, no `RedisSink` GenServer starts, and
-no spans are produced. Setting `OTEL_SDK_DISABLED=true` (or
-`SHEAF_OTEL_DISABLED=true`) is a manual override that turns tracing off even
-when a Redis URL is configured.
-
-The stream name defaults to `otel:spans:<SHEAF_NODE_BASENAME>` so two Sheaf
-instances on the same Redis server (e.g. production and staging both on
-`igloo`) write to separate streams and don't evict each other's spans through
-`MAXLEN`. With the default `SHEAF_NODE_BASENAME=sheaf` production lands on
-`otel:spans:sheaf`; staging's `SHEAF_NODE_BASENAME=sheaf_dev` lands on
-`otel:spans:sheaf_dev`. Override the full stream name with `SHEAF_OTEL_STREAM`
-when you want explicit control.
-
-`bin/otel` is a Go binary that auto-loads `.env` from its enclosing
-checkout before reading these vars, so running it in an interactive shell on
-a host that runs Sheaf as a systemd service still picks up the right stream
-without needing to source `.env` first.
-
-```console
-$ bin/otel
-16:14:19.426  sheaf.select                              123.88ms  client
-  row_count: 334   operation: select   system: fuseki   address: http://localhost:3031/sheaf/sparql
-16:14:19.447  SheafWeb.DocumentIndexLive.mount          144.71ms  server
-16:14:19.463  GET /                                     471.42ms  server
-  status_code: 200   method: GET   route: /   address: 127.0.0.1   port: 4043
-```
-
-`bin/otel --backfill N` prints the last N spans before tailing live;
-`--json` emits one JSON object per line for piping into `jq`; `-v` shows all
-attributes, not just the promoted ones; `--no-color` disables ANSI styling.
-
-Service name and deployment environment are settable via the standard
-`OTEL_SERVICE_NAME` env var (or `SHEAF_OTEL_SERVICE_NAME` /
-`SHEAF_OTEL_ENVIRONMENT`). Span retention is bounded by Redis Streams'
-`MAXLEN ~ 1000000` trim — adjust in `Sheaf.Tracing.RedisSink` if needed.
-
-If you want tracing locally, install Redis as a system service
-(`apt install redis-server`) and add `SHEAF_OTEL_REDIS_URL=redis://localhost:6379`
-to `.env`. `systemctl is-active redis-server` should then report `active`.
+service URL. Browser automation is appropriate for nondestructive UI checks,
+visual inspection, and screenshots of the running service.
 
 `bin/show [count]` captures one or more screenshots from the running service and
-sends them to the configured Telegram chat using the Bot API. It reads
-`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` from `.env`; if the chat id is
-missing, it tries to discover it with `getUpdates` after the user has messaged
-the bot. It is always good to show UI: after visual/layout changes, prefer
-running `bin/show` so the user can quickly inspect the result.
+sends them to the configured Telegram chat using the Bot API. If the user requests
+screenshot updates, use this after visual changes. [TODO: it should take a request path argument]
 
 ## RDF Notes
 
@@ -281,7 +247,7 @@ principles:
   phrases, with capitals reserved for proper names, standards, protocols, and
   established acronyms.
 - Property labels should read as relations or attributes, such as `has source
-  file`, `mentions`, `is subclass of`, or `is same as`; avoid bare field names
+file`, `mentions`, `is subclass of`, or `is same as`; avoid bare field names
   when the property denotes a relation.
 - Prefer ontologically explicit labels when a word is ambiguous or a mass noun;
   name the countable entity or relation the data actually represents.
@@ -312,52 +278,16 @@ Mutating RDF data is mostly for migrations and error corrections. Design actual
 domain operations so they add new facts to the graph monotonically rather than
 relying on destructive mutation.
 
-## Citation And Reference Notes
+## RDF Data Backup and Comparison
 
-The index distinguishes two related citation notions. `cito:cites` links a
-thesis-level document to works in its bibliography and drives the index-level
-`cited` highlight. `biro:references` links a specific document block to the work
-that block references; `Sheaf.Documents.references_for_document/1` returns those
-block-scoped reference rows for the reader.
+When comparing or backing up real data, run backup commands on the host that
+owns the target Fuseki container. `bin/triplestore backup` accepts named
+instances and uses SSH plus SCP for remote backups:
 
-When working on citation behavior, inspect the live graph with `bin/rpc` instead
-of guessing from UI state. Useful starting points are the workspace graph
-`https://less.rest/sheaf/workspace`, the metadata graph
-`https://less.rest/sheaf/metadata`, `cito:cites` for bibliography membership, and
-`biro:references` for paragraph/block-level evidence.
+```console
+$ bin/triplestore backup --instance local output/backups/local/
+$ bin/triplestore backup --instance staging output/backups/staging/
+$ bin/triplestore backup --instance production output/backups/production/
+```
 
-## Known RDF Cleanup Notes
-
-Some document graphs contain shared RDF list blank nodes around `sheaf:children`
-and `rdf:rest`. These are artifacts from earlier manual list-pointer edits where
-the head was moved to skip previous list items. They can be cleaned up by
-deleting the now-unreachable old list tails rather than preserving them as
-meaningful data.
-
-## Development Rules
-
-For HTTP requests in Elixir, prefer `Req`.
-
-When the dev server is running, do not run `bin/deploy`, `mix compile`, or other
-manual compile/reload commands just to make LiveView, component, CSS, or JS edits
-take effect. Let Phoenix's dev reloader handle it. Use focused tests or browser
-checks for verification, and only restart/redeploy when the change actually
-touches startup, dependency, config, supervision, or release/runtime loading
-behavior.
-
-For Python commands, always use `uv` or `uvx`; do not call `python`,
-`python3`, or `pip` directly.
-
-Sheaf's triple store is Dockerized Fuseki. Use `bin/triplestore` rather than
-inventing ad hoc Docker commands when checking status, logs, datasets, or
-restarting it.
-
-In tests, prefer `start_supervised!/1` for OTP processes so ExUnit owns cleanup.
-Avoid fixed sleeps when a monitor, message assertion, or explicit readiness
-check will do.
-
-Do not run shell commands in parallel unless you deliberately want them to
-execute in parallel.
-
-Keep deployment-specific hosts and secrets out of tracked files. See `.env` for
-local `PHX_HOST`, ports, SPARQL endpoints, and other machine-specific settings.
+The custom `bin/rdf` tool can diff such N-Quads files with blank-node normalization.
