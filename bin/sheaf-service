@@ -81,51 +81,6 @@ env_value() {
   printf '%s' "${!name:-}"
 }
 
-print_related_instance() {
-  local prefix="$1"
-  local label ssh_host app_root env_file public_url mode unit dataset container service
-
-  label="$(env_value "${prefix}_LABEL")"
-  ssh_host="$(env_value "${prefix}_SSH_HOST")"
-  app_root="$(env_value "${prefix}_APP_ROOT")"
-  env_file="$(env_value "${prefix}_ENV_FILE")"
-  public_url="$(env_value "${prefix}_PUBLIC_URL")"
-  mode="$(env_value "${prefix}_SERVICE_MODE")"
-  unit="$(env_value "${prefix}_SYSTEMD_UNIT")"
-  dataset="$(env_value "${prefix}_SPARQL_DATASET")"
-  container="$(env_value "${prefix}_TRIPLESTORE_CONTAINER")"
-
-  if [ -z "$label$ssh_host$app_root$public_url$unit$dataset$container" ]; then
-    return 0
-  fi
-
-  label="${label:-$prefix}"
-  service="$mode"
-  if [ -n "$unit" ]; then
-    service="${service:+$service }$unit"
-  fi
-
-  printf '%s\n' "$label"
-  [ -n "$public_url" ] && print_kv "Public URL" "$public_url"
-  [ -n "$public_url" ] && print_http_status "Public check" "$public_url"
-  [ -n "$ssh_host" ] && print_kv "SSH host" "$ssh_host"
-  [ -n "$app_root" ] && print_kv "App root" "$app_root"
-  [ -n "$env_file" ] && print_kv "Env file" "$env_file"
-  [ -n "$service" ] && print_kv "Service" "$service"
-  [ -n "$dataset" ] && print_kv "SPARQL dataset" "$dataset"
-  [ -n "$container" ] && print_kv "Fuseki container" "$container"
-}
-
-print_related_instances() {
-  if [ -z "${SHEAF_PRODUCTION_LABEL:-}${SHEAF_PRODUCTION_SSH_HOST:-}${SHEAF_STAGING_LABEL:-}${SHEAF_STAGING_SSH_HOST:-}" ]; then
-    return 0
-  fi
-
-  printf '\nRelated instances\n'
-  print_related_instance "SHEAF_PRODUCTION"
-  print_related_instance "SHEAF_STAGING"
-}
-
 health_url() {
   local path="${SHEAF_HEALTH_PATH:-/health}"
 
@@ -192,28 +147,6 @@ print_sparql_diagnostics() {
   if datasets_json=$(curl -fsS --max-time 3 "${auth_args[@]}" "$server/$/datasets" 2>/dev/null); then
     print_kv "Datasets" "$(json_value '[.datasets[]."ds.name"] | join(", ")' "$datasets_json")"
   fi
-
-  if graph_count_json=$(
-    curl -fsS --max-time 5 "${auth_args[@]}" \
-      -H 'Accept: application/sparql-results+json' \
-      --data-urlencode 'query=SELECT (COUNT(DISTINCT ?g) AS ?graphs) WHERE { GRAPH ?g { ?s ?p ?o } }' \
-      "$query_endpoint" 2>/dev/null
-  ); then
-    print_kv "Graphs" "$(json_value '.results.bindings[0].graphs.value // "unknown"' "$graph_count_json")"
-  else
-    print_kv "Graphs" "unavailable"
-  fi
-
-  if triple_count_json=$(
-    curl -fsS --max-time 5 "${auth_args[@]}" \
-      -H 'Accept: application/sparql-results+json' \
-      --data-urlencode 'query=SELECT (COUNT(*) AS ?triples) WHERE { { ?s ?p ?o } UNION { GRAPH ?g { ?s ?p ?o } } }' \
-      "$query_endpoint" 2>/dev/null
-  ); then
-    print_kv "Total triples" "$(json_value '.results.bindings[0].triples.value // "unknown"' "$triple_count_json")"
-  else
-    print_kv "Total triples" "unavailable"
-  fi
 }
 
 print_tracing_diagnostics() {
@@ -256,8 +189,6 @@ print_status_context() {
   local host="${PHX_HOST:-localhost}"
   local port="${PORT:-4000}"
   local ip="${SHEAF_HTTP_IP:-127.0.0.1}"
-
-  printf 'Sheaf environment\n'
   print_kv "App root" "$APP_ROOT"
   print_kv "Service mode" "$MODE"
   print_kv "Node" "$(sheaf_node_name)"
@@ -265,16 +196,8 @@ print_status_context() {
   print_kv "Phoenix HTTP" "http://$ip:$port/"
   print_kv "Resource base" "$(derived_resource_base)"
   print_kv "Ontology base" "$(derived_ontology_base)"
-  print_http_status "Public check" "https://$host/"
-  print_http_status "Phoenix check" "http://$ip:$port/"
   print_http_status "Health check" "$(health_url)"
-  print_related_instances
-
-  printf '\nSPARQL / Fuseki\n'
   print_sparql_diagnostics
-  printf '\nTracing\n'
-  print_tracing_diagnostics
-  printf '\nService process\n'
 }
 
 tmux_session() {
@@ -311,8 +234,8 @@ tmux_stop() {
 
 tmux_status() {
   if tmux_running; then
-    printf 'Sheaf is running in tmux session: %s\n' "$(tmux_session)"
-    tmux capture-pane -t "$(tmux_session)" -p -S -20
+    echo
+    tmux list-sessions | grep "^$(tmux_session):"
   else
     printf 'Sheaf is not running in tmux session: %s\n' "$(tmux_session)"
   fi
