@@ -1,5 +1,37 @@
 import Config
 
+steady_dev_server? =
+  System.get_env("SHEAF_PHOENIX_DEV_MODE") in ~w(steady plain stable no_reload no-reload)
+
+watchers =
+  if steady_dev_server? do
+    []
+  else
+    [
+      esbuild: {Esbuild, :install_and_run, [:sheaf, ~w(--sourcemap=inline --watch)]},
+      tailwind: {Tailwind, :install_and_run, [:sheaf, ~w(--watch)]}
+    ]
+  end
+
+live_reload =
+  if steady_dev_server? do
+    []
+  else
+    [
+      web_console_logger: true,
+      patterns: [
+        # Static assets, except user uploads
+        ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$"E,
+        # Gettext translations
+        ~r"priv/gettext/.*\.po$"E,
+        # Router, Controllers, LiveViews and LiveComponents
+        ~r"lib/sheaf_web/router\.ex$"E,
+        ~r"lib/sheaf_web/(controllers|live|components)/.*\.(ex|heex)$"E,
+        ~r"apps/sheaf_rdf_browser/lib/.*\.(ex|heex)$"E
+      ]
+    ]
+  end
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
@@ -11,14 +43,11 @@ config :sheaf, SheafWeb.Endpoint,
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}],
   check_origin: false,
-  code_reloader: true,
+  code_reloader: not steady_dev_server?,
   reloadable_apps: [:sheaf, :sheaf_rdf_browser],
-  debug_errors: true,
+  debug_errors: not steady_dev_server?,
   secret_key_base: "EZd+P1fNcVZFqt1rjqJ8sm+U6xvhE09n6hcPmky7kWWAUq9KLR9Crh8GXd8lwwnC",
-  watchers: [
-    esbuild: {Esbuild, :install_and_run, [:sheaf, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:sheaf, ~w(--watch)]}
-  ]
+  watchers: watchers
 
 # ## SSL Support
 #
@@ -44,20 +73,7 @@ config :sheaf, SheafWeb.Endpoint,
 # different ports.
 
 # Reload browser tabs when matching files change.
-config :sheaf, SheafWeb.Endpoint,
-  live_reload: [
-    web_console_logger: true,
-    patterns: [
-      # Static assets, except user uploads
-      ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$"E,
-      # Gettext translations
-      ~r"priv/gettext/.*\.po$"E,
-      # Router, Controllers, LiveViews and LiveComponents
-      ~r"lib/sheaf_web/router\.ex$"E,
-      ~r"lib/sheaf_web/(controllers|live|components)/.*\.(ex|heex)$"E,
-      ~r"apps/sheaf_rdf_browser/lib/.*\.(ex|heex)$"E
-    ]
-  ]
+config :sheaf, SheafWeb.Endpoint, live_reload: live_reload
 
 # Enable dev routes for dashboard and mailbox
 config :sheaf, dev_routes: true
@@ -70,12 +86,12 @@ config :logger, :default_formatter, format: "[$level] $message\n"
 config :phoenix, :stacktrace_depth, 20
 
 # Initialize plugs at runtime for faster development compilation
-config :phoenix, :plug_init_mode, :runtime
+config :phoenix, :plug_init_mode, if(steady_dev_server?, do: :compile, else: :runtime)
 
 config :phoenix_live_view,
   # Include debug annotations and locations in rendered markup.
   # Changing this configuration will require mix clean and a full recompile.
-  debug_heex_annotations: true,
-  debug_attributes: true,
+  debug_heex_annotations: not steady_dev_server?,
+  debug_attributes: not steady_dev_server?,
   # Enable helpful, but potentially expensive runtime checks
-  enable_expensive_runtime_checks: true
+  enable_expensive_runtime_checks: not steady_dev_server?
