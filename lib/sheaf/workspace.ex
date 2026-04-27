@@ -12,7 +12,7 @@ defmodule Sheaf.Workspace do
   Returns the IRI for the default workspace, creating it when needed.
   """
   def ensure_default do
-    case Sheaf.select(default_workspace_query()) do
+    case Sheaf.select("default workspace select", default_workspace_query()) do
       {:ok, %{results: [row | _]}} ->
         {:ok, row |> Map.fetch!("workspace") |> RDF.Term.value() |> to_string()}
 
@@ -32,10 +32,10 @@ defmodule Sheaf.Workspace do
 
     if excluded? do
       with {:ok, workspace} <- ensure_default() do
-        Sheaf.update(insert_exclusion_update(workspace, document))
+        Sheaf.update("workspace exclusion insert", insert_exclusion_update(workspace, document))
       end
     else
-      Sheaf.update(delete_exclusion_update(document))
+      Sheaf.update("workspace exclusion delete", delete_exclusion_update(document))
     end
   end
 
@@ -46,7 +46,7 @@ defmodule Sheaf.Workspace do
     person = Id.iri(person_id) |> to_string()
 
     with {:ok, workspace} <- ensure_default() do
-      Sheaf.update(insert_owner_update(workspace, person))
+      Sheaf.update("workspace owner insert", insert_owner_update(workspace, person))
     end
   end
 
@@ -67,7 +67,7 @@ defmodule Sheaf.Workspace do
   defp create_default do
     workspace = Sheaf.mint() |> to_string()
 
-    case Sheaf.update(insert_workspace_update(workspace)) do
+    case Sheaf.update("default workspace insert", insert_workspace_update(workspace)) do
       :ok -> {:ok, workspace}
       {:error, reason} -> {:error, reason}
       other -> {:error, other}

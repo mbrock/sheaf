@@ -6,7 +6,8 @@ defmodule Sheaf.CorpusTest do
   test "search_text expands multi-word queries into keyword matches" do
     test_pid = self()
 
-    select = fn sparql ->
+    select = fn label, sparql ->
+      assert label == "corpus text search select"
       send(test_pid, {:sparql, sparql})
       {:ok, %{results: []}}
     end
@@ -31,7 +32,8 @@ defmodule Sheaf.CorpusTest do
   test "search_text includes spreadsheet rows only when explicitly requested" do
     test_pid = self()
 
-    select = fn sparql ->
+    select = fn label, sparql ->
+      assert label == "corpus text search select"
       send(test_pid, {:sparql, sparql})
 
       {:ok,
@@ -77,7 +79,8 @@ defmodule Sheaf.CorpusTest do
   test "search_text still supports scoped searches" do
     test_pid = self()
 
-    select = fn sparql ->
+    select = fn label, sparql ->
+      assert label == "corpus text search select"
       send(test_pid, {:sparql, sparql})
       {:ok, %{results: []}}
     end

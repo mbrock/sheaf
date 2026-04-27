@@ -53,7 +53,7 @@ defmodule Sheaf.Search.Index do
   @spec text_units(keyword()) :: {:ok, [map()]} | {:error, term()}
   def text_units(opts \\ []) do
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
-    select = Keyword.get(opts, :select, &Sheaf.select/1)
+    select = Keyword.get(opts, :select, &Sheaf.select/2)
 
     @valid_kinds
     |> Enum.filter(&(&1 in kinds))
@@ -297,7 +297,7 @@ defmodule Sheaf.Search.Index do
   defp fetch_kind(kind, select, opts) do
     Logger.info("Search sync: fetching #{kind} text")
 
-    case select.(text_units_sparql(kind, opts)) do
+    case select.("search text units #{kind} select", text_units_sparql(kind, opts)) do
       {:ok, result} ->
         units =
           result.results

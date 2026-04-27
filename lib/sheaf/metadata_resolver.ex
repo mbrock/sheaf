@@ -179,8 +179,12 @@ defmodule Sheaf.MetadataResolver do
   def metadata_graph, do: @metadata_graph
 
   defp select_candidates(opts) do
-    select = Keyword.get(opts, :select, &Sheaf.select/1)
-    select.(candidate_query(Keyword.get(opts, :metadata_graph, @metadata_graph)))
+    select = Keyword.get(opts, :select, &Sheaf.select/2)
+
+    select.(
+      "metadata candidates select",
+      candidate_query(Keyword.get(opts, :metadata_graph, @metadata_graph))
+    )
   end
 
   defp files_graph(opts) do

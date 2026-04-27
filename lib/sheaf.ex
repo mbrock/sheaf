@@ -79,12 +79,14 @@ defmodule Sheaf do
 
   @doc """
   Runs a SPARQL query against the configured query endpoint.
+
+  The label is recorded in telemetry span metadata as `sheaf.query_label`.
   """
-  def query(query, opts \\ []) do
+  def query(label, query, opts \\ []) when is_binary(label) and byte_size(label) > 0 do
     config = Application.fetch_env!(:sheaf, __MODULE__)
     opts = Keyword.put_new(opts, :protocol_version, "1.1")
 
-    with_sparql_span("sheaf.query", "query", config[:query_endpoint], query, fn ->
+    with_sparql_span("sheaf.query", label, "query", config[:query_endpoint], query, fn ->
       query_sparql(query, config[:query_endpoint], sparql_options(config, opts))
     end)
   end
@@ -93,8 +95,9 @@ defmodule Sheaf do
   Runs a SPARQL SELECT query against the configured query endpoint.
 
   Hand-written query strings are executed in SPARQL.Client raw mode by default.
+  The label is recorded in telemetry span metadata as `sheaf.query_label`.
   """
-  def select(query, opts \\ []) do
+  def select(label, query, opts \\ []) when is_binary(label) and byte_size(label) > 0 do
     config = Application.fetch_env!(:sheaf, __MODULE__)
 
     opts =
@@ -102,7 +105,7 @@ defmodule Sheaf do
       |> Keyword.put_new(:protocol_version, "1.1")
       |> Keyword.put_new(:raw_mode, true)
 
-    with_sparql_span("sheaf.select", "select", config[:query_endpoint], query, fn ->
+    with_sparql_span("sheaf.select", label, "select", config[:query_endpoint], query, fn ->
       result = query_sparql(:select, query, config[:query_endpoint], sparql_options(config, opts))
 
       with {:ok, %SPARQL.Query.Result{results: rows}} <- result do
@@ -117,13 +120,14 @@ defmodule Sheaf do
   Runs a SPARQL update against the configured update endpoint.
 
   Hand-written update strings are executed in SPARQL.Client raw mode by default.
+  The label is recorded in telemetry span metadata as `sheaf.query_label`.
   """
-  def update(update, opts \\ []) do
+  def update(label, update, opts \\ []) when is_binary(label) and byte_size(label) > 0 do
     config = Application.fetch_env!(:sheaf, __MODULE__)
     endpoint = config[:update_endpoint] || config[:query_endpoint]
     opts = Keyword.put_new(opts, :raw_mode, true)
 
-    with_sparql_span("sheaf.update", "update", endpoint, update, fn ->
+    with_sparql_span("sheaf.update", label, "update", endpoint, update, fn ->
       SPARQL.Client.update(update, endpoint, sparql_options(config, opts))
     end)
   end
@@ -239,13 +243,14 @@ defmodule Sheaf do
   # follow the OpenTelemetry semantic conventions for database client spans
   # (`db.system`, `db.operation`, `db.statement`) so any future tooling that
   # understands those tags works without further mapping.
-  defp with_sparql_span(name, operation, endpoint, statement, fun) do
+  defp with_sparql_span(name, label, operation, endpoint, statement, fun) do
     Tracer.with_span name, %{
       kind: :client,
       attributes: [
         {"db.system", "fuseki"},
         {"db.operation", operation},
         {"db.statement", sparql_statement(statement)},
+        {"sheaf.query_label", label},
         {"sheaf.statement_bytes", sparql_statement_bytes(statement)},
         {"server.address", endpoint}
       ]

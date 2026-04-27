@@ -54,7 +54,8 @@ defmodule Sheaf.Assistant.NotesTest do
   test "write persists an INSERT DATA update and omits the graph from the result" do
     test_pid = self()
 
-    update = fn sparql ->
+    update = fn label, sparql ->
+      assert label == "assistant note insert"
       send(test_pid, {:sparql_update, sparql})
       :ok
     end

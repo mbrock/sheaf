@@ -337,7 +337,7 @@ defmodule Sheaf.Documents do
   """
 
   def list(opts \\ []) do
-    with {:ok, result} <- Sheaf.select(@query) do
+    with {:ok, result} <- Sheaf.select("document index select", @query) do
       {:ok, from_rows(result.results, opts)}
     end
   end
@@ -346,7 +346,7 @@ defmodule Sheaf.Documents do
     document_iri = RDF.iri(document_iri)
     query = String.replace(@reference_query, "__DOCUMENT_IRI__", to_string(document_iri))
 
-    with {:ok, result} <- Sheaf.select(query) do
+    with {:ok, result} <- Sheaf.select("document references select", query) do
       {:ok, references_from_rows(result.results)}
     end
   end

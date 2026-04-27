@@ -41,7 +41,7 @@ defmodule Sheaf.Corpus do
     } LIMIT 1
     """
 
-    case Sheaf.select(sparql) do
+    case Sheaf.select("block document lookup select", sparql) do
       {:ok, %{results: [row | _]}} ->
         row
         |> Map.fetch!("g")
@@ -79,11 +79,11 @@ defmodule Sheaf.Corpus do
       limit = Keyword.get(opts, :limit, @default_search_limit)
       scope = Keyword.get(opts, :document_id)
       include_spreadsheets? = Keyword.get(opts, :include_spreadsheets, false)
-      select = Keyword.get(opts, :select, &Sheaf.select/1)
+      select = Keyword.get(opts, :select, &Sheaf.select/2)
 
       sparql = search_sparql(needle, scope, limit, include_spreadsheets?)
 
-      case select.(sparql) do
+      case select.("corpus text search select", sparql) do
         {:ok, result} -> {:ok, Enum.map(result.results, &hit_from_row/1)}
         {:error, reason} -> {:error, reason}
       end

@@ -41,7 +41,7 @@ defmodule SheafWeb.API.SparqlController do
   end
 
   defp run(conn, query) do
-    case Sheaf.query(query) do
+    case Sheaf.query("api sparql query", query) do
       {:ok, %Result{} = result} ->
         render_results(conn, result)
 

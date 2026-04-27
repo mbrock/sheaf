@@ -63,12 +63,12 @@ defmodule Sheaf.Embedding.Index do
   """
   @spec text_units(keyword()) :: {:ok, [text_unit()]} | {:error, term()}
   def text_units(opts \\ []) do
-    select = Keyword.get(opts, :select, &Sheaf.select/1)
+    select = Keyword.get(opts, :select, &Sheaf.select/2)
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
 
     kinds
     |> Enum.reduce_while({:ok, []}, fn kind, {:ok, acc} ->
-      case select.(text_units_sparql(kind, opts)) do
+      case select.("embedding text units #{kind} select", text_units_sparql(kind, opts)) do
         {:ok, result} -> {:cont, {:ok, acc ++ result.results}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -689,9 +689,9 @@ defmodule Sheaf.Embedding.Index do
   def descriptions_for_iris([], _opts), do: {:ok, %{}}
 
   def descriptions_for_iris(iris, opts) when is_list(iris) do
-    select = Keyword.get(opts, :select, &Sheaf.select/1)
+    select = Keyword.get(opts, :select, &Sheaf.select/2)
 
-    with {:ok, result} <- select.(descriptions_sparql(iris)),
+    with {:ok, result} <- select.("embedding descriptions select", descriptions_sparql(iris)),
          {:ok, documents} <- document_metadata(opts) do
       graph = graph_from_description_rows(result.results)
       docs_by_iri = docs_by_iri(result.results)
@@ -707,9 +707,9 @@ defmodule Sheaf.Embedding.Index do
 
   @doc false
   def document_metadata(opts \\ []) do
-    select = Keyword.get(opts, :select, &Sheaf.select/1)
+    select = Keyword.get(opts, :select, &Sheaf.select/2)
 
-    case select.(document_metadata_sparql()) do
+    case select.("embedding document metadata select", document_metadata_sparql()) do
       {:ok, result} ->
         {:ok,
          result.results

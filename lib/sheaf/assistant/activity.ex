@@ -102,9 +102,9 @@ defmodule Sheaf.Assistant.Activity do
   end
 
   defp persist(%Graph{} = graph, opts) do
-    update = Keyword.get(opts, :update, &Sheaf.update/1)
+    update = Keyword.get(opts, :update, &Sheaf.update/2)
 
-    case update.(insert_data(graph)) do
+    case update.("assistant activity insert", insert_data(graph)) do
       :ok -> :ok
       {:ok, _result} -> :ok
       {:error, reason} -> {:error, reason}

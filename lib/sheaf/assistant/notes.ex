@@ -31,7 +31,7 @@ defmodule Sheaf.Assistant.Notes do
     |> Keyword.get(:limit, @default_limit)
     |> normalize_limit()
     |> list_query()
-    |> Sheaf.query()
+    |> then(&Sheaf.query("assistant notes list construct", &1))
   end
 
   @doc """
@@ -65,7 +65,7 @@ defmodule Sheaf.Assistant.Notes do
 
     * `:note_iri` - deterministic note IRI for tests/imports
     * `:published_at` - deterministic timestamp
-    * `:update` - function called with SPARQL update text
+    * `:update` - function called with a query label and SPARQL update text
   """
   def write(attrs, opts \\ []) when is_map(attrs) do
     with {:ok, graph} <- build(attrs, opts),
@@ -149,9 +149,9 @@ defmodule Sheaf.Assistant.Notes do
   end
 
   defp persist(%Graph{} = graph, opts) do
-    update = Keyword.get(opts, :update, &Sheaf.update/1)
+    update = Keyword.get(opts, :update, &Sheaf.update/2)
 
-    case update.(insert_data(graph)) do
+    case update.("assistant note insert", insert_data(graph)) do
       :ok -> :ok
       {:ok, _result} -> :ok
       {:error, reason} -> {:error, reason}

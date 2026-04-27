@@ -11,7 +11,13 @@ defmodule Sheaf.Embedding.IndexTest do
   test "builds text units from all text-bearing block shapes" do
     test_pid = self()
 
-    select = fn sparql ->
+    select = fn label, sparql ->
+      assert label in [
+               "embedding text units paragraph select",
+               "embedding text units sourceHtml select",
+               "embedding text units row select"
+             ]
+
       send(test_pid, {:sparql, sparql})
       assert sparql =~ "sheaf:excludesDocument"
       refute sparql =~ " UNION "
@@ -77,7 +83,8 @@ defmodule Sheaf.Embedding.IndexTest do
   end
 
   test "can restrict text unit kinds" do
-    select = fn sparql ->
+    select = fn label, sparql ->
+      assert label == "embedding text units sourceHtml select"
       assert sparql =~ "sheaf:sourceHtml"
       refute sparql =~ "sheaf:paragraph"
       refute sparql =~ "sheaf:Row"
@@ -157,7 +164,7 @@ defmodule Sheaf.Embedding.IndexTest do
       })
     end)
 
-    select = fn sparql ->
+    select = fn _label, sparql ->
       cond do
         sparql =~ "VALUES ?iri" ->
           {:ok,

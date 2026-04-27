@@ -56,7 +56,7 @@ defmodule Sheaf.Files do
   @doc """
   Returns a graph describing stored `fabio:ComputerFile` resources.
   """
-  def list_graph, do: Sheaf.query(@query)
+  def list_graph, do: Sheaf.query("files list construct", @query)
 
   @doc """
   Returns file descriptions from RDF data, newest first.

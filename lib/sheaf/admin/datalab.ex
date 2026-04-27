@@ -492,7 +492,7 @@ defmodule Sheaf.Admin.Datalab do
   end
 
   defp imported_source_files do
-    with {:ok, result} <- Sheaf.select(@imported_sources_query) do
+    with {:ok, result} <- Sheaf.select("datalab imported sources select", @imported_sources_query) do
       source_files =
         result.results
         |> Enum.map(&Map.fetch!(&1, "file"))
