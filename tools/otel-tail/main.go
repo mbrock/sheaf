@@ -18,7 +18,9 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/mbrock/sheaf/tools/otel-tail/internal/otelstream"
 	"github.com/redis/go-redis/v9"
@@ -29,13 +31,15 @@ func main() {
 
 	redisURL := flag.String("redis-url", envDefault("SHEAF_OTEL_REDIS_URL", "redis://localhost:6379"), "Redis URL")
 	stream := flag.String("stream", otelstream.DefaultStream(), "Redis stream key")
-	backfill := flag.Int64("backfill", 0, "Print the last N spans before tailing live")
+	backfillArg := flag.String("backfill", "10m", "Backfill count or duration like 200, 5m, 1h")
 	jsonOut := flag.Bool("json", false, "Output raw JSON, one object per line")
 	jsonLines := flag.Bool("jsonl", false, "Output raw JSON Lines, one span event per line")
+	tree := flag.Bool("tree", false, "Render a one-shot trace tree from backfilled spans and exit")
 	tui := flag.Bool("tui", false, "Run an interactive terminal UI")
 	noColor := flag.Bool("no-color", false, "Disable ANSI colors")
 	verbose := flag.Bool("v", false, "Print all attributes, not just promoted ones")
 	flag.Parse()
+	backfill := parseBackfill(*backfillArg)
 
 	if *noColor || os.Getenv("NO_COLOR") != "" {
 		disableColors()
@@ -76,15 +80,49 @@ func main() {
 	}
 
 	if *tui {
-		err = runTUI(ctx, tailer, otelstream.TailOptions{Backfill: *backfill})
+		err = runTUI(ctx, tailer, otelstream.TailOptions{Backfill: backfill})
 		if err != nil && ctx.Err() == nil {
 			log.Fatalf("otel tail tui: %v", err)
 		}
 		return
 	}
 
-	err = tailer.Tail(ctx, otelstream.TailOptions{Backfill: *backfill}, printer.PrintEntry)
+	if len(flag.Args()) > 0 || *tree || (!*jsonOut && !*jsonLines) {
+		entries := []otelstream.Entry{}
+		err = tailer.Backfill(ctx, backfill, func(entry otelstream.Entry) error {
+			entries = append(entries, entry)
+			return nil
+		})
+		if err != nil && ctx.Err() == nil {
+			log.Fatalf("otel tree: %v", err)
+		}
+		if len(flag.Args()) > 0 {
+			err = renderSpanTreeIDs(os.Stdout, entries, flag.Args(), len(entries))
+		} else {
+			err = renderSpanTree(os.Stdout, entries, len(entries))
+		}
+		if err != nil {
+			log.Fatalf("otel tree render: %v", err)
+		}
+		return
+	}
+
+	err = tailer.Tail(ctx, otelstream.TailOptions{Backfill: backfill}, printer.PrintEntry)
 	if err != nil && ctx.Err() == nil {
 		log.Fatalf("otel tail: %v", err)
 	}
+}
+
+func parseBackfill(value string) otelstream.Backfill {
+	if value == "" || value == "0" {
+		return otelstream.Backfill{}
+	}
+	if count, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return otelstream.Backfill{Count: count}
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		log.Fatalf("invalid backfill %q: use a count or duration like 200, 5m, 1h", value)
+	}
+	return otelstream.Backfill{Since: time.Now().Add(-duration)}
 }

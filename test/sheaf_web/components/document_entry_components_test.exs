@@ -41,6 +41,6 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
         }
       )
 
-    assert html =~ ">draft</span>"
+    assert html =~ ~r/>\s*draft\s*<\/span>/
   end
 end

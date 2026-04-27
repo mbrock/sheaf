@@ -2,6 +2,7 @@ package otelstream
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -27,12 +28,53 @@ type RedisTailer struct {
 }
 
 type TailOptions struct {
-	// Backfill emits the newest N existing entries before following the stream.
-	// Backfilled entries are delivered oldest-first.
-	Backfill int64
+	// Backfill emits existing entries before following the stream. Backfilled
+	// entries are delivered oldest-first.
+	Backfill Backfill
 	// StartID defaults to "$", which follows only new entries when Backfill is
 	// zero. Tests or alternate clients can set it to another Redis stream ID.
 	StartID string
+}
+
+type Backfill struct {
+	Count int64
+	Since time.Time
+}
+
+func (b Backfill) IsZero() bool {
+	return b.Count <= 0 && b.Since.IsZero()
+}
+
+func (t *RedisTailer) Backfill(ctx context.Context, backfill Backfill, handle EntryHandler) error {
+	if backfill.IsZero() {
+		return nil
+	}
+
+	var entries []redis.XMessage
+	var err error
+	if !backfill.Since.IsZero() {
+		min := strconv.FormatInt(backfill.Since.UnixMilli(), 10) + "-0"
+		entries, err = t.Client.XRange(ctx, t.Stream, min, "+").Result()
+	} else {
+		entries, err = t.Client.XRevRangeN(ctx, t.Stream, "+", "-", backfill.Count).Result()
+		reverseMessages(entries)
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return err
+	}
+	for _, msg := range entries {
+		entry, ok := entryFromMessage(msg)
+		if !ok {
+			continue
+		}
+		if err := handle(entry); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (t *RedisTailer) Tail(ctx context.Context, opts TailOptions, handle EntryHandler) error {
@@ -41,23 +83,16 @@ func (t *RedisTailer) Tail(ctx context.Context, opts TailOptions, handle EntryHa
 		startID = "$"
 	}
 
-	if opts.Backfill > 0 {
-		entries, err := t.Client.XRevRangeN(ctx, t.Stream, "+", "-", opts.Backfill).Result()
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return err
-		}
-		for i := len(entries) - 1; i >= 0; i-- {
-			startID = entries[i].ID
-			entry, ok := entryFromMessage(entries[i])
-			if !ok {
-				continue
-			}
+	if !opts.Backfill.IsZero() {
+		err := t.Backfill(ctx, opts.Backfill, func(entry Entry) error {
+			startID = entry.ID
 			if err := handle(entry); err != nil {
 				return err
 			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -99,6 +134,12 @@ func (t *RedisTailer) Tail(ctx context.Context, opts TailOptions, handle EntryHa
 				}
 			}
 		}
+	}
+}
+
+func reverseMessages(entries []redis.XMessage) {
+	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+		entries[i], entries[j] = entries[j], entries[i]
 	}
 }
 

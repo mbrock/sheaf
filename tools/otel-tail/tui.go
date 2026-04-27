@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -16,11 +15,7 @@ const (
 	indentStep    = 2
 )
 
-type tuiItem struct {
-	entry otelstream.Entry
-	span  otelstream.Span
-	err   error
-}
+type tuiItem = spanTreeItem
 
 type tuiEntryMsg tuiItem
 type tuiReadErrorMsg string
@@ -33,24 +28,19 @@ type tuiModel struct {
 	readErrs <-chan error
 	done     <-chan error
 
-	// Storage. items is the arrival-ordered ring buffer; byID indexes it
-	// for parent lookup; traceStarts remembers each trace's earliest
-	// observed StartUnixNano for T+offset display.
-	items       []tuiItem
-	byID        map[string]otelstream.Span
-	traceStarts map[string]int64
+	// Storage and tree materialization are shared with the non-interactive CLI
+	// renderer so both views agree on parent/child reconstruction.
+	tree spanTree
 
-	// Materialized view. Recomputed from byID on every change so that
-	// late-arriving parents naturally slot under the right ancestors.
+	// Materialized view. Recomputed from the shared tree after each new span.
 	lines []renderedLine
 
 	// Selection is sticky by span id: when the tree rebuilds, we relocate
 	// the cursor onto the same span wherever it landed. autoTail follows
 	// the most recently arrived span.
-	selectedSpanID    string
-	lastArrivedSpanID string
-	selected          int
-	offset            int
+	selectedSpanID string
+	selected       int
+	offset         int
 
 	width    int
 	height   int
@@ -94,19 +84,18 @@ func runTUI(ctx context.Context, tailer otelstream.RedisTailer, opts otelstream.
 	}()
 
 	model := tuiModel{
-		ctx:         tuiCtx,
-		cancel:      cancel,
-		entries:     entries,
-		readErrs:    readErrs,
-		done:        done,
-		byID:        map[string]otelstream.Span{},
-		traceStarts: map[string]int64{},
-		selected:    -1,
-		width:       80,
-		height:      24,
-		autoTail:    true,
-		status:      "waiting for spans...",
-		styles:      newTUIStyles(true),
+		ctx:      tuiCtx,
+		cancel:   cancel,
+		entries:  entries,
+		readErrs: readErrs,
+		done:     done,
+		tree:     newSpanTree(maxTUIEntries),
+		selected: -1,
+		width:    80,
+		height:   24,
+		autoTail: true,
+		status:   "waiting for spans...",
+		styles:   newTUIStyles(true),
 	}
 	program := tea.NewProgram(model)
 	_, err := program.Run()
@@ -170,26 +159,7 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // absorb registers a freshly-arrived item, evicting the oldest entry from
 // the ring buffer if needed, and triggers a tree rebuild + cursor refresh.
 func (m *tuiModel) absorb(item tuiItem) {
-	m.items = append(m.items, item)
-	if len(m.items) > maxTUIEntries {
-		drop := len(m.items) - maxTUIEntries
-		for _, it := range m.items[:drop] {
-			if it.err == nil {
-				delete(m.byID, it.span.SpanID)
-			}
-		}
-		m.items = m.items[drop:]
-	}
-
-	if item.err == nil {
-		s := item.span
-		m.byID[s.SpanID] = s
-		if t, ok := m.traceStarts[s.TraceID]; !ok || s.StartUnixNano < t {
-			m.traceStarts[s.TraceID] = s.StartUnixNano
-		}
-		m.lastArrivedSpanID = s.SpanID
-	}
-
+	m.tree.absorb(item)
 	m.rebuildLines()
 	m.refreshSelection()
 }
@@ -199,82 +169,7 @@ func (m *tuiModel) absorb(item tuiItem) {
 // Spans whose parent is no longer in the buffer are treated as roots of
 // their trace, so eviction never strands children invisibly.
 func (m *tuiModel) rebuildLines() {
-	m.lines = m.lines[:0]
-
-	if len(m.byID) == 0 {
-		// Surface decoder errors that arrived since the last span. We render
-		// them as their own pseudo-section so they're visible even before any
-		// real spans have shown up.
-		for _, it := range m.items {
-			if it.err != nil {
-				m.lines = append(m.lines, renderedLine{
-					kind:     lineKindError,
-					depth:    0,
-					rendered: m.renderErrorLine(it.entry.ID, it.err.Error()),
-				})
-			}
-		}
-		return
-	}
-
-	byTrace := map[string][]otelstream.Span{}
-	for _, s := range m.byID {
-		byTrace[s.TraceID] = append(byTrace[s.TraceID], s)
-	}
-
-	traceIDs := make([]string, 0, len(byTrace))
-	for t := range byTrace {
-		traceIDs = append(traceIDs, t)
-	}
-	sort.Slice(traceIDs, func(i, j int) bool {
-		return m.traceStarts[traceIDs[i]] < m.traceStarts[traceIDs[j]]
-	})
-
-	for _, traceID := range traceIDs {
-		spans := byTrace[traceID]
-		children := map[string][]otelstream.Span{}
-		for _, s := range spans {
-			parent := s.ParentSpanID
-			if parent != "" {
-				if _, ok := m.byID[parent]; !ok {
-					parent = "" // orphan: treat as a root within this trace
-				}
-			}
-			children[parent] = append(children[parent], s)
-		}
-		for k := range children {
-			sortSpans(children[k])
-		}
-		m.emitChildren(children, "", 0)
-	}
-}
-
-func (m *tuiModel) emitChildren(children map[string][]otelstream.Span, parent string, depth int) {
-	for _, s := range children[parent] {
-		m.lines = append(m.lines, renderedLine{
-			kind:     lineKindSpan,
-			depth:    depth,
-			rendered: m.renderSpanLine(s),
-			spanID:   s.SpanID,
-		})
-		for _, p := range predicatesOf(s) {
-			m.lines = append(m.lines, renderedLine{
-				kind:     lineKindPredicate,
-				depth:    depth + 1,
-				rendered: m.renderPredicateLine(p),
-			})
-		}
-		m.emitChildren(children, s.SpanID, depth+1)
-	}
-}
-
-func sortSpans(spans []otelstream.Span) {
-	sort.Slice(spans, func(i, j int) bool {
-		if spans[i].StartUnixNano != spans[j].StartUnixNano {
-			return spans[i].StartUnixNano < spans[j].StartUnixNano
-		}
-		return spans[i].SpanID < spans[j].SpanID
-	})
+	m.lines = m.tree.renderLines(m)
 }
 
 // refreshSelection relocates the cursor after a tree rebuild. In autoTail
@@ -290,7 +185,7 @@ func (m *tuiModel) refreshSelection() {
 
 	target := m.selectedSpanID
 	if m.autoTail {
-		target = m.lastArrivedSpanID
+		target = m.tree.lastArrivedSpanID
 	}
 
 	if target != "" {
@@ -366,7 +261,7 @@ func (m *tuiModel) gotoLine(idx int, autoTail bool) {
 	if id := m.spanIDForLine(idx); id != "" {
 		m.selectedSpanID = id
 	}
-	m.autoTail = autoTail || (m.lastArrivedSpanID != "" && m.selectedSpanID == m.lastArrivedSpanID)
+	m.autoTail = autoTail || (m.tree.lastArrivedSpanID != "" && m.selectedSpanID == m.tree.lastArrivedSpanID)
 	m.ensureSelectedVisible()
 }
 
@@ -386,11 +281,11 @@ func (m *tuiModel) jumpToSpan(dir int) {
 
 func (m *tuiModel) followTail() {
 	m.autoTail = true
-	if m.lastArrivedSpanID != "" {
+	if m.tree.lastArrivedSpanID != "" {
 		for i, l := range m.lines {
-			if l.kind == lineKindSpan && l.spanID == m.lastArrivedSpanID {
+			if l.kind == lineKindSpan && l.spanID == m.tree.lastArrivedSpanID {
 				m.selected = i
-				m.selectedSpanID = m.lastArrivedSpanID
+				m.selectedSpanID = m.tree.lastArrivedSpanID
 				m.ensureSelectedVisible()
 				return
 			}
@@ -437,6 +332,10 @@ func (m tuiModel) viewString() string {
 			b.WriteByte('\n')
 		}
 		b.WriteString(m.padRow(""))
+	}
+	if panel := m.detailPanelString(); panel != "" {
+		b.WriteByte('\n')
+		b.WriteString(panel)
 	}
 	return b.String()
 }
@@ -494,17 +393,21 @@ func (m tuiModel) padRow(row string) string {
 	return row + strings.Repeat(" ", m.width-w)
 }
 
-func (m tuiModel) renderSpanLine(s otelstream.Span) string {
+func (m tuiModel) renderSpanLine(s otelstream.Span, traceStart int64, entryID string) string {
 	st := m.styles
-	body := st.spanMark.Render("*") + " " + st.spanName.Render(s.Name)
+	body := st.spanMark.Render(shortEntryID(entryID)) + " " + st.spanName.Render(s.Name)
 	body += "  " + st.spanDurationStyle(s.DurationUs).Render(formatDuration(s.DurationUs))
-	if off := formatOffset(m.traceStarts[s.TraceID], s.StartUnixNano); off != "" {
+	if off := formatOffset(traceStart, s.StartUnixNano); off != "" {
 		body += "  " + st.spanMeta.Render(off)
 	}
 	if s.Status != nil && s.Status.Code == "error" {
 		body += "  " + st.errorMark.Render("✗")
 	}
 	return body
+}
+
+func (m tuiModel) predicatesFor(s otelstream.Span, entryID string) []predicate {
+	return predicatesOf(s, entryID)
 }
 
 func (m tuiModel) renderPredicateLine(p predicate) string {
@@ -519,6 +422,54 @@ func (m tuiModel) renderPredicateLine(p predicate) string {
 func (m tuiModel) renderErrorLine(id, msg string) string {
 	st := m.styles
 	return st.errorMark.Render("!") + " " + st.errorRow.Render(fmt.Sprintf("%s  decode error: %s", id, msg))
+}
+
+func (m tuiModel) detailPanelString() string {
+	if m.selectedSpanID == "" || m.detailPanelHeight() == 0 {
+		return ""
+	}
+	item, ok := m.tree.itemForSpanID(m.selectedSpanID)
+	if !ok {
+		return ""
+	}
+
+	lines := []string{
+		m.styles.predVerb.Render("entry") + " " + m.styles.valueStyle("info").Render(displayEntryID(item.entry.ID)+" ("+item.entry.ID+")"),
+		m.styles.predVerb.Render("trace") + " " + m.styles.valueStyle("info").Render(item.span.TraceID),
+		m.styles.predVerb.Render("span") + " " + m.styles.valueStyle("info").Render(item.span.SpanID),
+	}
+	if item.span.ParentSpanID != "" {
+		lines = append(lines, m.styles.predVerb.Render("parent")+" "+m.styles.valueStyle("info").Render(item.span.ParentSpanID))
+	}
+	lines = append(lines,
+		m.styles.predVerb.Render("name")+" "+m.styles.valueStyle("info").Render(item.span.Name),
+		m.styles.predVerb.Render("kind")+" "+m.styles.valueStyle("info").Render(item.span.Kind),
+		m.styles.predVerb.Render("duration")+" "+m.styles.valueStyle("info").Render(formatDuration(item.span.DurationUs)),
+	)
+	for _, p := range (cliInspectRenderer{}).predicatesFor(item.span, item.entry.ID) {
+		if p.verb == "entry" || p.verb == "trace" || p.verb == "span" || p.verb == "parent" || p.verb == "kind" {
+			continue
+		}
+		value := strings.ReplaceAll(p.value, "\n", "\\n")
+		lines = append(lines, m.styles.predVerb.Render(p.verb)+" "+m.styles.valueStyle(p.valueFor).Render(value))
+	}
+
+	height := m.detailPanelHeight()
+	if len(lines) > height-1 {
+		lines = lines[:height-1]
+	}
+
+	var b strings.Builder
+	b.WriteString(m.padRow(m.styles.spanMeta.Render(strings.Repeat("─", max(0, m.width)))))
+	for _, line := range lines {
+		b.WriteByte('\n')
+		b.WriteString(m.padRow("  " + line))
+	}
+	for i := len(lines) + 1; i < height; i++ {
+		b.WriteByte('\n')
+		b.WriteString(m.padRow(""))
+	}
+	return b.String()
 }
 
 func waitForTUIEntry(entries <-chan tuiItem) tea.Cmd {
@@ -591,5 +542,19 @@ func (m tuiModel) listHeight() int {
 	if m.height < 1 {
 		return 1
 	}
-	return m.height
+	return m.height - m.detailPanelHeight()
+}
+
+func (m tuiModel) detailPanelHeight() int {
+	if m.height < 16 || m.selectedSpanID == "" {
+		return 0
+	}
+	h := m.height / 3
+	if h < 8 {
+		return 8
+	}
+	if h > 16 {
+		return 16
+	}
+	return h
 }

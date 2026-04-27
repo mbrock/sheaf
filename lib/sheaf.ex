@@ -9,11 +9,6 @@ defmodule Sheaf do
 
   @dataset_media_type "application/n-quads"
   @graph_media_type "application/n-triples"
-  # Cap how much of a SPARQL statement we attach as a span attribute. Most
-  # tracing backends throttle very large strings, and the operation name plus a
-  # generous prefix is enough to identify the query in practice.
-  @sparql_statement_attr_limit 4096
-
   @doc """
   Generates a new unique IRI for a resource.
   """
@@ -90,7 +85,7 @@ defmodule Sheaf do
     opts = Keyword.put_new(opts, :protocol_version, "1.1")
 
     with_sparql_span("sheaf.query", "query", config[:query_endpoint], query, fn ->
-      SPARQL.Client.query(query, config[:query_endpoint], sparql_options(config, opts))
+      query_sparql(query, config[:query_endpoint], sparql_options(config, opts))
     end)
   end
 
@@ -108,7 +103,7 @@ defmodule Sheaf do
       |> Keyword.put_new(:raw_mode, true)
 
     with_sparql_span("sheaf.select", "select", config[:query_endpoint], query, fn ->
-      result = SPARQL.Client.select(query, config[:query_endpoint], sparql_options(config, opts))
+      result = query_sparql(:select, query, config[:query_endpoint], sparql_options(config, opts))
 
       with {:ok, %SPARQL.Query.Result{results: rows}} <- result do
         Tracer.set_attribute("sheaf.row_count", length(rows))
@@ -250,7 +245,8 @@ defmodule Sheaf do
       attributes: [
         {"db.system", "fuseki"},
         {"db.operation", operation},
-        {"db.statement", truncate_statement(statement)},
+        {"db.statement", sparql_statement(statement)},
+        {"sheaf.statement_bytes", sparql_statement_bytes(statement)},
         {"server.address", endpoint}
       ]
     } do
@@ -258,11 +254,75 @@ defmodule Sheaf do
     end
   end
 
-  defp truncate_statement(statement) when is_binary(statement) do
-    String.slice(statement, 0, @sparql_statement_attr_limit)
+  defp sparql_statement(statement) when is_binary(statement), do: statement
+  defp sparql_statement(statement), do: inspect(statement, limit: :infinity)
+
+  defp sparql_statement_bytes(statement) when is_binary(statement), do: byte_size(statement)
+  defp sparql_statement_bytes(statement), do: statement |> sparql_statement() |> byte_size()
+
+  defp query_sparql(%SPARQL.Query{} = query, endpoint, opts) do
+    query_sparql(query.form, query.query_string, endpoint, opts)
   end
 
-  defp truncate_statement(statement), do: inspect(statement, limit: 64)
+  defp query_sparql(query_string, endpoint, opts) when is_binary(query_string) do
+    with %SPARQL.Query{} = query <- SPARQL.Query.new(query_string) do
+      query_sparql(query, endpoint, opts)
+    end
+  end
+
+  defp query_sparql(form, query_string, endpoint, opts) do
+    with {:ok, request} <-
+           SPARQL.Client.Request.build(SPARQL.Client.Query, form, query_string, endpoint, opts),
+         {:ok, request} <- sparql_http_request(request, opts),
+         {:ok, request} <- parse_sparql_response(request, opts) do
+      {:ok, request.result}
+    end
+  end
+
+  defp sparql_http_request(request, opts) do
+    case SPARQL.Client.Tesla.call(request, opts) do
+      {:ok, %SPARQL.Client.Request{http_status: status} = request} when status in 200..299 ->
+        {:ok, request}
+
+      {:ok, %SPARQL.Client.Request{} = request} ->
+        {:error, %SPARQL.Client.HTTPError{request: request, status: request.http_status}}
+
+      error ->
+        error
+    end
+  end
+
+  defp parse_sparql_response(request, opts) do
+    Tracer.with_span "sheaf.sparql.parse", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "fuseki"},
+        {"db.operation", to_string(request.sparql_operation_form)},
+        {"sheaf.response_bytes", byte_size(request.http_response_body || "")},
+        {"sheaf.response_content_type", request.http_response_content_type || ""}
+      ]
+    } do
+      result = SPARQL.Client.Query.evaluate_response(request, opts)
+
+      with {:ok, %SPARQL.Client.Request{result: parsed}} <- result do
+        set_sparql_parse_result_attributes(parsed)
+      end
+
+      result
+    end
+  end
+
+  defp set_sparql_parse_result_attributes(%SPARQL.Query.Result{results: rows}) do
+    Tracer.set_attribute("sheaf.row_count", length(rows))
+  end
+
+  defp set_sparql_parse_result_attributes(data) do
+    if Data.impl_for(data) do
+      Tracer.set_attribute("sheaf.statement_count", Data.statement_count(data))
+    end
+  rescue
+    Protocol.UndefinedError -> :ok
+  end
 
   defp sparql_options(config, opts) do
     case sparql_auth_headers(config) do
