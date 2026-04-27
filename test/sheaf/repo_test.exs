@@ -25,6 +25,26 @@ defmodule Sheaf.RepoTest do
   end
 
   @tag :tmp_dir
+  test "clears the in-memory dataset cache without deleting the event log", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "repo.sqlite3")
+    workspace_graph = RDF.iri(Sheaf.Repo.workspace_graph())
+    workspace = {~I<https://example.com/workspace>, ~I<https://example.com/p>, "workspace"}
+
+    {:ok, log} = Quadlog.start_link(path)
+    assert :ok = Quadlog.assert(log, "tx-1", RDF.Graph.new(workspace, name: workspace_graph))
+    GenServer.stop(log)
+
+    start_supervised!({Sheaf.Repo, path: path})
+    assert RDF.Data.include?(Sheaf.Repo.dataset(), Tuple.append(workspace, workspace_graph))
+
+    assert :ok = Sheaf.Repo.clear_cache()
+    refute RDF.Data.include?(Sheaf.Repo.dataset(), Tuple.append(workspace, workspace_graph))
+
+    assert :ok = Sheaf.Repo.load_once({nil, nil, nil, workspace_graph})
+    assert RDF.Data.include?(Sheaf.Repo.dataset(), Tuple.append(workspace, workspace_graph))
+  end
+
+  @tag :tmp_dir
   test "write helpers mint transaction ids", %{tmp_dir: tmp_dir} do
     path = Path.join(tmp_dir, "repo.sqlite3")
     graph = RDF.Graph.new({~I<https://example.com/s>, ~I<https://example.com/p>, "value"})

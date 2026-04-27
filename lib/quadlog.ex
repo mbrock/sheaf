@@ -9,6 +9,7 @@ defmodule Quadlog do
   def ask(pid, fun), do: GenServer.call(pid, {:ask, fun})
   def load(pid, pattern), do: GenServer.call(pid, {:load, pattern})
   def load_once(pid, pattern), do: GenServer.call(pid, {:load_once, pattern})
+  def clear_cache(pid), do: GenServer.call(pid, :clear_cache)
   def assert(pid, tx, graph), do: transact(pid, tx, [{:assert, graph}])
   def retract(pid, tx, graph), do: transact(pid, tx, [{:retract, graph}])
   def transact(pid, tx, changes), do: GenServer.call(pid, {:transact, tx, changes})
@@ -26,6 +27,9 @@ defmodule Quadlog do
   @impl true
   def handle_call(:dataset, _from, state), do: {:reply, state.dataset, state}
   def handle_call({:ask, fun}, _from, state), do: {:reply, fun.(state.dataset), state}
+
+  def handle_call(:clear_cache, _from, state),
+    do: {:reply, :ok, %{state | dataset: RDF.dataset(), loaded_patterns: MapSet.new()}}
 
   def handle_call({:load, pattern}, _from, state) do
     with {:ok, dataset} <- load(state.conn, pattern, state.dataset) do

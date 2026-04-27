@@ -370,23 +370,56 @@ defmodule Sheaf.Documents do
 
   @doc false
   def from_rows(rows, opts \\ []) do
-    rows
-    |> Enum.group_by(&row_iri/1)
-    |> Enum.map(fn {_iri, rows} -> from_document_rows(rows) end)
-    |> maybe_reject_excluded(opts)
-    |> Enum.sort_by(&document_sort_key/1)
+    Tracer.with_span "Sheaf.Documents.from_rows", %{
+      kind: :internal,
+      attributes: [{"sheaf.row_count", length(rows)}]
+    } do
+      grouped =
+        Tracer.with_span "Sheaf.Documents.from_rows.group", %{kind: :internal} do
+          grouped = Enum.group_by(rows, &row_iri/1)
+          Tracer.set_attribute("sheaf.document_group_count", map_size(grouped))
+          grouped
+        end
+
+      documents =
+        Tracer.with_span "Sheaf.Documents.from_rows.build", %{kind: :internal} do
+          documents = Enum.map(grouped, fn {_iri, rows} -> from_document_rows(rows) end)
+          Tracer.set_attribute("sheaf.document_count", length(documents))
+          documents
+        end
+
+      documents =
+        Tracer.with_span "Sheaf.Documents.from_rows.filter_sort", %{kind: :internal} do
+          documents =
+            documents
+            |> maybe_reject_excluded(opts)
+            |> Enum.sort_by(&document_sort_key/1)
+
+          Tracer.set_attribute("sheaf.document_count", length(documents))
+          documents
+        end
+
+      documents
+    end
   end
 
   @doc false
   def from_dataset(dataset, opts \\ []) do
-    dataset
-    |> dataset_rows()
-    |> from_rows(opts)
+    Tracer.with_span "Sheaf.Documents.from_dataset", %{
+      kind: :internal,
+      attributes: [{"sheaf.statement_count", RDF.Data.statement_count(dataset)}]
+    } do
+      rows = dataset_rows(dataset)
+      Tracer.set_attribute("sheaf.row_count", length(rows))
+      from_rows(rows, opts)
+    end
   end
 
   defp load_document_index_cache do
     patterns =
       [
+        {nil, nil, nil, RDF.iri(Sheaf.Repo.workspace_graph())},
+        {nil, nil, nil, RDF.iri(Sheaf.Repo.metadata_graph())},
         {nil, RDF.type(), RDF.iri(DOC.Document), nil},
         {nil, RDF.type(), RDF.iri(DOC.Paper), nil},
         {nil, RDF.type(), RDF.iri(DOC.Thesis), nil},
@@ -406,35 +439,74 @@ defmodule Sheaf.Documents do
   end
 
   defp dataset_rows(dataset) do
-    metadata = dataset |> RDF.Dataset.graph(Sheaf.Repo.metadata_graph()) |> graph_index()
-    workspace = dataset |> RDF.Dataset.graph(Sheaf.Repo.workspace_graph()) |> graph_index()
-    descriptions = document_descriptions(dataset)
-    document_iris = descriptions |> Enum.map(fn {doc, _description} -> doc end) |> MapSet.new()
-    cited_docs = cited_documents(dataset)
+    Tracer.with_span "Sheaf.Documents.dataset_rows", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.statement_count", RDF.Data.statement_count(dataset)},
+        {"sheaf.graph_count", RDF.Dataset.graph_count(dataset)}
+      ]
+    } do
+      {metadata, workspace} =
+        Tracer.with_span "Sheaf.Documents.dataset_rows.index_graphs", %{kind: :internal} do
+          metadata = dataset |> RDF.Dataset.graph(Sheaf.Repo.metadata_graph()) |> graph_index()
+          workspace = dataset |> RDF.Dataset.graph(Sheaf.Repo.workspace_graph()) |> graph_index()
 
-    document_rows =
-      descriptions
-      |> Enum.flat_map(fn {doc, description} ->
-        rows_for_document(dataset, metadata, workspace, cited_docs, doc, description)
-      end)
+          Tracer.set_attribute("sheaf.metadata_statement_count", metadata.statement_count)
+          Tracer.set_attribute("sheaf.workspace_statement_count", workspace.statement_count)
 
-    metadata_only_rows =
-      cited_docs
-      |> Enum.reject(&MapSet.member?(document_iris, &1))
-      |> Enum.flat_map(&rows_for_metadata_only_document(metadata, workspace, &1))
+          {metadata, workspace}
+        end
 
-    document_rows ++ metadata_only_rows
+      descriptions = document_descriptions(dataset)
+      document_iris = descriptions |> Enum.map(fn {doc, _description} -> doc end) |> MapSet.new()
+      cited_docs = cited_documents(dataset)
+
+      document_rows =
+        Tracer.with_span "Sheaf.Documents.dataset_rows.document_rows", %{kind: :internal} do
+          rows =
+            descriptions
+            |> Enum.flat_map(fn {doc, description} ->
+              rows_for_document(dataset, metadata, workspace, cited_docs, doc, description)
+            end)
+
+          Tracer.set_attribute("sheaf.document_description_count", length(descriptions))
+          Tracer.set_attribute("sheaf.row_count", length(rows))
+          rows
+        end
+
+      metadata_only_rows =
+        Tracer.with_span "Sheaf.Documents.dataset_rows.metadata_only_rows", %{kind: :internal} do
+          rows =
+            cited_docs
+            |> Enum.reject(&MapSet.member?(document_iris, &1))
+            |> Enum.flat_map(&rows_for_metadata_only_document(metadata, workspace, &1))
+
+          Tracer.set_attribute("sheaf.cited_document_count", MapSet.size(cited_docs))
+          Tracer.set_attribute("sheaf.row_count", length(rows))
+          rows
+        end
+
+      rows = document_rows ++ metadata_only_rows
+      Tracer.set_attribute("sheaf.row_count", length(rows))
+      rows
+    end
   end
 
   defp document_descriptions(dataset) do
-    dataset
-    |> RDF.Dataset.graphs()
-    |> Enum.flat_map(fn graph ->
-      graph
-      |> Graph.descriptions()
-      |> Enum.filter(&document_description?/1)
-      |> Enum.map(&{Description.subject(&1), &1})
-    end)
+    Tracer.with_span "Sheaf.Documents.document_descriptions", %{kind: :internal} do
+      descriptions =
+        dataset
+        |> RDF.Dataset.graphs()
+        |> Enum.flat_map(fn graph ->
+          graph
+          |> Graph.descriptions()
+          |> Enum.filter(&document_description?/1)
+          |> Enum.map(&{Description.subject(&1), &1})
+        end)
+
+      Tracer.set_attribute("sheaf.document_description_count", length(descriptions))
+      descriptions
+    end
   end
 
   defp document_description?(description) do
@@ -606,27 +678,33 @@ defmodule Sheaf.Documents do
   end
 
   defp cited_documents(dataset) do
-    dataset
-    |> RDF.Dataset.graphs()
-    |> Enum.flat_map(fn graph ->
-      theses =
-        graph
-        |> Graph.descriptions()
-        |> Enum.filter(&Description.include?(&1, {RDF.type(), RDF.iri(DOC.Thesis)}))
-        |> Enum.map(&Description.subject/1)
+    Tracer.with_span "Sheaf.Documents.cited_documents", %{kind: :internal} do
+      cited_documents =
+        dataset
+        |> RDF.Dataset.graphs()
+        |> Enum.flat_map(fn graph ->
+          theses =
+            graph
+            |> Graph.descriptions()
+            |> Enum.filter(&Description.include?(&1, {RDF.type(), RDF.iri(DOC.Thesis)}))
+            |> Enum.map(&Description.subject/1)
+            |> MapSet.new()
+
+          graph
+          |> Graph.triples()
+          |> Enum.flat_map(fn
+            {thesis, predicate, doc} ->
+              if MapSet.member?(theses, thesis) and predicate == CITO.cites(), do: [doc], else: []
+
+            _triple ->
+              []
+          end)
+        end)
         |> MapSet.new()
 
-      graph
-      |> Graph.triples()
-      |> Enum.flat_map(fn
-        {thesis, predicate, doc} ->
-          if MapSet.member?(theses, thesis) and predicate == CITO.cites(), do: [doc], else: []
-
-        _triple ->
-          []
-      end)
-    end)
-    |> MapSet.new()
+      Tracer.set_attribute("sheaf.cited_document_count", MapSet.size(cited_documents))
+      cited_documents
+    end
   end
 
   defp page_count(dataset, doc) do
@@ -697,12 +775,15 @@ defmodule Sheaf.Documents do
     end)
   end
 
-  defp graph_index(nil), do: %{by_sp: %{}, by_po: %{}}
+  defp graph_index(nil), do: %{by_sp: %{}, by_po: %{}, statement_count: 0}
 
   defp graph_index(graph) do
-    Enum.reduce(Graph.triples(graph), %{by_sp: %{}, by_po: %{}}, fn {subject, predicate, object},
-                                                                    index ->
+    Enum.reduce(Graph.triples(graph), %{by_sp: %{}, by_po: %{}, statement_count: 0}, fn {subject,
+                                                                                         predicate,
+                                                                                         object},
+                                                                                        index ->
       index
+      |> Map.update!(:statement_count, &(&1 + 1))
       |> Map.update!(
         :by_sp,
         &Map.update(&1, {subject, predicate}, [object], fn objects -> [object | objects] end)

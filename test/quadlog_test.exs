@@ -120,6 +120,32 @@ defmodule QuadlogTest do
   end
 
   @tag :tmp_dir
+  test "load_once memoizes loaded patterns until the cache is cleared", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "quadlog.sqlite3")
+    graph = ~I<https://example.com/graph>
+    triple = {~I<https://example.com/a>, ~I<https://example.com/p>, "a"}
+    pattern = {nil, nil, nil, graph}
+
+    {:ok, log} = Quadlog.start_link(path)
+    assert :ok = Quadlog.assert(log, "tx-1", RDF.Graph.new(triple, name: graph))
+
+    GenServer.stop(log)
+    {:ok, log} = Quadlog.start_link(path, pattern: {nil, nil, nil, nil})
+    assert :ok = Quadlog.clear_cache(log)
+
+    refute RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple, graph))
+
+    assert :ok = Quadlog.load_once(log, pattern)
+    assert RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple, graph))
+
+    assert :ok = Quadlog.clear_cache(log)
+    refute RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple, graph))
+
+    assert :ok = Quadlog.load_once(log, pattern)
+    assert RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple, graph))
+  end
+
+  @tag :tmp_dir
   test "loads an iri SPOG pattern", %{tmp_dir: tmp_dir} do
     path = Path.join(tmp_dir, "quadlog.sqlite3")
     graph = ~I<https://example.com/graph>

@@ -55,18 +55,36 @@ defmodule Sheaf.Repo do
   def load(pattern) do
     Tracer.with_span "sheaf.repo.load", %{
       kind: :internal,
-      attributes: pattern_attributes(pattern)
+      attributes: pattern_attributes("load", pattern)
     } do
-      Quadlog.load(__MODULE__, pattern)
+      result = Quadlog.load(__MODULE__, pattern)
+      set_dataset_count_attribute()
+      result
     end
   end
 
   def load_once(pattern) do
     Tracer.with_span "sheaf.repo.load_once", %{
       kind: :internal,
-      attributes: pattern_attributes(pattern)
+      attributes: pattern_attributes("load_once", pattern)
     } do
-      Quadlog.load_once(__MODULE__, pattern)
+      result = Quadlog.load_once(__MODULE__, pattern)
+      set_dataset_count_attribute()
+      result
+    end
+  end
+
+  def clear_cache do
+    Tracer.with_span "sheaf.repo.clear_cache", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "quadlog"},
+        {"db.operation", "clear_cache"}
+      ]
+    } do
+      result = Quadlog.clear_cache(__MODULE__)
+      set_dataset_count_attribute()
+      result
     end
   end
 
@@ -96,6 +114,13 @@ defmodule Sheaf.Repo do
   def workspace_graph, do: @workspace_graph
   def metadata_graph, do: @metadata_graph
 
+  defp set_dataset_count_attribute do
+    Tracer.set_attribute(
+      "sheaf.statement_count",
+      RDF.Data.statement_count(Quadlog.dataset(__MODULE__))
+    )
+  end
+
   defp tx_attributes(tx),
     do: [{"db.system", "quadlog"}, {"db.operation", "transact"}, {"sheaf.tx", value(tx)}]
 
@@ -114,10 +139,10 @@ defmodule Sheaf.Repo do
     [{"sheaf.change_count", length(changes)}]
   end
 
-  defp pattern_attributes({subject, predicate, object, graph}) do
+  defp pattern_attributes(operation, {subject, predicate, object, graph}) do
     [
       {"db.system", "quadlog"},
-      {"db.operation", "load"},
+      {"db.operation", operation},
       {"sheaf.pattern.subject", value(subject)},
       {"sheaf.pattern.predicate", value(predicate)},
       {"sheaf.pattern.object", value(object)},
