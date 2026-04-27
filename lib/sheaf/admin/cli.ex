@@ -116,7 +116,7 @@ defmodule Sheaf.Admin.CLI do
     end)
     |> case do
       nil -> :ok
-      path -> merge_dot_env(path)
+      path -> Sheaf.Env.load_file!(path)
     end
   end
 
@@ -142,41 +142,5 @@ defmodule Sheaf.Admin.CLI do
         true -> {:cont, [current | acc]}
       end
     end)
-  end
-
-  defp merge_dot_env(path) do
-    path
-    |> File.stream!()
-    |> Stream.map(&String.trim/1)
-    |> Stream.reject(&(&1 == "" or String.starts_with?(&1, "#")))
-    |> Enum.each(fn line ->
-      case String.split(line, "=", parts: 2) do
-        [key, value] ->
-          key = String.trim(key)
-          value = value |> String.trim() |> unquote_env()
-
-          if key != "" and System.get_env(key) == nil do
-            System.put_env(key, value)
-          end
-
-        _ ->
-          :ok
-      end
-    end)
-  end
-
-  defp unquote_env(value) do
-    if String.length(value) >= 2 do
-      first = String.first(value)
-      last = String.last(value)
-
-      if (first == "\"" and last == "\"") or (first == "'" and last == "'") do
-        String.slice(value, 1..-2//1)
-      else
-        value
-      end
-    else
-      value
-    end
   end
 end

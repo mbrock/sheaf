@@ -49,11 +49,13 @@ By default, `bin/worktree` inherits `.env` from the repository's primary Git
 worktree. Use `--source DIR`, `--port PORT`, or `--redis-db N` for explicit
 control. Use `--sqlite-local` when a worktree should keep its own SQLite DBs.
 
-These use `SHEAF_SERVICE_MODE` from `.env`. Supported modes are `tmux`,
-`systemd`, and `launchd`; `tmux` is the convenient local default. `bin/status`
-also prints derived app URLs, RDF base IRIs, SPARQL endpoints, Fuseki server
-metadata, dataset names, and a quick triple count before checking the configured
-service process.
+These use `SHEAF_SERVICE_MODE` from `.env`. Sheaf treats `.env` as a shell
+fragment so local worktree envs can source a primary checkout env; Elixir
+entrypoints use the same shell semantics as the bin scripts. Supported modes are
+`tmux`, `systemd`, and `launchd`; `tmux` is the convenient local default.
+`bin/status` also prints derived app URLs, RDF base IRIs, SPARQL endpoints,
+Fuseki server metadata, dataset names, and a quick triple count before checking
+the configured service process.
 
 `bin/rpc` evaluates Elixir on the running Sheaf node. For a development service,
 `bin/deploy` runs `mix assets.build`, then uses `bin/rpc` to hot-reload modified
