@@ -120,4 +120,91 @@ defmodule Sheaf.Assistant.NotesTest do
     assert MapSet.new(RDF.Description.get(newer_description, Sheaf.NS.DOC.mentions(), [])) ==
              MapSet.new([Id.iri("BLK200"), Id.iri("BLK201")])
   end
+
+  test "builds the list graph from an RDF dataset" do
+    session = Id.iri("SESS05")
+    note = Id.iri("NOTE50")
+    legacy_note = Id.iri("NOTE40")
+    agent = Id.iri("AGENT5")
+    question = Id.iri("QUESTION5")
+    reply = Id.iri("REPLY5")
+    user = Id.iri("USER5")
+
+    workspace_graph =
+      RDF.Graph.new(
+        RDF.Graph.build note: note,
+                        legacy_note: legacy_note,
+                        agent: agent,
+                        session: session,
+                        question: question,
+                        reply: reply,
+                        user: user do
+          @prefix Sheaf.NS.AS
+          @prefix Sheaf.NS.DOC
+          @prefix RDF.NS.RDFS
+
+          note
+          |> a(AS.Note)
+          |> a(DOC.ResearchNote)
+          |> AS.content("Newer note.")
+          |> AS.published(~U[2026-04-24 14:00:00Z])
+          |> AS.attributedTo(agent)
+          |> AS.context(session)
+          |> RDFS.label("Newer research note")
+          |> DOC.mentions(Id.iri("BLK500"))
+
+          legacy_note
+          |> a(AS.Note)
+          |> AS.content("Legacy note.")
+          |> AS.published(~U[2026-04-24 13:00:00Z])
+          |> RDFS.label("Legacy research note")
+
+          agent
+          |> RDFS.label("Paper reader")
+
+          session
+          |> RDFS.label("Research session SESS05")
+          |> DOC.conversationMode("research")
+
+          question
+          |> a(DOC.Message)
+          |> AS.context(session)
+          |> AS.content("What changed in the appendix?")
+          |> AS.published(~U[2026-04-24 12:00:00Z])
+          |> AS.attributedTo(user)
+
+          reply
+          |> a(DOC.Message)
+          |> AS.context(session)
+          |> AS.content("A reply should not become the group title.")
+          |> AS.inReplyTo(question)
+
+          user
+          |> RDFS.label("Reader")
+        end,
+        name: Sheaf.Repo.workspace_graph()
+      )
+
+    dataset = RDF.Dataset.new() |> RDF.Dataset.add(workspace_graph)
+    graph = Notes.from_dataset(dataset, 2)
+
+    assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.AS.Note})
+    assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.DOC.ResearchNote})
+    assert RDF.Data.include?(graph, {legacy_note, RDF.type(), Sheaf.NS.DOC.ResearchNote})
+    assert RDF.Data.include?(graph, {agent, RDF.type(), PROV.SoftwareAgent})
+    assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.DOC.AssistantConversation})
+    assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.AS.OrderedCollection})
+    assert RDF.Data.include?(graph, {session, Sheaf.NS.AS.items(), note})
+    assert RDF.Data.include?(graph, {session, Sheaf.NS.AS.items(), question})
+    assert RDF.Data.include?(graph, {question, RDF.type(), Sheaf.NS.DOC.Message})
+
+    assert RDF.Data.include?(
+             graph,
+             {question, Sheaf.NS.AS.content(), "What changed in the appendix?"}
+           )
+
+    assert RDF.Data.include?(graph, {user, RDF.NS.RDFS.label(), "Reader"})
+    refute RDF.Data.include?(graph, {session, Sheaf.NS.AS.items(), reply})
+    refute RDF.Data.include?(graph, {reply, RDF.type(), Sheaf.NS.DOC.Message})
+  end
 end

@@ -11,6 +11,7 @@ defmodule Sheaf.Assistant.Notes do
   alias RDF.{Description, Graph}
   alias Sheaf.BlockRefs
   alias Sheaf.Id
+  require OpenTelemetry.Tracer, as: Tracer
   require RDF.Graph
 
   @default_limit 20
@@ -28,11 +29,21 @@ defmodule Sheaf.Assistant.Notes do
   Returns a graph describing recently published assistant notes.
   """
   def list_graph(opts \\ []) do
-    opts
-    |> Keyword.get(:limit, @default_limit)
-    |> normalize_limit()
-    |> list_query()
-    |> then(&Sheaf.query("assistant notes list construct", &1))
+    limit = opts |> Keyword.get(:limit, @default_limit) |> normalize_limit()
+
+    Tracer.with_span "Sheaf.Assistant.Notes.list_graph", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "quadlog"},
+        {"sheaf.limit", limit}
+      ]
+    } do
+      with :ok <- load_notes_cache() do
+        graph = Sheaf.Repo.ask(&from_dataset(&1, limit))
+        Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(graph))
+        {:ok, graph}
+      end
+    end
   end
 
   @doc """
@@ -162,85 +173,191 @@ defmodule Sheaf.Assistant.Notes do
     end
   end
 
-  defp list_query(limit) do
-    """
-    PREFIX as: <https://www.w3.org/ns/activitystreams#>
-    PREFIX prov: <http://www.w3.org/ns/prov#>
-    PREFIX sheaf: <https://less.rest/sheaf/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  @doc false
+  def from_dataset(dataset, limit \\ @default_limit) do
+    limit = normalize_limit(limit)
 
-    CONSTRUCT {
-      ?note a as:Note ;
-        a sheaf:ResearchNote ;
-        as:content ?content ;
-        as:published ?published ;
-        as:attributedTo ?agent ;
-        as:context ?context ;
-        rdfs:label ?title ;
-        sheaf:mentions ?mention .
+    Tracer.with_span "Sheaf.Assistant.Notes.from_dataset", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.limit", limit},
+        {"sheaf.statement_count", RDF.Data.statement_count(dataset)}
+      ]
+    } do
+      graph = union_graph(dataset)
+      index = graph_index(graph)
 
-      ?agent a prov:SoftwareAgent ;
-        rdfs:label ?agentLabel .
+      notes =
+        graph
+        |> RDF.Data.descriptions()
+        |> Enum.filter(&note_candidate?/1)
+        |> Enum.sort_by(&sort_key/1, :desc)
+        |> Enum.take(limit)
 
-      ?context a sheaf:AssistantConversation ;
-        a as:OrderedCollection ;
-        rdfs:label ?contextLabel ;
-        sheaf:conversationMode ?contextMode ;
-        as:items ?note ;
-        as:items ?question .
+      Tracer.set_attribute("sheaf.note_candidate_count", length(notes))
 
-      ?question a sheaf:Message ;
-        as:content ?questionContent ;
-        as:published ?questionPublished ;
-        as:attributedTo ?questionActor ;
-        as:context ?context .
+      output =
+        Enum.reduce(notes, Graph.new(), fn note, output ->
+          add_note_neighborhood(output, index, note)
+        end)
 
-      ?questionActor rdfs:label ?questionActorLabel .
-    }
-    WHERE {
-      {
-        SELECT ?note ?published WHERE {
-          {
-            ?note a sheaf:ResearchNote .
-          }
-          UNION
-          {
-            ?note a as:Note ;
-              rdfs:label ?legacyTitle .
-            FILTER NOT EXISTS { ?note as:inReplyTo ?replyTarget }
-          }
-          OPTIONAL { ?note as:published ?published }
-        }
-        ORDER BY DESC(?published)
-        LIMIT #{limit}
-      }
+      Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(output))
+      output
+    end
+  end
 
-      ?note a as:Note .
-      ?note as:content ?content .
-      OPTIONAL { ?note rdfs:label ?title }
-      OPTIONAL {
-        ?note as:attributedTo ?agent .
-        OPTIONAL { ?agent rdfs:label ?agentLabel }
-      }
-      OPTIONAL {
-        ?note as:context ?context .
-        OPTIONAL { ?context rdfs:label ?contextLabel }
-        OPTIONAL { ?context sheaf:conversationMode ?contextMode }
-        OPTIONAL {
-          ?question a sheaf:Message ;
-            as:context ?context ;
-            as:content ?questionContent .
-          FILTER NOT EXISTS { ?question as:inReplyTo ?questionReplyTarget }
-          OPTIONAL { ?question as:published ?questionPublished }
-          OPTIONAL {
-            ?question as:attributedTo ?questionActor .
-            OPTIONAL { ?questionActor rdfs:label ?questionActorLabel }
-          }
-        }
-      }
-      OPTIONAL { ?note sheaf:mentions ?mention }
-    }
-    """
+  defp load_notes_cache do
+    Sheaf.Repo.load_once({nil, nil, nil, RDF.iri(Sheaf.Repo.workspace_graph())})
+  end
+
+  defp union_graph(dataset) do
+    dataset
+    |> RDF.Dataset.graphs()
+    |> Enum.flat_map(&Graph.triples/1)
+    |> Graph.new()
+  end
+
+  defp add_note_neighborhood(output, index, %Description{} = note) do
+    subject = Description.subject(note)
+    content = first_object(index, subject, Sheaf.NS.AS.content())
+
+    if Description.include?(note, {RDF.type(), Sheaf.NS.AS.Note}) and content do
+      output
+      |> add(subject, RDF.type(), Sheaf.NS.AS.Note)
+      |> add(subject, RDF.type(), Sheaf.NS.DOC.ResearchNote)
+      |> add(subject, Sheaf.NS.AS.content(), content)
+      |> add_first(index, subject, Sheaf.NS.AS.published())
+      |> add_first(index, subject, Sheaf.NS.AS.attributedTo())
+      |> add_first(index, subject, Sheaf.NS.AS.context())
+      |> add_first(index, subject, RDF.NS.RDFS.label())
+      |> add_all(index, subject, Sheaf.NS.DOC.mentions())
+      |> add_agent_neighborhood(index, first_object(index, subject, Sheaf.NS.AS.attributedTo()))
+      |> add_context_neighborhood(
+        index,
+        subject,
+        first_object(index, subject, Sheaf.NS.AS.context())
+      )
+    else
+      output
+    end
+  end
+
+  defp add_agent_neighborhood(output, _index, nil), do: output
+
+  defp add_agent_neighborhood(output, index, agent) do
+    output
+    |> add(agent, RDF.type(), Sheaf.NS.PROV.SoftwareAgent)
+    |> add_first(index, agent, RDF.NS.RDFS.label())
+  end
+
+  defp add_context_neighborhood(output, _index, _note, nil), do: output
+
+  defp add_context_neighborhood(output, index, note, context) do
+    output =
+      output
+      |> add(context, RDF.type(), Sheaf.NS.DOC.AssistantConversation)
+      |> add(context, RDF.type(), Sheaf.NS.AS.OrderedCollection)
+      |> add_first(index, context, RDF.NS.RDFS.label())
+      |> add_first(index, context, Sheaf.NS.DOC.conversationMode())
+      |> add(context, Sheaf.NS.AS.items(), note)
+
+    index
+    |> subjects_with(Sheaf.NS.AS.context(), context)
+    |> Enum.map(&description(index, &1))
+    |> Enum.filter(&question?/1)
+    |> Enum.reduce(output, fn question, output ->
+      add_question_neighborhood(output, index, context, question)
+    end)
+  end
+
+  defp add_question_neighborhood(output, index, context, %Description{} = question) do
+    subject = Description.subject(question)
+    actor = first_object(index, subject, Sheaf.NS.AS.attributedTo())
+
+    output
+    |> add(context, Sheaf.NS.AS.items(), subject)
+    |> add(subject, RDF.type(), Sheaf.NS.DOC.Message)
+    |> add(subject, Sheaf.NS.AS.context(), context)
+    |> add_first(index, subject, Sheaf.NS.AS.content())
+    |> add_first(index, subject, Sheaf.NS.AS.published())
+    |> add_first(index, subject, Sheaf.NS.AS.attributedTo())
+    |> add_actor_label(index, actor)
+  end
+
+  defp add_actor_label(output, _index, nil), do: output
+
+  defp add_actor_label(output, index, actor),
+    do: add_first(output, index, actor, RDF.NS.RDFS.label())
+
+  defp add_first(output, index, subject, predicate),
+    do: add(output, subject, predicate, first_object(index, subject, predicate))
+
+  defp add_all(output, index, subject, predicate) do
+    index
+    |> objects_for(subject, predicate)
+    |> Enum.reduce(output, &add(&2, subject, predicate, &1))
+  end
+
+  defp add(output, _subject, _predicate, nil), do: output
+
+  defp add(output, subject, predicate, object),
+    do: Graph.add(output, {subject, predicate, object})
+
+  defp note_candidate?(%Description{} = description) do
+    Description.include?(description, {RDF.type(), Sheaf.NS.DOC.ResearchNote}) or
+      legacy_note?(description)
+  end
+
+  defp legacy_note?(%Description{} = description) do
+    Description.include?(description, {RDF.type(), Sheaf.NS.AS.Note}) and
+      Description.first(description, RDF.NS.RDFS.label()) != nil and
+      Description.first(description, Sheaf.NS.AS.inReplyTo()) == nil
+  end
+
+  defp question?(%Description{} = description) do
+    Description.include?(description, {RDF.type(), Sheaf.NS.DOC.Message}) and
+      Description.first(description, Sheaf.NS.AS.content()) != nil and
+      Description.first(description, Sheaf.NS.AS.inReplyTo()) == nil
+  end
+
+  defp description(index, subject) do
+    index
+    |> objects_for(subject, nil)
+    |> Enum.map(fn {predicate, object} -> {subject, predicate, object} end)
+    |> Graph.new()
+    |> RDF.Data.description(subject)
+  end
+
+  defp first_object(index, subject, predicate),
+    do: index |> objects_for(subject, predicate) |> List.first()
+
+  defp objects_for(%{by_sp: by_sp}, subject, nil) do
+    by_sp
+    |> Enum.flat_map(fn
+      {{^subject, predicate}, objects} -> Enum.map(objects, &{predicate, &1})
+      _other -> []
+    end)
+  end
+
+  defp objects_for(%{by_sp: by_sp}, subject, predicate),
+    do: Map.get(by_sp, {subject, predicate}, [])
+
+  defp subjects_with(%{by_po: by_po}, predicate, object),
+    do: Map.get(by_po, {predicate, object}, [])
+
+  defp graph_index(graph) do
+    Enum.reduce(Graph.triples(graph), %{by_sp: %{}, by_po: %{}}, fn {subject, predicate, object},
+                                                                    index ->
+      index
+      |> Map.update!(
+        :by_sp,
+        &Map.update(&1, {subject, predicate}, [object], fn objects -> [object | objects] end)
+      )
+      |> Map.update!(
+        :by_po,
+        &Map.update(&1, {predicate, object}, [subject], fn subjects -> [subject | subjects] end)
+      )
+    end)
   end
 
   defp note?(%Description{} = description) do
