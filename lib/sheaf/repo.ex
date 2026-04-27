@@ -78,9 +78,12 @@ defmodule Sheaf.Repo do
         {"db.operation", "clear_cache"}
       ]
     } do
-      result = Quadlog.clear_cache(__MODULE__)
-      set_dataset_count_attribute()
-      result
+      with :ok <- Quadlog.clear_cache(__MODULE__),
+           :ok <- load({nil, nil, nil, RDF.iri(@workspace_graph)}),
+           :ok <- load({nil, nil, nil, RDF.iri(@metadata_graph)}) do
+        set_dataset_count_attribute()
+        :ok
+      end
     end
   end
 
