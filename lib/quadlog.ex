@@ -88,7 +88,13 @@ defmodule Quadlog do
 
     rows = sqlite_rows(tx, changes)
 
-    case Exqlite.transaction(state.conn, fn conn -> insert_rows(conn, rows) end) do
+    case Exqlite.transaction(
+           state.conn,
+           fn conn ->
+             with :ok <- insert_rows(conn, rows), do: apply_quad_rows(conn, rows)
+           end,
+           timeout: :infinity
+         ) do
       {:ok, :ok} ->
         dataset =
           Enum.reduce(changes, state.dataset, fn
@@ -114,71 +120,122 @@ defmodule Quadlog do
   end
 
   defp migrate(conn) do
-    execute(conn, """
-    CREATE TABLE IF NOT EXISTS changes (
-      seq INTEGER PRIMARY KEY AUTOINCREMENT,
-      tx TEXT NOT NULL,
-      polarity INTEGER NOT NULL CHECK (polarity IN (-1, 1)),
-      graph_iri TEXT,
-      subject_iri TEXT,
-      subject_bnode TEXT,
-      predicate_iri TEXT NOT NULL,
-      object_iri TEXT,
-      object_bnode TEXT,
-      object_text TEXT,
-      object_datatype TEXT,
-      object_lang TEXT
-    )
-    """)
-  end
-
-  defp load(conn, pattern, dataset)
-
-  defp load(conn, {nil, nil, nil, nil}, dataset) do
-    sql = select_sql("ORDER BY seq")
-
-    case select(conn, sql) do
-      {:ok, result} -> {:ok, apply_sqlite_result(dataset, result.rows)}
-      error -> error
+    with :ok <-
+           execute(conn, """
+           CREATE TABLE IF NOT EXISTS changes (
+             seq INTEGER PRIMARY KEY AUTOINCREMENT,
+             tx TEXT NOT NULL,
+             polarity INTEGER NOT NULL CHECK (polarity IN (-1, 1)),
+             graph_iri TEXT,
+             subject_iri TEXT,
+             subject_bnode TEXT,
+             predicate_iri TEXT NOT NULL,
+             object_iri TEXT,
+             object_bnode TEXT,
+             object_text TEXT,
+             object_datatype TEXT,
+             object_lang TEXT
+           )
+           """),
+         :ok <-
+           execute(conn, """
+           CREATE TABLE IF NOT EXISTS terms (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             kind TEXT NOT NULL CHECK (kind IN ('iri', 'bnode', 'literal')),
+             value TEXT NOT NULL,
+             datatype_id INTEGER REFERENCES terms(id),
+             lang TEXT
+           )
+           """),
+         :ok <-
+           execute(conn, """
+           CREATE UNIQUE INDEX IF NOT EXISTS terms_identity
+           ON terms (kind, value, COALESCE(datatype_id, 0), COALESCE(lang, ''))
+           """),
+         :ok <-
+           execute(conn, """
+           CREATE INDEX IF NOT EXISTS terms_kind_value
+           ON terms (kind, value)
+           """),
+         :ok <-
+           execute(conn, """
+           CREATE TABLE IF NOT EXISTS quads (
+             graph_id INTEGER NOT NULL DEFAULT 0,
+             subject_id INTEGER NOT NULL REFERENCES terms(id),
+             predicate_id INTEGER NOT NULL REFERENCES terms(id),
+             object_id INTEGER NOT NULL REFERENCES terms(id)
+           )
+           """),
+         :ok <-
+           execute(conn, """
+           CREATE UNIQUE INDEX IF NOT EXISTS quads_identity
+           ON quads (graph_id, subject_id, predicate_id, object_id)
+           """),
+         :ok <-
+           execute(
+             conn,
+             "CREATE INDEX IF NOT EXISTS quads_spog ON quads (subject_id, predicate_id, object_id, graph_id)"
+           ),
+         :ok <-
+           execute(
+             conn,
+             "CREATE INDEX IF NOT EXISTS quads_posg ON quads (predicate_id, object_id, subject_id, graph_id)"
+           ),
+         :ok <-
+           execute(
+             conn,
+             "CREATE INDEX IF NOT EXISTS quads_gspo ON quads (graph_id, subject_id, predicate_id, object_id)"
+           ),
+         :ok <-
+           execute(
+             conn,
+             "CREATE INDEX IF NOT EXISTS quads_gpos ON quads (graph_id, predicate_id, object_id, subject_id)"
+           ) do
+      :ok
     end
   end
 
   defp load(conn, {subject, predicate, object, graph}, dataset) do
-    {where, params} =
-      [
-        {"subject_iri", subject},
-        {"predicate_iri", predicate},
-        {"object_iri", object},
-        {"graph_iri", graph}
-      ]
-      |> Enum.reject(fn {_column, term} -> is_nil(term) end)
-      |> Enum.map(fn {column, term} -> {"#{column} = ?", value(term)} end)
-      |> Enum.unzip()
-
-    suffix =
-      case where do
-        [] -> "ORDER BY seq"
-        where -> "WHERE #{Enum.join(where, " AND ")} ORDER BY seq"
-      end
-
-    sql = select_sql(suffix)
-
-    case select(conn, sql, params) do
-      {:ok, result} -> {:ok, apply_sqlite_result(dataset, result.rows)}
-      error -> error
+    with {:ok, {where, params}} <-
+           quad_filters(conn, [
+             {"q.subject_id", subject},
+             {"q.predicate_id", predicate},
+             {"q.object_id", object},
+             {"q.graph_id", graph}
+           ]),
+         {:ok, result} <- select(conn, quad_select_sql(where), params) do
+      {:ok, add_quad_result(dataset, result.rows)}
     end
   end
 
-  defp select_sql(suffix) do
+  defp quad_select_sql(where) do
+    suffix =
+      case where do
+        [] -> ""
+        where -> "WHERE #{Enum.join(where, " AND ")}"
+      end
+
     """
-    SELECT tx, polarity, graph_iri, subject_iri, subject_bnode, predicate_iri,
-           object_iri, object_bnode, object_text, object_datatype, object_lang
-    FROM changes
+    SELECT
+      g.kind, g.value, gdt.value, g.lang,
+      s.kind, s.value, sdt.value, s.lang,
+      p.kind, p.value, pdt.value, p.lang,
+      o.kind, o.value, odt.value, o.lang
+    FROM quads q
+    LEFT JOIN terms g ON q.graph_id = g.id
+    LEFT JOIN terms gdt ON g.datatype_id = gdt.id
+    JOIN terms s ON q.subject_id = s.id
+    LEFT JOIN terms sdt ON s.datatype_id = sdt.id
+    JOIN terms p ON q.predicate_id = p.id
+    LEFT JOIN terms pdt ON p.datatype_id = pdt.id
+    JOIN terms o ON q.object_id = o.id
+    LEFT JOIN terms odt ON o.datatype_id = odt.id
     #{suffix}
+    ORDER BY q.graph_id, q.subject_id, q.predicate_id, q.object_id
     """
   end
 
-  defp select(conn, sql, params \\ []) do
+  defp select(conn, sql, params) do
     Tracer.with_span "quadlog.sqlite.select", %{
       kind: :client,
       attributes: [
@@ -197,46 +254,38 @@ defmodule Quadlog do
     end
   end
 
-  defp apply_sqlite_result(dataset, rows) do
+  defp add_quad_result(dataset, rows) do
     Enum.reduce(rows, dataset, fn row, dataset ->
       [
-        _tx,
-        polarity,
-        graph_iri,
-        subject_iri,
-        subject_bnode,
-        predicate_iri,
-        object_iri,
-        object_bnode,
-        object_text,
+        graph_kind,
+        graph_value,
+        graph_datatype,
+        graph_lang,
+        subject_kind,
+        subject_value,
+        subject_datatype,
+        subject_lang,
+        predicate_kind,
+        predicate_value,
+        predicate_datatype,
+        predicate_lang,
+        object_kind,
+        object_value,
         object_datatype,
         object_lang
       ] = row
 
-      subject =
-        cond do
-          subject_iri -> %RDF.IRI{value: subject_iri}
-          subject_bnode -> %RDF.BlankNode{value: subject_bnode}
-        end
-
-      object =
-        cond do
-          object_iri -> %RDF.IRI{value: object_iri}
-          object_bnode -> %RDF.BlankNode{value: object_bnode}
-          object_lang -> RDF.literal(object_text, language: object_lang)
-          object_text -> RDF.literal(object_text, datatype: RDF.iri(object_datatype))
-        end
-
       graph =
         RDF.Graph.new(
-          {subject, %RDF.IRI{value: predicate_iri}, object},
-          name: if(graph_iri, do: %RDF.IRI{value: graph_iri})
+          {
+            term(subject_kind, subject_value, subject_datatype, subject_lang),
+            term(predicate_kind, predicate_value, predicate_datatype, predicate_lang),
+            term(object_kind, object_value, object_datatype, object_lang)
+          },
+          name: term(graph_kind, graph_value, graph_datatype, graph_lang)
         )
 
-      case polarity do
-        1 -> RDF.Dataset.add(dataset, graph)
-        -1 -> RDF.Dataset.delete(dataset, graph)
-      end
+      RDF.Dataset.add(dataset, graph)
     end)
   end
 
@@ -304,6 +353,182 @@ defmodule Quadlog do
       row
     )
   end
+
+  defp apply_quad_rows(conn, rows) do
+    Enum.reduce_while(rows, :ok, fn row, :ok ->
+      case apply_quad_row(conn, row) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp apply_quad_row(conn, row) do
+    {polarity, graph, subject, predicate, object} = row_quad(row)
+
+    with {:ok, graph_id} <- term_id(conn, graph),
+         {:ok, subject_id} <- term_id(conn, subject),
+         {:ok, predicate_id} <- term_id(conn, predicate),
+         {:ok, object_id} <- term_id(conn, object) do
+      case polarity do
+        1 ->
+          execute(
+            conn,
+            """
+            INSERT OR IGNORE INTO quads
+              (graph_id, subject_id, predicate_id, object_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            [graph_id, subject_id, predicate_id, object_id]
+          )
+
+        -1 ->
+          execute(
+            conn,
+            """
+            DELETE FROM quads
+            WHERE graph_id = ? AND subject_id = ? AND predicate_id = ? AND object_id = ?
+            """,
+            [graph_id, subject_id, predicate_id, object_id]
+          )
+      end
+    end
+  end
+
+  defp row_quad([
+         _tx,
+         polarity,
+         graph_iri,
+         subject_iri,
+         subject_bnode,
+         predicate_iri,
+         object_iri,
+         object_bnode,
+         object_text,
+         object_datatype,
+         object_lang
+       ]) do
+    subject =
+      cond do
+        subject_iri -> RDF.iri(subject_iri)
+        subject_bnode -> RDF.bnode(subject_bnode)
+      end
+
+    object =
+      cond do
+        object_iri -> RDF.iri(object_iri)
+        object_bnode -> RDF.bnode(object_bnode)
+        object_lang -> RDF.literal(object_text, language: object_lang)
+        object_text -> RDF.literal(object_text, datatype: RDF.iri(object_datatype))
+      end
+
+    {polarity, if(graph_iri, do: RDF.iri(graph_iri)), subject, RDF.iri(predicate_iri), object}
+  end
+
+  defp quad_filters(conn, slots) do
+    slots
+    |> Enum.reduce_while({:ok, [], []}, fn
+      {_column, nil}, {:ok, where, params} ->
+        {:cont, {:ok, where, params}}
+
+      {column, term}, {:ok, where, params} ->
+        case find_term_id(conn, term) do
+          {:ok, nil} -> {:halt, {:ok, ["0 = 1"], []}}
+          {:ok, id} -> {:cont, {:ok, ["#{column} = ?" | where], [id | params]}}
+          error -> {:halt, error}
+        end
+    end)
+    |> case do
+      {:ok, where, params} -> {:ok, {Enum.reverse(where), Enum.reverse(params)}}
+      error -> error
+    end
+  end
+
+  defp term_id(_conn, nil), do: {:ok, 0}
+
+  defp term_id(conn, %RDF.IRI{} = term), do: intern_term(conn, "iri", value(term), nil, nil)
+
+  defp term_id(conn, %RDF.BlankNode{} = term),
+    do: intern_term(conn, "bnode", value(term), nil, nil)
+
+  defp term_id(conn, %RDF.Literal{} = term) do
+    with {:ok, datatype_id} <- term_id(conn, RDF.Literal.datatype_id(term)) do
+      intern_term(
+        conn,
+        "literal",
+        RDF.Literal.lexical(term),
+        datatype_id,
+        RDF.Literal.language(term)
+      )
+    end
+  end
+
+  defp find_term_id(conn, %RDF.IRI{} = term), do: find_term_id(conn, "iri", value(term), nil, nil)
+
+  defp find_term_id(conn, %RDF.BlankNode{} = term),
+    do: find_term_id(conn, "bnode", value(term), nil, nil)
+
+  defp find_term_id(conn, %RDF.Literal{} = term) do
+    with {:ok, datatype_id} when is_integer(datatype_id) <-
+           find_term_id(conn, RDF.Literal.datatype_id(term)) do
+      find_term_id(
+        conn,
+        "literal",
+        RDF.Literal.lexical(term),
+        datatype_id,
+        RDF.Literal.language(term)
+      )
+    else
+      {:ok, nil} -> {:ok, nil}
+      error -> error
+    end
+  end
+
+  defp intern_term(conn, kind, value, datatype_id, lang) do
+    with :ok <-
+           execute(
+             conn,
+             """
+             INSERT OR IGNORE INTO terms (kind, value, datatype_id, lang)
+             VALUES (?, ?, ?, ?)
+             """,
+             [kind, value, datatype_id, lang]
+           ) do
+      find_term_id(conn, kind, value, datatype_id, lang)
+    end
+  end
+
+  defp find_term_id(conn, kind, value, datatype_id, lang) do
+    with {:ok, result} <-
+           select(
+             conn,
+             """
+             SELECT id
+             FROM terms
+             WHERE kind = ?
+               AND value = ?
+               AND COALESCE(datatype_id, 0) = ?
+               AND COALESCE(lang, '') = ?
+             LIMIT 1
+             """,
+             [kind, value, datatype_id || 0, lang || ""]
+           ) do
+      case result.rows do
+        [[id]] -> {:ok, id}
+        [] -> {:ok, nil}
+      end
+    end
+  end
+
+  defp term(nil, nil, nil, nil), do: nil
+  defp term("iri", value, _datatype, _lang), do: RDF.iri(value)
+  defp term("bnode", value, _datatype, _lang), do: RDF.bnode(value)
+
+  defp term("literal", value, _datatype, lang) when is_binary(lang),
+    do: RDF.literal(value, language: lang)
+
+  defp term("literal", value, datatype, _lang),
+    do: RDF.literal(value, datatype: RDF.iri(datatype))
 
   defp value(nil), do: nil
   defp value(term), do: RDF.Term.value(term) |> to_string()

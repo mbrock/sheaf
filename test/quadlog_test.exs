@@ -195,4 +195,29 @@ defmodule QuadlogTest do
 
     refute RDF.Data.include?(Quadlog.dataset(log), triple)
   end
+
+  @tag :tmp_dir
+  test "current quads are idempotent and retracted independently of history", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "quadlog.sqlite3")
+    triple = {~I<https://example.com/s>, ~I<https://example.com/p>, "first"}
+
+    {:ok, log} = Quadlog.start_link(path)
+
+    assert :ok = Quadlog.assert(log, "tx-1", RDF.graph(triple))
+    assert :ok = Quadlog.assert(log, "tx-2", RDF.graph(triple))
+    assert 1 == sqlite_scalar(path, "SELECT COUNT(*) FROM quads")
+    assert 2 == sqlite_scalar(path, "SELECT COUNT(*) FROM changes")
+
+    assert :ok = Quadlog.retract(log, "tx-3", RDF.graph(triple))
+
+    assert 0 == sqlite_scalar(path, "SELECT COUNT(*) FROM quads")
+    assert 3 == sqlite_scalar(path, "SELECT COUNT(*) FROM changes")
+    refute RDF.Data.include?(Quadlog.dataset(log), triple)
+  end
+
+  defp sqlite_scalar(path, sql) do
+    {:ok, conn} = Exqlite.start_link(database: path)
+    {:ok, %{rows: [[value]]}} = Exqlite.query(conn, sql)
+    value
+  end
 end
