@@ -71,7 +71,7 @@ check_env() {
   done < <(resolved_env)
 
   if [ "$failed" -ne 0 ]; then
-    printf 'Load the environment with direnv, source %s, or run the command through %s/bin/env.\n' "$ENV_FILE" "$APP_ROOT" >&2
+    printf 'Load the environment with direnv, run through %s/bin/env, or export while sourcing: set -a; . %s; set +a.\n' "$APP_ROOT" "$ENV_FILE" >&2
     return 2
   fi
 }

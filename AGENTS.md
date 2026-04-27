@@ -8,8 +8,9 @@ it has real runtime state, so orient yourself before changing behavior.
 Sheaf commands expect the environment to already be loaded. Human shells should
 use direnv (`.envrc` sources `.env`); agent harnesses usually should prefix
 commands with `bin/env`, for example `bin/env bin/status` or
-`bin/env mix precommit`. If you do not use direnv or `bin/env`, source `.env`
-before running Sheaf commands. Normal commands run `bin/env check` and fail
+`bin/env mix precommit`. If you do not use direnv or `bin/env`, export while
+sourcing `.env` with `set -a; . .env; set +a` before running Sheaf commands.
+Normal commands run `bin/env check` and fail
 immediately if the current environment is missing or diverges from `.env`, so
 agents do not accidentally operate against default or stale endpoints.
 
