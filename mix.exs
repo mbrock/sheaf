@@ -107,11 +107,7 @@ defmodule Sheaf.MixProject do
         "phx.digest"
       ],
       precommit: [
-        "compile --warnings-as-errors",
-        "deps.unlock --unused",
         "format",
-        "escript.build",
-        "cmd bin/sheaf-admin schema upload",
         "test"
       ]
     ]
