@@ -1,6 +1,8 @@
 defmodule Quadlog do
   use GenServer
 
+  require OpenTelemetry.Tracer, as: Tracer
+
   def start_link(path, opts \\ []) do
     GenServer.start_link(__MODULE__, {path, opts}, Keyword.take(opts, [:name]))
   end
@@ -95,7 +97,9 @@ defmodule Quadlog do
   defp load(conn, pattern, dataset)
 
   defp load(conn, {nil, nil, nil, nil}, dataset) do
-    case Exqlite.query(conn, select_sql("ORDER BY seq")) do
+    sql = select_sql("ORDER BY seq")
+
+    case select(conn, sql) do
       {:ok, result} -> {:ok, apply_sqlite_result(dataset, result.rows)}
       error -> error
     end
@@ -119,7 +123,9 @@ defmodule Quadlog do
         where -> "WHERE #{Enum.join(where, " AND ")} ORDER BY seq"
       end
 
-    case Exqlite.query(conn, select_sql(suffix), params) do
+    sql = select_sql(suffix)
+
+    case select(conn, sql, params) do
       {:ok, result} -> {:ok, apply_sqlite_result(dataset, result.rows)}
       error -> error
     end
@@ -132,6 +138,25 @@ defmodule Quadlog do
     FROM changes
     #{suffix}
     """
+  end
+
+  defp select(conn, sql, params \\ []) do
+    Tracer.with_span "quadlog.sqlite.select", %{
+      kind: :client,
+      attributes: [
+        {"db.system", "sqlite"},
+        {"db.operation", "SELECT"},
+        {"db.statement", sql}
+      ]
+    } do
+      result = Exqlite.query(conn, sql, params)
+
+      with {:ok, %{rows: rows}} <- result do
+        Tracer.set_attribute("db.response.returned_rows", length(rows))
+      end
+
+      result
+    end
   end
 
   defp apply_sqlite_result(dataset, rows) do

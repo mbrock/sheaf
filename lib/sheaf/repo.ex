@@ -57,9 +57,7 @@ defmodule Sheaf.Repo do
       kind: :internal,
       attributes: pattern_attributes("load", pattern)
     } do
-      result = Quadlog.load(__MODULE__, pattern)
-      set_dataset_count_attribute()
-      result
+      Quadlog.load(__MODULE__, pattern)
     end
   end
 
@@ -68,9 +66,7 @@ defmodule Sheaf.Repo do
       kind: :internal,
       attributes: pattern_attributes("load_once", pattern)
     } do
-      result = Quadlog.load_once(__MODULE__, pattern)
-      set_dataset_count_attribute()
-      result
+      Quadlog.load_once(__MODULE__, pattern)
     end
   end
 
