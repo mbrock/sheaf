@@ -3,7 +3,10 @@ defmodule Sheaf.Workspace do
   Workspace-level reading preferences stored as RDF.
   """
 
+  alias RDF.{Description, Graph}
   alias Sheaf.Id
+  alias Sheaf.NS.DOC
+  require RDF.Graph
 
   @graph "https://less.rest/sheaf/workspace"
   @label "Ieva's thesis workspace"
@@ -12,15 +15,11 @@ defmodule Sheaf.Workspace do
   Returns the IRI for the default workspace, creating it when needed.
   """
   def ensure_default do
-    case Sheaf.select("default workspace select", default_workspace_query()) do
-      {:ok, %{results: [row | _]}} ->
-        {:ok, row |> Map.fetch!("workspace") |> RDF.Term.value() |> to_string()}
-
-      {:ok, %{results: []}} ->
-        create_default()
-
-      {:error, reason} ->
-        {:error, reason}
+    with :ok <- load_workspace_graph() do
+      case Sheaf.Repo.ask(&default_workspace/1) do
+        nil -> create_default()
+        workspace -> {:ok, workspace |> RDF.Term.value() |> to_string()}
+      end
     end
   end
 
@@ -28,14 +27,19 @@ defmodule Sheaf.Workspace do
   Records whether a document is excluded from the active workspace corpus.
   """
   def set_document_excluded(document_id, excluded?) when is_binary(document_id) do
-    document = Id.iri(document_id) |> to_string()
+    document = Id.iri(document_id)
 
     if excluded? do
       with {:ok, workspace} <- ensure_default() do
-        Sheaf.update("workspace exclusion insert", insert_exclusion_update(workspace, document))
+        workspace
+        |> RDF.iri()
+        |> exclusion_graph(document)
+        |> Sheaf.Repo.assert()
       end
     else
-      Sheaf.update("workspace exclusion delete", delete_exclusion_update(document))
+      document
+      |> exclusion_retraction_graph()
+      |> Sheaf.Repo.retract()
     end
   end
 
@@ -43,10 +47,17 @@ defmodule Sheaf.Workspace do
   Records the person whose authored work the active workspace is organized around.
   """
   def set_owner(person_id) when is_binary(person_id) do
-    person = Id.iri(person_id) |> to_string()
+    person = Id.iri(person_id)
 
     with {:ok, workspace} <- ensure_default() do
-      Sheaf.update("workspace owner insert", insert_owner_update(workspace, person))
+      workspace = RDF.iri(workspace)
+      previous = Sheaf.Repo.ask(&workspace_owners(&1, workspace))
+
+      changes =
+        Enum.map(previous, &{:retract, owner_graph(workspace, &1)}) ++
+          [{:assert, owner_graph(workspace, person)}]
+
+      Sheaf.Repo.transact(changes)
     end
   end
 
@@ -65,94 +76,72 @@ defmodule Sheaf.Workspace do
   end
 
   defp create_default do
-    workspace = Sheaf.mint() |> to_string()
+    workspace = Sheaf.mint()
 
-    case Sheaf.update("default workspace insert", insert_workspace_update(workspace)) do
-      :ok -> {:ok, workspace}
+    case Sheaf.Repo.assert(workspace_resource_graph(workspace)) do
+      :ok -> {:ok, workspace |> RDF.Term.value() |> to_string()}
       {:error, reason} -> {:error, reason}
       other -> {:error, other}
     end
   end
 
-  defp default_workspace_query do
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-
-    SELECT ?workspace WHERE {
-      GRAPH <#{@graph}> {
-        ?workspace a sheaf:Workspace .
-      }
-    }
-    ORDER BY ?workspace
-    LIMIT 1
-    """
+  defp load_workspace_graph do
+    Sheaf.Repo.load_once({nil, nil, nil, RDF.iri(@graph)})
   end
 
-  defp insert_workspace_update(workspace) do
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    INSERT DATA {
-      GRAPH <#{@graph}> {
-        <#{workspace}> a sheaf:Workspace ;
-          rdfs:label "#{@label}" .
-      }
-    }
-    """
+  defp default_workspace(dataset) do
+    dataset
+    |> dataset_workspace_graph()
+    |> RDF.Data.descriptions()
+    |> Enum.filter(&Description.include?(&1, {RDF.type(), DOC.Workspace}))
+    |> Enum.map(&Description.subject/1)
+    |> Enum.sort_by(&to_string/1)
+    |> List.first()
   end
 
-  defp insert_exclusion_update(workspace, document) do
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-    INSERT DATA {
-      GRAPH <#{@graph}> {
-        <#{workspace}> a sheaf:Workspace ;
-          rdfs:label "#{@label}" ;
-          sheaf:excludesDocument <#{document}> .
-      }
-    }
-    """
+  defp dataset_workspace_graph(dataset) do
+    RDF.Dataset.graph(dataset, @graph) || Graph.new()
   end
 
-  defp insert_owner_update(workspace, person) do
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  defp workspace_resource_graph(workspace) do
+    RDF.Graph.new(
+      RDF.Graph.build workspace: workspace, label: @label do
+        @prefix RDF.NS.RDFS
 
-    DELETE {
-      GRAPH <#{@graph}> {
-        <#{workspace}> sheaf:hasWorkspaceOwner ?previous .
-      }
-    }
-    INSERT {
-      GRAPH <#{@graph}> {
-        <#{workspace}> a sheaf:Workspace ;
-          rdfs:label "#{@label}" ;
-          sheaf:hasWorkspaceOwner <#{person}> .
-      }
-    }
-    WHERE {
-      OPTIONAL {
-        GRAPH <#{@graph}> {
-          <#{workspace}> sheaf:hasWorkspaceOwner ?previous .
-        }
-      }
-    }
-    """
+        workspace
+        |> a(Sheaf.NS.DOC.Workspace)
+        |> RDFS.label(label)
+      end,
+      name: @graph
+    )
   end
 
-  defp delete_exclusion_update(document) do
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
+  defp exclusion_graph(workspace, document) do
+    workspace_resource_graph(workspace)
+    |> Graph.add({workspace, DOC.excludesDocument(), document})
+  end
 
-    DELETE WHERE {
-      GRAPH <#{@graph}> {
-        ?workspace sheaf:excludesDocument <#{document}> .
-      }
-    }
-    """
+  defp exclusion_retraction_graph(document) do
+    Sheaf.Repo.ask(fn dataset ->
+      dataset
+      |> dataset_workspace_graph()
+      |> RDF.Data.descriptions()
+      |> Enum.filter(&Description.include?(&1, {DOC.excludesDocument(), document}))
+      |> Enum.reduce(Graph.new(name: @graph), fn description, graph ->
+        Graph.add(graph, {Description.subject(description), DOC.excludesDocument(), document})
+      end)
+    end)
+  end
+
+  defp owner_graph(workspace, person) do
+    workspace_resource_graph(workspace)
+    |> Graph.add({workspace, DOC.hasWorkspaceOwner(), person})
+  end
+
+  defp workspace_owners(dataset, workspace) do
+    dataset
+    |> dataset_workspace_graph()
+    |> RDF.Data.description(workspace)
+    |> Description.get(DOC.hasWorkspaceOwner(), [])
   end
 end
