@@ -176,7 +176,7 @@ otel_force_disabled? =
   otel_truthy.(System.get_env("OTEL_SDK_DISABLED")) or
     otel_truthy.(System.get_env("SHEAF_OTEL_DISABLED"))
 
-otel_enabled? = is_binary(otel_redis_url) and not otel_force_disabled?
+otel_enabled? = config_env() != :test and is_binary(otel_redis_url) and not otel_force_disabled?
 
 if otel_enabled? do
   otel_service_name =
