@@ -2,4 +2,58 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-exec "$SCRIPT_DIR/sheaf-service" start
+APP_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+
+cd "$APP_ROOT"
+"$SCRIPT_DIR/env" check
+
+LOG="$APP_ROOT/var/sheaf.log"
+HEALTH_URL="http://$SHEAF_HTTP_IP:$PORT/health"
+mkdir -p "$APP_ROOT/var"
+
+case "$SHEAF_SERVICE_MODE" in
+  tmux)
+    SESSION="$SHEAF_TMUX_SESSION"
+    if tmux has-session -t "$SESSION" 2>/dev/null; then
+      printf 'Sheaf tmux session already running: %s\n' "$SESSION"
+      exit 0
+    fi
+
+    tmux new-session -d -s "$SESSION" -c "$APP_ROOT" "./bin/env ./bin/serve"
+    printf 'Started Sheaf in tmux session: %s\n' "$SESSION"
+    ;;
+  systemd)
+    systemctl --user start "${SHEAF_SYSTEMD_UNIT:-sheaf.service}"
+    ;;
+  launchd)
+    launchctl kickstart "gui/$(id -u)/${SHEAF_LAUNCHD_LABEL:-local.sheaf.dev}"
+    ;;
+  *)
+    printf 'Unknown SHEAF_SERVICE_MODE: %s\n' "$SHEAF_SERVICE_MODE" >&2
+    exit 2
+    ;;
+esac
+
+printf 'Waiting for Sheaf health check: %s\n' "$HEALTH_URL"
+
+start="$(date +%s)"
+while true; do
+  if [ "$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 2 "$HEALTH_URL" 2>/dev/null || true)" = "200" ]; then
+    printf 'Sheaf health check is ready: %s\n' "$HEALTH_URL"
+    exit 0
+  fi
+
+  if [ "$SHEAF_SERVICE_MODE" = "tmux" ] && ! tmux has-session -t "$SHEAF_TMUX_SESSION" 2>/dev/null; then
+    printf 'Sheaf tmux session exited before the health check became ready: %s\n' "$SHEAF_TMUX_SESSION" >&2
+    [ -f "$LOG" ] && tail -n 120 "$LOG" >&2
+    exit 1
+  fi
+
+  if [ "$(($(date +%s) - start))" -ge 30 ]; then
+    printf 'Timed out waiting for Sheaf health check after 30s: %s\n' "$HEALTH_URL" >&2
+    [ -f "$LOG" ] && tail -n 120 "$LOG" >&2
+    exit 1
+  fi
+
+  sleep 1
+done

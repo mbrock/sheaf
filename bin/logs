@@ -2,4 +2,29 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-exec "$SCRIPT_DIR/sheaf-service" logs
+APP_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+
+cd "$APP_ROOT"
+"$SCRIPT_DIR/env" check
+
+case "$SHEAF_SERVICE_MODE" in
+  tmux)
+    LOG="$APP_ROOT/var/sheaf.log"
+    if [ ! -f "$LOG" ]; then
+      printf 'Sheaf log does not exist yet: %s\n' "$LOG" >&2
+      exit 1
+    fi
+    tail -n 120 "$LOG"
+    ;;
+  systemd)
+    journalctl --user -u "${SHEAF_SYSTEMD_UNIT:-sheaf.service}" -n 120
+    ;;
+  launchd)
+    printf 'launchd mode has no configured log command. Use Console.app or configure StandardOutPath/StandardErrorPath in the plist.\n' >&2
+    exit 1
+    ;;
+  *)
+    printf 'Unknown SHEAF_SERVICE_MODE: %s\n' "$SHEAF_SERVICE_MODE" >&2
+    exit 2
+    ;;
+esac

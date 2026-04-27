@@ -1,5 +1,7 @@
 import Config
 
+config :llm_db, load_dotenv: false
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration

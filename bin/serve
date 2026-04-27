@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export HOME="${HOME:-$(eval echo ~$(whoami))}"
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.asdf/shims:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
-
-if [ -f "$HOME/.asdf/asdf.sh" ]; then
-  . "$HOME/.asdf/asdf.sh"
-elif command -v brew >/dev/null 2>&1 && [ -f "$(brew --prefix asdf)/libexec/asdf.sh" ]; then
-  . "$(brew --prefix asdf)/libexec/asdf.sh"
-fi
-
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 APP_ROOT="${SHEAF_APP_ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}"
 
 cd "$APP_ROOT"
+mkdir -p "$APP_ROOT/var"
+exec > >(tee -a "$APP_ROOT/var/sheaf.log") 2>&1
 
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/runtime_env.sh"

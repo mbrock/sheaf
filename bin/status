@@ -2,4 +2,88 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-exec "$SCRIPT_DIR/sheaf-service" status
+APP_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+
+cd "$APP_ROOT"
+"$SCRIPT_DIR/env" check
+
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/lib/runtime_env.sh"
+
+print_kv() {
+  printf '  %-18s %s\n' "$1:" "$2"
+}
+
+http_status() {
+  local status
+
+  if status="$(curl -k -fsS -o /dev/null -w '%{http_code}' --max-time 2 "$1" 2>/dev/null)"; then
+    printf '%s' "$status"
+  else
+    printf 'unreachable'
+  fi
+}
+
+json_value() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r "$1"
+  else
+    cat >/dev/null
+    printf 'unavailable: jq not installed'
+  fi
+}
+
+curl_auth=()
+if [ -n "${SHEAF_SPARQL_USERNAME:-}" ] && [ -n "${SHEAF_SPARQL_PASSWORD:-}" ]; then
+  curl_auth=(-u "$SHEAF_SPARQL_USERNAME:$SHEAF_SPARQL_PASSWORD")
+fi
+
+HEALTH_URL="http://$SHEAF_HTTP_IP:$PORT/health"
+DATASET="$SHEAF_SPARQL_DATASET"
+SERVER="${DATASET%/*}"
+
+print_kv "App root" "$APP_ROOT"
+print_kv "Service mode" "$SHEAF_SERVICE_MODE"
+print_kv "Node" "$(sheaf_node_name)"
+print_kv "Public URL" "https://$PHX_HOST/"
+print_kv "Phoenix HTTP" "http://$SHEAF_HTTP_IP:$PORT/"
+print_kv "Resource base" "$SHEAF_RESOURCE_BASE"
+print_kv "Ontology base" "${SHEAF_ONTOLOGY_BASE:-https://less.rest/sheaf/}"
+print_kv "Health check" "$(http_status "$HEALTH_URL") $HEALTH_URL"
+print_kv "Dataset" "$DATASET"
+print_kv "Query endpoint" "${SHEAF_SPARQL_QUERY_ENDPOINT:-$DATASET/sparql}"
+print_kv "Update endpoint" "${SHEAF_SPARQL_UPDATE_ENDPOINT:-$DATASET/update}"
+print_kv "Data endpoint" "${SHEAF_SPARQL_DATA_ENDPOINT:-$DATASET/data}"
+print_kv "SPARQL user" "${SHEAF_SPARQL_USERNAME:-none}"
+
+if server_json="$(curl -fsS --max-time 3 "${curl_auth[@]}" "$SERVER/$/server" 2>/dev/null)"; then
+  print_kv "Fuseki server" "reachable $SERVER"
+  print_kv "Fuseki version" "$(printf '%s' "$server_json" | json_value '.version // "unknown"')"
+else
+  print_kv "Fuseki server" "unreachable $SERVER"
+fi
+
+if datasets_json="$(curl -fsS --max-time 3 "${curl_auth[@]}" "$SERVER/$/datasets" 2>/dev/null)"; then
+  print_kv "Datasets" "$(printf '%s' "$datasets_json" | json_value '[.datasets[]."ds.name"] | join(", ")')"
+fi
+
+case "$SHEAF_SERVICE_MODE" in
+  tmux)
+    if tmux has-session -t "$SHEAF_TMUX_SESSION" 2>/dev/null; then
+      echo
+      tmux list-sessions | grep "^$SHEAF_TMUX_SESSION:"
+    else
+      printf 'Sheaf is not running in tmux session: %s\n' "$SHEAF_TMUX_SESSION"
+    fi
+    ;;
+  systemd)
+    systemctl --user status "${SHEAF_SYSTEMD_UNIT:-sheaf.service}" || true
+    ;;
+  launchd)
+    launchctl print "gui/$(id -u)/${SHEAF_LAUNCHD_LABEL:-local.sheaf.dev}" || true
+    ;;
+  *)
+    printf 'Unknown SHEAF_SERVICE_MODE: %s\n' "$SHEAF_SERVICE_MODE" >&2
+    exit 2
+    ;;
+esac

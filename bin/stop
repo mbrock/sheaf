@@ -2,4 +2,28 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-exec "$SCRIPT_DIR/sheaf-service" stop
+APP_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+
+cd "$APP_ROOT"
+"$SCRIPT_DIR/env" check
+
+case "$SHEAF_SERVICE_MODE" in
+  tmux)
+    if tmux has-session -t "$SHEAF_TMUX_SESSION" 2>/dev/null; then
+      tmux kill-session -t "$SHEAF_TMUX_SESSION"
+      printf 'Stopped Sheaf tmux session: %s\n' "$SHEAF_TMUX_SESSION"
+    else
+      printf 'Sheaf tmux session is not running: %s\n' "$SHEAF_TMUX_SESSION"
+    fi
+    ;;
+  systemd)
+    systemctl --user stop "${SHEAF_SYSTEMD_UNIT:-sheaf.service}"
+    ;;
+  launchd)
+    launchctl kill TERM "gui/$(id -u)/${SHEAF_LAUNCHD_LABEL:-local.sheaf.dev}"
+    ;;
+  *)
+    printf 'Unknown SHEAF_SERVICE_MODE: %s\n' "$SHEAF_SERVICE_MODE" >&2
+    exit 2
+    ;;
+esac
