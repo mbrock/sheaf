@@ -56,6 +56,16 @@ defmodule Sheaf.NS do
     ]
   )
 
+  defvocab(CO,
+    base_iri: "http://purl.org/co/",
+    terms: ~w[
+      Collection
+      Set
+      element
+      elementOf
+    ]
+  )
+
   defvocab(DCTERMS,
     base_iri: "http://purl.org/dc/terms/",
     terms: ~w[

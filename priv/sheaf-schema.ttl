@@ -1,5 +1,6 @@
 @prefix sheaf: <https://less.rest/sheaf/> .
 @prefix as: <https://www.w3.org/ns/activitystreams#> .
+@prefix co: <http://purl.org/co/> .
 @prefix fabio: <http://purl.org/spar/fabio/> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -15,6 +16,7 @@ sheaf: a owl:Ontology ;
   vann:preferredNamespacePrefix "sheaf" ;
   vann:preferredNamespaceUri "https://less.rest/sheaf/"^^xsd:anyURI ;
   owl:imports <https://www.w3.org/ns/activitystreams#>,
+    <http://purl.org/co>,
     <http://www.w3.org/ns/prov#>,
     <http://purl.org/spar/fabio/> .
 
@@ -45,7 +47,8 @@ sheaf:Spreadsheet a rdfs:Class ;
 
 sheaf:Workspace a rdfs:Class ;
   rdfs:label "workspace"@en ;
-  rdfs:subClassOf prov:Entity ;
+  rdfs:subClassOf prov:Entity,
+    co:Set ;
   rdfs:comment "A persistent context for local reading and research preferences." .
 
 sheaf:Interview a rdfs:Class ;
