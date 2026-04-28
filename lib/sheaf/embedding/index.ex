@@ -59,6 +59,42 @@ defmodule Sheaf.Embedding.Index do
   end
 
   @doc """
+  Reports what an embedding sync would embed without calling an embedding API.
+  """
+  @spec plan(keyword()) :: {:ok, map()} | {:error, term()}
+  def plan(opts \\ []) do
+    model = Sheaf.Embedding.model(opts)
+    dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
+    source = source(opts)
+
+    with {:ok, units} <- text_units(Keyword.merge(opts, model: model, source: source)),
+         {:ok, conn} <- Store.open(opts) do
+      try do
+        reusable = Store.reusable_hashes(conn, model, dimensions, source)
+
+        {missing, skipped} =
+          Enum.split_with(units, fn unit ->
+            !MapSet.member?(reusable, {unit.iri, unit.text_hash})
+          end)
+
+        {:ok,
+         %{
+           model: model,
+           dimensions: dimensions,
+           source: source,
+           target_count: length(units),
+           reusable_count: length(skipped),
+           missing_count: length(missing),
+           missing_kinds: Enum.frequencies_by(missing, & &1.kind),
+           sample: Enum.take(missing, Keyword.get(opts, :sample, 20))
+         }}
+      after
+        Store.close(conn)
+      end
+    end
+  end
+
+  @doc """
   Returns current text-bearing RDF blocks.
   """
   @spec text_units(keyword()) :: {:ok, [text_unit()]} | {:error, term()}

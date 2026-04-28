@@ -140,7 +140,7 @@ defmodule Sheaf.Assistant.Notes do
   end
 
   @doc """
-  Returns the SPARQL update that appends the note facts to the default graph.
+  Returns the SPARQL update that appends the note facts to the workspace graph.
   """
   def insert_data(%Graph{} = graph) do
     triples =
