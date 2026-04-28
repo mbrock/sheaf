@@ -37,7 +37,7 @@ defmodule SheafWeb.AssistantHistoryComponentsTest do
         {quick_reply, AS.context(), quick},
         {quick_reply, AS.inReplyTo(), quick_user},
         {quick_reply, AS.attributedTo(), quick_assistant_actor},
-        {quick_reply, AS.content(), RDF.literal("Yes, Alise appears in several fieldnotes.")},
+        {quick_reply, AS.content(), RDF.literal("Yes, Alise appears in #ABC123.")},
         {quick_reply, AS.published(), RDF.literal(~U[2026-04-26 13:09:40Z])},
         {quick_assistant_actor, RDF.type(), PROV.SoftwareAgent},
         {quick_assistant_actor, DOC.assistantModelName(), RDF.literal("test:model")},
@@ -82,7 +82,8 @@ defmodule SheafWeb.AssistantHistoryComponentsTest do
       )
 
     assert html =~ "Can you find Alise quotes?"
-    assert html =~ "Yes, Alise appears in several fieldnotes."
+    assert html =~ "Yes, Alise appears in"
+    assert html =~ ~s(href="/b/ABC123")
     assert html =~ "Map the strongest evidence."
     assert html =~ "Evidence map note"
     assert html =~ "Strongest evidence sits in"

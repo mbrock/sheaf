@@ -97,27 +97,14 @@ defmodule SheafWeb.AssistantHistoryComponents do
   attr :entry, :map, required: true
 
   defp history_entry(%{entry: %{type: :note}} = assigns) do
-    ~H"""
-    <details class="group rounded-sm">
-      <summary class="flex cursor-pointer list-none items-center gap-2 px-2 py-1.5 transition-colors hover:bg-stone-200/60 dark:hover:bg-stone-800/70 [&::-webkit-details-marker]:hidden">
-        <span class="flex size-5 shrink-0 items-center justify-center text-stone-400 dark:text-stone-500">
-          <.icon name="hero-document-text" class="size-4" />
-        </span>
-        <span class="min-w-0 flex-1 truncate font-sans text-sm font-medium text-stone-800 dark:text-stone-100">
-          {@entry.title || "Research note"}
-        </span>
-        <span class="block w-3 shrink-0 text-center font-mono text-xs leading-snug text-stone-400 transition-transform group-open:rotate-90 dark:text-stone-500">
-          ▸
-        </span>
-      </summary>
+    assigns =
+      assigns
+      |> assign(:icon, "hero-document-text")
+      |> assign(:title, assigns.entry.title || "Research note")
+      |> assign(:title_class, "font-medium text-stone-800 dark:text-stone-100")
+      |> assign(:text, assigns.entry.text)
 
-      <article class="px-9 pb-3 pt-1 text-sm leading-6">
-        <div class="assistant-prose max-h-72 overflow-y-auto pr-2 break-words text-stone-800 dark:text-stone-100">
-          {raw(render_markdown(@entry.text))}
-        </div>
-      </article>
-    </details>
-    """
+    markdown_history_entry(assigns)
   end
 
   defp history_entry(%{entry: %{type: :message, role: :user}} = assigns) do
@@ -145,14 +132,30 @@ defmodule SheafWeb.AssistantHistoryComponents do
   end
 
   defp history_entry(%{entry: %{type: :message}} = assigns) do
+    assigns =
+      assigns
+      |> assign(:icon, "hero-sparkles")
+      |> assign(:title, assigns.entry.preview || "Assistant reply")
+      |> assign(:title_class, "text-stone-700 dark:text-stone-200")
+      |> assign(:text, assigns.entry.text)
+
+    markdown_history_entry(assigns)
+  end
+
+  attr :icon, :string, required: true
+  attr :title, :string, required: true
+  attr :title_class, :string, required: true
+  attr :text, :string, required: true
+
+  defp markdown_history_entry(assigns) do
     ~H"""
     <details class="group rounded-sm">
       <summary class="flex cursor-pointer list-none items-center gap-2 px-2 py-1.5 transition-colors hover:bg-stone-200/60 dark:hover:bg-stone-800/70 [&::-webkit-details-marker]:hidden">
         <span class="flex size-5 shrink-0 items-center justify-center text-stone-400 dark:text-stone-500">
-          <.icon name="hero-sparkles" class="size-4" />
+          <.icon name={@icon} class="size-4" />
         </span>
-        <span class="min-w-0 flex-1 truncate font-sans text-sm text-stone-700 dark:text-stone-200">
-          {@entry.preview || "Assistant reply"}
+        <span class={["min-w-0 flex-1 truncate font-sans text-sm", @title_class]}>
+          {@title}
         </span>
         <span class="block w-3 shrink-0 text-center font-mono text-xs leading-snug text-stone-400 transition-transform group-open:rotate-90 dark:text-stone-500">
           ▸
@@ -161,7 +164,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
       <article class="px-9 pb-3 pt-1 text-sm leading-6">
         <div class="assistant-prose max-h-72 overflow-y-auto pr-2 break-words text-stone-800 dark:text-stone-100">
-          {raw(render_markdown(@entry.text))}
+          {raw(render_markdown(@text))}
         </div>
       </article>
     </details>
