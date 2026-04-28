@@ -21,11 +21,10 @@ defmodule Sheaf.Search.IndexTest do
 
   test "sync mirrors RDF text units into SQLite FTS", %{db_path: db_path} do
     select = fn label, sparql ->
-      assert label in [
-               "search text units paragraph select",
-               "search text units sourceHtml select",
-               "search text units row select"
-             ]
+	      assert label in [
+	               "search text units paragraph select",
+	               "search text units sourceHtml select"
+	             ]
 
       refute sparql =~ "UNION"
       refute sparql =~ "ORDER BY"
@@ -44,22 +43,19 @@ defmodule Sheaf.Search.IndexTest do
              ]
            }}
 
-        sparql =~ "sheaf:sourceHtml" ->
-          {:ok,
-           %{
-             results: [
+	        sparql =~ "sheaf:sourceHtml" ->
+	          {:ok,
+	           %{
+	             results: [
                %{
                  "iri" => RDF.iri("https://sheaf.less.rest/BLOCK2"),
                  "text" => RDF.literal("<p>Repair and maintenance work.</p>"),
                  "doc" => RDF.iri("https://sheaf.less.rest/DOC2")
-               }
-             ]
-           }}
-
-        sparql =~ "sheaf:Row" ->
-          {:ok, %{results: []}}
-      end
-    end
+	               }
+	             ]
+	           }}
+	      end
+	    end
 
     assert {:ok, %{count: 2, kinds: %{"paragraph" => 1, "sourceHtml" => 1}}} =
              Index.sync(db_path: db_path, select: select)

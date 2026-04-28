@@ -56,18 +56,16 @@ defmodule Sheaf.Corpus do
 
   @doc """
   Case-insensitive substring search across paragraph and extracted-block text.
-  Spreadsheet row text is searched only when `:include_spreadsheets` is true.
   Multi-word queries are treated as keyword searches: exact phrase matches rank
   first, then blocks matching the most query terms.
 
   Options:
 
     * `:document_id` — scope search to one document.
-    * `:include_spreadsheets` — include `sheaf:Row` blocks, default `false`.
     * `:limit` — maximum hits, defaulting to #{@default_search_limit}.
 
   Returns `{:ok, [hit]}` where each hit is `%{document_id, document_title,
-  block_id, kind, text, source_page}`. Row hits also include coding metadata.
+  block_id, kind, text, source_page}`.
   """
   @spec search_text(String.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
   def search_text(query, opts \\ []) when is_binary(query) do
@@ -78,10 +76,9 @@ defmodule Sheaf.Corpus do
     else
       limit = Keyword.get(opts, :limit, @default_search_limit)
       scope = Keyword.get(opts, :document_id)
-      include_spreadsheets? = Keyword.get(opts, :include_spreadsheets, false)
       select = Keyword.get(opts, :select, &Sheaf.select/2)
 
-      sparql = search_sparql(needle, scope, limit, include_spreadsheets?)
+      sparql = search_sparql(needle, scope, limit)
 
       case select.("corpus text search select", sparql) do
         {:ok, result} -> {:ok, Enum.map(result.results, &hit_from_row/1)}
@@ -128,13 +125,12 @@ defmodule Sheaf.Corpus do
   defp ancestry_title(graph, iri, :section), do: Document.heading(graph, iri)
   defp ancestry_title(_graph, _iri, _type), do: nil
 
-  defp search_sparql(query, scope, limit, include_spreadsheets?) do
+  defp search_sparql(query, scope, limit) do
     escaped = escape_sparql_string(query)
     terms = search_terms(query)
     match_filter = search_match_filter(escaped, terms)
     score_bind = search_score_bind(escaped, terms)
     scope_filter = if scope, do: "FILTER(?doc = <#{Id.iri(scope)}>)", else: ""
-    row_union = if include_spreadsheets?, do: row_search_union(), else: ""
 
     """
     PREFIX sheaf: <https://less.rest/sheaf/>
@@ -165,7 +161,6 @@ defmodule Sheaf.Corpus do
           OPTIONAL { ?block sheaf:sourcePage ?page }
           BIND("extracted" AS ?kind)
         }
-        #{row_union}
         BIND(LCASE(STR(?text)) AS ?haystack)
         #{match_filter}
         #{score_bind}
@@ -176,21 +171,6 @@ defmodule Sheaf.Corpus do
     ORDER BY DESC(?score)
     LIMIT #{limit}
     """
-  end
-
-  defp row_search_union do
-    """
-    UNION {
-      ?block a sheaf:Row ;
-        sheaf:text ?text .
-      OPTIONAL { ?block sheaf:spreadsheetRow ?spreadsheetRow }
-      OPTIONAL { ?block sheaf:spreadsheetSource ?spreadsheetSource }
-      OPTIONAL { ?block sheaf:codeCategory ?codeCategory }
-      OPTIONAL { ?block sheaf:codeCategoryTitle ?codeCategoryTitle }
-      BIND("row" AS ?kind)
-    }
-    """
-    |> String.trim()
   end
 
   defp search_terms(query) do

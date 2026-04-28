@@ -17,7 +17,12 @@ defmodule Sheaf.Assistant.ToolResultText do
     Note,
     OutlineEntry,
     SearchHit,
-    SearchResults
+    SearchResults,
+    Spreadsheet,
+    SpreadsheetQuery,
+    SpreadsheetSearch,
+    SpreadsheetSheet,
+    ListSpreadsheets
   }
 
   def to_text(%ListDocuments{documents: documents}) do
@@ -123,6 +128,34 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> Enum.join("\n\n")
   end
 
+  def to_text(%ListSpreadsheets{spreadsheets: spreadsheets}) do
+    spreadsheets
+    |> Enum.map(&spreadsheet_text/1)
+    |> Enum.reject(&blank?/1)
+    |> Enum.join("\n\n")
+  end
+
+  def to_text(%SpreadsheetQuery{} = result) do
+    """
+    SPREADSHEET QUERY
+    SQL: #{result.sql}
+    Columns: #{Enum.join(result.columns, ", ")}
+
+    #{json_rows(result.rows)}
+    """
+    |> String.trim()
+  end
+
+  def to_text(%SpreadsheetSearch{} = result) do
+    """
+    SPREADSHEET SEARCH
+    Query: #{result.query}
+
+    #{json_rows(result.hits)}
+    """
+    |> String.trim()
+  end
+
   def to_text(%Note{} = note) do
     """
     NOTE SAVED ##{note.id}
@@ -172,6 +205,33 @@ defmodule Sheaf.Assistant.ToolResultText do
     #{Enum.map_join(documents, "\n", &document_summary_line/1)}
     """
     |> String.trim()
+  end
+
+  defp spreadsheet_text(%Spreadsheet{} = spreadsheet) do
+    """
+    SPREADSHEET #{spreadsheet.id}
+    Title: #{spreadsheet.title}
+    Path: #{spreadsheet.path}
+
+    Sheets:
+    #{Enum.map_join(spreadsheet.sheets, "\n", &spreadsheet_sheet_line/1)}
+    """
+    |> String.trim()
+  end
+
+  defp spreadsheet_sheet_line(%SpreadsheetSheet{} = sheet) do
+    columns =
+      sheet.columns
+      |> Enum.map(fn
+        %{"name" => name, "header" => header} when name != header -> "#{name} (#{header})"
+        %{"name" => name} -> name
+        %{name: name, header: header} when name != header -> "#{name} (#{header})"
+        %{name: name} -> name
+        other -> to_string(other)
+      end)
+      |> Enum.join(", ")
+
+    "  - #{sheet.table_name} \"#{sheet.name}\" rows=#{sheet.row_count} cols=#{sheet.col_count} columns=[#{columns}]"
   end
 
   defp document_sort_key(document),
@@ -549,6 +609,14 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp line(nil, _level), do: nil
   defp line(text, level), do: indent(level) <> text
+
+  defp json_rows([]), do: "(no rows)"
+
+  defp json_rows(rows) do
+    rows
+    |> Enum.map(&Jason.encode!/1)
+    |> Enum.join("\n")
+  end
 
   defp type_label(:paragraph), do: "paragraph"
   defp type_label(:extracted), do: "excerpt"

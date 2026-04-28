@@ -8,7 +8,7 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   alias ReqLLM.{Tool, ToolResult}
   alias ReqLLM.Message.ContentPart
-  alias Sheaf.{Corpus, Document, Documents, Id}
+  alias Sheaf.{Corpus, Document, Documents, Id, Spreadsheets}
   alias Sheaf.Assistant.Notes
   alias Sheaf.Assistant.{ToolResultText, ToolResults}
 
@@ -76,12 +76,10 @@ defmodule Sheaf.Assistant.CorpusTools do
         name: "search_text",
         description:
           "Hybrid exact and semantic search over paragraph and extracted-block " <>
-            "text. Searches the main prose corpus by default; pass document_id to scope. " <>
-            "Set include_spreadsheets=true only when you explicitly want to search " <>
-            "spreadsheet-coded row excerpts too. " <>
+            "text. Searches the main prose corpus; pass document_id to scope. " <>
+            "Use list_spreadsheets, query_spreadsheets, or search_spreadsheets for tabular data. " <>
             "Exact text matches contribute to ranking alongside embedding similarity. " <>
-            "Returns hits with their document id, block id, kind, and full text; " <>
-            "spreadsheet row hits also include coding metadata.",
+            "Returns hits with their document id, block id, kind, and full text.",
         parameter_schema: [
           query: [
             type: :string,
@@ -90,14 +88,52 @@ defmodule Sheaf.Assistant.CorpusTools do
               "Exact phrase or space-separated keywords, for example \"circular economy\" or \"politics economy\"."
           ],
           document_id: [type: :string, doc: "Optional: scope to one document"],
-          include_spreadsheets: [
-            type: :boolean,
-            default: false,
-            doc: "Explicitly include sheaf:Row spreadsheet excerpts and coding metadata."
-          ],
           limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits per category"]
         ],
         callback: instrument(notify, "search_text", &search_text_tool(&1, search, exact_search))
+      ),
+      Tool.new!(
+        name: "list_spreadsheets",
+        description:
+          "List imported spreadsheet workbooks and sheets available in the SQLite sidecar. " <>
+            "Returns SQL table names, row counts, and column names for query_spreadsheets.",
+        callback: instrument(notify, "list_spreadsheets", &list_spreadsheets_tool/1)
+      ),
+      Tool.new!(
+        name: "query_spreadsheets",
+        description:
+          "Run a read-only SQL SELECT/WITH query against imported spreadsheet sheet tables. " <>
+            "Call list_spreadsheets first to discover table and column names. " <>
+            "Use SQLite syntax; every sheet table has __row_number and __text columns.",
+        parameter_schema: [
+          sql: [
+            type: :string,
+            required: true,
+            doc:
+              "Read-only SQL SELECT or WITH query, for example: SELECT * FROM ss_xl_abc_1 LIMIT 5"
+          ],
+          limit: [
+            type: :integer,
+            default: 50,
+            doc: "Maximum rows returned by the wrapper, capped by Sheaf."
+          ]
+        ],
+        callback: instrument(notify, "query_spreadsheets", &query_spreadsheets_tool/1)
+      ),
+      Tool.new!(
+        name: "search_spreadsheets",
+        description:
+          "Exact-ish keyword search over imported spreadsheet rows. " <>
+            "Use this to find rows before writing a more precise SQL query.",
+        parameter_schema: [
+          query: [
+            type: :string,
+            required: true,
+            doc: "Words or phrase to find in spreadsheet rows."
+          ],
+          limit: [type: :integer, default: 20, doc: "Maximum matching rows returned."]
+        ],
+        callback: instrument(notify, "search_spreadsheets", &search_spreadsheets_tool/1)
       )
     ]
 
@@ -203,15 +239,22 @@ defmodule Sheaf.Assistant.CorpusTools do
   def humanize("search_text", args, titles) do
     q = smart_quote(arg(args, :query) || "")
     scope = arg(args, :document_id)
-    corpus = if include_spreadsheets?(args), do: " including coded excerpts", else: ""
 
     case scope do
       id when is_binary(id) and id != "" ->
-        "Searching for " <> q <> " in " <> quote_title(id, titles) <> corpus
+        "Searching for " <> q <> " in " <> quote_title(id, titles)
 
       _ ->
-        "Searching for " <> q <> " across the corpus" <> corpus
+        "Searching for " <> q <> " across the corpus"
     end
+  end
+
+  def humanize("list_spreadsheets", _args, _titles), do: "Checking spreadsheets"
+
+  def humanize("query_spreadsheets", _args, _titles), do: "Querying spreadsheets"
+
+  def humanize("search_spreadsheets", args, _titles) do
+    "Searching spreadsheets for " <> smart_quote(arg(args, :query) || "")
   end
 
   def humanize("write_note", _args, _titles), do: "Saving a research note"
@@ -271,6 +314,21 @@ defmodule Sheaf.Assistant.CorpusTools do
   def result_summary("search_text", {:ok, %ToolResults.SearchResults{} = results}) do
     count = length(results.exact_results) + length(results.approximate_results)
     pluralize(count, "hit", "hits")
+  end
+
+  def result_summary(
+        "list_spreadsheets",
+        {:ok, %ToolResults.ListSpreadsheets{spreadsheets: docs}}
+      ) do
+    pluralize(length(docs), "spreadsheet", "spreadsheets")
+  end
+
+  def result_summary("query_spreadsheets", {:ok, %ToolResults.SpreadsheetQuery{rows: rows}}) do
+    pluralize(length(rows), "row", "rows")
+  end
+
+  def result_summary("search_spreadsheets", {:ok, %ToolResults.SpreadsheetSearch{hits: hits}}) do
+    pluralize(length(hits), "hit", "hits")
   end
 
   def result_summary("write_note", {:ok, %ToolResults.Note{}}), do: "note saved"
@@ -383,7 +441,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       opts =
         [limit: arg(args, :limit) || @search_result_limit]
         |> maybe_add_scope(args)
-        |> maybe_include_spreadsheets(args)
+        |> Keyword.put(:kinds, @default_search_kinds)
 
       with {:ok, exact_results} <- exact_search.(query, opts),
            {:ok, approximate_results} <- search.(query, Keyword.put(opts, :exact_limit, 0)) do
@@ -396,6 +454,60 @@ defmodule Sheaf.Assistant.CorpusTools do
         |> then(&{:ok, &1})
       else
         {:error, reason} -> {:error, "search failed: #{inspect(reason)}"}
+      end
+    else
+      {:error, "query is required"}
+    end
+  end
+
+  defp list_spreadsheets_tool(_args) do
+    case Spreadsheets.list() do
+      {:ok, spreadsheets} ->
+        spreadsheets
+        |> Enum.map(&spreadsheet_result/1)
+        |> then(&%ToolResults.ListSpreadsheets{spreadsheets: &1})
+        |> rendered_result()
+        |> then(&{:ok, &1})
+
+      {:error, reason} ->
+        {:error, "could not list spreadsheets: #{inspect(reason)}"}
+    end
+  end
+
+  defp query_spreadsheets_tool(args) do
+    sql = arg(args, :sql)
+
+    if is_binary(sql) and String.trim(sql) != "" do
+      case Spreadsheets.query(sql, limit: arg(args, :limit) || 50) do
+        {:ok, result} ->
+          %ToolResults.SpreadsheetQuery{
+            sql: sql,
+            columns: result.columns,
+            rows: result.rows
+          }
+          |> rendered_result()
+          |> then(&{:ok, &1})
+
+        {:error, reason} ->
+          {:error, "spreadsheet query failed: #{inspect(reason)}"}
+      end
+    else
+      {:error, "sql is required"}
+    end
+  end
+
+  defp search_spreadsheets_tool(args) do
+    query = arg(args, :query)
+
+    if is_binary(query) and String.trim(query) != "" do
+      case Spreadsheets.search(query, limit: arg(args, :limit) || 20) do
+        {:ok, hits} ->
+          %ToolResults.SpreadsheetSearch{query: query, hits: hits}
+          |> rendered_result()
+          |> then(&{:ok, &1})
+
+        {:error, reason} ->
+          {:error, "spreadsheet search failed: #{inspect(reason)}"}
       end
     else
       {:error, "query is required"}
@@ -434,17 +546,27 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp maybe_include_spreadsheets(opts, args) do
-    kinds =
-      if include_spreadsheets?(args),
-        do: @default_search_kinds ++ ["row"],
-        else: @default_search_kinds
+  defp expand?(args), do: arg(args, :expand) in [true, "true"]
 
-    Keyword.put(opts, :kinds, kinds)
+  defp spreadsheet_result(spreadsheet) do
+    %ToolResults.Spreadsheet{
+      id: spreadsheet.id,
+      title: spreadsheet.title,
+      path: spreadsheet.path,
+      sheets: Enum.map(spreadsheet.sheets, &spreadsheet_sheet_result/1)
+    }
   end
 
-  defp include_spreadsheets?(args), do: arg(args, :include_spreadsheets) in [true, "true"]
-  defp expand?(args), do: arg(args, :expand) in [true, "true"]
+  defp spreadsheet_sheet_result(sheet) do
+    %ToolResults.SpreadsheetSheet{
+      spreadsheet_id: sheet.spreadsheet_id,
+      name: sheet.name,
+      table_name: sheet.table_name,
+      row_count: sheet.row_count,
+      col_count: sheet.col_count,
+      columns: sheet.columns
+    }
+  end
 
   defp search_hit(result) do
     %ToolResults.SearchHit{

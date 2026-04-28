@@ -12,7 +12,7 @@ defmodule Sheaf.Embedding.Index do
   @default_max_concurrency 8
   @default_batch_size 32
   @default_source "openai-text-embedding-3-large-v1"
-  @valid_kinds ~w(paragraph sourceHtml row)
+  @valid_kinds ~w(paragraph sourceHtml)
 
   @type text_unit :: %{
           required(:iri) => String.t(),
@@ -672,18 +672,6 @@ defmodule Sheaf.Embedding.Index do
     FILTER(!CONTAINS(STR(?text), ";base64,"))
     FILTER(!CONTAINS(STR(?text), "data:image/"))
     BIND("sourceHtml" AS ?kind)
-    """
-    |> String.trim()
-  end
-
-  defp text_unit_pattern("row") do
-    """
-    ?iri a sheaf:Row ;
-      sheaf:text ?text .
-    OPTIONAL { ?iri sheaf:spreadsheetRow ?spreadsheetRow }
-    OPTIONAL { ?iri sheaf:spreadsheetSource ?spreadsheetSource }
-    OPTIONAL { ?iri sheaf:codeCategoryTitle ?codeCategoryTitle }
-    BIND("row" AS ?kind)
     """
     |> String.trim()
   end

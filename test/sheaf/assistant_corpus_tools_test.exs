@@ -52,7 +52,6 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              Tool.execute(tool, %{
                "query" => "plastic",
                "document_id" => "DOC123",
-               "include_spreadsheets" => false,
                "limit" => 5
              })
 

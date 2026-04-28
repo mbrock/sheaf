@@ -15,8 +15,7 @@ defmodule Sheaf.Embedding.IndexTest do
     select = fn label, sparql ->
       assert label in [
                "embedding text units paragraph select",
-               "embedding text units sourceHtml select",
-               "embedding text units row select"
+               "embedding text units sourceHtml select"
              ]
 
       send(test_pid, {:sparql, sparql})
@@ -47,22 +46,10 @@ defmodule Sheaf.Embedding.IndexTest do
                }
              ]
            }}
-
-        sparql =~ "sheaf:Row" ->
-          {:ok,
-           %{
-             results: [
-               %{
-                 "iri" => RDF.iri("https://sheaf.less.rest/ROW1"),
-                 "kind" => RDF.literal("row"),
-                 "text" => RDF.literal("Spreadsheet text.")
-               }
-             ]
-           }}
       end
     end
 
-    assert {:ok, [paragraph, source, row]} =
+    assert {:ok, [paragraph, source]} =
              Index.text_units(
                select: select,
                model: "gemini-embedding-2",
@@ -71,16 +58,13 @@ defmodule Sheaf.Embedding.IndexTest do
 
     assert paragraph.kind == "paragraph"
     assert source.text == "<p>PDF text.</p>"
-    assert row.iri == "https://sheaf.less.rest/ROW1"
-    assert String.length(row.text_hash) == 64
+    assert String.length(source.text_hash) == 64
 
     assert_received {:sparql, paragraph_sparql}
     assert_received {:sparql, source_sparql}
-    assert_received {:sparql, row_sparql}
 
     assert paragraph_sparql =~ "sheaf:paragraph"
     assert source_sparql =~ "sheaf:sourceHtml"
-    assert row_sparql =~ "sheaf:Row"
   end
 
   test "can restrict text unit kinds" do
@@ -155,13 +139,10 @@ defmodule Sheaf.Embedding.IndexTest do
              ]
            }}
 
-        sparql =~ "sheaf:sourceHtml" ->
-          {:ok, %{results: []}}
-
-        sparql =~ "sheaf:Row" ->
-          {:ok, %{results: []}}
-      end
-    end
+	        sparql =~ "sheaf:sourceHtml" ->
+	          {:ok, %{results: []}}
+	      end
+	    end
 
     assert {:ok,
             %{

@@ -13,7 +13,7 @@ defmodule Sheaf.Search.Index do
 
   @default_path "var/sheaf-embeddings.sqlite3"
   @log_every 5_000
-  @valid_kinds ~w(paragraph sourceHtml row)
+  @valid_kinds ~w(paragraph sourceHtml)
 
   @type conn :: Sqlite3.db()
 
@@ -353,21 +353,6 @@ defmodule Sheaf.Search.Index do
     SELECT ?doc ?iri ?text WHERE {
       GRAPH ?doc {
         ?iri sheaf:sourceHtml ?text .
-      }
-      #{Sheaf.Workspace.exclusion_filter("?doc")}
-    }
-    #{limit_clause(opts)}
-    """
-  end
-
-  defp text_units_sparql("row", opts) do
-    """
-    PREFIX sheaf: <https://less.rest/sheaf/>
-
-    SELECT ?doc ?iri ?text WHERE {
-      GRAPH ?doc {
-        ?iri a sheaf:Row ;
-          sheaf:text ?text .
       }
       #{Sheaf.Workspace.exclusion_filter("?doc")}
     }

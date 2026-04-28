@@ -10,6 +10,9 @@ defmodule Sheaf.Admin.CLI do
     sheaf-admin ingest files PATH... [--recursive] [--extensions pdf,docx] [--dry-run] [--no-backup]
     sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--no-backup]
     sheaf-admin import spreadsheet PATH [--title TITLE] [--graph IRI] [--no-backup]
+    sheaf-admin spreadsheets import PATH... [--title TITLE] [--db PATH]
+    sheaf-admin spreadsheets list [--db PATH]
+    sheaf-admin spreadsheets query SQL [--db PATH] [--limit N]
     sheaf-admin search sync [--db PATH] [--limit N] [--kind KIND]
     sheaf-admin embeddings plan [--db PATH] [--limit N] [--kind KIND] [--provider NAME] [--model NAME] [--sample N]
     sheaf-admin embeddings sync [--db PATH] [--limit N] [--kind KIND] [--provider NAME] [--model NAME]
@@ -63,6 +66,15 @@ defmodule Sheaf.Admin.CLI do
 
   defp dispatch(["import", "spreadsheet" | args]),
     do: run(fn -> Sheaf.Admin.import_spreadsheet(args) end)
+
+  defp dispatch(["spreadsheets", "import" | args]),
+    do: run(fn -> Sheaf.Admin.import_spreadsheets(args) end)
+
+  defp dispatch(["spreadsheets", "list" | args]),
+    do: run(fn -> Sheaf.Admin.list_spreadsheets(args) end)
+
+  defp dispatch(["spreadsheets", "query" | args]),
+    do: run(fn -> Sheaf.Admin.query_spreadsheets(args) end)
 
   defp dispatch(["search", "sync" | args]), do: run(fn -> Sheaf.Admin.sync_search(args) end)
 
