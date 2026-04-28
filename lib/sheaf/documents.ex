@@ -336,8 +336,44 @@ defmodule Sheaf.Documents do
   }
   """
 
+  @simple_query """
+  PREFIX sheaf: <https://less.rest/sheaf/>
+  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+  SELECT ?doc ?title ?kind WHERE {
+    GRAPH ?graph {
+      {
+        ?doc a ?kind .
+        FILTER(?kind IN (sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
+      } UNION {
+        ?doc a sheaf:Document .
+        FILTER NOT EXISTS {
+          ?doc a ?specificKind .
+          FILTER(?specificKind IN (sheaf:Paper, sheaf:Thesis, sheaf:Transcript, sheaf:Spreadsheet))
+        }
+        BIND(sheaf:Document AS ?kind)
+      }
+      OPTIONAL { ?doc rdfs:label ?title }
+    }
+  }
+  """
+
   def list(opts \\ []) do
-    with {:ok, result} <- Sheaf.select("document index select", @query) do
+    case Sheaf.select("document index select", @query) do
+      {:ok, result} ->
+        {:ok, from_rows(result.results, opts)}
+
+      {:error, reason} ->
+        if fuseki_empty_result_error?(reason) do
+          simple_list(opts)
+        else
+          {:error, reason}
+        end
+    end
+  end
+
+  defp simple_list(opts) do
+    with {:ok, result} <- Sheaf.select("document index simple select", @simple_query) do
       {:ok, from_rows(result.results, opts)}
     end
   end
@@ -524,4 +560,10 @@ defmodule Sheaf.Documents do
   defp kind_order(:document), do: 4
 
   defp term_value(term), do: term |> RDF.Term.value() |> to_string()
+
+  defp fuseki_empty_result_error?(reason) do
+    reason
+    |> inspect()
+    |> String.contains?("Peek iterator is already empty")
+  end
 end

@@ -325,11 +325,24 @@ defmodule SheafWeb.AssistantHistoryComponents do
   end
 
   defp history_graph(opts) do
-    opts
-    |> Keyword.get(:limit, @default_history_limit)
-    |> normalize_limit()
-    |> history_query()
-    |> then(&Sheaf.query("assistant history construct", &1))
+    result =
+      opts
+      |> Keyword.get(:limit, @default_history_limit)
+      |> normalize_limit()
+      |> history_query()
+      |> then(&Sheaf.query("assistant history construct", &1))
+
+    case result do
+      {:ok, graph} ->
+        {:ok, graph}
+
+      {:error, reason} ->
+        if fuseki_empty_result_error?(reason) do
+          {:ok, Graph.new()}
+        else
+          {:error, reason}
+        end
+    end
   end
 
   defp history_query(limit) do
@@ -406,6 +419,12 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
   defp normalize_limit(limit) when is_integer(limit) and limit > 0, do: min(limit, 100)
   defp normalize_limit(_limit), do: @default_history_limit
+
+  defp fuseki_empty_result_error?(reason) do
+    reason
+    |> inspect()
+    |> String.contains?("Peek iterator is already empty")
+  end
 
   defp research_question_content(_graph, nil), do: nil
 

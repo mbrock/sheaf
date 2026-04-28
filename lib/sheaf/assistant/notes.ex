@@ -28,11 +28,24 @@ defmodule Sheaf.Assistant.Notes do
   Returns a graph describing recently published assistant notes.
   """
   def list_graph(opts \\ []) do
-    opts
-    |> Keyword.get(:limit, @default_limit)
-    |> normalize_limit()
-    |> list_query()
-    |> then(&Sheaf.query("assistant notes list construct", &1))
+    result =
+      opts
+      |> Keyword.get(:limit, @default_limit)
+      |> normalize_limit()
+      |> list_query()
+      |> then(&Sheaf.query("assistant notes list construct", &1))
+
+    case result do
+      {:ok, graph} ->
+        {:ok, graph}
+
+      {:error, reason} ->
+        if fuseki_empty_result_error?(reason) do
+          {:ok, Graph.new()}
+        else
+          {:error, reason}
+        end
+    end
   end
 
   @doc """
@@ -378,4 +391,10 @@ defmodule Sheaf.Assistant.Notes do
   end
 
   defp arg(attrs, key), do: Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+
+  defp fuseki_empty_result_error?(reason) do
+    reason
+    |> inspect()
+    |> String.contains?("Peek iterator is already empty")
+  end
 end
