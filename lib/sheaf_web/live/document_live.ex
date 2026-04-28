@@ -216,13 +216,18 @@ defmodule SheafWeb.DocumentLive do
         id={"text-#{Document.id(@block.iri)}"}
         class={[
           "cursor-pointer rounded-sm font-serif leading-normal",
+          paragraph_markup_classes(),
           selected_class(@block, @selected_id)
         ]}
         phx-click="inspect_block"
         phx-value-id={Document.id(@block.iri)}
         phx-update="ignore"
       >
-        {Document.paragraph_text(@graph, @block.iri)}
+        <%= if markup = Document.paragraph_markup(@graph, @block.iri) do %>
+          {raw(markup)}
+        <% else %>
+          {Document.paragraph_text(@graph, @block.iri)}
+        <% end %>
       </p>
 
       <div
@@ -398,6 +403,20 @@ defmodule SheafWeb.DocumentLive do
     [
       "[&_a]:text-sky-700 [&_a]:underline",
       "[&_p]:mb-4"
+    ]
+  end
+
+  defp paragraph_markup_classes do
+    [
+      "[&_a]:text-sky-700 [&_a]:underline dark:[&_a]:text-sky-200",
+      "[&_code]:rounded-sm [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.9em] dark:[&_code]:bg-stone-800",
+      "[&_em]:italic [&_i]:italic",
+      "[&_mark]:bg-yellow-200/50 [&_mark]:px-0.5 [&_mark]:text-inherit dark:[&_mark]:bg-yellow-400/25",
+      "[&_strong]:font-bold [&_b]:font-bold",
+      "[&_sub]:text-[0.72em] [&_sup]:text-[0.72em]",
+      "[&_sup[data-footnote]]:ml-0.5 [&_sup[data-footnote]]:align-super [&_sup[data-footnote]]:font-sans [&_sup[data-footnote]]:text-sky-700 dark:[&_sup[data-footnote]]:text-sky-200",
+      "[&_sup[data-footnote]]:before:content-['['attr(data-footnote)']']",
+      "[&_u]:underline"
     ]
   end
 

@@ -18,6 +18,7 @@ defmodule Sheaf.Document do
   @default_first_chunks 40
   @default_last_chunks 0
   @default_sample_chars 80_000
+  @inline_markup_tags ~w(a b br code em i mark s small span strong sub sup u)
 
   def id(iri), do: Id.id_from_iri(iri)
 
@@ -179,6 +180,15 @@ defmodule Sheaf.Document do
     case active_paragraph_iri(graph, iri) do
       nil -> ""
       paragraph_iri -> value(graph, paragraph_iri, DOC.text(), "")
+    end
+  end
+
+  def paragraph_markup(%Graph{} = graph, iri) do
+    graph
+    |> value(iri, DOC.markup(), "")
+    |> case do
+      "" -> nil
+      markup -> sanitize_inline_markup(markup)
     end
   end
 
@@ -385,6 +395,102 @@ defmodule Sheaf.Document do
     |> String.replace("&gt;", ">")
     |> String.replace("&quot;", ~s("))
     |> String.replace("&#39;", "'")
+  end
+
+  defp sanitize_inline_markup(markup) do
+    ~r/<[^>]*>/
+    |> Regex.split(markup, include_captures: true, trim: false)
+    |> Enum.map_join(&sanitize_markup_part/1)
+  end
+
+  defp sanitize_markup_part("<" <> _rest = tag) do
+    case sanitize_tag(tag) do
+      nil -> Phoenix.HTML.html_escape(tag) |> Phoenix.HTML.safe_to_string()
+      safe_tag -> safe_tag
+    end
+  end
+
+  defp sanitize_markup_part(text),
+    do: Phoenix.HTML.html_escape(text) |> Phoenix.HTML.safe_to_string()
+
+  defp sanitize_tag(tag) do
+    with [_, closing, name, attrs] <- Regex.run(~r/^<\s*(\/?)\s*([a-zA-Z0-9]+)([^>]*)>$/, tag),
+         name = String.downcase(name),
+         true <- name in @inline_markup_tags do
+      cond do
+        closing == "/" and name != "br" ->
+          "</#{name}>"
+
+        closing == "/" ->
+          nil
+
+        name == "br" ->
+          "<br>"
+
+        true ->
+          "<#{name}#{safe_attrs(name, attrs)}>"
+      end
+    else
+      _ -> nil
+    end
+  end
+
+  defp safe_attrs("a", attrs) do
+    case attr_value(attrs, "href") do
+      nil -> ""
+      href -> safe_href_attr(href)
+    end
+  end
+
+  defp safe_attrs("sup", attrs) do
+    case attr_value(attrs, "data-footnote") do
+      nil -> ""
+      value -> safe_data_footnote_attr(value)
+    end
+  end
+
+  defp safe_attrs(_tag, _attrs), do: ""
+
+  defp attr_value(attrs, name) do
+    escaped = Regex.escape(name)
+
+    [
+      ~r/(?:^|\s)#{escaped}\s*=\s*"([^"]*)"/i,
+      ~r/(?:^|\s)#{escaped}\s*=\s*'([^']*)'/i,
+      ~r/(?:^|\s)#{escaped}\s*=\s*([^\s"'>]+)/i
+    ]
+    |> Enum.find_value(fn pattern ->
+      case Regex.run(pattern, attrs) do
+        [_match, value] -> value
+        _other -> nil
+      end
+    end)
+  end
+
+  defp safe_href_attr(href) do
+    href = String.trim(href)
+
+    if String.match?(href, ~r/^(https?:|mailto:|#|\/)/i) do
+      ~s( href="#{escape_attr(href)}")
+    else
+      ""
+    end
+  end
+
+  defp safe_data_footnote_attr(value) do
+    value = String.trim(value)
+
+    if String.match?(value, ~r/^\d*$/) do
+      ~s( data-footnote="#{escape_attr(value)}")
+    else
+      ""
+    end
+  end
+
+  defp escape_attr(value) do
+    value
+    |> Phoenix.HTML.html_escape()
+    |> Phoenix.HTML.safe_to_string()
   end
 
   defp normalize_text(text) do

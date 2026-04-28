@@ -167,6 +167,11 @@ sheaf:text a rdf:Property ;
   rdfs:label "has text"@en ;
   rdfs:range xsd:string .
 
+sheaf:markup a rdf:Property ;
+  rdfs:label "has markup"@en ;
+  rdfs:range xsd:string ;
+  rdfs:comment "A trusted inline HTML fragment for rendering paragraph text with emphasis, marks, links, footnote markers, and similar inline annotations." .
+
 sheaf:audio a rdf:Property ;
   rdfs:label "has audio"@en ;
   rdfs:range sheaf:AudioBlob ;
