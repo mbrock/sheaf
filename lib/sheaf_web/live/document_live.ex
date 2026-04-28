@@ -230,7 +230,10 @@ defmodule SheafWeb.DocumentLive do
         <% end %>
       </p>
 
-      <.footnote_blocks footnotes={Document.footnotes(@graph, @block.iri)} />
+      <.footnote_blocks
+        footnotes={Document.footnotes(@graph, @block.iri)}
+        selected_id={@selected_id}
+      />
 
       <div
         :if={reference_documents(@references_by_block, @block.iri) != []}
@@ -334,6 +337,7 @@ defmodule SheafWeb.DocumentLive do
   end
 
   attr :footnotes, :list, required: true
+  attr :selected_id, :string, default: nil
 
   defp footnote_blocks(assigns) do
     ~H"""
@@ -341,16 +345,25 @@ defmodule SheafWeb.DocumentLive do
       :if={@footnotes != []}
       class="mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-serif text-sm leading-snug text-stone-700 dark:border-stone-800/80 dark:text-stone-300"
     >
-      <li :for={footnote <- @footnotes} id={"footnote-#{footnote.id}"} class="flex gap-2">
-        <span class="shrink-0 font-sans text-[0.72rem] leading-5 text-stone-500 dark:text-stone-400">
-          {footnote.id}
-        </span>
-        <div class="min-w-0 flex-1">
-          <%= if footnote.markup do %>
-            {raw(footnote.markup)}
-          <% else %>
-            {footnote.text}
-          <% end %>
+      <li
+        :for={footnote <- @footnotes}
+        id={"block-#{footnote.id}"}
+        class={[
+          "scroll-mt-6 rounded-sm",
+          selected_class(%{iri: footnote.iri}, @selected_id)
+        ]}
+      >
+        <div class="flex gap-2">
+          <span class="shrink-0 font-sans text-[0.72rem] leading-5 text-stone-500 dark:text-stone-400">
+            {footnote.id}
+          </span>
+          <div class="min-w-0 flex-1">
+            <%= if footnote.markup do %>
+              {raw(footnote.markup)}
+            <% else %>
+              {footnote.text}
+            <% end %>
+          </div>
         </div>
       </li>
     </ol>
