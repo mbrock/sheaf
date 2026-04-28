@@ -11,6 +11,7 @@ defmodule Sheaf.Admin.CLI do
     sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--no-backup]
     sheaf-admin import spreadsheet PATH [--title TITLE] [--graph IRI] [--no-backup]
     sheaf-admin search sync [--db PATH] [--limit N] [--kind KIND]
+    sheaf-admin embeddings plan [--db PATH] [--limit N] [--kind KIND] [--provider NAME] [--model NAME] [--sample N]
     sheaf-admin embeddings sync [--db PATH] [--limit N] [--kind KIND] [--provider NAME] [--model NAME]
     sheaf-admin datalab {submit|poll|import|status} [--job IRI] [--limit N] [--await]
     sheaf-admin metadata enqueue [--all|--missing-only] [--limit N] [--doc IRI] [--telegram]
@@ -67,6 +68,9 @@ defmodule Sheaf.Admin.CLI do
 
   defp dispatch(["embeddings", "sync" | args]),
     do: run(fn -> Sheaf.Admin.sync_embeddings(args) end)
+
+  defp dispatch(["embeddings", "plan" | args]),
+    do: run(fn -> Sheaf.Admin.plan_embeddings(args) end)
 
   defp dispatch(["datalab" | args]), do: run(fn -> Sheaf.Admin.Datalab.run(args) end)
 

@@ -8,4 +8,4 @@ APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 require_sheaf_env "$APP_ROOT"
 
 cd "$APP_ROOT"
-exec mix sheaf.embeddings.sync "$@"
+exec "$SCRIPT_DIR/sheaf-admin" embeddings sync "$@"

@@ -69,50 +69,11 @@ defmodule Sheaf.Admin do
   end
 
   def sync_embeddings(args) do
-    {opts, _positional, invalid} =
-      OptionParser.parse(args,
-        strict: [
-          db: :string,
-          dimensions: :integer,
-          concurrency: :integer,
-          batch_size: :integer,
-          limit: :integer,
-          kind: :keep,
-          provider: :string,
-          model: :string,
-          source: :string,
-          profile: :string,
-          api_mode: :string,
-          batch_input: :string,
-          poll_interval_ms: :integer,
-          poll_timeout_ms: :integer,
-          submit_only: :boolean,
-          import_run: :string
-        ]
-      )
+    {opts, _positional, invalid} = OptionParser.parse(args, strict: embedding_sync_options())
 
     reject_invalid!(invalid)
 
-    sync_opts =
-      []
-      |> put_if_present(:db_path, Keyword.get(opts, :db))
-      |> put_if_present(:output_dimensionality, Keyword.get(opts, :dimensions))
-      |> put_if_present(:max_concurrency, Keyword.get(opts, :concurrency))
-      |> put_if_present(:batch_size, Keyword.get(opts, :batch_size))
-      |> put_if_present(:limit, Keyword.get(opts, :limit))
-      |> put_if_present(:provider, Keyword.get(opts, :provider))
-      |> put_if_present(:model, Keyword.get(opts, :model))
-      |> put_if_present(:source, Keyword.get(opts, :source))
-      |> put_if_present(:profile, Keyword.get(opts, :profile))
-      |> put_if_present(:api_mode, Keyword.get(opts, :api_mode))
-      |> put_if_present(:batch_input, Keyword.get(opts, :batch_input))
-      |> put_if_present(:poll_interval_ms, Keyword.get(opts, :poll_interval_ms))
-      |> put_if_present(:poll_timeout_ms, Keyword.get(opts, :poll_timeout_ms))
-      |> put_if_present(:submit_only, Keyword.get(opts, :submit_only))
-      |> put_if_present(:import_run, Keyword.get(opts, :import_run))
-      |> put_kinds(Keyword.get_values(opts, :kind))
-
-    case Sheaf.Embedding.Index.sync(sync_opts) do
+    case Sheaf.Embedding.Index.sync(embedding_opts(opts)) do
       {:ok, summary} ->
         info(
           "Embedding sync #{summary.status}: run=#{summary.run_iri}#{batch_summary(summary)} target=#{summary.target_count} embedded=#{summary.embedded_count} skipped=#{summary.skipped_count} errors=#{summary.error_count}"
@@ -120,6 +81,29 @@ defmodule Sheaf.Admin do
 
       {:error, reason} ->
         fail!("Embedding sync failed: #{inspect(reason)}")
+    end
+  end
+
+  def plan_embeddings(args) do
+    {opts, _positional, invalid} =
+      OptionParser.parse(args, strict: Keyword.merge(embedding_sync_options(), sample: :integer))
+
+    reject_invalid!(invalid)
+
+    case Sheaf.Embedding.Index.plan(embedding_opts(opts)) do
+      {:ok, plan} ->
+        info(
+          "Embedding plan: model=#{plan.model} dimensions=#{plan.dimensions} source=#{plan.source} target=#{plan.target_count} reusable=#{plan.reusable_count} would_embed=#{plan.missing_count}#{kind_summary(plan.missing_kinds)}"
+        )
+
+        Enum.each(plan.sample, fn unit ->
+          info(
+            "  #{unit.kind} #{unit.iri} chars=#{unit.text_chars} doc=#{unit.doc_iri} title=#{unit.doc_title}"
+          )
+        end)
+
+      {:error, reason} ->
+        fail!("Embedding plan failed: #{inspect(reason)}")
     end
   end
 
@@ -873,6 +857,49 @@ defmodule Sheaf.Admin do
   defp put_if_present(opts, key, value), do: Keyword.put(opts, key, value)
   defp put_kinds(opts, []), do: opts
   defp put_kinds(opts, kinds), do: Keyword.put(opts, :kinds, kinds)
+
+  defp embedding_sync_options do
+    [
+      db: :string,
+      dimensions: :integer,
+      concurrency: :integer,
+      batch_size: :integer,
+      limit: :integer,
+      kind: :keep,
+      provider: :string,
+      model: :string,
+      source: :string,
+      profile: :string,
+      api_mode: :string,
+      batch_input: :string,
+      poll_interval_ms: :integer,
+      poll_timeout_ms: :integer,
+      submit_only: :boolean,
+      import_run: :string
+    ]
+  end
+
+  defp embedding_opts(opts) do
+    []
+    |> put_if_present(:db_path, Keyword.get(opts, :db))
+    |> put_if_present(:output_dimensionality, Keyword.get(opts, :dimensions))
+    |> put_if_present(:max_concurrency, Keyword.get(opts, :concurrency))
+    |> put_if_present(:batch_size, Keyword.get(opts, :batch_size))
+    |> put_if_present(:limit, Keyword.get(opts, :limit))
+    |> put_if_present(:provider, Keyword.get(opts, :provider))
+    |> put_if_present(:model, Keyword.get(opts, :model))
+    |> put_if_present(:source, Keyword.get(opts, :source))
+    |> put_if_present(:profile, Keyword.get(opts, :profile))
+    |> put_if_present(:api_mode, Keyword.get(opts, :api_mode))
+    |> put_if_present(:batch_input, Keyword.get(opts, :batch_input))
+    |> put_if_present(:poll_interval_ms, Keyword.get(opts, :poll_interval_ms))
+    |> put_if_present(:poll_timeout_ms, Keyword.get(opts, :poll_timeout_ms))
+    |> put_if_present(:submit_only, Keyword.get(opts, :submit_only))
+    |> put_if_present(:import_run, Keyword.get(opts, :import_run))
+    |> put_if_present(:sample, Keyword.get(opts, :sample))
+    |> put_kinds(Keyword.get_values(opts, :kind))
+  end
+
   defp kind_summary(kinds) when map_size(kinds) == 0, do: ""
 
   defp kind_summary(kinds) do

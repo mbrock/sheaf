@@ -95,6 +95,90 @@ defmodule Sheaf.Embedding.IndexTest do
     assert {:ok, []} = Index.text_units(kinds: ["sourceHtml"], select: select)
   end
 
+  test "plans missing embeddings without embedding them" do
+    db_path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-embedding-plan-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    on_exit(fn ->
+      File.rm(db_path)
+      File.rm(db_path <> "-shm")
+      File.rm(db_path <> "-wal")
+    end)
+
+    model = "text-embedding-3-large"
+    dimensions = 2
+    source = "test-source"
+    reusable_iri = "https://sheaf.less.rest/BLOCK-REUSABLE"
+    missing_iri = "https://sheaf.less.rest/BLOCK-MISSING"
+
+    reusable_hash =
+      Index.text_hash("Existing text.", model, dimensions, source)
+
+    {:ok, conn} = Store.open(db_path: db_path)
+
+    try do
+      :ok =
+        Store.create_run(conn, %{
+          iri: "https://sheaf.less.rest/RUN-REUSABLE",
+          model: model,
+          dimensions: dimensions,
+          source: source,
+          status: "completed",
+          target_count: 1,
+          embedded_count: 1
+        })
+
+      :ok =
+        Store.insert_embedding(conn, %{
+          iri: reusable_iri,
+          run_iri: "https://sheaf.less.rest/RUN-REUSABLE",
+          text_hash: reusable_hash,
+          text_chars: 14,
+          values: [0.1, 0.2]
+        })
+    after
+      Store.close(conn)
+    end
+
+    select = fn _label, sparql ->
+      cond do
+        sparql =~ "sheaf:paragraph" ->
+          {:ok,
+           %{
+             results: [
+               text_unit_row(reusable_iri, "paragraph", "Existing text."),
+               text_unit_row(missing_iri, "paragraph", "New text.")
+             ]
+           }}
+
+        sparql =~ "sheaf:sourceHtml" ->
+          {:ok, %{results: []}}
+
+        sparql =~ "sheaf:Row" ->
+          {:ok, %{results: []}}
+      end
+    end
+
+    assert {:ok,
+            %{
+              target_count: 2,
+              reusable_count: 1,
+              missing_count: 1,
+              missing_kinds: %{"paragraph" => 1},
+              sample: [%{iri: ^missing_iri}]
+            }} =
+             Index.plan(
+               db_path: db_path,
+               model: model,
+               output_dimensionality: dimensions,
+               source: source,
+               select: select
+             )
+  end
+
   test "importing an async batch skips units whose documents are now excluded" do
     db_path =
       Path.join(
@@ -238,6 +322,14 @@ defmodule Sheaf.Embedding.IndexTest do
       "s" => RDF.iri(block_iri),
       "p" => Sheaf.NS.DOC.sourceHtml(),
       "o" => RDF.literal("<p>Text.</p>")
+    }
+  end
+
+  defp text_unit_row(iri, kind, text) do
+    %{
+      "iri" => RDF.iri(iri),
+      "kind" => RDF.literal(kind),
+      "text" => RDF.literal(text)
     }
   end
 
