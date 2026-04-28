@@ -77,15 +77,15 @@ defmodule Sheaf.Spreadsheets do
   @doc """
   Runs a read-only SQL query against imported spreadsheet tables.
 
-  Only `SELECT` and `WITH` statements are accepted. The query is wrapped and
-  limited so a chat tool cannot accidentally stream an enormous result.
+  The statement runs with SQLite `query_only` enabled and returns at most the
+  requested number of rows. This intentionally avoids brittle SQL pre-parsing:
+  SQLite decides what is valid, and write attempts fail at execution time.
   """
   @spec query(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def query(sql, opts \\ []) when is_binary(sql) do
     limit = opts |> Keyword.get(:limit, 50) |> clamp_limit()
 
-    with :ok <- validate_readonly_sql(sql),
-         {:ok, conn} <- open(opts) do
+    with {:ok, conn} <- open(opts) do
       try do
         query_loaded(conn, sql, limit)
       after
@@ -400,8 +400,12 @@ defmodule Sheaf.Spreadsheets do
   end
 
   defp query_loaded(conn, sql, limit) do
-    wrapped = "SELECT * FROM (#{sql |> String.trim() |> String.trim_trailing(";")}) LIMIT ?"
-    query_with_columns(conn, wrapped, [limit])
+    readonly_transaction(conn, fn ->
+      sql
+      |> String.trim()
+      |> String.trim_trailing(";")
+      |> query_user_sql(conn, limit)
+    end)
   end
 
   defp search_sheet(conn, sheet, terms, limit) do
@@ -429,6 +433,23 @@ defmodule Sheaf.Spreadsheets do
     end
   end
 
+  defp query_user_sql(sql, conn, limit) do
+    with {:ok, statement} <- Sqlite3.prepare(conn, sql) do
+      try do
+        with {:ok, columns} <- Sqlite3.columns(conn, statement),
+             {:ok, rows} <- fetch_rows(conn, statement, limit) do
+          {:ok,
+           %{
+             columns: columns,
+             rows: Enum.map(rows, &row_map(columns, &1))
+           }}
+        end
+      after
+        Sqlite3.release(conn, statement)
+      end
+    end
+  end
+
   defp query_with_columns(conn, sql, params) do
     with {:ok, statement} <- Sqlite3.prepare(conn, sql) do
       try do
@@ -448,22 +469,16 @@ defmodule Sheaf.Spreadsheets do
     end
   end
 
-  defp validate_readonly_sql(sql) do
-    trimmed = String.trim(sql)
-    normalized = String.downcase(trimmed)
+  defp fetch_rows(conn, statement, limit), do: fetch_rows(conn, statement, limit, [])
 
-    cond do
-      trimmed == "" ->
-        {:error, :empty_query}
+  defp fetch_rows(_conn, _statement, 0, rows), do: {:ok, Enum.reverse(rows)}
 
-      String.contains?(String.trim_trailing(trimmed, ";"), ";") ->
-        {:error, :multiple_statements_not_allowed}
-
-      String.starts_with?(normalized, "select ") or String.starts_with?(normalized, "with ") ->
-        :ok
-
-      true ->
-        {:error, :only_select_queries_allowed}
+  defp fetch_rows(conn, statement, remaining, rows) do
+    case Sqlite3.step(conn, statement) do
+      {:row, row} -> fetch_rows(conn, statement, remaining - 1, [row | rows])
+      :done -> {:ok, Enum.reverse(rows)}
+      :busy -> {:error, "Database busy"}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -793,6 +808,18 @@ defmodule Sheaf.Spreadsheets do
         {:error, reason} ->
           _ = Sqlite3.execute(conn, "ROLLBACK")
           {:error, reason}
+      end
+    end
+  end
+
+  defp readonly_transaction(conn, fun) do
+    with :ok <- Sqlite3.execute(conn, "PRAGMA query_only = ON"),
+         :ok <- Sqlite3.execute(conn, "BEGIN") do
+      try do
+        fun.()
+      after
+        _ = Sqlite3.execute(conn, "ROLLBACK")
+        _ = Sqlite3.execute(conn, "PRAGMA query_only = OFF")
       end
     end
   end

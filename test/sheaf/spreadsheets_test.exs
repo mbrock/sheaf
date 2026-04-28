@@ -89,7 +89,26 @@ defmodule Sheaf.SpreadsheetsTest do
   end
 
   test "query rejects writes", %{db_path: db_path} do
-    assert {:error, :only_select_queries_allowed} =
+    assert {:error, reason} =
              Spreadsheets.query("delete from spreadsheets", db_path: db_path)
+
+    assert to_string(reason) =~ "readonly"
+  end
+
+  test "query allows SQLite read statements without brittle pre-parsing", %{db_path: db_path} do
+    assert {:ok, %{rows: [%{"answer" => 42}]}} =
+             Spreadsheets.query(
+               """
+               -- comments and leading whitespace are fine now
+               WITH value(answer) AS (VALUES (42))
+               SELECT answer FROM value;
+               """,
+               db_path: db_path
+             )
+
+    assert {:ok, %{columns: ["cid", "name", "type", "notnull", "dflt_value", "pk"], rows: rows}} =
+             Spreadsheets.query("PRAGMA table_info(spreadsheets)", db_path: db_path)
+
+    assert Enum.any?(rows, &(&1["name"] == "title"))
   end
 end
