@@ -134,7 +134,7 @@ defmodule Sheaf.Assistant.Notes do
   end
 
   @doc """
-  Returns the SPARQL update that appends the note facts to the default graph.
+  Returns the SPARQL update that appends the note facts to the workspace graph.
   """
   def insert_data(%Graph{} = graph) do
     triples =
@@ -200,45 +200,49 @@ defmodule Sheaf.Assistant.Notes do
     WHERE {
       {
         SELECT ?note ?published WHERE {
-          {
-            ?note a sheaf:ResearchNote .
+          GRAPH <#{Sheaf.Workspace.graph()}> {
+            {
+              ?note a sheaf:ResearchNote .
+            }
+            UNION
+            {
+              ?note a as:Note ;
+                rdfs:label ?legacyTitle .
+              FILTER NOT EXISTS { ?note as:inReplyTo ?replyTarget }
+            }
+            OPTIONAL { ?note as:published ?published }
           }
-          UNION
-          {
-            ?note a as:Note ;
-              rdfs:label ?legacyTitle .
-            FILTER NOT EXISTS { ?note as:inReplyTo ?replyTarget }
-          }
-          OPTIONAL { ?note as:published ?published }
         }
         ORDER BY DESC(?published)
         LIMIT #{limit}
       }
 
-      ?note a as:Note .
-      ?note as:content ?content .
-      OPTIONAL { ?note rdfs:label ?title }
-      OPTIONAL {
-        ?note as:attributedTo ?agent .
-        OPTIONAL { ?agent rdfs:label ?agentLabel }
-      }
-      OPTIONAL {
-        ?note as:context ?context .
-        OPTIONAL { ?context rdfs:label ?contextLabel }
-        OPTIONAL { ?context sheaf:conversationMode ?contextMode }
+      GRAPH <#{Sheaf.Workspace.graph()}> {
+        ?note a as:Note .
+        ?note as:content ?content .
+        OPTIONAL { ?note rdfs:label ?title }
         OPTIONAL {
-          ?question a sheaf:Message ;
-            as:context ?context ;
-            as:content ?questionContent .
-          FILTER NOT EXISTS { ?question as:inReplyTo ?questionReplyTarget }
-          OPTIONAL { ?question as:published ?questionPublished }
+          ?note as:attributedTo ?agent .
+          OPTIONAL { ?agent rdfs:label ?agentLabel }
+        }
+        OPTIONAL {
+          ?note as:context ?context .
+          OPTIONAL { ?context rdfs:label ?contextLabel }
+          OPTIONAL { ?context sheaf:conversationMode ?contextMode }
           OPTIONAL {
-            ?question as:attributedTo ?questionActor .
-            OPTIONAL { ?questionActor rdfs:label ?questionActorLabel }
+            ?question a sheaf:Message ;
+              as:context ?context ;
+              as:content ?questionContent .
+            FILTER NOT EXISTS { ?question as:inReplyTo ?questionReplyTarget }
+            OPTIONAL { ?question as:published ?questionPublished }
+            OPTIONAL {
+              ?question as:attributedTo ?questionActor .
+              OPTIONAL { ?questionActor rdfs:label ?questionActorLabel }
+            }
           }
         }
+        OPTIONAL { ?note sheaf:mentions ?mention }
       }
-      OPTIONAL { ?note sheaf:mentions ?mention }
     }
     """
   end
