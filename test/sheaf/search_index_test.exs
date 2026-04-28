@@ -23,8 +23,7 @@ defmodule Sheaf.Search.IndexTest do
     select = fn label, sparql ->
       assert label in [
                "search text units paragraph select",
-               "search text units sourceHtml select",
-               "search text units row select"
+               "search text units sourceHtml select"
              ]
 
       refute sparql =~ "UNION"
@@ -55,9 +54,6 @@ defmodule Sheaf.Search.IndexTest do
                }
              ]
            }}
-
-        sparql =~ "sheaf:Row" ->
-          {:ok, %{results: []}}
       end
     end
 

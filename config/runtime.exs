@@ -102,6 +102,11 @@ config :sheaf, Sheaf.TaskQueue.Store,
     System.get_env("SHEAF_TASK_QUEUE_DB") ||
       System.get_env("SHEAF_EMBEDDINGS_DB", "var/sheaf-embeddings.sqlite3")
 
+config :sheaf, Sheaf.Spreadsheets,
+  path:
+    System.get_env("SHEAF_SPREADSHEETS_DB") ||
+      System.get_env("SHEAF_EMBEDDINGS_DB", "var/sheaf-embeddings.sqlite3")
+
 config :sheaf, Sheaf.Repo, path: System.get_env("SHEAF_QUADLOG_DB", "var/sheaf-quadlog.sqlite3")
 
 anthropic_api_key = System.get_env("ANTHROPIC_API_KEY")

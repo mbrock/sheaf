@@ -12,7 +12,7 @@ defmodule Sheaf.Embedding.Index do
   @default_max_concurrency 8
   @default_batch_size 32
   @default_source "openai-text-embedding-3-large-v1"
-  @valid_kinds ~w(paragraph sourceHtml row)
+  @valid_kinds ~w(paragraph sourceHtml)
 
   @type text_unit :: %{
           required(:iri) => String.t(),
@@ -676,18 +676,6 @@ defmodule Sheaf.Embedding.Index do
     |> String.trim()
   end
 
-  defp text_unit_pattern("row") do
-    """
-    ?iri a sheaf:Row ;
-      sheaf:text ?text .
-    OPTIONAL { ?iri sheaf:spreadsheetRow ?spreadsheetRow }
-    OPTIONAL { ?iri sheaf:spreadsheetSource ?spreadsheetSource }
-    OPTIONAL { ?iri sheaf:codeCategoryTitle ?codeCategoryTitle }
-    BIND("row" AS ?kind)
-    """
-    |> String.trim()
-  end
-
   defp maybe_limit_units(units, opts) do
     case Keyword.get(opts, :limit) do
       limit when is_integer(limit) and limit > 0 -> Enum.take(units, limit)
@@ -894,7 +882,7 @@ defmodule Sheaf.Embedding.Index do
 
   defp searchable_result(result, opts) do
     if kind_allowed?(result, opts) and document_allowed?(result, opts) and
-         not result[:doc_excluded?] and
+         Map.get(result, :doc_excluded?, false) != true and
          searchable_content?(result) do
       [result]
     else

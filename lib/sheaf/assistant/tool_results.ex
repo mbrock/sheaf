@@ -111,6 +111,45 @@ defmodule Sheaf.Assistant.ToolResults do
               approximate_results: []
   end
 
+  defmodule ListSpreadsheets do
+    defstruct spreadsheets: []
+  end
+
+  defmodule Spreadsheet do
+    defstruct [
+      :id,
+      :title,
+      :path,
+      sheets: []
+    ]
+  end
+
+  defmodule SpreadsheetSheet do
+    defstruct [
+      :spreadsheet_id,
+      :name,
+      :table_name,
+      :row_count,
+      :col_count,
+      columns: []
+    ]
+  end
+
+  defmodule SpreadsheetQuery do
+    defstruct [
+      :sql,
+      columns: [],
+      rows: []
+    ]
+  end
+
+  defmodule SpreadsheetSearch do
+    defstruct [
+      :query,
+      hits: []
+    ]
+  end
+
   defmodule SearchHit do
     defstruct [
       :document_id,

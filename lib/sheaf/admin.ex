@@ -193,6 +193,83 @@ defmodule Sheaf.Admin do
     end
   end
 
+  def import_spreadsheets(args) do
+    {opts, paths, invalid} =
+      OptionParser.parse(args, strict: [title: :string, db: :string])
+
+    reject_invalid!(invalid)
+
+    if paths == [] do
+      fail!("Usage: sheaf-admin spreadsheets import PATH... [--title TITLE] [--db PATH]")
+    end
+
+    Enum.each(paths, fn path ->
+      import_opts =
+        []
+        |> put_if_present(:title, opts[:title])
+        |> put_if_present(:db_path, opts[:db])
+
+      case Sheaf.Spreadsheets.import_file(path, import_opts) do
+        {:ok, result} ->
+          info("Imported spreadsheet #{result.id}: #{result.title}")
+
+          Enum.each(result.sheets, fn sheet ->
+            info(
+              "  #{sheet.name} -> #{sheet.table_name} rows=#{sheet.row_count} cols=#{sheet.col_count}"
+            )
+          end)
+
+        {:error, reason} ->
+          fail!("Import failed for #{path}: #{inspect(reason)}")
+      end
+    end)
+  end
+
+  def list_spreadsheets(args) do
+    {opts, positional, invalid} = OptionParser.parse(args, strict: [db: :string])
+    reject_invalid!(invalid)
+    reject_positional!(positional)
+
+    case Sheaf.Spreadsheets.list(spreadsheet_db_opts(opts)) do
+      {:ok, spreadsheets} ->
+        Enum.each(spreadsheets, fn spreadsheet ->
+          info("#{spreadsheet.id} #{spreadsheet.title} #{spreadsheet.path}")
+
+          Enum.each(spreadsheet.sheets, fn sheet ->
+            columns = sheet.columns |> Enum.map(& &1["name"]) |> Enum.join(", ")
+            info("  #{sheet.table_name} #{sheet.name} rows=#{sheet.row_count} columns=#{columns}")
+          end)
+        end)
+
+      {:error, reason} ->
+        fail!("List failed: #{inspect(reason)}")
+    end
+  end
+
+  def query_spreadsheets(args) do
+    {opts, positional, invalid} = OptionParser.parse(args, strict: [db: :string, limit: :integer])
+    reject_invalid!(invalid)
+
+    if positional == [] do
+      fail!("Usage: sheaf-admin spreadsheets query SQL [--db PATH] [--limit N]")
+    end
+
+    sql = Enum.join(positional, " ")
+
+    query_opts =
+      opts
+      |> spreadsheet_db_opts()
+      |> Keyword.put(:limit, opts[:limit] || 50)
+
+    case Sheaf.Spreadsheets.query(sql, query_opts) do
+      {:ok, result} ->
+        info(Jason.encode!(result, pretty: true))
+
+      {:error, reason} ->
+        fail!("Query failed: #{inspect(reason)}")
+    end
+  end
+
   def enqueue_metadata(args) do
     {opts, positional} =
       OptionParser.parse!(args,
@@ -855,6 +932,7 @@ defmodule Sheaf.Admin do
 
   defp put_if_present(opts, _key, nil), do: opts
   defp put_if_present(opts, key, value), do: Keyword.put(opts, key, value)
+  defp spreadsheet_db_opts(opts), do: put_if_present([], :db_path, opts[:db])
   defp put_kinds(opts, []), do: opts
   defp put_kinds(opts, kinds), do: Keyword.put(opts, :kinds, kinds)
 

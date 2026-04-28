@@ -1,6 +1,7 @@
 @prefix sheaf: <https://less.rest/sheaf/> .
 @prefix as: <https://www.w3.org/ns/activitystreams#> .
 @prefix co: <http://purl.org/co/> .
+@prefix doco: <http://purl.org/spar/doco/> .
 @prefix fabio: <http://purl.org/spar/fabio/> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -17,6 +18,7 @@ sheaf: a owl:Ontology ;
   vann:preferredNamespaceUri "https://less.rest/sheaf/"^^xsd:anyURI ;
   owl:imports <https://www.w3.org/ns/activitystreams#>,
     <http://purl.org/co>,
+    <http://purl.org/spar/doco>,
     <http://www.w3.org/ns/prov#>,
     <http://purl.org/spar/fabio/> .
 
@@ -50,6 +52,12 @@ sheaf:Workspace a rdfs:Class ;
   rdfs:subClassOf prov:Entity,
     co:Set ;
   rdfs:comment "A persistent context for local reading and research preferences." .
+
+sheaf:assistantInstructions a rdf:Property ;
+  rdfs:label "has assistant instructions"@en ;
+  rdfs:domain sheaf:Workspace ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Project-specific context and guidance to include in the assistant system prompt for a workspace." .
 
 sheaf:Interview a rdfs:Class ;
   rdfs:label "interview"@en ;
@@ -229,6 +237,12 @@ sheaf:sourceHtml a rdf:Property ;
   rdfs:label "has source HTML"@en ;
   rdfs:range xsd:string ;
   rdfs:comment "A renderable HTML fragment extracted from the source document block." .
+
+sheaf:hasFootnote a rdf:Property ;
+  rdfs:label "has footnote"@en ;
+  rdfs:domain sheaf:Block ;
+  rdfs:range doco:Footnote ;
+  rdfs:comment "Links a document block to a footnote referenced from its inline text." .
 
 sheaf:spreadsheetRow a rdf:Property ;
   rdfs:label "has spreadsheet row"@en ;

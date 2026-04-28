@@ -13,10 +13,9 @@ defmodule SheafWeb.DocumentLive do
   alias SheafWeb.AssistantHistoryComponents
   import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
 
-  # Knuth-Plass justification is O(n^2) per paragraph and snapshots every
-  # paragraph in the article on mount/resize. Disable it for documents whose
-  # paragraph count would make that too expensive.
-  @knuth_plass_block_limit 800
+  # Knuth-Plass justification is kept available but currently disabled because
+  # its text rewriting does not yet preserve inline markup rendering cleanly.
+  @knuth_plass? false
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
@@ -75,7 +74,7 @@ defmodule SheafWeb.DocumentLive do
       assigns
       |> assign(:blocks, blocks)
       |> assign(:toc, Document.toc(assigns.graph, assigns.root))
-      |> assign(:knuth_plass?, paragraph_block_count(blocks) <= @knuth_plass_block_limit)
+      |> assign(:knuth_plass?, @knuth_plass?)
 
     ~H"""
     <div
@@ -99,7 +98,7 @@ defmodule SheafWeb.DocumentLive do
         class="min-h-0 min-w-0 overflow-y-auto px-4 pb-4 lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
-        <div class="mx-auto w-full max-w-prose pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:shadow-sm lg:dark:border-stone-800 lg:dark:bg-stone-900">
+        <div class="mx-auto w-full max-w-[112ch] pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:shadow-sm lg:dark:border-stone-800 lg:dark:bg-stone-900">
           <.reader_blocks
             graph={@graph}
             blocks={@blocks}
@@ -230,6 +229,11 @@ defmodule SheafWeb.DocumentLive do
         <% end %>
       </p>
 
+      <.footnote_blocks
+        footnotes={Document.footnotes(@graph, @block.iri)}
+        selected_id={@selected_id}
+      />
+
       <div
         :if={reference_documents(@references_by_block, @block.iri) != []}
         class="mt-2 space-y-1 pl-4 font-sans"
@@ -328,6 +332,40 @@ defmodule SheafWeb.DocumentLive do
         {raw(Document.source_html(@graph, @block.iri))}
       </div>
     </div>
+    """
+  end
+
+  attr :footnotes, :list, required: true
+  attr :selected_id, :string, default: nil
+
+  defp footnote_blocks(assigns) do
+    ~H"""
+    <ol
+      :if={@footnotes != []}
+      class="mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-serif text-sm leading-snug text-stone-700 dark:border-stone-800/80 dark:text-stone-300"
+    >
+      <li
+        :for={footnote <- @footnotes}
+        id={"block-#{footnote.id}"}
+        class={[
+          "scroll-mt-6 rounded-sm",
+          selected_class(%{iri: footnote.iri}, @selected_id)
+        ]}
+      >
+        <div class="flex gap-2">
+          <span class="shrink-0 font-sans text-[0.72rem] leading-5 text-stone-500 dark:text-stone-400">
+            {footnote.id}
+          </span>
+          <div class="min-w-0 flex-1">
+            <%= if footnote.markup do %>
+              {raw(footnote.markup)}
+            <% else %>
+              {footnote.text}
+            <% end %>
+          </div>
+        </div>
+      </li>
+    </ol>
     """
   end
 

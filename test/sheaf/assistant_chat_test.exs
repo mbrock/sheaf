@@ -26,6 +26,7 @@ defmodule Sheaf.Assistant.ChatTest do
        id: id,
        model: "test-model",
        titles: %{},
+       workspace_instructions: "This workspace is for a test thesis about public procurement.",
        activity_writer: nil,
        generate_text: generate_text,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
@@ -55,6 +56,9 @@ defmodule Sheaf.Assistant.ChatTest do
     refute user_text(context) =~ "Document: #ABC123 Draft chapter"
     refute system_text(context) =~ "write_note"
     assert system_text(context) =~ "Do not end by offering optional follow-up help"
+    assert system_text(context) =~ "test thesis about public procurement"
+    refute system_text(context) =~ "Ieva"
+    refute system_text(context) =~ "brīvbode"
 
     assert %{
              title: "What should I do next?",
@@ -94,6 +98,7 @@ defmodule Sheaf.Assistant.ChatTest do
        kind: :research,
        model: "test-model",
        titles: %{},
+       workspace_instructions: "This workspace is for a research-mode test thesis.",
        activity_writer: nil,
        generate_text: generate_text,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}

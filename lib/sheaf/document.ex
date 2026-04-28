@@ -184,12 +184,22 @@ defmodule Sheaf.Document do
   end
 
   def paragraph_markup(%Graph{} = graph, iri) do
+    inline_markup(graph, iri)
+  end
+
+  def footnotes(%Graph{} = graph, iri) do
     graph
-    |> value(iri, DOC.markup(), "")
-    |> case do
-      "" -> nil
-      markup -> sanitize_inline_markup(markup)
-    end
+    |> objects(iri, DOC.hasFootnote())
+    |> Enum.map(fn footnote_iri ->
+      %{
+        iri: footnote_iri,
+        id: id(footnote_iri),
+        source_key: source_key(graph, footnote_iri),
+        text: text(graph, footnote_iri),
+        markup: inline_markup(graph, footnote_iri)
+      }
+    end)
+    |> Enum.sort_by(&footnote_sort_key/1)
   end
 
   def text(%Graph{} = graph, iri) do
@@ -359,10 +369,32 @@ defmodule Sheaf.Document do
     |> Description.first(property)
   end
 
+  defp objects(%Graph{} = graph, iri, property) do
+    graph
+    |> Graph.description(iri)
+    |> Description.get(property, [])
+  end
+
   defp value(%Graph{} = graph, iri, property, default) do
     case object(graph, iri, property) do
       nil -> default
       term -> term |> RDF.Term.value() |> to_string()
+    end
+  end
+
+  defp inline_markup(%Graph{} = graph, iri) do
+    graph
+    |> value(iri, DOC.markup(), "")
+    |> case do
+      "" -> nil
+      markup -> sanitize_inline_markup(markup)
+    end
+  end
+
+  defp footnote_sort_key(%{source_key: source_key, id: id}) do
+    case Regex.run(~r/#(\d+)$/, source_key) do
+      [_match, number] -> {0, String.to_integer(number)}
+      _other -> {1, id}
     end
   end
 
@@ -480,7 +512,7 @@ defmodule Sheaf.Document do
   defp safe_data_footnote_attr(value) do
     value = String.trim(value)
 
-    if String.match?(value, ~r/^\d*$/) do
+    if String.match?(value, ~r/^(?:\d+|[A-Z2-9]{6})$/) do
       ~s( data-footnote="#{escape_attr(value)}")
     else
       ""

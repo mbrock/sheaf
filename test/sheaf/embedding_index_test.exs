@@ -3,6 +3,7 @@ defmodule Sheaf.Embedding.IndexTest do
 
   alias Sheaf.Embedding.Index
   alias Sheaf.Embedding.Store
+  alias Sheaf.Search.Index, as: SearchIndex
 
   setup do
     Req.Test.verify_on_exit!()
@@ -14,8 +15,7 @@ defmodule Sheaf.Embedding.IndexTest do
     select = fn label, sparql ->
       assert label in [
                "embedding text units paragraph select",
-               "embedding text units sourceHtml select",
-               "embedding text units row select"
+               "embedding text units sourceHtml select"
              ]
 
       send(test_pid, {:sparql, sparql})
@@ -46,22 +46,10 @@ defmodule Sheaf.Embedding.IndexTest do
                }
              ]
            }}
-
-        sparql =~ "sheaf:Row" ->
-          {:ok,
-           %{
-             results: [
-               %{
-                 "iri" => RDF.iri("https://sheaf.less.rest/ROW1"),
-                 "kind" => RDF.literal("row"),
-                 "text" => RDF.literal("Spreadsheet text.")
-               }
-             ]
-           }}
       end
     end
 
-    assert {:ok, [paragraph, source, row]} =
+    assert {:ok, [paragraph, source]} =
              Index.text_units(
                select: select,
                model: "gemini-embedding-2",
@@ -70,16 +58,13 @@ defmodule Sheaf.Embedding.IndexTest do
 
     assert paragraph.kind == "paragraph"
     assert source.text == "<p>PDF text.</p>"
-    assert row.iri == "https://sheaf.less.rest/ROW1"
-    assert String.length(row.text_hash) == 64
+    assert String.length(source.text_hash) == 64
 
     assert_received {:sparql, paragraph_sparql}
     assert_received {:sparql, source_sparql}
-    assert_received {:sparql, row_sparql}
 
     assert paragraph_sparql =~ "sheaf:paragraph"
     assert source_sparql =~ "sheaf:sourceHtml"
-    assert row_sparql =~ "sheaf:Row"
   end
 
   test "can restrict text unit kinds" do
@@ -156,9 +141,6 @@ defmodule Sheaf.Embedding.IndexTest do
 
         sparql =~ "sheaf:sourceHtml" ->
           {:ok, %{results: []}}
-
-        sparql =~ "sheaf:Row" ->
-          {:ok, %{results: []}}
       end
     end
 
@@ -177,6 +159,46 @@ defmodule Sheaf.Embedding.IndexTest do
                source: source,
                select: select
              )
+  end
+
+  test "exact search tolerates stale search rows without hydrated document metadata" do
+    db_path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-embedding-exact-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    on_exit(fn ->
+      File.rm(db_path)
+      File.rm(db_path <> "-shm")
+      File.rm(db_path <> "-wal")
+    end)
+
+    block_iri = "https://sheaf.less.rest/BLOCK-STALE"
+
+    {:ok, conn} = SearchIndex.open(db_path: db_path)
+
+    try do
+      assert {:ok, %{count: 1}} =
+               SearchIndex.rebuild(conn, [
+                 %{
+                   iri: block_iri,
+                   doc_iri: "https://sheaf.less.rest/DOC-STALE",
+                   kind: "paragraph",
+                   text: "Signal costs and procurement screening"
+                 }
+               ])
+    after
+      SearchIndex.close(conn)
+    end
+
+    select = fn
+      "embedding descriptions select", _sparql -> {:ok, %{results: []}}
+      "embedding document metadata select", _sparql -> {:ok, %{results: []}}
+    end
+
+    assert {:ok, [%{iri: ^block_iri, match: :exact}]} =
+             Index.exact_search("signal", db_path: db_path, select: select)
   end
 
   test "importing an async batch skips units whose documents are now excluded" do
