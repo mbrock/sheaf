@@ -1,5 +1,6 @@
 @prefix sheaf: <https://less.rest/sheaf/> .
 @prefix as: <https://www.w3.org/ns/activitystreams#> .
+@prefix doco: <http://purl.org/spar/doco/> .
 @prefix fabio: <http://purl.org/spar/fabio/> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -226,6 +227,12 @@ sheaf:sourceHtml a rdf:Property ;
   rdfs:label "has source HTML"@en ;
   rdfs:range xsd:string ;
   rdfs:comment "A renderable HTML fragment extracted from the source document block." .
+
+sheaf:hasFootnote a rdf:Property ;
+  rdfs:label "has footnote"@en ;
+  rdfs:domain sheaf:Block ;
+  rdfs:range doco:Footnote ;
+  rdfs:comment "Links a document block to a footnote referenced from its inline text." .
 
 sheaf:spreadsheetRow a rdf:Property ;
   rdfs:label "has spreadsheet row"@en ;

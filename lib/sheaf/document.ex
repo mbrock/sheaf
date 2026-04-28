@@ -480,7 +480,7 @@ defmodule Sheaf.Document do
   defp safe_data_footnote_attr(value) do
     value = String.trim(value)
 
-    if String.match?(value, ~r/^\d*$/) do
+    if String.match?(value, ~r/^(?:\d+|[A-Z2-9]{6})$/) do
       ~s( data-footnote="#{escape_attr(value)}")
     else
       ""

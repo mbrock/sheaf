@@ -112,7 +112,7 @@ defmodule Sheaf.DocumentTest do
         {block, DOC.markup(),
          RDF.literal(
            ~S"""
-           Plain <strong onclick="bad()">strong</strong> <em>em</em> <mark>mark</mark> <a href="https://example.com/?a=1&b=2" onclick="bad()">link</a> <sup data-footnote="12" onclick="bad()"></sup> <script>alert("x")</script>
+           Plain <strong onclick="bad()">strong</strong> <em>em</em> <mark>mark</mark> <a href="https://example.com/?a=1&b=2" onclick="bad()">link</a> <sup data-footnote="12" onclick="bad()"></sup> <sup data-footnote="ABCD23"></sup> <script>alert("x")</script>
            """
            |> String.trim()
          )},
@@ -122,7 +122,7 @@ defmodule Sheaf.DocumentTest do
 
     assert Document.paragraph_markup(graph, block) ==
              ~S"""
-             Plain <strong>strong</strong> <em>em</em> <mark>mark</mark> <a href="https://example.com/?a=1&amp;b=2">link</a> <sup data-footnote="12"></sup> &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;
+             Plain <strong>strong</strong> <em>em</em> <mark>mark</mark> <a href="https://example.com/?a=1&amp;b=2">link</a> <sup data-footnote="12"></sup> <sup data-footnote="ABCD23"></sup> &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;
              """
              |> String.trim()
   end
