@@ -142,6 +142,31 @@ defmodule Sheaf.DocumentTest do
     assert Document.paragraph_markup(graph, block) == nil
   end
 
+  test "returns paragraph footnotes in source order" do
+    block = RDF.IRI.new!("https://example.com/sheaf/PAR111")
+    second = RDF.IRI.new!("https://example.com/sheaf/FN2222")
+    first = RDF.IRI.new!("https://example.com/sheaf/FN1111")
+
+    graph =
+      RDF.Graph.new([
+        {block, DOC.hasFootnote(), second},
+        {block, DOC.hasFootnote(), first},
+        {second, DOC.sourceKey(), RDF.literal("word/footnotes.xml#2")},
+        {second, DOC.text(), RDF.literal("Second footnote.")},
+        {first, DOC.sourceKey(), RDF.literal("word/footnotes.xml#1")},
+        {first, DOC.text(), RDF.literal("First footnote.")},
+        {first, DOC.markup(), RDF.literal(~s(<em>First</em> footnote.))}
+      ])
+
+    assert [
+             %{id: "FN1111", source_key: "word/footnotes.xml#1", text: "First footnote."},
+             %{id: "FN2222", source_key: "word/footnotes.xml#2", text: "Second footnote."}
+           ] = Document.footnotes(graph, block)
+
+    assert [%{markup: "<em>First</em> footnote."}, %{markup: nil}] =
+             Document.footnotes(graph, block)
+  end
+
   test "returns ordered readable text chunks and DOI candidates for imported papers" do
     paper = RDF.IRI.new!("https://example.com/sheaf/PAPER1")
     root_list = RDF.IRI.new!("https://example.com/sheaf/LSTROOT")
