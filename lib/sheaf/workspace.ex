@@ -6,7 +6,7 @@ defmodule Sheaf.Workspace do
   alias Sheaf.Id
 
   @graph "https://less.rest/sheaf/workspace"
-  @label "Ieva's thesis workspace"
+  @label "Thesis workspace"
 
   @doc """
   Returns the IRI for the default workspace, creating it when needed.
@@ -47,6 +47,35 @@ defmodule Sheaf.Workspace do
 
     with {:ok, workspace} <- ensure_default() do
       Sheaf.update("workspace owner insert", insert_owner_update(workspace, person))
+    end
+  end
+
+  @doc """
+  Returns project-specific assistant instructions stored on the default workspace.
+  """
+  def assistant_instructions do
+    with {:ok, workspace} <- ensure_default(),
+         {:ok, %{results: rows}} <-
+           Sheaf.select(
+             "workspace assistant instructions select",
+             assistant_instructions_query(workspace)
+           ) do
+      {:ok,
+       rows
+       |> Enum.find_value(&(Map.get(&1, "instructions") && term_value(&1["instructions"])))
+       |> blank_to_nil()}
+    end
+  end
+
+  @doc """
+  Stores project-specific assistant instructions on the default workspace.
+  """
+  def set_assistant_instructions(instructions) when is_binary(instructions) do
+    with {:ok, workspace} <- ensure_default() do
+      Sheaf.update(
+        "workspace assistant instructions update",
+        assistant_instructions_update(workspace, String.trim(instructions))
+      )
     end
   end
 
@@ -102,6 +131,51 @@ defmodule Sheaf.Workspace do
     """
   end
 
+  defp assistant_instructions_query(workspace) do
+    """
+    PREFIX sheaf: <https://less.rest/sheaf/>
+
+    SELECT ?instructions WHERE {
+      GRAPH <#{@graph}> {
+        OPTIONAL { <#{workspace}> sheaf:assistantInstructions ?instructions }
+      }
+    }
+    LIMIT 1
+    """
+  end
+
+  defp assistant_instructions_update(workspace, instructions) do
+    """
+    PREFIX sheaf: <https://less.rest/sheaf/>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    DELETE {
+      GRAPH <#{@graph}> {
+        <#{workspace}> sheaf:assistantInstructions ?previous .
+      }
+    }
+    INSERT {
+      GRAPH <#{@graph}> {
+        <#{workspace}> a sheaf:Workspace ;
+          rdfs:label "#{@label}"#{assistant_instructions_insert(instructions)}
+      }
+    }
+    WHERE {
+      OPTIONAL {
+        GRAPH <#{@graph}> {
+          <#{workspace}> sheaf:assistantInstructions ?previous .
+        }
+      }
+    }
+    """
+  end
+
+  defp assistant_instructions_insert(""), do: " ."
+
+  defp assistant_instructions_insert(instructions) do
+    " ;\n          sheaf:assistantInstructions #{Jason.encode!(instructions)} ."
+  end
+
   defp insert_exclusion_update(workspace, document) do
     """
     PREFIX sheaf: <https://less.rest/sheaf/>
@@ -155,4 +229,11 @@ defmodule Sheaf.Workspace do
     }
     """
   end
+
+  defp term_value(nil), do: nil
+  defp term_value(term), do: term |> RDF.Term.value() |> to_string()
+
+  defp blank_to_nil(nil), do: nil
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(value), do: value
 end

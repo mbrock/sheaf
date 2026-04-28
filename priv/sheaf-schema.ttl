@@ -49,6 +49,12 @@ sheaf:Workspace a rdfs:Class ;
   rdfs:subClassOf prov:Entity ;
   rdfs:comment "A persistent context for local reading and research preferences." .
 
+sheaf:assistantInstructions a rdf:Property ;
+  rdfs:label "has assistant instructions"@en ;
+  rdfs:domain sheaf:Workspace ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Project-specific context and guidance to include in the assistant system prompt for a workspace." .
+
 sheaf:Interview a rdfs:Class ;
   rdfs:label "interview"@en ;
   rdfs:subClassOf sheaf:Transcript ;

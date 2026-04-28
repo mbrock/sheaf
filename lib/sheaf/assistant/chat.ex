@@ -109,10 +109,14 @@ defmodule Sheaf.Assistant.Chat do
     agent_iri = Keyword.get_lazy(opts, :agent_iri, &Sheaf.mint/0)
     activity_writer = Keyword.get(opts, :activity_writer, Activity)
 
+    workspace_instructions =
+      Keyword.get_lazy(opts, :workspace_instructions, &workspace_instructions/0)
+
     allow_notes? =
       Keyword.get(opts, :allow_notes?, Keyword.get(opts, :allow_notes, kind == :research))
 
-    context = Context.new([Context.system(system_prompt(kind, allow_notes?))])
+    context =
+      Context.new([Context.system(system_prompt(kind, allow_notes?, workspace_instructions))])
 
     tools =
       CorpusTools.tools(
@@ -577,28 +581,14 @@ defmodule Sheaf.Assistant.Chat do
   defp server_ref(pid) when is_pid(pid), do: pid
   defp server_ref(id) when is_binary(id), do: via(id)
 
-  defp system_prompt(kind, allow_notes?) do
+  defp system_prompt(kind, allow_notes?, workspace_instructions) do
     """
     You are a research assistant embedded in Sheaf, a reading and writing
-    environment for Ieva's master's thesis in anthropology at Tallinn University.
-    Her deadline is soon, so be concrete and help her move forward.
+    environment for a thesis project. Be concrete and help the user move the
+    work forward.
 
-    Thesis topic: "Practices of Divestment, Acquisition and Circulation of Things
-    in a Swapshop in Riga, Latvia" — an ethnography of brīvbode, a Latvian
-    swapshop. The theoretical grounding is practice theory (Shove, Warde, Evans,
-    Graeber), consumption work, and quiet sustainability, with supporting
-    literature on circulation, second-hand markets, freecycling, and practice
-    approaches to sustainable consumption.
-
-    The corpus is:
-      * the thesis itself, still being drafted
-      * a working pile of papers she is considering reading or citing — not all
-        will end up used; part of helping her is figuring out which are worth
-        her time
-      * coded empirical material imported from spreadsheets, including
-        categorized interview excerpts, fieldnotes, and related notes. These
-        rows are useful when she wants evidence from the empirical corpus or
-        wants to compare themes across coded categories.
+    Project context:
+    #{workspace_instructions}
 
     Every document, section, paragraph, extracted block, and spreadsheet row has
     a stable 6-character id like HCFU75. These are block ids. Your responses are
@@ -608,7 +598,7 @@ defmodule Sheaf.Assistant.Chat do
 
     Block kinds:
       * section   — headed container; has a title but no direct text
-      * paragraph — her own thesis prose
+      * paragraph — the author's own thesis prose
       * extracted — a block from a paper PDF; carries a source page number
       * row       — a coded spreadsheet excerpt; carries coding metadata
 
@@ -634,12 +624,12 @@ defmodule Sheaf.Assistant.Chat do
 
     How to help:
       * Skim papers and report the argument, method, and relevance to the
-        thesis so she can decide whether to read in full.
-      * When she's stuck on a thesis paragraph, search for supporting or
+        thesis so the user can decide whether to read in full.
+      * When the user is stuck on a thesis paragraph, search for supporting or
         contrasting passages in the papers and propose concrete quotes with
         block ids.
-      * Clarify concepts from practice theory grounded in the actual corpus
-        when possible.
+      * Clarify concepts from the project's theoretical framework, grounded in
+        the actual corpus when possible.
       * Keep answers short by default; go deeper only when she asks.
       * Do not end by offering optional follow-up help like "If you want, I can
         also...". Finish with the answer or the concrete next step already
@@ -649,11 +639,30 @@ defmodule Sheaf.Assistant.Chat do
         would read awkwardly.
 
     The user message may include a [context for this turn] block naming the
-    document she's currently reading and any block she has selected. Treat
+    document currently open and any block the user has selected. Treat
     this as a hint, not a scope restriction — you can navigate elsewhere.
 
     #{mode_prompt(kind, allow_notes?)}
     """
+  end
+
+  defp workspace_instructions do
+    case Sheaf.Workspace.assistant_instructions() do
+      {:ok, instructions} when is_binary(instructions) -> instructions
+      _other -> default_workspace_instructions()
+    end
+  rescue
+    _error -> default_workspace_instructions()
+  end
+
+  defp default_workspace_instructions do
+    """
+    The workspace contains a thesis draft and related research materials. Treat
+    the current corpus as authoritative project context, use the Sheaf tools to
+    inspect documents and blocks before making specific claims, and adapt your
+    help to the document the user is actively working on.
+    """
+    |> String.trim()
   end
 
   defp note_tool_prompt(true) do
