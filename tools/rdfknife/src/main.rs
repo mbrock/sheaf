@@ -12,7 +12,7 @@ use flate2::write::GzEncoder;
 use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
 use oxrdf::{BlankNode, Dataset, GraphName, NamedNode, NamedOrBlankNode, Quad, Term, Triple};
 use oxrdfio::{RdfFormat, RdfParser, RdfSerializer};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Parser)]
@@ -183,6 +183,7 @@ fn quadlog_import(args: QuadlogImportArgs) -> Result<()> {
     let mut conn = Connection::open(&args.database)
         .with_context(|| format!("failed to open {}", args.database.display()))?;
     create_quadlog_schema(&conn)?;
+    configure_quadlog_import(&conn)?;
 
     let reader = input_reader(input_path)?;
     let mut parser = RdfParser::from_format(RdfFormat::NQuads);
@@ -194,53 +195,41 @@ fn quadlog_import(args: QuadlogImportArgs) -> Result<()> {
         .transaction()
         .context("failed to start SQLite transaction")?;
     let mut inserted = 0usize;
-    {
-        let mut insert = tx
-            .prepare(
-                "
-                INSERT INTO changes
-                  (tx, polarity, graph_iri, subject_iri, subject_bnode, predicate_iri,
-                   object_iri, object_bnode, object_text, object_datatype, object_lang)
-                VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ",
-            )
-            .context("failed to prepare Quadlog insert")?;
+    let mut current_inserted = 0usize;
+    let mut term_cache = TermCache::default();
+    let mut last_progress = Instant::now();
+    for quad in parser.for_reader(reader) {
+        let quad = quad.context("failed to parse N-Quads input")?;
+        let row = QuadlogRow::from_quad(&quad)?;
+        insert_change_row(&tx, &args.tx, &row).context("failed to insert Quadlog row")?;
 
-        for quad in parser.for_reader(reader) {
-            let quad = quad.context("failed to parse N-Quads input")?;
-            let row = QuadlogRow::from_quad(&quad)?;
-            insert
-                .execute(params![
-                    args.tx,
-                    row.graph_iri,
-                    row.subject_iri,
-                    row.subject_bnode,
-                    row.predicate_iri,
-                    row.object_iri,
-                    row.object_bnode,
-                    row.object_text,
-                    row.object_datatype,
-                    row.object_lang,
-                ])
-                .context("failed to insert Quadlog row")?;
+        if insert_current_quad(&tx, &mut term_cache, &row)
+            .context("failed to update Quadlog current quads")?
+        {
+            current_inserted += 1;
+        }
 
-            inserted += 1;
-            if args.progress_every > 0 && inserted % args.progress_every == 0 {
-                eprintln!(
-                    "[{:>8}] inserted {inserted} quads",
-                    format_duration(total_start.elapsed())
-                );
-            }
+        inserted += 1;
+        if args.progress_every > 0 && inserted % args.progress_every == 0 {
+            let elapsed = total_start.elapsed();
+            let rate = rate_per_second(args.progress_every, last_progress.elapsed());
+            last_progress = Instant::now();
+            eprintln!(
+                "[{:>8}] imported {inserted} quads ({rate:.0}/s); current +{current_inserted}; terms {}",
+                format_duration(elapsed),
+                term_cache.len()
+            );
         }
     }
 
     eprintln!(
-        "[{:>8}] committing {inserted} rows",
-        format_duration(total_start.elapsed())
+        "[{:>8}] committing {inserted} change rows, {current_inserted} new current quads, {} cached terms",
+        format_duration(total_start.elapsed()),
+        term_cache.len()
     );
     tx.commit().context("failed to commit SQLite transaction")?;
     eprintln!(
-        "[{:>8}] done: inserted {inserted} quads into {}",
+        "[{:>8}] done: imported {inserted} quads into {}",
         format_duration(total_start.elapsed()),
         args.database.display()
     );
@@ -264,9 +253,44 @@ fn create_quadlog_schema(conn: &Connection) -> Result<()> {
           object_datatype TEXT,
           object_lang TEXT
         );
+        CREATE TABLE IF NOT EXISTS terms (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL CHECK (kind IN ('iri', 'bnode', 'literal')),
+          value TEXT NOT NULL,
+          datatype_id INTEGER REFERENCES terms(id),
+          lang TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS terms_identity
+        ON terms (kind, value, COALESCE(datatype_id, 0), COALESCE(lang, ''));
+        CREATE INDEX IF NOT EXISTS terms_kind_value
+        ON terms (kind, value);
+        CREATE TABLE IF NOT EXISTS quads (
+          graph_id INTEGER NOT NULL DEFAULT 0,
+          subject_id INTEGER NOT NULL REFERENCES terms(id),
+          predicate_id INTEGER NOT NULL REFERENCES terms(id),
+          object_id INTEGER NOT NULL REFERENCES terms(id)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS quads_identity
+        ON quads (graph_id, subject_id, predicate_id, object_id);
+        CREATE INDEX IF NOT EXISTS quads_spog
+        ON quads (subject_id, predicate_id, object_id, graph_id);
+        CREATE INDEX IF NOT EXISTS quads_posg
+        ON quads (predicate_id, object_id, subject_id, graph_id);
+        CREATE INDEX IF NOT EXISTS quads_gspo
+        ON quads (graph_id, subject_id, predicate_id, object_id);
+        CREATE INDEX IF NOT EXISTS quads_gpos
+        ON quads (graph_id, predicate_id, object_id, subject_id);
         ",
     )
     .context("failed to create Quadlog schema")?;
+    Ok(())
+}
+
+fn configure_quadlog_import(conn: &Connection) -> Result<()> {
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .context("failed to set SQLite journal_mode")?;
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .context("failed to set SQLite synchronous mode")?;
     Ok(())
 }
 
@@ -320,6 +344,176 @@ impl<'a> QuadlogRow<'a> {
             object_datatype,
             object_lang,
         })
+    }
+}
+
+fn insert_change_row(tx: &Transaction<'_>, tx_id: &str, row: &QuadlogRow<'_>) -> Result<()> {
+    tx.prepare_cached(
+        "
+        INSERT INTO changes
+          (tx, polarity, graph_iri, subject_iri, subject_bnode, predicate_iri,
+           object_iri, object_bnode, object_text, object_datatype, object_lang)
+        VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ",
+    )?
+    .execute(params![
+        tx_id,
+        row.graph_iri,
+        row.subject_iri,
+        row.subject_bnode,
+        row.predicate_iri,
+        row.object_iri,
+        row.object_bnode,
+        row.object_text,
+        row.object_datatype,
+        row.object_lang,
+    ])?;
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct TermKey {
+    kind: &'static str,
+    value: String,
+    datatype_id: Option<i64>,
+    lang: Option<String>,
+}
+
+#[derive(Default)]
+struct TermCache {
+    ids: HashMap<TermKey, i64>,
+}
+
+impl TermCache {
+    fn len(&self) -> usize {
+        self.ids.len()
+    }
+
+    fn get(&self, key: &TermKey) -> Option<i64> {
+        self.ids.get(key).copied()
+    }
+
+    fn insert(&mut self, key: TermKey, id: i64) {
+        self.ids.insert(key, id);
+    }
+}
+
+fn insert_current_quad(
+    tx: &Transaction<'_>,
+    term_cache: &mut TermCache,
+    row: &QuadlogRow<'_>,
+) -> Result<bool> {
+    let graph_id = match row.graph_iri {
+        Some(iri) => term_id(tx, term_cache, TermRef::Iri(iri))?,
+        None => 0,
+    };
+    let subject_id = match (row.subject_iri, row.subject_bnode) {
+        (Some(iri), None) => term_id(tx, term_cache, TermRef::Iri(iri))?,
+        (None, Some(bnode)) => term_id(tx, term_cache, TermRef::Bnode(bnode))?,
+        _ => bail!("invalid Quadlog subject row"),
+    };
+    let predicate_id = term_id(tx, term_cache, TermRef::Iri(row.predicate_iri))?;
+    let object_id = match (
+        row.object_iri,
+        row.object_bnode,
+        row.object_text,
+        row.object_datatype,
+        row.object_lang,
+    ) {
+        (Some(iri), None, None, None, None) => term_id(tx, term_cache, TermRef::Iri(iri))?,
+        (None, Some(bnode), None, None, None) => term_id(tx, term_cache, TermRef::Bnode(bnode))?,
+        (None, None, Some(text), Some(datatype), lang) => {
+            term_id(tx, term_cache, TermRef::Literal(text, datatype, lang))?
+        }
+        _ => bail!("invalid Quadlog object row"),
+    };
+
+    let changed = tx
+        .prepare_cached(
+            "
+            INSERT OR IGNORE INTO quads
+              (graph_id, subject_id, predicate_id, object_id)
+            VALUES (?, ?, ?, ?)
+            ",
+        )?
+        .execute(params![graph_id, subject_id, predicate_id, object_id])?;
+
+    Ok(changed > 0)
+}
+
+enum TermRef<'a> {
+    Iri(&'a str),
+    Bnode(&'a str),
+    Literal(&'a str, &'a str, Option<&'a str>),
+}
+
+fn term_id(tx: &Transaction<'_>, term_cache: &mut TermCache, term: TermRef<'_>) -> Result<i64> {
+    match term {
+        TermRef::Iri(value) => intern_term(tx, term_cache, "iri", value, None, None),
+        TermRef::Bnode(value) => intern_term(tx, term_cache, "bnode", value, None, None),
+        TermRef::Literal(value, datatype, lang) => {
+            let datatype_id = term_id(tx, term_cache, TermRef::Iri(datatype))?;
+            intern_term(tx, term_cache, "literal", value, Some(datatype_id), lang)
+        }
+    }
+}
+
+fn intern_term(
+    tx: &Transaction<'_>,
+    term_cache: &mut TermCache,
+    kind: &'static str,
+    value: &str,
+    datatype_id: Option<i64>,
+    lang: Option<&str>,
+) -> Result<i64> {
+    let key = TermKey {
+        kind,
+        value: value.to_owned(),
+        datatype_id,
+        lang: lang.map(str::to_owned),
+    };
+
+    if let Some(id) = term_cache.get(&key) {
+        return Ok(id);
+    }
+
+    tx.prepare_cached(
+        "
+        INSERT OR IGNORE INTO terms (kind, value, datatype_id, lang)
+        VALUES (?, ?, ?, ?)
+        ",
+    )?
+    .execute(params![kind, value, datatype_id, lang])?;
+
+    let id = tx
+        .prepare_cached(
+            "
+            SELECT id
+            FROM terms
+            WHERE kind = ?
+              AND value = ?
+              AND COALESCE(datatype_id, 0) = ?
+              AND COALESCE(lang, '') = ?
+            LIMIT 1
+            ",
+        )?
+        .query_row(
+            params![kind, value, datatype_id.unwrap_or(0), lang.unwrap_or("")],
+            |row| row.get(0),
+        )
+        .optional()?
+        .with_context(|| format!("failed to intern Quadlog term {kind}:{value}"))?;
+
+    term_cache.insert(key, id);
+    Ok(id)
+}
+
+fn rate_per_second(count: usize, elapsed: Duration) -> f64 {
+    if elapsed.is_zero() {
+        0.0
+    } else {
+        count as f64 / elapsed.as_secs_f64()
     }
 }
 
