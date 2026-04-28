@@ -3,6 +3,7 @@ defmodule Sheaf.Embedding.IndexTest do
 
   alias Sheaf.Embedding.Index
   alias Sheaf.Embedding.Store
+  alias Sheaf.Search.Index, as: SearchIndex
 
   setup do
     Req.Test.verify_on_exit!()
@@ -177,6 +178,46 @@ defmodule Sheaf.Embedding.IndexTest do
                source: source,
                select: select
              )
+  end
+
+  test "exact search tolerates stale search rows without hydrated document metadata" do
+    db_path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-embedding-exact-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    on_exit(fn ->
+      File.rm(db_path)
+      File.rm(db_path <> "-shm")
+      File.rm(db_path <> "-wal")
+    end)
+
+    block_iri = "https://sheaf.less.rest/BLOCK-STALE"
+
+    {:ok, conn} = SearchIndex.open(db_path: db_path)
+
+    try do
+      assert {:ok, %{count: 1}} =
+               SearchIndex.rebuild(conn, [
+                 %{
+                   iri: block_iri,
+                   doc_iri: "https://sheaf.less.rest/DOC-STALE",
+                   kind: "paragraph",
+                   text: "Signal costs and procurement screening"
+                 }
+               ])
+    after
+      SearchIndex.close(conn)
+    end
+
+    select = fn
+      "embedding descriptions select", _sparql -> {:ok, %{results: []}}
+      "embedding document metadata select", _sparql -> {:ok, %{results: []}}
+    end
+
+    assert {:ok, [%{iri: ^block_iri, match: :exact}]} =
+             Index.exact_search("signal", db_path: db_path, select: select)
   end
 
   test "importing an async batch skips units whose documents are now excluded" do

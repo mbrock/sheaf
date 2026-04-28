@@ -894,7 +894,7 @@ defmodule Sheaf.Embedding.Index do
 
   defp searchable_result(result, opts) do
     if kind_allowed?(result, opts) and document_allowed?(result, opts) and
-         not result[:doc_excluded?] and
+         Map.get(result, :doc_excluded?, false) != true and
          searchable_content?(result) do
       [result]
     else
