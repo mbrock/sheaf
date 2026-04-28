@@ -101,6 +101,47 @@ defmodule Sheaf.DocumentTest do
            ] = Document.toc(graph, thesis)
   end
 
+  test "returns sanitized inline paragraph markup when present" do
+    block = RDF.IRI.new!("https://example.com/sheaf/PAR111")
+    paragraph = RDF.IRI.new!("https://example.com/sheaf/PV1111")
+
+    graph =
+      RDF.Graph.new([
+        {block, RDF.type(), DOC.ParagraphBlock},
+        {block, DOC.paragraph(), paragraph},
+        {block, DOC.markup(),
+         RDF.literal(
+           ~S"""
+           Plain <strong onclick="bad()">strong</strong> <em>em</em> <mark>mark</mark> <a href="https://example.com/?a=1&b=2" onclick="bad()">link</a> <sup data-footnote="12" onclick="bad()"></sup> <script>alert("x")</script>
+           """
+           |> String.trim()
+         )},
+        {paragraph, RDF.type(), DOC.Paragraph},
+        {paragraph, DOC.text(), RDF.literal("Plain strong em mark link.")}
+      ])
+
+    assert Document.paragraph_markup(graph, block) ==
+             ~S"""
+             Plain <strong>strong</strong> <em>em</em> <mark>mark</mark> <a href="https://example.com/?a=1&amp;b=2">link</a> <sup data-footnote="12"></sup> &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;
+             """
+             |> String.trim()
+  end
+
+  test "returns nil paragraph markup when only plain text is present" do
+    block = RDF.IRI.new!("https://example.com/sheaf/PAR111")
+    paragraph = RDF.IRI.new!("https://example.com/sheaf/PV1111")
+
+    graph =
+      RDF.Graph.new([
+        {block, RDF.type(), DOC.ParagraphBlock},
+        {block, DOC.paragraph(), paragraph},
+        {paragraph, RDF.type(), DOC.Paragraph},
+        {paragraph, DOC.text(), RDF.literal("Plain paragraph.")}
+      ])
+
+    assert Document.paragraph_markup(graph, block) == nil
+  end
+
   test "returns ordered readable text chunks and DOI candidates for imported papers" do
     paper = RDF.IRI.new!("https://example.com/sheaf/PAPER1")
     root_list = RDF.IRI.new!("https://example.com/sheaf/LSTROOT")
