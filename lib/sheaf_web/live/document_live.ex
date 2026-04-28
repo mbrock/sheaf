@@ -13,10 +13,9 @@ defmodule SheafWeb.DocumentLive do
   alias SheafWeb.AssistantHistoryComponents
   import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
 
-  # Knuth-Plass justification is O(n^2) per paragraph and snapshots every
-  # paragraph in the article on mount/resize. Disable it for documents whose
-  # paragraph count would make that too expensive.
-  @knuth_plass_block_limit 800
+  # Knuth-Plass justification is kept available but currently disabled because
+  # its text rewriting does not yet preserve inline markup rendering cleanly.
+  @knuth_plass? false
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
@@ -75,7 +74,7 @@ defmodule SheafWeb.DocumentLive do
       assigns
       |> assign(:blocks, blocks)
       |> assign(:toc, Document.toc(assigns.graph, assigns.root))
-      |> assign(:knuth_plass?, paragraph_block_count(blocks) <= @knuth_plass_block_limit)
+      |> assign(:knuth_plass?, @knuth_plass?)
 
     ~H"""
     <div
