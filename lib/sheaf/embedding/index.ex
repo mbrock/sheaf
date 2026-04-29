@@ -673,8 +673,102 @@ defmodule Sheaf.Embedding.Index do
     end
   end
 
+  defp sidecar_descriptions_for_iris([], _opts), do: {:ok, %{}}
+
+  defp sidecar_descriptions_for_iris(iris, opts) when is_list(iris) do
+    with {:ok, units} <- Sheaf.Search.Index.units_by_iris(iris, opts),
+         {:ok, documents} <-
+           units
+           |> Map.values()
+           |> Enum.map(& &1.doc_iri)
+           |> document_metadata_for_doc_iris(opts) do
+      {:ok,
+       iris
+       |> Enum.uniq()
+       |> Enum.map(&unit_from_sidecar(units, &1, documents))
+       |> Enum.reject(&is_nil/1)
+       |> Map.new(&{&1.iri, &1})}
+    end
+  end
+
   @doc false
-  def document_metadata(_opts \\ []) do
+  def document_metadata(opts) do
+    case Keyword.get(opts, :documents) do
+      documents when is_map(documents) -> {:ok, documents}
+      _other -> load_document_metadata()
+    end
+  end
+
+  @doc false
+  def document_metadata, do: load_document_metadata()
+
+  defp document_metadata_for_doc_iris(doc_iris, opts) do
+    doc_iris = doc_iris |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    case Keyword.get(opts, :documents) do
+      documents when is_map(documents) ->
+        documents
+        |> Map.take(doc_iris)
+        |> then(&{:ok, &1})
+
+      _other ->
+        load_document_metadata_for_doc_iris(doc_iris)
+    end
+  end
+
+  defp load_document_metadata_for_doc_iris([]), do: {:ok, %{}}
+
+  defp load_document_metadata_for_doc_iris(doc_iris) do
+    with {:ok, metadata} <- Sheaf.fetch_graph(Sheaf.Repo.metadata_graph()),
+         {:ok, workspace} <- Sheaf.fetch_graph(Sheaf.Repo.workspace_graph()),
+         {:ok, docs} <- fetch_document_graphs(doc_iris) do
+      excluded = excluded_documents_from_workspace(workspace)
+
+      docs
+      |> Enum.map(fn {doc, graph} ->
+        description = RDF.Data.description(graph, RDF.iri(doc))
+        expression = Description.first(description, FABIO.isRepresentationOf())
+
+        expression =
+          expression ||
+            first_object(metadata, RDF.iri(doc), FABIO.isRepresentationOf())
+
+        authors =
+          metadata
+          |> objects_for(expression, DCTERMS.creator())
+          |> Enum.flat_map(fn
+            %RDF.Literal{} = literal -> [RDF.Literal.lexical(literal)]
+            author -> first_object(metadata, author, FOAF.name()) |> List.wrap()
+          end)
+          |> Enum.reject(&is_nil/1)
+          |> Enum.map(&term_value/1)
+          |> Enum.uniq()
+          |> Enum.sort()
+
+        {doc,
+         %{
+           title: description |> Description.first(RDFS.label()) |> term_value(),
+           kind: document_kind(description),
+           excluded?: MapSet.member?(excluded, RDF.iri(doc)),
+           authors: authors
+         }}
+      end)
+      |> Map.new()
+      |> then(&{:ok, &1})
+    end
+  end
+
+  defp fetch_document_graphs(doc_iris) do
+    doc_iris
+    |> Enum.reduce_while({:ok, []}, fn doc, {:ok, graphs} ->
+      case Sheaf.fetch_graph(doc) do
+        {:ok, graph} -> {:cont, {:ok, [{doc, graph} | graphs]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp load_document_metadata do
     with {:ok, dataset} <- Sheaf.fetch_dataset() do
       metadata = RDF.Dataset.graph(dataset, Sheaf.Repo.metadata_graph()) || Graph.new()
       excluded = excluded_documents(dataset)
@@ -776,7 +870,7 @@ defmodule Sheaf.Embedding.Index do
     with {:ok, ranked} <-
            Store.search_vectors(conn, query_values, model, dimensions, candidate_limit, source),
          {:ok, metadata} <-
-           descriptions_for_iris(
+           sidecar_descriptions_for_iris(
              Enum.map(ranked, & &1.iri),
              Keyword.merge(opts, model: model, output_dimensionality: dimensions)
            ) do
@@ -825,7 +919,7 @@ defmodule Sheaf.Embedding.Index do
       |> Keyword.put(:limit, Keyword.get(opts, :limit, 60))
 
     with {:ok, hits} <- Sheaf.Search.Index.search(query, search_opts),
-         {:ok, metadata} <- descriptions_for_iris(Enum.map(hits, & &1.iri), opts) do
+         {:ok, metadata} <- sidecar_descriptions_for_iris(Enum.map(hits, & &1.iri), opts) do
       {:ok,
        hits
        |> Enum.flat_map(fn hit ->
@@ -840,6 +934,23 @@ defmodule Sheaf.Embedding.Index do
          })
          |> searchable_result(opts)
        end)}
+    end
+  end
+
+  defp unit_from_sidecar(units, iri, documents) do
+    case Map.get(units, iri) do
+      nil ->
+        nil
+
+      unit ->
+        doc = Map.get(documents, unit.doc_iri, %{})
+
+        Map.merge(unit, %{
+          doc_title: Map.get(doc, :title),
+          doc_kind: Map.get(doc, :kind),
+          doc_authors: Map.get(doc, :authors, []),
+          doc_excluded?: Map.get(doc, :excluded?, false)
+        })
     end
   end
 
@@ -1089,6 +1200,10 @@ defmodule Sheaf.Embedding.Index do
 
   defp excluded_documents(dataset) do
     workspace = RDF.Dataset.graph(dataset, Sheaf.Repo.workspace_graph()) || Graph.new()
+    excluded_documents_from_workspace(workspace)
+  end
+
+  defp excluded_documents_from_workspace(workspace) do
     excludes_document = DOC.excludesDocument()
 
     workspace

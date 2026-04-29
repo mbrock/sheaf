@@ -72,6 +72,10 @@ defmodule Sheaf.Search.IndexTest do
     assert {:ok, [row_hit]} = Index.search("giving things", db_path: db_path)
     assert row_hit.iri == "https://sheaf.less.rest/ROW1"
     assert row_hit.kind == "row"
+    assert row_hit.spreadsheet_row == 7
+
+    assert {:ok, units} = Index.units_by_iris([row_hit.iri], db_path: db_path)
+    assert %{spreadsheet_row: 7, text: "Coded row about giving things away."} = units[row_hit.iri]
   end
 
   test "search respects kind and document filters", %{db_path: db_path} do

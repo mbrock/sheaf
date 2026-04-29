@@ -115,7 +115,8 @@ defmodule Sheaf.Search.Index do
            Sqlite3.execute(
              conn,
              "CREATE INDEX IF NOT EXISTS search_text_units_kind_idx ON search_text_units(kind)"
-           ) do
+           ),
+         :ok <- ensure_metadata_columns(conn) do
       Sqlite3.execute(conn, search_text_units_fts_sql())
     end
   end
@@ -179,7 +180,9 @@ defmodule Sheaf.Search.Index do
       |> add_document_filter(document_id)
 
     sql = """
-    SELECT u.iri, u.doc_iri, u.kind, u.text, u.text_hash,
+    SELECT u.iri, u.doc_iri, u.kind, u.text, u.text_hash, u.source_page,
+           u.source_block_type, u.spreadsheet_row, u.spreadsheet_source,
+           u.code_category_title,
            bm25(search_text_units_fts) AS rank,
            instr(lower(u.text), ?) > 0 AS exact_match
     FROM search_text_units_fts
@@ -195,6 +198,45 @@ defmodule Sheaf.Search.Index do
        |> Enum.map(&row_to_result/1)
        |> Enum.filter(&(&1.kind in kinds))
        |> Enum.take(limit)}
+    end
+  end
+
+  @doc """
+  Returns mirrored text units by IRI from the sidecar table.
+  """
+  @spec units_by_iris([String.t()], keyword()) :: {:ok, map()} | {:error, term()}
+  def units_by_iris(iris, opts \\ []) when is_list(iris) do
+    iris = iris |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    if iris == [] do
+      {:ok, %{}}
+    else
+      with {:ok, conn} <- open(opts) do
+        try do
+          units_by_iris_loaded(conn, iris)
+        after
+          close(conn)
+        end
+      end
+    end
+  end
+
+  @doc false
+  def units_by_iris_loaded(conn, iris) when is_list(iris) do
+    placeholders = iris |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
+
+    sql = """
+    SELECT iri, doc_iri, kind, text, text_hash, source_page, source_block_type,
+           spreadsheet_row, spreadsheet_source, code_category_title
+    FROM search_text_units
+    WHERE iri IN (#{placeholders})
+    """
+
+    with {:ok, rows} <- query(conn, sql, iris) do
+      rows
+      |> Enum.map(&unit_row/1)
+      |> Map.new(&{&1.iri, &1})
+      |> then(&{:ok, &1})
     end
   end
 
@@ -237,20 +279,45 @@ defmodule Sheaf.Search.Index do
     "\"" <> escaped <> "\""
   end
 
-  defp row_to_result([iri, doc_iri, kind, text, text_hash, rank, exact_match]) do
+  defp row_to_result(row) do
+    [rank, exact_match] = Enum.slice(row, 10, 2)
     lexical_score = lexical_score(rank, exact_match)
 
+    row
+    |> Enum.take(10)
+    |> unit_row()
+    |> Map.merge(%{
+      score: lexical_score,
+      lexical_score: lexical_score,
+      semantic_score: nil,
+      match: :exact,
+      run_iri: nil
+    })
+  end
+
+  defp unit_row([
+         iri,
+         doc_iri,
+         kind,
+         text,
+         text_hash,
+         source_page,
+         source_block_type,
+         spreadsheet_row,
+         spreadsheet_source,
+         code_category_title
+       ]) do
     %{
       iri: iri,
       doc_iri: doc_iri,
       kind: kind,
       text: text,
       text_hash: text_hash,
-      score: lexical_score,
-      lexical_score: lexical_score,
-      semantic_score: nil,
-      match: :exact,
-      run_iri: nil
+      source_page: source_page,
+      source_block_type: source_block_type,
+      spreadsheet_row: spreadsheet_row,
+      spreadsheet_source: spreadsheet_source,
+      code_category_title: code_category_title
     }
   end
 
@@ -296,7 +363,12 @@ defmodule Sheaf.Search.Index do
       iri: row |> Map.fetch!("iri") |> term_value(),
       doc_iri: row |> Map.get("doc") |> term_value(),
       kind: row |> Map.fetch!("kind") |> term_value(),
-      text: row |> Map.fetch!("text") |> term_value()
+      text: row |> Map.fetch!("text") |> term_value(),
+      source_page: row |> Map.get("sourcePage") |> integer_value(),
+      source_block_type: row |> Map.get("sourceBlockType") |> term_value(),
+      spreadsheet_row: row |> Map.get("spreadsheetRow") |> integer_value(),
+      spreadsheet_source: row |> Map.get("spreadsheetSource") |> term_value(),
+      code_category_title: row |> Map.get("codeCategoryTitle") |> term_value()
     }
   end
 
@@ -320,13 +392,32 @@ defmodule Sheaf.Search.Index do
   defp term_value(nil), do: nil
   defp term_value(term), do: term |> RDF.Term.value() |> to_string()
 
+  defp integer_value(nil), do: nil
+  defp integer_value(value) when is_integer(value), do: value
+
+  defp integer_value(%RDF.Literal{} = literal) do
+    literal
+    |> RDF.Literal.value()
+    |> integer_value()
+  end
+
+  defp integer_value(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> integer
+      _other -> nil
+    end
+  end
+
+  defp integer_value(_value), do: nil
+
   defp insert_unit(conn, unit, synced_at) do
     execute(
       conn,
       """
       INSERT INTO search_text_units
-        (iri, doc_iri, kind, text, text_hash, synced_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (iri, doc_iri, kind, text, text_hash, source_page, source_block_type,
+         spreadsheet_row, spreadsheet_source, code_category_title, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """,
       [
         Map.fetch!(unit, :iri),
@@ -334,9 +425,45 @@ defmodule Sheaf.Search.Index do
         Map.fetch!(unit, :kind),
         Map.fetch!(unit, :text),
         text_hash(Map.fetch!(unit, :text)),
+        Map.get(unit, :source_page),
+        Map.get(unit, :source_block_type),
+        Map.get(unit, :spreadsheet_row),
+        Map.get(unit, :spreadsheet_source),
+        Map.get(unit, :code_category_title),
         synced_at
       ]
     )
+  end
+
+  defp ensure_metadata_columns(conn) do
+    with {:ok, columns} <- table_columns(conn, "search_text_units") do
+      [
+        {"source_page", "INTEGER"},
+        {"source_block_type", "TEXT"},
+        {"spreadsheet_row", "INTEGER"},
+        {"spreadsheet_source", "TEXT"},
+        {"code_category_title", "TEXT"}
+      ]
+      |> Enum.reduce_while(:ok, fn {column, type}, :ok ->
+        if MapSet.member?(columns, column) do
+          {:cont, :ok}
+        else
+          case Sqlite3.execute(conn, "ALTER TABLE search_text_units ADD COLUMN #{column} #{type}") do
+            :ok -> {:cont, :ok}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        end
+      end)
+    end
+  end
+
+  defp table_columns(conn, table) do
+    with {:ok, rows} <- query(conn, "PRAGMA table_info(#{table})", []) do
+      rows
+      |> Enum.map(fn [_cid, name, _type, _notnull, _default, _pk] -> name end)
+      |> MapSet.new()
+      |> then(&{:ok, &1})
+    end
   end
 
   defp text_hash(text) do
@@ -424,6 +551,11 @@ defmodule Sheaf.Search.Index do
       kind TEXT NOT NULL,
       text TEXT NOT NULL,
       text_hash TEXT NOT NULL,
+      source_page INTEGER,
+      source_block_type TEXT,
+      spreadsheet_row INTEGER,
+      spreadsheet_source TEXT,
+      code_category_title TEXT,
       synced_at TEXT NOT NULL
     )
     """
