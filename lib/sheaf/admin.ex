@@ -60,6 +60,29 @@ defmodule Sheaf.Admin do
     end
   end
 
+  def sync_search_indexes(args) do
+    {opts, _positional, invalid} = OptionParser.parse(args, strict: embedding_sync_options())
+
+    reject_invalid!(invalid)
+
+    search_opts = search_opts(opts)
+    embedding_opts = embedding_opts(opts)
+
+    with {:ok, search_summary} <- Sheaf.Search.Index.sync(search_opts),
+         {:ok, embedding_summary} <- Sheaf.Embedding.Index.sync(embedding_opts) do
+      info(
+        "Search sync complete: db=#{search_summary.db_path} rows=#{search_summary.count}#{kind_summary(search_summary.kinds)}"
+      )
+
+      info(
+        "Embedding sync #{embedding_summary.status}: run=#{embedding_summary.run_iri}#{batch_summary(embedding_summary)} target=#{embedding_summary.target_count} embedded=#{embedding_summary.embedded_count} skipped=#{embedding_summary.skipped_count} errors=#{embedding_summary.error_count}"
+      )
+    else
+      {:error, reason} ->
+        fail!("Search index sync failed: #{inspect(reason)}")
+    end
+  end
+
   def sync_embeddings(args) do
     {opts, _positional, invalid} = OptionParser.parse(args, strict: embedding_sync_options())
 
@@ -754,6 +777,13 @@ defmodule Sheaf.Admin do
   defp spreadsheet_db_opts(opts), do: put_if_present([], :db_path, opts[:db])
   defp put_kinds(opts, []), do: opts
   defp put_kinds(opts, kinds), do: Keyword.put(opts, :kinds, kinds)
+
+  defp search_opts(opts) do
+    []
+    |> put_if_present(:db_path, Keyword.get(opts, :db))
+    |> put_if_present(:limit, Keyword.get(opts, :limit))
+    |> put_kinds(Keyword.get_values(opts, :kind))
+  end
 
   defp embedding_sync_options do
     [

@@ -21,11 +21,6 @@ args =
   |> Base.decode64!()
   |> String.split(<<0>>, trim: true)
 
-IO.puts(
-  :stderr,
-  "bin/embeddings is kept for compatibility; use bin/search-sync for the full search index refresh."
-)
-
 Sheaf.Admin.sync_search_indexes(args)
 ""
 EOF

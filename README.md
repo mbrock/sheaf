@@ -69,11 +69,15 @@ restarts the service instead.
 `bin/docs` uses the running node to show app overviews, module/function docs, and
 source snippets, which is often faster than spelunking generated HTML docs.
 `bin/triplestore` manages the Dockerized Fuseki dependency used by Sheaf.
+`bin/search-sync` refreshes the derived search indexes from RDF on the running
+Sheaf node: it rebuilds the SQLite full-text mirror and then syncs/reuses
+embedding vectors for semantic search.
 
 Useful graph commands:
 
 ```bash
 mix escript.build
+bin/search-sync
 bin/sheaf-admin backup
 bin/sheaf-admin schema upload
 ```
