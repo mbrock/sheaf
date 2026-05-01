@@ -140,7 +140,8 @@ defmodule Sheaf.Embedding.IndexTest do
                db_path: db_path,
                model: model,
                output_dimensionality: dimensions,
-               source: source
+               source: source,
+               kinds: ["paragraph"]
              )
   end
 

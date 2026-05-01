@@ -8,4 +8,21 @@ APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 require_sheaf_env "$APP_ROOT"
 
 cd "$APP_ROOT"
-exec "$SCRIPT_DIR/sheaf-admin" embeddings sync "$@"
+
+ARGS_FILE="$(mktemp /tmp/sheaf_embeddings_args_XXXXXX)"
+cleanup() { rm -f "$ARGS_FILE"; }
+trap cleanup EXIT
+
+for arg in "$@"; do
+  printf '%s\0' "$arg" >> "$ARGS_FILE"
+done
+
+"$SCRIPT_DIR/rpc" <<EOF
+args =
+  "$ARGS_FILE"
+  |> File.read!()
+  |> String.split(<<0>>, trim: true)
+
+Sheaf.Admin.sync_embeddings(args)
+""
+EOF
