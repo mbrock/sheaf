@@ -1,13 +1,13 @@
 [Unit]
-Description=Sheaf production server
+Description=Sheaf live server
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/mbrock/sheaf
-Environment=MIX_ENV=prod
-Environment=PHX_SERVER=true
-ExecStart=/home/mbrock/sheaf/bin/env /home/mbrock/sheaf/bin/serve-prod
+WorkingDirectory=/srv/sheaf
+EnvironmentFile=/srv/sheaf/.env
+Environment=MIX_ENV=dev
+ExecStart=/srv/sheaf/bin/serve
 Restart=always
 RestartSec=3
 SyslogIdentifier=sheaf
