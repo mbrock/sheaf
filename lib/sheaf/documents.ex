@@ -183,7 +183,7 @@ defmodule Sheaf.Documents do
           {metadata, workspace}
         end
 
-      index = document_index(dataset)
+      index = document_index(dataset, workspace)
       document_iris = index.documents |> Map.keys() |> MapSet.new()
       cited_docs = index.cited_docs
 
@@ -218,7 +218,7 @@ defmodule Sheaf.Documents do
     end
   end
 
-  defp document_index(dataset) do
+  defp document_index(dataset, workspace) do
     Tracer.with_span "Sheaf.Documents.document_index", %{kind: :internal} do
       kinds = document_kind_set()
       thesis = RDF.iri(DOC.Thesis)
@@ -276,7 +276,11 @@ defmodule Sheaf.Documents do
           theses = Map.get(index.theses_by_graph, graph, MapSet.new())
 
           Enum.flat_map(cites, fn {subject, object} ->
-            if MapSet.member?(theses, subject), do: [object], else: []
+            if MapSet.member?(theses, subject) and not excluded?(workspace, subject) do
+              [object]
+            else
+              []
+            end
           end)
         end)
         |> MapSet.new()
@@ -528,6 +532,8 @@ defmodule Sheaf.Documents do
   defp workspace_owner_authored?(metadata, doc, owner, :metadata_only) do
     owner in objects_for(metadata, doc, DCTERMS.creator())
   end
+
+  defp excluded?(nil, _doc), do: false
 
   defp excluded?(workspace, doc) do
     workspace

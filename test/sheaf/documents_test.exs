@@ -295,6 +295,52 @@ defmodule Sheaf.DocumentsTest do
            } = Enum.find(Documents.from_dataset(dataset), &(&1.id == "PAPER1"))
   end
 
+  test "ignores citations from excluded thesis documents when creating metadata-only rows" do
+    workspace = ~I<https://example.com/sheaf/WORKSPACE>
+    thesis = ~I<https://example.com/sheaf/THESIS>
+    cited_work = ~I<https://example.com/sheaf/CITED-WORK>
+
+    thesis_graph =
+      RDF.Graph.new(
+        [
+          {thesis, RDF.type(), DOC.Document},
+          {thesis, RDF.type(), DOC.Thesis},
+          {thesis, RDFS.label(), "Excluded thesis"},
+          {thesis, CITO.cites(), cited_work}
+        ],
+        name: thesis
+      )
+
+    metadata_graph =
+      RDF.Graph.new(
+        [
+          {cited_work, RDF.type(), FABIO.ScholarlyWork},
+          {cited_work, RDFS.label(), "Metadata-only cited work"}
+        ],
+        name: Sheaf.Repo.metadata_graph()
+      )
+
+    workspace_graph =
+      RDF.Graph.new(
+        [
+          {workspace, RDF.type(), DOC.Workspace},
+          {workspace, DOC.excludesDocument(), thesis}
+        ],
+        name: Sheaf.Repo.workspace_graph()
+      )
+
+    dataset =
+      RDF.Dataset.new()
+      |> RDF.Dataset.add(thesis_graph)
+      |> RDF.Dataset.add(metadata_graph)
+      |> RDF.Dataset.add(workspace_graph)
+
+    documents = Documents.from_dataset(dataset)
+
+    assert Enum.any?(documents, &(&1.id == "THESIS" and &1.excluded?))
+    refute Enum.any?(documents, &(&1.id == "CITED-WORK"))
+  end
+
   test "reads imported document page counts from document metadata" do
     doc = ~I<https://example.com/sheaf/PAPER1>
 
