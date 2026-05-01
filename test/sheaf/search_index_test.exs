@@ -117,4 +117,54 @@ defmodule Sheaf.Search.IndexTest do
       Index.close(conn)
     end
   end
+
+  test "scores multi-term exact matches by coverage instead of flattening", %{db_path: db_path} do
+    {:ok, conn} = Index.open(db_path: db_path)
+    doc = Sheaf.Id.iri("DOC1") |> to_string()
+
+    try do
+      assert {:ok, %{count: 4}} =
+               Index.rebuild(conn, [
+                 %{
+                   iri: "https://sheaf.less.rest/BLOCK1",
+                   doc_iri: doc,
+                   kind: "paragraph",
+                   text: "Meaning sustaining participation depends on shared routines."
+                 },
+                 %{
+                   iri: "https://sheaf.less.rest/BLOCK2",
+                   doc_iri: doc,
+                   kind: "paragraph",
+                   text: "Meaning and participation are discussed without the middle term."
+                 },
+                 %{
+                   iri: "https://sheaf.less.rest/BLOCK3",
+                   doc_iri: doc,
+                   kind: "paragraph",
+                   text: "Participation appears by itself."
+                 },
+                 %{
+                   iri: "https://sheaf.less.rest/BLOCK4",
+                   doc_iri: doc,
+                   kind: "paragraph",
+                   text: "Sustaining sustaining participation through participation."
+                 }
+               ])
+
+      assert {:ok, hits} =
+               Index.search_loaded(conn, "meaning sustaining participation",
+                 document_id: "DOC1",
+                 kinds: ["paragraph"],
+                 limit: 4
+               )
+
+      scores = Enum.map(hits, & &1.score)
+
+      assert List.first(hits).iri == "https://sheaf.less.rest/BLOCK1"
+      assert Enum.uniq(scores) != [0.95]
+      assert Enum.sort(scores, :desc) == scores
+    after
+      Index.close(conn)
+    end
+  end
 end

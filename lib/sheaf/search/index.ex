@@ -195,8 +195,9 @@ defmodule Sheaf.Search.Index do
     with {:ok, rows} <- query(conn, sql, [phrase] ++ params ++ [candidate_limit]) do
       {:ok,
        rows
-       |> Enum.map(&row_to_result/1)
+       |> rows_to_results(search_terms(query), phrase)
        |> Enum.filter(&(&1.kind in kinds))
+       |> Enum.sort_by(&{-&1.score, &1.iri})
        |> Enum.take(limit)}
     end
   end
@@ -279,9 +280,19 @@ defmodule Sheaf.Search.Index do
     "\"" <> escaped <> "\""
   end
 
-  defp row_to_result(row) do
+  defp rows_to_results(rows, terms, phrase) do
+    max_rank =
+      rows
+      |> Enum.map(fn row -> row |> Enum.at(10) |> rank_weight() end)
+      |> Enum.max(fn -> 0.0 end)
+
+    Enum.map(rows, &row_to_result(&1, terms, phrase, max_rank))
+  end
+
+  defp row_to_result(row, terms, phrase, max_rank) do
     [rank, exact_match] = Enum.slice(row, 10, 2)
-    lexical_score = lexical_score(rank, exact_match)
+    text = Enum.at(row, 3)
+    lexical_score = lexical_score(text, terms, phrase, rank, exact_match, max_rank)
 
     row
     |> Enum.take(10)
@@ -321,9 +332,62 @@ defmodule Sheaf.Search.Index do
     }
   end
 
-  defp lexical_score(_rank, exact_match) when exact_match in [1, true], do: 0.98
-  defp lexical_score(rank, _exact_match) when is_number(rank), do: min(0.95, 0.72 + abs(rank))
-  defp lexical_score(_rank, _exact_match), do: 0.75
+  defp lexical_score(text, terms, phrase, rank, exact_match, max_rank) do
+    term_stats = term_stats(text, terms)
+
+    coverage_score =
+      case terms do
+        [] -> 0.0
+        terms -> term_stats.matched / length(terms)
+      end
+
+    frequency_score = min(1.0, term_stats.occurrences / max(length(terms), 1) / 3)
+
+    rank_score =
+      case max_rank do
+        max_rank when max_rank > 0 -> rank_weight(rank) / max_rank
+        _other -> 0.0
+      end
+
+    phrase_score =
+      if exact_match in [1, true] or phrase_match?(text, phrase), do: 1.0, else: 0.0
+
+    (0.32 + coverage_score * 0.34 + rank_score * 0.22 + frequency_score * 0.07 +
+       phrase_score * 0.05)
+    |> min(0.99)
+    |> Float.round(4)
+  end
+
+  defp rank_weight(rank) when is_number(rank), do: abs(rank)
+  defp rank_weight(_rank), do: 0.0
+
+  defp term_stats(text, terms) do
+    Enum.reduce(terms, %{matched: 0, occurrences: 0}, fn term, stats ->
+      occurrences = term_occurrences(text, term)
+
+      %{
+        matched: stats.matched + if(occurrences > 0, do: 1, else: 0),
+        occurrences: stats.occurrences + occurrences
+      }
+    end)
+  end
+
+  defp term_occurrences(text, term) when is_binary(text) and is_binary(term) do
+    escaped = Regex.escape(term)
+    pattern = ~r/(^|[^\p{L}\p{N}])#{escaped}(?=$|[^\p{L}\p{N}])/iu
+
+    pattern
+    |> Regex.scan(text)
+    |> length()
+  end
+
+  defp term_occurrences(_text, _term), do: 0
+
+  defp phrase_match?(text, phrase) when is_binary(text) and is_binary(phrase) do
+    phrase != "" and String.contains?(String.downcase(text), phrase)
+  end
+
+  defp phrase_match?(_text, _phrase), do: false
 
   defp insert_units(conn, units, synced_at) do
     total = length(units)
