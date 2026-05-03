@@ -3,11 +3,24 @@ defmodule Sheaf.BlockRefsTest do
 
   alias Sheaf.BlockRefs
 
-  test "links hash and bare block ids without rewriting existing block links" do
+  test "links explicit block ids without rewriting existing block links" do
     text = "See ABC234, #DEF456, and [SJ3K7R], but not [#GHK789](/b/GHK789) again."
 
     assert BlockRefs.linkify_markdown(text) ==
-             "See [#ABC234](/b/ABC234), [#DEF456](/b/DEF456), and [#SJ3K7R](/b/SJ3K7R), but not [#GHK789](/b/GHK789) again."
+             "See ABC234, [#DEF456](/b/DEF456), and [#SJ3K7R](/b/SJ3K7R), but not [#GHK789](/b/GHK789) again."
+  end
+
+  test "only links ids accepted by the predicate" do
+    text = "Use #ABC234, #DEF456, and query result #PK9ACK."
+
+    assert BlockRefs.linkify_markdown(text, exists?: &(&1 == "DEF456")) ==
+             "Use #ABC234, [#DEF456](/b/DEF456), and query result #PK9ACK."
+  end
+
+  test "does not link SQL keywords or numeric values as bare block ids" do
+    text = "SELECT COUNT(*) FILTER (WHERE try_cast(total_bids AS DOUBLE)=1), tender 152877."
+
+    assert BlockRefs.linkify_markdown(text) == text
   end
 
   test "extracts ids from bare text and existing links" do

@@ -635,9 +635,9 @@ defmodule Sheaf.Assistant.Chat.Server do
 
     Every document, section, paragraph, and extracted block has
     a stable 6-character id like HCFU75. These are block ids. Your responses are
-    rendered as markdown and Sheaf automatically links plain block references.
-    When you reference a block, use a simple inline id such as #HCFU75 or
-    (HCFU75); do not write explicit markdown links.
+    rendered as markdown and Sheaf automatically links block references.
+    When you reference a block, use a simple inline hash id such as #HCFU75;
+    do not write explicit markdown links.
 
     Block kinds:
       * section   — headed container; has a title but no direct text
@@ -674,9 +674,8 @@ defmodule Sheaf.Assistant.Chat.Server do
       * Do not end by offering optional follow-up help like "If you want, I can
         also...". Finish with the answer or the concrete next step already
         taken.
-      * When you cite, use simple block ids: "(Evans 2020, #4C3K1P)" for
-        papers, "(#4C3K1P)" for her own prose, or "(4C3K1P)" when the hash
-        would read awkwardly.
+      * When you cite, use simple hash block ids: "(Evans 2020, #4C3K1P)" for
+        papers, or "(#4C3K1P)" for her own prose.
 
     The user message may include a [context for this turn] block naming the
     document currently open and any block the user has selected. Treat
