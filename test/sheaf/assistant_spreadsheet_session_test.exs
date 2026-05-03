@@ -133,6 +133,38 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
   end
 
   @tag :tmp_dir
+  test "normalizes DuckDB HUGEINT values to Elixir integers", %{tmp_dir: tmp_dir} do
+    xlsx_path = Path.join(tmp_dir, "inventory.xlsx")
+
+    XLSXFixture.write_xlsx!(xlsx_path, [
+      ["name"],
+      ["visible"]
+    ])
+
+    {session, _graph, _result} =
+      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-hugeint-test")
+
+    assert {:ok,
+            %{
+              rows: [
+                %{
+                  "sum_value" => 6,
+                  "max_value" => 170_141_183_460_469_231_731_687_303_715_884_105_727
+                }
+              ]
+            }} =
+             SpreadsheetSession.query(
+               session,
+               """
+               SELECT
+                 SUM(CASE WHEN i=1 THEN 1 ELSE 0 END) AS sum_value,
+                 170141183460469231731687303715884105727::HUGEINT AS max_value
+               FROM (VALUES (1), (2), (1), (3), (1), (1), (1), (1)) t(i)
+               """
+             )
+  end
+
+  @tag :tmp_dir
   test "skips unreadable empty sheets without dropping the workbook", %{tmp_dir: tmp_dir} do
     xlsx_path = Path.join(tmp_dir, "multi.xlsx")
 

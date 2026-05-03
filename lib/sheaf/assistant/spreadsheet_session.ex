@@ -608,7 +608,19 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     end
   end
 
-  defp row_map(columns, row), do: columns |> Enum.zip(row) |> Map.new()
+  defp row_map(columns, row) do
+    columns
+    |> Enum.zip(row)
+    |> Map.new(fn {column, value} -> {column, normalize_value(value)} end)
+  end
+
+  defp normalize_value({upper, lower})
+       when is_integer(upper) and is_integer(lower) and lower >= 0 and
+              lower <= 18_446_744_073_709_551_615 do
+    upper * 18_446_744_073_709_551_616 + lower
+  end
+
+  defp normalize_value(value), do: value
 
   defp spreadsheet_sources(directory, opts) do
     workspace_sources(directory, opts)
