@@ -78,6 +78,39 @@ defmodule Sheaf.Search.IndexTest do
     assert %{spreadsheet_row: 7, text: "Coded row about giving things away."} = units[row_hit.iri]
   end
 
+  test "sync ignores unlinked document blocks when a graph has children", %{db_path: db_path} do
+    doc = RDF.iri("https://sheaf.less.rest/DOC1")
+    root_list = RDF.iri("https://sheaf.less.rest/LIST1")
+    linked_block = RDF.iri("https://sheaf.less.rest/LINKED")
+    linked_paragraph = RDF.iri("https://sheaf.less.rest/LINKED-P")
+    orphan_block = RDF.iri("https://sheaf.less.rest/ORPHAN")
+    orphan_paragraph = RDF.iri("https://sheaf.less.rest/ORPHAN-P")
+
+    graph =
+      RDF.Graph.new(
+        [
+          {doc, RDF.type(), Sheaf.NS.DOC.Document},
+          {doc, Sheaf.NS.DOC.children(), root_list},
+          {linked_block, Sheaf.NS.DOC.paragraph(), linked_paragraph},
+          {linked_paragraph, Sheaf.NS.DOC.text(), "Current reachable chapter text."},
+          {orphan_block, Sheaf.NS.DOC.paragraph(), orphan_paragraph},
+          {orphan_paragraph, Sheaf.NS.DOC.text(), "Stale zephyrword chapter text."}
+        ],
+        name: doc
+      )
+      |> then(fn graph -> RDF.list([linked_block], graph: graph, head: root_list).graph end)
+
+    assert :ok = Sheaf.Repo.assert(graph)
+
+    assert {:ok, summary} = Index.sync(db_path: db_path)
+    assert summary.count >= 1
+
+    assert {:ok, [hit]} = Index.search("reachable chapter", db_path: db_path)
+    assert hit.iri == "https://sheaf.less.rest/LINKED"
+
+    assert {:ok, []} = Index.search("zephyrword", db_path: db_path)
+  end
+
   test "search respects kind and document filters", %{db_path: db_path} do
     {:ok, conn} = Index.open(db_path: db_path)
     doc1 = Sheaf.Id.iri("DOC1") |> to_string()

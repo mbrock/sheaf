@@ -6,7 +6,7 @@ defmodule Sheaf.TextUnits do
   RDF terms until callers choose their own projection.
   """
 
-  alias RDF.Graph
+  alias RDF.{BlankNode, Graph, IRI}
   alias RDF.NS.RDFS
   alias Sheaf.NS.{DOC, PROV}
 
@@ -36,7 +36,10 @@ defmodule Sheaf.TextUnits do
     patterns =
       [
         {nil, DOC.excludesDocument(), nil, RDF.iri(Sheaf.Workspace.graph())},
-        {nil, RDFS.label(), nil, nil}
+        {nil, RDFS.label(), nil, nil},
+        {nil, DOC.children(), nil, nil},
+        {nil, RDF.first(), nil, nil},
+        {nil, RDF.rest(), nil, nil}
       ] ++
         if MapSet.member?(kinds, "paragraph") do
           [
@@ -84,11 +87,13 @@ defmodule Sheaf.TextUnits do
     paragraph_predicate = DOC.paragraph()
     source_html_predicate = DOC.sourceHtml()
     text_predicate = DOC.text()
+    active_subjects = active_subjects(graph, index)
 
     triples
     |> Enum.flat_map(fn
       {iri, ^paragraph_predicate, paragraph} ->
         if MapSet.member?(kinds, "paragraph") and
+             active?(active_subjects, iri) and
              not present?(index, paragraph, PROV.wasInvalidatedBy()) do
           case first(index, paragraph, DOC.text()) do
             nil ->
@@ -112,8 +117,8 @@ defmodule Sheaf.TextUnits do
       {iri, ^source_html_predicate, text} ->
         source_block_type = first(index, iri, DOC.sourceBlockType())
 
-        if MapSet.member?(kinds, "sourceHtml") and source_block_type in [nil, RDF.literal("Text")] and
-             not source_html_noise?(text) do
+        if MapSet.member?(kinds, "sourceHtml") and active?(active_subjects, iri) and
+             source_block_type in [nil, RDF.literal("Text")] and not source_html_noise?(text) do
           [
             %{
               "iri" => iri,
@@ -133,7 +138,7 @@ defmodule Sheaf.TextUnits do
         end
 
       {iri, ^text_predicate, text} ->
-        if MapSet.member?(kinds, "row") and row?(index, iri) do
+        if MapSet.member?(kinds, "row") and active?(active_subjects, iri) and row?(index, iri) do
           [
             %{
               "iri" => iri,
@@ -168,6 +173,46 @@ defmodule Sheaf.TextUnits do
   end
 
   defp present?(index, subject, predicate), do: Map.has_key?(index, {subject, predicate})
+
+  defp active_subjects(%Graph{name: nil}, _index), do: nil
+
+  defp active_subjects(%Graph{name: root}, index) do
+    if present?(index, root, DOC.children()) do
+      reachable_subjects(index, [root], MapSet.new())
+    else
+      nil
+    end
+  end
+
+  defp reachable_subjects(_index, [], visited), do: visited
+
+  defp reachable_subjects(index, [subject | rest], visited) do
+    if MapSet.member?(visited, subject) do
+      reachable_subjects(index, rest, visited)
+    else
+      next =
+        index
+        |> outgoing_objects(subject)
+        |> Enum.flat_map(&resource_objects/1)
+
+      reachable_subjects(index, next ++ rest, MapSet.put(visited, subject))
+    end
+  end
+
+  defp outgoing_objects(index, subject) do
+    index
+    |> Enum.flat_map(fn
+      {{^subject, _predicate}, objects} -> objects
+      _entry -> []
+    end)
+  end
+
+  defp resource_objects(%IRI{} = iri), do: [iri]
+  defp resource_objects(%BlankNode{} = blank_node), do: [blank_node]
+  defp resource_objects(_term), do: []
+
+  defp active?(nil, _iri), do: true
+  defp active?(active_subjects, iri), do: MapSet.member?(active_subjects, iri)
 
   defp row?(index, iri) do
     present?(index, iri, DOC.spreadsheetRow()) or
