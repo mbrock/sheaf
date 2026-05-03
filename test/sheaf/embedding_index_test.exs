@@ -57,7 +57,28 @@ defmodule Sheaf.Embedding.IndexTest do
   end
 
   test "can restrict text unit kinds" do
-    assert {:ok, []} = Index.text_units(kinds: ["sourceHtml"])
+    doc = RDF.iri("https://sheaf.less.rest/DOC-KINDS")
+    paragraph = RDF.iri("https://sheaf.less.rest/BLOCK-KINDS-PARA")
+    paragraph_value = RDF.iri("https://sheaf.less.rest/PARA-KINDS")
+    source = RDF.iri("https://sheaf.less.rest/BLOCK-KINDS-SOURCE")
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {doc, RDF.type(), Sheaf.NS.DOC.Document},
+                   {paragraph, Sheaf.NS.DOC.paragraph(), paragraph_value},
+                   {paragraph_value, Sheaf.NS.DOC.text(), "Paragraph text."},
+                   {source, Sheaf.NS.DOC.sourceHtml(), "<p>Source text.</p>"}
+                 ],
+                 name: doc
+               )
+             )
+
+    assert {:ok, units} = Index.text_units(kinds: ["sourceHtml"])
+    assert Enum.all?(units, &(&1.kind == "sourceHtml"))
+    assert Enum.any?(units, &(&1.iri == to_string(source)))
+    refute Enum.any?(units, &(&1.iri == to_string(paragraph)))
   end
 
   test "plans missing embeddings without embedding them" do

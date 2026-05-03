@@ -56,7 +56,7 @@ defmodule SheafWeb.Router do
     live "/", DocumentIndexLive
     live "/search", SearchLive
     live "/history", AssistantHistoryLive
-    live "/:id", DocumentLive
+    live "/:id", ResourceLive
   end
 
   # Enable LiveDashboard in development

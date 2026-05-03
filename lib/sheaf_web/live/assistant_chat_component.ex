@@ -47,7 +47,14 @@ defmodule SheafWeb.AssistantChatComponent do
         |> assign(:chat, snapshot)
         |> assign(:model, chat_model(snapshot))
         |> assign(:model_provider, chat_model_provider(snapshot))
-        |> assign(:form, chat_form(chat_mode(snapshot), chat_model_provider(snapshot)))
+        |> assign(
+          :form,
+          chat_form(
+            chat_mode(snapshot),
+            chat_model_provider(snapshot),
+            current_form_message(socket)
+          )
+        )
         |> maybe_refresh_chat_list()
       else
         maybe_refresh_chat_list(socket)
@@ -154,7 +161,9 @@ defmodule SheafWeb.AssistantChatComponent do
                        turn_context(socket.assigns)
                      ) do
                   :ok ->
-                    assign(socket, :form, chat_form(mode, model_provider))
+                    socket
+                    |> assign(:form, chat_form(mode, model_provider))
+                    |> maybe_navigate_after_send()
 
                   {:error, :busy} ->
                     socket
@@ -176,6 +185,50 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   @impl true
+  def render(%{variant: :full_page} = assigns) do
+    ~H"""
+    <section class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+      <div class="min-h-0 overflow-y-auto px-4 py-6">
+        <div class="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
+          <.chat_message
+            :for={message <- @chat.messages}
+            message={message}
+            titles={Map.get(@chat, :titles, %{})}
+          />
+
+          <div
+            :if={@chat.pending}
+            class="flex items-center gap-2 px-1 py-2 text-sm leading-5 text-stone-500 dark:text-stone-400"
+          >
+            <span class="size-2.5 shrink-0 animate-pulse rounded-full bg-stone-500 dark:bg-stone-300">
+            </span>
+            <span class="min-w-0 flex-1 truncate">{@chat.status_line || "Thinking"}</span>
+          </div>
+
+          <div
+            :if={@selected_chat_id == nil}
+            class="rounded-sm border border-stone-200 bg-white p-4 text-sm text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400"
+          >
+            This conversation is not active in the current app process.
+          </div>
+        </div>
+      </div>
+
+      <div class="border-t border-stone-200/80 bg-stone-50/95 px-4 py-3 dark:border-stone-800/80 dark:bg-stone-950/95">
+        <div class="mx-auto w-full max-w-3xl">
+          <.composer_form
+            form={@form}
+            mode={@mode}
+            model_provider={@model_provider}
+            pending={@chat.pending}
+            myself={@myself}
+          />
+        </div>
+      </div>
+    </section>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <section class={assistant_section_class(@variant, @selected_chat_id)}>
@@ -222,72 +275,13 @@ defmodule SheafWeb.AssistantChatComponent do
         </div>
       </div>
 
-      <.form
-        for={@form}
-        phx-change="set_options"
-        phx-submit="send"
-        phx-target={@myself}
-        class="space-y-2"
-      >
-        <textarea
-          name="chat[message]"
-          rows="1"
-          value={@form[:message].value}
-          class="block max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-2 text-base leading-6 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:text-sm sm:leading-5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
-          placeholder={input_placeholder(@mode)}
-          disabled={@chat.pending}
-        ></textarea>
-        <div class="flex items-center justify-between gap-3">
-          <div class="inline-flex items-center gap-1 font-sans text-xs">
-            <label class={selector_label_class(@mode, "quick")}>
-              <input
-                type="radio"
-                name="chat[mode]"
-                value="quick"
-                checked={@mode == "quick"}
-                class="sr-only"
-              />
-              <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
-              <span>Quick</span>
-            </label>
-            <label class={selector_label_class(@mode, "research")}>
-              <input
-                type="radio"
-                name="chat[mode]"
-                value="research"
-                checked={@mode == "research"}
-                class="sr-only"
-              />
-              <.icon name="hero-beaker" class="size-3.5" />
-              <span>Research</span>
-            </label>
-          </div>
-          <div class="inline-flex items-center gap-1 font-sans text-xs">
-            <label
-              :for={option <- Sheaf.LLM.assistant_model_options()}
-              class={selector_label_class(@model_provider, option.provider)}
-            >
-              <input
-                type="radio"
-                name="chat[model_provider]"
-                value={option.provider}
-                checked={@model_provider == option.provider}
-                class="sr-only"
-              />
-              <span>{option.label}</span>
-            </label>
-          </div>
-          <button
-            type="submit"
-            class="grid size-8 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
-            title="Send"
-            aria-label="Send"
-            disabled={@chat.pending}
-          >
-            <.icon name="hero-paper-airplane" class="size-4" />
-          </button>
-        </div>
-      </.form>
+      <.composer_form
+        form={@form}
+        mode={@mode}
+        model_provider={@model_provider}
+        pending={@chat.pending}
+        myself={@myself}
+      />
 
       <div
         :if={not inline?(@variant) and @selected_chat_id}
@@ -309,6 +303,83 @@ defmodule SheafWeb.AssistantChatComponent do
         </div>
       </div>
     </section>
+    """
+  end
+
+  attr :form, :any, required: true
+  attr :mode, :string, required: true
+  attr :model_provider, :string, required: true
+  attr :pending, :boolean, required: true
+  attr :myself, :any, required: true
+
+  defp composer_form(assigns) do
+    ~H"""
+    <.form
+      for={@form}
+      phx-change="set_options"
+      phx-submit="send"
+      phx-target={@myself}
+      class="space-y-2"
+    >
+      <textarea
+        name="chat[message]"
+        rows="1"
+        value={@form[:message].value}
+        class="block max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-2 text-base leading-6 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:text-sm sm:leading-5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
+        placeholder={input_placeholder(@mode)}
+        disabled={@pending}
+      ></textarea>
+      <div class="flex items-center justify-between gap-3">
+        <div class="inline-flex items-center gap-1 font-sans text-xs">
+          <label class={selector_label_class(@mode, "quick")}>
+            <input
+              type="radio"
+              name="chat[mode]"
+              value="quick"
+              checked={@mode == "quick"}
+              class="sr-only"
+            />
+            <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
+            <span>Quick</span>
+          </label>
+          <label class={selector_label_class(@mode, "research")}>
+            <input
+              type="radio"
+              name="chat[mode]"
+              value="research"
+              checked={@mode == "research"}
+              class="sr-only"
+            />
+            <.icon name="hero-beaker" class="size-3.5" />
+            <span>Research</span>
+          </label>
+        </div>
+        <div class="inline-flex items-center gap-1 font-sans text-xs">
+          <label
+            :for={option <- Sheaf.LLM.assistant_model_options()}
+            class={selector_label_class(@model_provider, option.provider)}
+          >
+            <input
+              type="radio"
+              name="chat[model_provider]"
+              value={option.provider}
+              checked={@model_provider == option.provider}
+              class="sr-only"
+            />
+            <span>{option.label}</span>
+          </label>
+        </div>
+        <button
+          type="submit"
+          class="grid size-8 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
+          title="Send"
+          aria-label="Send"
+          disabled={@pending}
+        >
+          <.icon name="hero-paper-airplane" class="size-4" />
+        </button>
+      </div>
+    </.form>
     """
   end
 
@@ -546,6 +617,17 @@ defmodule SheafWeb.AssistantChatComponent do
     end
   end
 
+  defp maybe_ensure_selected_chat(
+         %{assigns: %{chat_id: id, selected_chat_id: selected_id}} = socket
+       )
+       when is_binary(id) and id != "" and id != selected_id do
+    if Chat.exists?(id) do
+      select_chat(socket, id)
+    else
+      socket
+    end
+  end
+
   defp maybe_ensure_selected_chat(socket), do: socket
 
   defp ensure_chat_index_subscription(%{assigns: %{chats_subscribed?: true}} = socket), do: socket
@@ -661,6 +743,15 @@ defmodule SheafWeb.AssistantChatComponent do
         "flex flex-col pt-2"
     end
   end
+
+  defp maybe_navigate_after_send(
+         %{assigns: %{variant: :assistant_page, selected_chat_id: id}} = socket
+       )
+       when is_binary(id) do
+    push_navigate(socket, to: ~p"/#{id}")
+  end
+
+  defp maybe_navigate_after_send(socket), do: socket
 
   defp normalize_mode("research"), do: "research"
   defp normalize_mode(_mode), do: "quick"
@@ -804,6 +895,12 @@ defmodule SheafWeb.AssistantChatComponent do
       as: :chat
     )
   end
+
+  defp current_form_message(%{assigns: %{form: %{params: %{"message" => message}}}})
+       when is_binary(message),
+       do: message
+
+  defp current_form_message(_socket), do: ""
 
   defp empty_chat do
     %{
