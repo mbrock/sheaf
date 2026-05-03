@@ -145,6 +145,26 @@ defmodule Sheaf.Assistant.ToolResults do
   defmodule SpreadsheetQuery do
     defstruct [
       :sql,
+      :result_id,
+      :result_iri,
+      :result_file_iri,
+      row_count: 0,
+      offset: 0,
+      limit: nil,
+      columns: [],
+      rows: []
+    ]
+  end
+
+  defmodule SpreadsheetQueryResultPage do
+    defstruct [
+      :id,
+      :iri,
+      :file_iri,
+      :sql,
+      row_count: 0,
+      offset: 0,
+      limit: nil,
       columns: [],
       rows: []
     ]

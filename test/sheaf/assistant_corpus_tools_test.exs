@@ -116,6 +116,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert "search_text" in tool_names
     refute "list_spreadsheets" in tool_names
     refute "query_spreadsheets" in tool_names
+    refute "read_spreadsheet_query_result" in tool_names
     refute "search_spreadsheets" in tool_names
   end
 
@@ -130,7 +131,49 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert "list_spreadsheets" in tool_names
     assert "query_spreadsheets" in tool_names
+    assert "read_spreadsheet_query_result" in tool_names
     assert "search_spreadsheets" in tool_names
+  end
+
+  test "read_spreadsheet_query_result returns a saved result page" do
+    tools =
+      CorpusTools.tools(
+        include_notes?: false,
+        spreadsheet_lister: fn -> {:ok, [%{id: 1}]} end,
+        query_result_reader: fn id, opts ->
+          assert id == "RES111"
+          assert opts[:offset] == 10
+          assert opts[:limit] == 2
+
+          {:ok,
+           %{
+             id: "RES111",
+             iri: "https://example.com/sheaf/RES111",
+             file_iri: "https://example.com/sheaf/FILE11",
+             sql: "SELECT name FROM example",
+             columns: ["name"],
+             rows: [%{"name" => "alpha"}, %{"name" => "beta"}],
+             row_count: 42,
+             offset: 10,
+             limit: 2
+           }}
+        end
+      )
+
+    tool = Enum.find(tools, &(&1.name == "read_spreadsheet_query_result"))
+
+    assert {:ok, result} =
+             Tool.execute(tool, %{"id" => "RES111", "offset" => 10, "limit" => 2})
+
+    assert %ToolResults.SpreadsheetQueryResultPage{
+             id: "RES111",
+             rows: [%{"name" => "alpha"}, %{"name" => "beta"}],
+             row_count: 42,
+             offset: 10
+           } = sheaf_result(result)
+
+    assert tool_text(result) =~ "SPREADSHEET QUERY RESULT"
+    assert tool_text(result) =~ "name\nalpha\nbeta"
   end
 
   test "list_spreadsheets can filter and limit sheet metadata" do

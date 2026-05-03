@@ -69,6 +69,74 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
   end
 
   @tag :tmp_dir
+  test "persists query results for later paging", %{tmp_dir: tmp_dir} do
+    xlsx_path = Path.join(tmp_dir, "inventory.xlsx")
+
+    XLSXFixture.write_xlsx!(xlsx_path, [
+      ["buyer_type", "amount"],
+      ["agency", "3"],
+      ["municipality", "7"],
+      ["state", "11"]
+    ])
+
+    result_iri = RDF.IRI.new!("https://example.com/sheaf/RES111")
+    file_iri = RDF.IRI.new!("https://example.com/sheaf/FILE11")
+    tool_call_iri = RDF.IRI.new!("https://example.com/sheaf/CALL11")
+    graphs = :ets.new(:spreadsheet_query_result_graphs, [:set, :public])
+
+    id = "spreadsheet-query-result-test-#{System.unique_integer([:positive])}"
+    session = start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir})
+
+    assert {:ok, [%{sheets: [%{table_name: table}]}]} = SpreadsheetSession.list(session)
+
+    assert {:ok,
+            %{
+              result_id: "RES111",
+              result_iri: "https://example.com/sheaf/RES111",
+              result_file_iri: "https://example.com/sheaf/FILE11",
+              row_count: 3,
+              rows: [%{"buyer_type" => "agency", "amount" => "3"}]
+            }} =
+             SpreadsheetSession.query(
+               session,
+               ~s(SELECT buyer_type, amount FROM "#{table}" ORDER BY buyer_type),
+               limit: 1,
+               query_result_opts: [
+                 blob_root: Path.join(tmp_dir, "blobs"),
+                 result_iri: result_iri,
+                 file_iri: file_iri,
+                 tool_call_iri: tool_call_iri,
+                 put_graph: fn graph_name, graph ->
+                   :ets.insert(graphs, {to_string(graph_name), graph})
+                   :ok
+                 end
+               ]
+             )
+
+    fetch_graph = fn iri ->
+      case :ets.lookup(graphs, to_string(iri)) do
+        [{_key, graph}] -> {:ok, graph}
+        [] -> {:error, :not_found}
+      end
+    end
+
+    assert {:ok,
+            %{
+              offset: 1,
+              rows: [
+                %{"buyer_type" => "municipality", "amount" => "7"},
+                %{"buyer_type" => "state", "amount" => "11"}
+              ]
+            }} =
+             Sheaf.Assistant.QueryResults.read("https://example.com/sheaf/RES111",
+               blob_root: Path.join(tmp_dir, "blobs"),
+               fetch_graph: fetch_graph,
+               offset: 1,
+               limit: 2
+             )
+  end
+
+  @tag :tmp_dir
   test "skips unreadable empty sheets without dropping the workbook", %{tmp_dir: tmp_dir} do
     xlsx_path = Path.join(tmp_dir, "multi.xlsx")
 

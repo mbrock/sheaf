@@ -11,6 +11,8 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   use GenServer
 
+  alias Sheaf.Assistant.QueryResults
+
   require OpenTelemetry.Tracer, as: Tracer
   require Record
 
@@ -143,9 +145,15 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
           {"sheaf.query.limit", limit}
         ]
       } do
-        case query_loaded(state.conn, sql, limit) do
+        case query_loaded(state, sql, limit, opts) do
           {:ok, result} = ok ->
             Tracer.set_attribute("db.response.returned_rows", length(result.rows))
+
+            Tracer.set_attribute(
+              "db.response.row_count",
+              Map.get(result, :row_count, length(result.rows))
+            )
+
             ok
 
           {:error, reason} = error ->
@@ -483,8 +491,60 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     end
   end
 
-  defp query_loaded(conn, sql, limit) do
-    query_all(conn, String.trim(sql), limit)
+  defp query_loaded(state, sql, limit, opts) do
+    sql = String.trim(sql)
+
+    with {:ok, result} <- Duckdbex.query(state.conn, sql) do
+      try do
+        columns = Duckdbex.columns(result)
+        rows = result |> fetch_all_rows() |> Enum.map(&row_map(columns, &1))
+        preview_rows = Enum.take(rows, limit)
+
+        saved = maybe_save_query_result(sql, columns, rows, state, opts)
+
+        {:ok,
+         %{
+           columns: columns,
+           rows: preview_rows,
+           row_count: length(rows),
+           result_id: saved && saved.id,
+           result_iri: saved && saved.iri,
+           result_file_iri: saved && saved.file_iri
+         }}
+      after
+        Duckdbex.release(result)
+      end
+    end
+  end
+
+  defp maybe_save_query_result(_sql, [], _rows, _state, _opts), do: nil
+
+  defp maybe_save_query_result(sql, columns, rows, state, opts) do
+    if persist_query_result?(opts) do
+      save_query_result(sql, columns, rows, state, opts)
+    end
+  end
+
+  defp persist_query_result?(opts) do
+    Keyword.get(
+      opts,
+      :persist_result?,
+      Keyword.has_key?(opts, :query_result_context) or Keyword.has_key?(opts, :query_result_opts)
+    )
+  end
+
+  defp save_query_result(sql, columns, rows, state, opts) do
+    context = Keyword.get(opts, :query_result_context, [])
+
+    query_result_opts =
+      [session_id: state.id]
+      |> Keyword.merge(if(is_list(context), do: context, else: []))
+      |> Keyword.merge(Keyword.get(opts, :query_result_opts, []))
+
+    case QueryResults.create(%{sql: sql, columns: columns, rows: rows}, query_result_opts) do
+      {:ok, result} -> result
+      {:error, _reason} -> nil
+    end
   end
 
   defp query_all(conn, sql, limit) do
@@ -580,6 +640,15 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
       chunk ->
         {taken, _rest} = Enum.split(chunk, remaining)
         fetch_limited(result, remaining - length(taken), Enum.reverse(taken) ++ rows)
+    end
+  end
+
+  defp fetch_all_rows(result), do: fetch_all_rows(result, [])
+
+  defp fetch_all_rows(result, rows) do
+    case Duckdbex.fetch_chunk(result) do
+      [] -> Enum.reverse(rows)
+      chunk -> fetch_all_rows(result, Enum.reverse(chunk) ++ rows)
     end
   end
 

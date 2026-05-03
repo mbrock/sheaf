@@ -20,6 +20,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     SearchResults,
     Spreadsheet,
     SpreadsheetQuery,
+    SpreadsheetQueryResultPage,
     SpreadsheetSearch,
     SpreadsheetSheet,
     ListSpreadsheets
@@ -144,6 +145,23 @@ defmodule Sheaf.Assistant.ToolResultText do
     """
     SPREADSHEET QUERY
     SQL: #{result.sql}
+    Result: #{query_result_line(result)}
+    Rows: showing #{length(result.rows)} of #{result.row_count}
+    Format: TSV
+
+    #{tsv_rows(result.columns, result.rows)}
+    """
+    |> String.trim()
+  end
+
+  def to_text(%SpreadsheetQueryResultPage{} = result) do
+    """
+    SPREADSHEET QUERY RESULT
+    Result: ##{result.id}
+    IRI: #{result.iri}
+    File: #{result.file_iri}
+    SQL: #{result.sql}
+    Rows: showing #{length(result.rows)} from offset #{result.offset} of #{result.row_count}
     Format: TSV
 
     #{tsv_rows(result.columns, result.rows)}
@@ -223,6 +241,12 @@ defmodule Sheaf.Assistant.ToolResultText do
     #{Enum.map_join(spreadsheet.sheets, "\n", &spreadsheet_sheet_line/1)}
     """
     |> String.trim()
+  end
+
+  defp query_result_line(%SpreadsheetQuery{result_id: nil}), do: "(not saved)"
+
+  defp query_result_line(%SpreadsheetQuery{} = result) do
+    "##{result.result_id} #{result.result_iri} file=#{result.result_file_iri}"
   end
 
   defp spreadsheet_list_summary(%ListSpreadsheets{} = result) do

@@ -10,7 +10,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   alias ReqLLM.Message.ContentPart
   alias Sheaf.{Corpus, Document, Documents, Id, Spreadsheets}
   alias Sheaf.Assistant.Notes
-  alias Sheaf.Assistant.{SpreadsheetSession, ToolResultText, ToolResults}
+  alias Sheaf.Assistant.{QueryResults, SpreadsheetSession, ToolResultText, ToolResults}
 
   @search_result_limit 10
   @spreadsheet_list_limit 50
@@ -32,9 +32,12 @@ defmodule Sheaf.Assistant.CorpusTools do
     exact_search = Keyword.get(opts, :exact_search, &Sheaf.Embedding.Index.exact_search/2)
     include_notes? = Keyword.get(opts, :include_notes?, true)
     spreadsheet_session = Keyword.get(opts, :spreadsheet_session)
+    query_result_context = Keyword.get(opts, :query_result_context, [])
+    query_result_reader = Keyword.get(opts, :query_result_reader, &QueryResults.read/2)
 
-    {spreadsheet_lister, spreadsheet_query, spreadsheet_search, spreadsheet_dialect} =
-      spreadsheet_backend(opts, spreadsheet_session)
+    {spreadsheet_lister, spreadsheet_query, spreadsheet_search, spreadsheet_dialect,
+     spreadsheet_result_reader} =
+      spreadsheet_backend(opts, spreadsheet_session, query_result_context, query_result_reader)
 
     tools = [
       Tool.new!(
@@ -111,6 +114,7 @@ defmodule Sheaf.Assistant.CorpusTools do
           spreadsheet_lister,
           spreadsheet_query,
           spreadsheet_search,
+          spreadsheet_result_reader,
           spreadsheet_dialect
         )
 
@@ -127,27 +131,33 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp spreadsheet_backend(opts, nil) do
+  defp spreadsheet_backend(opts, nil, _query_result_context, query_result_reader) do
     {
       Keyword.get(opts, :spreadsheet_lister, &Spreadsheets.list/0),
       Keyword.get(opts, :spreadsheet_query, &Spreadsheets.query/2),
       Keyword.get(opts, :spreadsheet_search, &Spreadsheets.search/2),
-      :sqlite
+      :sqlite,
+      query_result_reader
     }
   end
 
-  defp spreadsheet_backend(opts, spreadsheet_session) do
+  defp spreadsheet_backend(opts, spreadsheet_session, query_result_context, query_result_reader) do
     {
       Keyword.get(opts, :spreadsheet_lister, fn ->
         SpreadsheetSession.list(spreadsheet_session)
       end),
       Keyword.get(opts, :spreadsheet_query, fn sql, query_opts ->
-        SpreadsheetSession.query(spreadsheet_session, sql, query_opts)
+        SpreadsheetSession.query(
+          spreadsheet_session,
+          sql,
+          Keyword.put(query_opts, :query_result_context, query_result_context)
+        )
       end),
       Keyword.get(opts, :spreadsheet_search, fn query, search_opts ->
         SpreadsheetSession.search(spreadsheet_session, query, search_opts)
       end),
-      :duckdb
+      :duckdb,
+      query_result_reader
     }
   end
 
@@ -156,6 +166,7 @@ defmodule Sheaf.Assistant.CorpusTools do
          spreadsheet_lister,
          spreadsheet_query,
          spreadsheet_search,
+         spreadsheet_result_reader,
          spreadsheet_dialect
        ) do
     case spreadsheet_lister.() do
@@ -163,12 +174,43 @@ defmodule Sheaf.Assistant.CorpusTools do
         [
           list_spreadsheets_tool_definition(notify, spreadsheet_lister, spreadsheet_dialect),
           query_spreadsheets_tool_definition(notify, spreadsheet_query, spreadsheet_dialect),
+          read_spreadsheet_query_result_tool_definition(notify, spreadsheet_result_reader),
           search_spreadsheets_tool_definition(notify, spreadsheet_search)
         ]
 
       _empty_or_error ->
         []
     end
+  end
+
+  defp read_spreadsheet_query_result_tool_definition(notify, query_result_reader) do
+    Tool.new!(
+      name: "read_spreadsheet_query_result",
+      description:
+        "Read a page of rows from a saved spreadsheet query result. " <>
+          "query_spreadsheets returns the result id. Rows are returned as TSV.",
+      parameter_schema: [
+        id: [
+          type: :string,
+          required: true,
+          doc: "Saved query result id or IRI returned by query_spreadsheets."
+        ],
+        offset: [
+          type: :integer,
+          default: 0,
+          doc: "Zero-based row offset into the saved result."
+        ],
+        limit: [
+          type: :integer,
+          default: 50,
+          doc: "Maximum rows returned by the wrapper, capped by Sheaf."
+        ]
+      ],
+      callback:
+        instrument(notify, "read_spreadsheet_query_result", fn args ->
+          read_spreadsheet_query_result_tool(args, query_result_reader)
+        end)
+    )
   end
 
   defp list_spreadsheets_tool_definition(notify, spreadsheet_lister, spreadsheet_dialect) do
@@ -369,6 +411,9 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   def humanize("query_spreadsheets", _args, _titles), do: "Querying spreadsheets"
 
+  def humanize("read_spreadsheet_query_result", _args, _titles),
+    do: "Reading spreadsheet query result"
+
   def humanize("search_spreadsheets", args, _titles) do
     "Searching spreadsheets for " <> smart_quote(arg(args, :query) || "")
   end
@@ -440,6 +485,13 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   def result_summary("query_spreadsheets", {:ok, %ToolResults.SpreadsheetQuery{rows: rows}}) do
+    pluralize(length(rows), "row", "rows")
+  end
+
+  def result_summary(
+        "read_spreadsheet_query_result",
+        {:ok, %ToolResults.SpreadsheetQueryResultPage{rows: rows}}
+      ) do
     pluralize(length(rows), "row", "rows")
   end
 
@@ -623,6 +675,12 @@ defmodule Sheaf.Assistant.CorpusTools do
         {:ok, result} ->
           %ToolResults.SpreadsheetQuery{
             sql: sql,
+            result_id: Map.get(result, :result_id),
+            result_iri: Map.get(result, :result_iri),
+            result_file_iri: Map.get(result, :result_file_iri),
+            row_count: Map.get(result, :row_count, length(result.rows)),
+            offset: 0,
+            limit: arg(args, :limit) || 50,
             columns: result.columns,
             rows: result.rows
           }
@@ -634,6 +692,36 @@ defmodule Sheaf.Assistant.CorpusTools do
       end
     else
       {:error, "sql is required"}
+    end
+  end
+
+  defp read_spreadsheet_query_result_tool(args, query_result_reader) do
+    id = arg(args, :id)
+
+    if is_binary(id) and String.trim(id) != "" do
+      opts = [offset: arg(args, :offset) || 0, limit: arg(args, :limit) || 50]
+
+      case query_result_reader.(id, opts) do
+        {:ok, result} ->
+          %ToolResults.SpreadsheetQueryResultPage{
+            id: result.id,
+            iri: result.iri,
+            file_iri: result.file_iri,
+            sql: result.sql,
+            columns: result.columns,
+            rows: result.rows,
+            row_count: result.row_count,
+            offset: result.offset,
+            limit: result.limit
+          }
+          |> rendered_result()
+          |> then(&{:ok, &1})
+
+        {:error, reason} ->
+          {:error, "could not read spreadsheet query result: #{inspect(reason)}"}
+      end
+    else
+      {:error, "id is required"}
     end
   end
 

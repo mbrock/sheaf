@@ -140,6 +140,10 @@ defmodule Sheaf.Assistant.Chat.Server do
           session_label: session_label(kind, id),
           conversation_mode: conversation_mode(kind, allow_notes?)
         },
+        query_result_context: [
+          agent_iri: agent_iri,
+          session_iri: session_iri
+        ],
         spreadsheet_session: spreadsheet_session
       )
 
