@@ -87,8 +87,17 @@ defmodule Sheaf do
   @doc false
   def rpc_eval(gl, code) when is_pid(gl) and is_binary(code) do
     Process.group_leader(self(), gl)
-    {result, _bindings} = Code.eval_string(code)
-    result
+
+    try do
+      {result, _bindings} = Code.eval_string(code, [], file: "bin/rpc")
+      {:ok, result}
+    rescue
+      error ->
+        {:error, Exception.format(:error, error, __STACKTRACE__)}
+    catch
+      kind, reason ->
+        {:error, Exception.format(kind, reason, __STACKTRACE__)}
+    end
   end
 
   @doc """

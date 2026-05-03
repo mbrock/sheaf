@@ -45,10 +45,30 @@ code = File.read!("${CODEFILE}")
 gl = Process.group_leader()
 result = :rpc.call(:"${NODE}", Sheaf, :rpc_eval, [gl, code])
 
-case result do
-  {:badrpc, _} -> System.halt(1)
+print_value = fn
   value when is_binary(value) -> IO.write(value)
   value -> IO.inspect(value, limit: :infinity, printable_limit: :infinity)
+end
+
+case result do
+  {:ok, value} ->
+    print_value.(value)
+
+  {:error, error} when is_binary(error) ->
+    IO.puts(:stderr, error)
+    System.halt(1)
+
+  {:error, error} ->
+    IO.inspect(:stderr, error, label: "remote eval failed", limit: :infinity, printable_limit: :infinity)
+    System.halt(1)
+
+  {:badrpc, reason} ->
+    IO.puts(:stderr, "RPC failed: " <> inspect(reason, pretty: true, limit: :infinity, printable_limit: :infinity))
+    System.halt(1)
+
+  value ->
+    # Backward-compatible with older running nodes that predate tagged rpc_eval results.
+    print_value.(value)
 end
 ENDSCRIPT
 
