@@ -6,22 +6,11 @@ defmodule SheafWeb.AssistantHistoryComponents do
   use SheafWeb, :html
 
   alias RDF.{Description, Graph}
-  alias Sheaf.BlockRefs
   alias Sheaf.Assistant.Chats
   alias Sheaf.Id
+  alias SheafWeb.AssistantMarkdown
 
   @default_history_limit 30
-
-  @mdex_opts [
-    extension: [
-      strikethrough: true,
-      autolink: true,
-      table: true,
-      tasklist: true
-    ],
-    render: [unsafe_: false, hardbreaks: true],
-    parse: [smart: true]
-  ]
 
   def fetch_notes(opts \\ []) do
     limit = Keyword.get(opts, :limit, @default_history_limit)
@@ -764,8 +753,6 @@ defmodule SheafWeb.AssistantHistoryComponents do
   end
 
   defp render_markdown(text) do
-    (text || "")
-    |> BlockRefs.linkify_markdown()
-    |> MDEx.to_html!(@mdex_opts)
+    AssistantMarkdown.render(text)
   end
 end

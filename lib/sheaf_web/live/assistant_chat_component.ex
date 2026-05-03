@@ -9,20 +9,9 @@ defmodule SheafWeb.AssistantChatComponent do
 
   use SheafWeb, :live_component
 
-  alias Sheaf.BlockRefs
   alias Sheaf.Assistant.{Chat, Chats, CorpusTools}
-  alias Sheaf.{Document, Id, ResourceResolver}
-
-  @mdex_opts [
-    extension: [
-      strikethrough: true,
-      autolink: true,
-      table: true,
-      tasklist: true
-    ],
-    render: [unsafe_: false, hardbreaks: true],
-    parse: [smart: true]
-  ]
+  alias Sheaf.{Document, Id}
+  alias SheafWeb.AssistantMarkdown
 
   @impl true
   def mount(socket) do
@@ -1009,17 +998,7 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp render_markdown(text) do
-    text
-    |> BlockRefs.linkify_markdown(url_for: &resource_ref_path/1)
-    |> MDEx.to_html!(@mdex_opts)
-  end
-
-  defp resource_ref_path(id) do
-    case ResourceResolver.resolve(id) do
-      {:ok, %{kind: :block}} -> "/b/#{id}"
-      {:ok, %{kind: _kind}} -> "/#{id}"
-      {:error, _reason} -> nil
-    end
+    AssistantMarkdown.render(text)
   end
 
   defp chat_form(
