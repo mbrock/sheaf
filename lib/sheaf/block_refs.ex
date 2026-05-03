@@ -39,12 +39,30 @@ defmodule Sheaf.BlockRefs do
     exists? = Keyword.get(opts, :exists?, fn _id -> true end)
     url_for = Keyword.get(opts, :url_for, fn id -> if exists?.(id), do: "/b/#{id}" end)
 
+    text
+    |> split_fenced_code()
+    |> Enum.map_join(fn
+      {:code, segment} -> segment
+      {:text, segment} -> linkify_inline_markdown(segment, url_for)
+    end)
+  end
+
+  def linkify_markdown(other, _opts), do: other
+
+  defp linkify_inline_markdown(text, url_for) do
+    text
+    |> split_inline_code()
+    |> Enum.map_join(fn
+      {:code, segment} -> linkify_code_span(segment, url_for)
+      {:text, segment} -> linkify_plain_markdown(segment, url_for)
+    end)
+  end
+
+  defp linkify_plain_markdown(text, url_for) do
     @existing_block_link
     |> Regex.split(text, include_captures: true, trim: false)
     |> Enum.map_join(&linkify_unless_existing_block_link(&1, url_for))
   end
-
-  def linkify_markdown(other, _opts), do: other
 
   defp linkify_unless_existing_block_link(text, url_for) do
     if Regex.match?(@existing_block_link, text) do
@@ -59,5 +77,48 @@ defmodule Sheaf.BlockRefs do
         if url = url_for.(id), do: "[##{id}](#{url})", else: "##{id}"
       end)
     end
+  end
+
+  defp split_fenced_code(text) do
+    text
+    |> String.split(~r/((?:^|\n)[ \t]*(?:```|~~~).*(?:\n|$))/,
+      include_captures: true,
+      trim: false
+    )
+    |> Enum.map_reduce(false, fn segment, in_fence? ->
+      fence? = Regex.match?(~r/^(?:\n)?[ \t]*(?:```|~~~)/, segment)
+      kind = if in_fence? or fence?, do: :code, else: :text
+
+      state = if fence?, do: not in_fence?, else: in_fence?
+
+      {{kind, segment}, state}
+    end)
+    |> elem(0)
+  end
+
+  defp split_inline_code(text) do
+    ~r/(`+[^`]*`+)/
+    |> Regex.split(text, include_captures: true, trim: false)
+    |> Enum.map(fn
+      "`" <> _rest = segment -> {:code, segment}
+      segment -> {:text, segment}
+    end)
+  end
+
+  defp linkify_code_span(segment, url_for) do
+    with [_, _ticks, content] <- Regex.run(~r/^(`+)(.*)\1$/, segment),
+         id when not is_nil(id) <- code_span_resource_id(content),
+         url when is_binary(url) <- url_for.(id) do
+      "[##{id}](#{url})"
+    else
+      _ -> segment
+    end
+  end
+
+  defp code_span_resource_id("#" <> id), do: valid_resource_id(id)
+  defp code_span_resource_id(id), do: valid_resource_id(id)
+
+  defp valid_resource_id(id) do
+    if Regex.match?(~r/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/, id), do: id
   end
 end

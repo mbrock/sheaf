@@ -29,6 +29,40 @@ defmodule Sheaf.BlockRefsTest do
            ) == "Read result [#PK9ACK](/PK9ACK) and block [#DEF456](/b/DEF456)."
   end
 
+  test "turns resource-only inline code spans into normal links" do
+    text = "Read result `#PK9ACK`, but keep `SELECT #PK9ACK` as code."
+
+    assert BlockRefs.linkify_markdown(text,
+             url_for: fn
+               "PK9ACK" -> "/PK9ACK"
+               _id -> nil
+             end
+           ) == "Read result [#PK9ACK](/PK9ACK), but keep `SELECT #PK9ACK` as code."
+  end
+
+  test "does not link inside fenced code blocks" do
+    text = """
+    See #PK9ACK.
+
+    ```sql
+    SELECT '#PK9ACK';
+    ```
+    """
+
+    assert BlockRefs.linkify_markdown(text,
+             url_for: fn
+               "PK9ACK" -> "/PK9ACK"
+               _id -> nil
+             end
+           ) == """
+           See [#PK9ACK](/PK9ACK).
+
+           ```sql
+           SELECT '#PK9ACK';
+           ```
+           """
+  end
+
   test "does not link SQL keywords or numeric values as bare block ids" do
     text = "SELECT COUNT(*) FILTER (WHERE try_cast(total_bids AS DOUBLE)=1), tender 152877."
 
