@@ -1,9 +1,10 @@
 defmodule Sheaf.Assistant.ChatTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.{Context, Response}
+  alias ReqLLM.{Context, Response, Tool}
   alias ReqLLM.Message.ContentPart
   alias Sheaf.Assistant.Chat
+  alias Sheaf.XLSXFixture
 
   test "keeps chat messages and pending state outside the LiveView process" do
     test_pid = self()
@@ -164,6 +165,62 @@ defmodule Sheaf.Assistant.ChatTest do
                %{role: :assistant, text: "Routed."}
              ]
            } = wait_for_messages(id, 2)
+  end
+
+  @tag :tmp_dir
+  test "chat sessions expose per-chat DuckDB spreadsheet tools", %{tmp_dir: tmp_dir} do
+    XLSXFixture.write_xlsx!(Path.join(tmp_dir, "inventory.xlsx"), [
+      ["buyer_type", "amount"],
+      ["agency", "3"]
+    ])
+
+    test_pid = self()
+
+    generate_text = fn _model, _context, opts ->
+      tools = Keyword.fetch!(opts, :tools)
+      list_tool = Enum.find(tools, &(&1.name == "list_spreadsheets"))
+      query_tool = Enum.find(tools, &(&1.name == "query_spreadsheets"))
+
+      assert %Tool{} = list_tool
+      assert %Tool{} = query_tool
+
+      {:ok, list_result} = Tool.execute(list_tool, %{})
+      [%{sheets: [%{table_name: table}]}] = list_result.metadata.sheaf_result.spreadsheets
+
+      {:ok, query_result} =
+        Tool.execute(query_tool, %{
+          "sql" => """
+          CREATE TEMP VIEW agency_rows AS
+          SELECT buyer_type, amount FROM "#{table}" WHERE buyer_type = 'agency';
+
+          SELECT * FROM agency_rows;
+          """
+        })
+
+      send(test_pid, {:spreadsheet_rows, query_result.metadata.sheaf_result.rows})
+      {:ok, response(Context.assistant("Spreadsheet checked."), finish_reason: :stop)}
+    end
+
+    id = Sheaf.Id.generate()
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       model: "test-model",
+       titles: %{},
+       workspace_instructions: "Testing spreadsheet tools.",
+       spreadsheet_directory: tmp_dir,
+       activity_writer: nil,
+       generate_text: generate_text,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    assert :ok = Chat.send_user_message(id, "Check the spreadsheet.")
+    assert_receive {:spreadsheet_rows, [%{"amount" => "3", "buyer_type" => "agency"}]}
+
+    assert %{pending: false, messages: messages} = wait_for_messages(id, 4)
+    assert List.first(messages) == %{role: :user, text: "Check the spreadsheet."}
+    assert List.last(messages) == %{role: :assistant, text: "Spreadsheet checked."}
   end
 
   defp wait_for_messages(id, count) do

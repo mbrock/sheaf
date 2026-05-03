@@ -10,7 +10,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   alias ReqLLM.Message.ContentPart
   alias Sheaf.{Corpus, Document, Documents, Id, Spreadsheets}
   alias Sheaf.Assistant.Notes
-  alias Sheaf.Assistant.{ToolResultText, ToolResults}
+  alias Sheaf.Assistant.{SpreadsheetSession, ToolResultText, ToolResults}
 
   @search_result_limit 10
   @default_search_kinds ~w(paragraph sourceHtml row)
@@ -30,7 +30,10 @@ defmodule Sheaf.Assistant.CorpusTools do
     search = Keyword.get(opts, :search, &Sheaf.Embedding.Index.search/2)
     exact_search = Keyword.get(opts, :exact_search, &Sheaf.Embedding.Index.exact_search/2)
     include_notes? = Keyword.get(opts, :include_notes?, true)
-    spreadsheet_lister = Keyword.get(opts, :spreadsheet_lister, &Spreadsheets.list/0)
+    spreadsheet_session = Keyword.get(opts, :spreadsheet_session)
+
+    {spreadsheet_lister, spreadsheet_query, spreadsheet_search, spreadsheet_dialect} =
+      spreadsheet_backend(opts, spreadsheet_session)
 
     tools = [
       Tool.new!(
@@ -100,7 +103,15 @@ defmodule Sheaf.Assistant.CorpusTools do
       )
     ]
 
-    tools = tools ++ sidecar_spreadsheet_tools(notify, spreadsheet_lister)
+    tools =
+      tools ++
+        sidecar_spreadsheet_tools(
+          notify,
+          spreadsheet_lister,
+          spreadsheet_query,
+          spreadsheet_search,
+          spreadsheet_dialect
+        )
 
     if include_notes? do
       note_context = Keyword.get_lazy(opts, :note_context, &default_note_context/0) |> Map.new()
@@ -115,13 +126,43 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp sidecar_spreadsheet_tools(notify, spreadsheet_lister) do
+  defp spreadsheet_backend(opts, nil) do
+    {
+      Keyword.get(opts, :spreadsheet_lister, &Spreadsheets.list/0),
+      Keyword.get(opts, :spreadsheet_query, &Spreadsheets.query/2),
+      Keyword.get(opts, :spreadsheet_search, &Spreadsheets.search/2),
+      :sqlite
+    }
+  end
+
+  defp spreadsheet_backend(opts, spreadsheet_session) do
+    {
+      Keyword.get(opts, :spreadsheet_lister, fn ->
+        SpreadsheetSession.list(spreadsheet_session)
+      end),
+      Keyword.get(opts, :spreadsheet_query, fn sql, query_opts ->
+        SpreadsheetSession.query(spreadsheet_session, sql, query_opts)
+      end),
+      Keyword.get(opts, :spreadsheet_search, fn query, search_opts ->
+        SpreadsheetSession.search(spreadsheet_session, query, search_opts)
+      end),
+      :duckdb
+    }
+  end
+
+  defp sidecar_spreadsheet_tools(
+         notify,
+         spreadsheet_lister,
+         spreadsheet_query,
+         spreadsheet_search,
+         spreadsheet_dialect
+       ) do
     case spreadsheet_lister.() do
       {:ok, [_spreadsheet | _spreadsheets]} ->
         [
-          list_spreadsheets_tool_definition(notify),
-          query_spreadsheets_tool_definition(notify),
-          search_spreadsheets_tool_definition(notify)
+          list_spreadsheets_tool_definition(notify, spreadsheet_lister, spreadsheet_dialect),
+          query_spreadsheets_tool_definition(notify, spreadsheet_query, spreadsheet_dialect),
+          search_spreadsheets_tool_definition(notify, spreadsheet_search)
         ]
 
       _empty_or_error ->
@@ -129,29 +170,31 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp list_spreadsheets_tool_definition(notify) do
+  defp list_spreadsheets_tool_definition(notify, spreadsheet_lister, spreadsheet_dialect) do
     Tool.new!(
       name: "list_spreadsheets",
       description:
-        "List imported spreadsheet workbooks and sheets available in the SQLite sidecar. " <>
+        "List spreadsheet workbooks and sheets available in the #{spreadsheet_label(spreadsheet_dialect)} workspace. " <>
           "Returns SQL table names, row counts, and column names for query_spreadsheets.",
-      callback: instrument(notify, "list_spreadsheets", &list_spreadsheets_tool/1)
+      callback:
+        instrument(notify, "list_spreadsheets", fn args ->
+          list_spreadsheets_tool(args, spreadsheet_lister)
+        end)
     )
   end
 
-  defp query_spreadsheets_tool_definition(notify) do
+  defp query_spreadsheets_tool_definition(notify, spreadsheet_query, spreadsheet_dialect) do
     Tool.new!(
       name: "query_spreadsheets",
       description:
-        "Run a read-only SQL SELECT/WITH query against imported spreadsheet sheet tables. " <>
+        "Run SQL against spreadsheet sheet tables in the #{spreadsheet_label(spreadsheet_dialect)} workspace. " <>
           "Call list_spreadsheets first to discover table and column names. " <>
-          "Use SQLite syntax; every sheet table has __row_number and __text columns.",
+          spreadsheet_query_guidance(spreadsheet_dialect),
       parameter_schema: [
         sql: [
           type: :string,
           required: true,
-          doc:
-            "Read-only SQL SELECT or WITH query, for example: SELECT * FROM ss_xl_abc_1 LIMIT 5"
+          doc: spreadsheet_sql_doc(spreadsheet_dialect)
         ],
         limit: [
           type: :integer,
@@ -159,11 +202,14 @@ defmodule Sheaf.Assistant.CorpusTools do
           doc: "Maximum rows returned by the wrapper, capped by Sheaf."
         ]
       ],
-      callback: instrument(notify, "query_spreadsheets", &query_spreadsheets_tool/1)
+      callback:
+        instrument(notify, "query_spreadsheets", fn args ->
+          query_spreadsheets_tool(args, spreadsheet_query)
+        end)
     )
   end
 
-  defp search_spreadsheets_tool_definition(notify) do
+  defp search_spreadsheets_tool_definition(notify, spreadsheet_search) do
     Tool.new!(
       name: "search_spreadsheets",
       description:
@@ -177,8 +223,31 @@ defmodule Sheaf.Assistant.CorpusTools do
         ],
         limit: [type: :integer, default: 20, doc: "Maximum matching rows returned."]
       ],
-      callback: instrument(notify, "search_spreadsheets", &search_spreadsheets_tool/1)
+      callback:
+        instrument(notify, "search_spreadsheets", fn args ->
+          search_spreadsheets_tool(args, spreadsheet_search)
+        end)
     )
+  end
+
+  defp spreadsheet_label(:duckdb), do: "per-chat DuckDB"
+  defp spreadsheet_label(:sqlite), do: "SQLite sidecar"
+
+  defp spreadsheet_query_guidance(:duckdb) do
+    "Use DuckDB SQL; every loaded sheet table has __row_number and __text columns. " <>
+      "You may create temporary tables or views for scratch work in this chat session."
+  end
+
+  defp spreadsheet_query_guidance(:sqlite) do
+    "Use SQLite syntax; every sheet table has __row_number and __text columns."
+  end
+
+  defp spreadsheet_sql_doc(:duckdb) do
+    "DuckDB SQL query or script. Example: CREATE TEMP VIEW agencies AS SELECT * FROM xlsx_inventory_abc_1; SELECT * FROM agencies LIMIT 5"
+  end
+
+  defp spreadsheet_sql_doc(:sqlite) do
+    "Read-only SQL SELECT or WITH query, for example: SELECT * FROM ss_xl_abc_1 LIMIT 5"
   end
 
   defp write_note_tool_definition(notify, note_context, note_writer) do
@@ -492,8 +561,8 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp list_spreadsheets_tool(_args) do
-    case Spreadsheets.list() do
+  defp list_spreadsheets_tool(_args, spreadsheet_lister) do
+    case spreadsheet_lister.() do
       {:ok, spreadsheets} ->
         spreadsheets
         |> Enum.map(&spreadsheet_result/1)
@@ -506,11 +575,11 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp query_spreadsheets_tool(args) do
+  defp query_spreadsheets_tool(args, spreadsheet_query) do
     sql = arg(args, :sql)
 
     if is_binary(sql) and String.trim(sql) != "" do
-      case Spreadsheets.query(sql, limit: arg(args, :limit) || 50) do
+      case spreadsheet_query.(sql, limit: arg(args, :limit) || 50) do
         {:ok, result} ->
           %ToolResults.SpreadsheetQuery{
             sql: sql,
@@ -528,11 +597,11 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp search_spreadsheets_tool(args) do
+  defp search_spreadsheets_tool(args, spreadsheet_search) do
     query = arg(args, :query)
 
     if is_binary(query) and String.trim(query) != "" do
-      case Spreadsheets.search(query, limit: arg(args, :limit) || 20) do
+      case spreadsheet_search.(query, limit: arg(args, :limit) || 20) do
         {:ok, hits} ->
           %ToolResults.SpreadsheetSearch{query: query, hits: hits}
           |> rendered_result()
