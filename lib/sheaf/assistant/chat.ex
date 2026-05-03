@@ -85,6 +85,10 @@ defmodule Sheaf.Assistant.Chat do
     GenServer.call(server_ref(server), {:send_user_message, text, turn_context})
   end
 
+  def put_model(server, model) do
+    GenServer.call(server_ref(server), {:put_model, model})
+  end
+
   def subscribe(server, live_view, component, component_id) do
     GenServer.call(server_ref(server), {:subscribe, live_view, component, component_id})
   end
@@ -190,6 +194,18 @@ defmodule Sheaf.Assistant.Chat do
       {:reply, {:error, :empty_message}, state}
     else
       {:reply, :ok, start_turn(state, text, turn_context)}
+    end
+  end
+
+  def handle_call({:put_model, _model}, _from, %{pending_ref: ref} = state)
+      when not is_nil(ref) do
+    {:reply, {:error, :busy}, state}
+  end
+
+  def handle_call({:put_model, model}, _from, state) do
+    case Assistant.put_model(state.assistant, model) do
+      :ok -> {:reply, :ok, %{state | model: model}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
@@ -365,6 +381,7 @@ defmodule Sheaf.Assistant.Chat do
   defp persist_assistant_message(state, text) do
     _result =
       write_activity(state.activity_writer, :write_assistant_message, %{
+        actor_iri: state.agent_iri,
         model_name: state.model,
         session_iri: state.session_iri,
         session_label: session_label(state.kind, state.id),
@@ -569,6 +586,7 @@ defmodule Sheaf.Assistant.Chat do
       id: state.id,
       title: state.title,
       kind: state.kind,
+      model: state.model,
       messages: state.messages,
       pending: not is_nil(state.pending_ref),
       active_tool: state.active_tool,

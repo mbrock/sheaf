@@ -54,6 +54,19 @@ defmodule Sheaf.LLMTest do
            }
   end
 
+  test "resolves assistant provider choices to model specs" do
+    assert [
+             %{provider: "claude", label: "Claude", model: "anthropic:claude-opus-4-7"},
+             %{provider: "gpt", label: "GPT", model: "openai:gpt-5.5"}
+           ] = LLM.assistant_model_options()
+
+    assert LLM.default_assistant_provider() == "claude"
+    assert LLM.assistant_model_for_provider("claude") == "anthropic:claude-opus-4-7"
+    assert LLM.assistant_model_for_provider("gpt") == "openai:gpt-5.5"
+    assert LLM.assistant_provider_for_model("openai:gpt-5.5") == "gpt"
+    assert LLM.assistant_provider_for_model("anthropic:claude-opus-4-7") == "claude"
+  end
+
   test "merges provider options and request overrides" do
     opts =
       LLM.request_options(

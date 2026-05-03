@@ -73,6 +73,14 @@ defmodule Sheaf.Assistant do
     GenServer.call(server, {:put_context, context})
   end
 
+  @doc """
+  Replaces the model used for subsequent assistant turns.
+  """
+  @spec put_model(GenServer.server(), term()) :: :ok | {:error, :busy}
+  def put_model(server, model) do
+    GenServer.call(server, {:put_model, model})
+  end
+
   @impl true
   def init(opts) do
     {:ok,
@@ -105,6 +113,14 @@ defmodule Sheaf.Assistant do
   end
 
   def handle_call({:put_context, _context}, _from, state) do
+    {:reply, {:error, :busy}, state}
+  end
+
+  def handle_call({:put_model, model}, _from, %{task_ref: nil} = state) do
+    {:reply, :ok, %{state | model: model}}
+  end
+
+  def handle_call({:put_model, _model}, _from, state) do
     {:reply, {:error, :busy}, state}
   end
 

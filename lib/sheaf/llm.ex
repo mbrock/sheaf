@@ -9,7 +9,9 @@ defmodule Sheaf.LLM do
   alias ReqLLM.{Context, Response}
   alias ReqLLM.Message.ContentPart
 
-  @default_model "anthropic:claude-opus-4-7"
+  @claude_assistant_model "anthropic:claude-opus-4-7"
+  @gpt_assistant_model "openai:gpt-5.5"
+  @default_model @claude_assistant_model
   @default_max_tokens 65_536
   @default_thinking %{type: "adaptive", display: "omitted"}
   @default_receive_timeout 300_000
@@ -25,6 +27,40 @@ defmodule Sheaf.LLM do
   """
   @spec default_model() :: String.t()
   def default_model, do: @default_model
+
+  @doc """
+  The assistant provider choices Sheaf exposes in the chat UI.
+  """
+  @spec assistant_model_options() :: [
+          %{provider: String.t(), label: String.t(), model: String.t()}
+        ]
+  def assistant_model_options do
+    [
+      %{provider: "claude", label: "Claude", model: @claude_assistant_model},
+      %{provider: "gpt", label: "GPT", model: @gpt_assistant_model}
+    ]
+  end
+
+  @doc """
+  The default assistant provider key.
+  """
+  @spec default_assistant_provider() :: String.t()
+  def default_assistant_provider, do: "claude"
+
+  @doc """
+  Resolves a chat UI provider key to the ReqLLM model spec used for assistant turns.
+  """
+  @spec assistant_model_for_provider(term()) :: String.t()
+  def assistant_model_for_provider("gpt"), do: @gpt_assistant_model
+  def assistant_model_for_provider(:gpt), do: @gpt_assistant_model
+  def assistant_model_for_provider(_provider), do: @claude_assistant_model
+
+  @doc """
+  Returns the chat UI provider key for an assistant model spec.
+  """
+  @spec assistant_provider_for_model(term()) :: String.t()
+  def assistant_provider_for_model(@gpt_assistant_model), do: "gpt"
+  def assistant_provider_for_model(_model), do: "claude"
 
   @doc """
   The default max-token setting used by Sheaf.

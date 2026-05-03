@@ -34,6 +34,8 @@ defmodule SheafWeb.AssistantChatComponent do
      |> assign(:subscribed_chat_id, nil)
      |> assign(:chats_subscribed?, false)
      |> assign(:mode, "quick")
+     |> assign(:model, Sheaf.LLM.default_model())
+     |> assign(:model_provider, Sheaf.LLM.default_assistant_provider())
      |> assign(:form, chat_form())}
   end
 
@@ -43,6 +45,9 @@ defmodule SheafWeb.AssistantChatComponent do
       if socket.assigns.selected_chat_id == snapshot.id do
         socket
         |> assign(:chat, snapshot)
+        |> assign(:model, chat_model(snapshot))
+        |> assign(:model_provider, chat_model_provider(snapshot))
+        |> assign(:form, chat_form(chat_mode(snapshot), chat_model_provider(snapshot)))
         |> maybe_refresh_chat_list()
       else
         maybe_refresh_chat_list(socket)
@@ -64,6 +69,9 @@ defmodule SheafWeb.AssistantChatComponent do
       socket
       |> assign(assigns)
       |> assign_new(:model, fn -> Sheaf.LLM.default_model() end)
+      |> assign_new(:model_provider, fn ->
+        Sheaf.LLM.assistant_provider_for_model(socket.assigns.model)
+      end)
       |> assign_new(:llm_options, fn -> [] end)
       |> assign_new(:variant, fn -> :full end)
       |> maybe_ensure_chat_index_subscription()
@@ -84,9 +92,18 @@ defmodule SheafWeb.AssistantChatComponent do
     {:noreply, socket}
   end
 
-  def handle_event("set_mode", %{"chat" => %{"mode" => mode}}, socket) do
-    mode = normalize_mode(mode)
-    {:noreply, socket |> assign(:mode, mode) |> assign(:form, chat_form(mode))}
+  def handle_event("set_options", %{"chat" => chat_params}, socket) do
+    mode = chat_params |> Map.get("mode", socket.assigns.mode) |> normalize_mode()
+    model_provider = chat_params |> Map.get("model_provider", socket.assigns.model_provider)
+    model_provider = normalize_model_provider(model_provider)
+    model = Sheaf.LLM.assistant_model_for_provider(model_provider)
+
+    {:noreply,
+     socket
+     |> assign(:mode, mode)
+     |> assign(:model_provider, model_provider)
+     |> assign(:model, model)
+     |> assign(:form, chat_form(mode, model_provider))}
   end
 
   def handle_event("new_chat", %{"mode" => mode}, socket) do
@@ -96,12 +113,20 @@ defmodule SheafWeb.AssistantChatComponent do
 
   def handle_event("send", %{"chat" => %{"message" => message} = chat_params}, socket) do
     mode = Map.get(chat_params, "mode", socket.assigns.mode)
+    model_provider = Map.get(chat_params, "model_provider", socket.assigns.model_provider)
     message = String.trim(message)
     mode = normalize_mode(mode)
+    model_provider = normalize_model_provider(model_provider)
+    model = Sheaf.LLM.assistant_model_for_provider(model_provider)
 
     cond do
       message == "" ->
-        {:noreply, socket |> assign(:mode, mode) |> assign(:form, chat_form(mode))}
+        {:noreply,
+         socket
+         |> assign(:mode, mode)
+         |> assign(:model_provider, model_provider)
+         |> assign(:model, model)
+         |> assign(:form, chat_form(mode, model_provider))}
 
       socket.assigns.chat.pending ->
         {:noreply, socket}
@@ -110,28 +135,36 @@ defmodule SheafWeb.AssistantChatComponent do
         socket =
           socket
           |> assign(:mode, mode)
+          |> assign(:model_provider, model_provider)
+          |> assign(:model, model)
           |> ensure_sendable_chat(mode)
 
         socket =
           if is_nil(socket.assigns.selected_chat_id) do
             put_local_error(socket, "No assistant chat is selected.")
           else
-            case Chat.send_user_message(
-                   socket.assigns.selected_chat_id,
-                   message,
-                   turn_context(socket.assigns)
-                 ) do
+            case put_chat_model(socket.assigns.selected_chat_id, model) do
               :ok ->
-                assign(socket, :form, chat_form(mode))
+                case Chat.send_user_message(
+                       socket.assigns.selected_chat_id,
+                       message,
+                       turn_context(socket.assigns)
+                     ) do
+                  :ok ->
+                    assign(socket, :form, chat_form(mode, model_provider))
 
-              {:error, :busy} ->
-                socket
+                  {:error, :busy} ->
+                    socket
 
-              {:error, :empty_message} ->
-                assign(socket, :form, chat_form(mode))
+                  {:error, :empty_message} ->
+                    assign(socket, :form, chat_form(mode, model_provider))
+
+                  {:error, reason} ->
+                    put_local_error(socket, "Assistant error: #{inspect(reason)}")
+                end
 
               {:error, reason} ->
-                put_local_error(socket, "Assistant error: #{inspect(reason)}")
+                put_local_error(socket, "Could not switch assistant model: #{inspect(reason)}")
             end
           end
 
@@ -188,7 +221,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
       <.form
         for={@form}
-        phx-change="set_mode"
+        phx-change="set_options"
         phx-submit="send"
         phx-target={@myself}
         class="space-y-2"
@@ -202,7 +235,7 @@ defmodule SheafWeb.AssistantChatComponent do
         ></textarea>
         <div class="flex items-center justify-between gap-3">
           <div class="inline-flex items-center gap-1 font-sans text-xs">
-            <label class={mode_label_class(@mode, "quick")}>
+            <label class={selector_label_class(@mode, "quick")}>
               <input
                 type="radio"
                 name="chat[mode]"
@@ -213,7 +246,7 @@ defmodule SheafWeb.AssistantChatComponent do
               <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
               <span>Quick</span>
             </label>
-            <label class={mode_label_class(@mode, "research")}>
+            <label class={selector_label_class(@mode, "research")}>
               <input
                 type="radio"
                 name="chat[mode]"
@@ -223,6 +256,21 @@ defmodule SheafWeb.AssistantChatComponent do
               />
               <.icon name="hero-beaker" class="size-3.5" />
               <span>Research</span>
+            </label>
+          </div>
+          <div class="inline-flex items-center gap-1 font-sans text-xs">
+            <label
+              :for={option <- Sheaf.LLM.assistant_model_options()}
+              class={selector_label_class(@model_provider, option.provider)}
+            >
+              <input
+                type="radio"
+                name="chat[model_provider]"
+                value={option.provider}
+                checked={@model_provider == option.provider}
+                class="sr-only"
+              />
+              <span>{option.label}</span>
             </label>
           </div>
           <button
@@ -511,7 +559,7 @@ defmodule SheafWeb.AssistantChatComponent do
     |> assign(:subscribed_chat_id, nil)
     |> assign(:chat, empty_chat())
     |> assign(:mode, mode)
-    |> assign(:form, chat_form(mode))
+    |> assign(:form, chat_form(mode, socket.assigns.model_provider))
   end
 
   defp ensure_sendable_chat(%{assigns: %{selected_chat_id: id}} = socket, _mode)
@@ -550,6 +598,9 @@ defmodule SheafWeb.AssistantChatComponent do
     |> assign(:subscribed_chat_id, id)
     |> assign(:chat, snapshot)
     |> assign(:mode, chat_mode(snapshot))
+    |> assign(:model, chat_model(snapshot))
+    |> assign(:model_provider, chat_model_provider(snapshot))
+    |> assign(:form, chat_form(chat_mode(snapshot), chat_model_provider(snapshot)))
   end
 
   defp unsubscribe_from_previous_chat(%{assigns: %{subscribed_chat_id: old_id}} = socket, new_id)
@@ -611,12 +662,18 @@ defmodule SheafWeb.AssistantChatComponent do
   defp mode_kind("research"), do: :research
   defp mode_kind(_mode), do: :chat
 
-  defp mode_label_class(selected_mode, mode) do
+  defp normalize_model_provider("gpt"), do: "gpt"
+  defp normalize_model_provider(_provider), do: "claude"
+
+  defp put_chat_model(id, model) when is_binary(id), do: Chat.put_model(id, model)
+  defp put_chat_model(_id, _model), do: :ok
+
+  defp selector_label_class(selected_value, value) do
     [
       "inline-flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 transition-colors",
-      selected_mode == mode &&
+      selected_value == value &&
         "text-stone-900 ring-1 ring-inset ring-stone-400/70 dark:text-stone-50 dark:ring-stone-500/80",
-      selected_mode != mode &&
+      selected_value != value &&
         "text-stone-500 hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
     ]
   end
@@ -654,6 +711,12 @@ defmodule SheafWeb.AssistantChatComponent do
       _kind -> "quick"
     end
   end
+
+  defp chat_model(%{model: model}) when not is_nil(model), do: model
+  defp chat_model(_chat), do: Sheaf.LLM.default_model()
+
+  defp chat_model_provider(chat),
+    do: chat |> chat_model() |> Sheaf.LLM.assistant_provider_for_model()
 
   defp input_placeholder("research"), do: "Give the assistant a research task"
   defp input_placeholder(_mode), do: "Ask a quick question"
@@ -714,13 +777,16 @@ defmodule SheafWeb.AssistantChatComponent do
     |> MDEx.to_html!(@mdex_opts)
   end
 
-  defp chat_form(mode \\ "quick"), do: to_form(%{"message" => "", "mode" => mode}, as: :chat)
+  defp chat_form(mode \\ "quick", model_provider \\ Sheaf.LLM.default_assistant_provider()) do
+    to_form(%{"message" => "", "mode" => mode, "model_provider" => model_provider}, as: :chat)
+  end
 
   defp empty_chat do
     %{
       id: nil,
       title: "Assistant conversation",
       kind: :chat,
+      model: Sheaf.LLM.default_model(),
       messages: [],
       pending: false,
       active_tool: nil,

@@ -127,6 +127,43 @@ defmodule Sheaf.Assistant.ChatTest do
            } = wait_for_messages(id, 2)
   end
 
+  test "can switch the routed model before the next turn" do
+    test_pid = self()
+
+    generate_text = fn model, context, _opts ->
+      send(test_pid, {:inference_started, model, context})
+      {:ok, response(Context.assistant("Routed."), finish_reason: :stop)}
+    end
+
+    id = Sheaf.Id.generate()
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       model: "anthropic:claude-opus-4-7",
+       titles: %{},
+       workspace_instructions: "Testing model routing.",
+       activity_writer: nil,
+       generate_text: generate_text,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    assert %{model: "anthropic:claude-opus-4-7"} = Chat.snapshot(id)
+    assert :ok = Chat.put_model(id, "openai:gpt-5.5")
+    assert %{model: "openai:gpt-5.5"} = Chat.snapshot(id)
+
+    assert :ok = Chat.send_user_message(id, "Use GPT for this.")
+    assert_receive {:inference_started, "openai:gpt-5.5", _context}
+
+    assert %{
+             pending: false,
+             messages: [
+               %{role: :user, text: "Use GPT for this."},
+               %{role: :assistant, text: "Routed."}
+             ]
+           } = wait_for_messages(id, 2)
+  end
+
   defp wait_for_messages(id, count) do
     Enum.reduce_while(1..50, nil, fn _, _acc ->
       snapshot = Chat.snapshot(id)

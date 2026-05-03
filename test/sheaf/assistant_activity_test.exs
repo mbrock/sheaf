@@ -8,6 +8,7 @@ defmodule Sheaf.Assistant.ActivityTest do
     question = Id.iri("MSG001")
     reply = Id.iri("MSG002")
     session = Id.iri("SESS01")
+    assistant_iri = Id.iri("AGENT1")
     published_at = ~U[2026-04-26 10:00:00Z]
 
     assert {:ok, question_graph} =
@@ -48,6 +49,7 @@ defmodule Sheaf.Assistant.ActivityTest do
                :assistant,
                %{
                  message_iri: reply,
+                 actor_iri: assistant_iri,
                  model_name: "test-model",
                  session_iri: session,
                  session_label: "Assistant conversation SESS01",
@@ -64,18 +66,20 @@ defmodule Sheaf.Assistant.ActivityTest do
     assert RDF.Data.include?(reply_graph, {session, Sheaf.NS.AS.items(), reply})
     assert RDF.Data.include?(reply_graph, {session, Sheaf.NS.DOC.conversationMode(), "research"})
 
-    assert [assistant] =
+    assert [^assistant_iri] =
              RDF.Description.get(
                RDF.Data.description(reply_graph, reply),
                Sheaf.NS.AS.attributedTo()
              )
 
-    assert %RDF.BlankNode{} = assistant
-    assert RDF.Data.include?(reply_graph, {assistant, RDF.type(), Sheaf.NS.PROV.SoftwareAgent})
+    assert RDF.Data.include?(
+             reply_graph,
+             {assistant_iri, RDF.type(), Sheaf.NS.PROV.SoftwareAgent}
+           )
 
     assert RDF.Data.include?(
              reply_graph,
-             {assistant, Sheaf.NS.DOC.assistantModelName(), "test-model"}
+             {assistant_iri, Sheaf.NS.DOC.assistantModelName(), "test-model"}
            )
   end
 
