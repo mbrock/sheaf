@@ -130,8 +130,8 @@ defmodule Sheaf.Assistant.ChatTest do
   test "can switch the routed model before the next turn" do
     test_pid = self()
 
-    generate_text = fn model, context, _opts ->
-      send(test_pid, {:inference_started, model, context})
+    generate_text = fn model, context, opts ->
+      send(test_pid, {:inference_started, model, context, opts})
       {:ok, response(Context.assistant("Routed."), finish_reason: :stop)}
     end
 
@@ -150,10 +150,12 @@ defmodule Sheaf.Assistant.ChatTest do
 
     assert %{model: "anthropic:claude-opus-4-7"} = Chat.snapshot(id)
     assert :ok = Chat.put_model(id, "openai:gpt-5.5")
-    assert %{model: "openai:gpt-5.5"} = Chat.snapshot(id)
+    assert :ok = Chat.put_llm_options(id, reasoning_effort: :high)
+    assert %{model: "openai:gpt-5.5", llm_options: [reasoning_effort: :high]} = Chat.snapshot(id)
 
     assert :ok = Chat.send_user_message(id, "Use GPT for this.")
-    assert_receive {:inference_started, "openai:gpt-5.5", _context}
+    assert_receive {:inference_started, "openai:gpt-5.5", _context, opts}
+    assert opts[:reasoning_effort] == :high
 
     assert %{
              pending: false,

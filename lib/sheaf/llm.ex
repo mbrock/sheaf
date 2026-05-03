@@ -63,6 +63,16 @@ defmodule Sheaf.LLM do
   def assistant_provider_for_model(_model), do: "claude"
 
   @doc """
+  Default LLM options for an assistant provider and conversation mode.
+  """
+  @spec assistant_llm_options(term(), term()) :: keyword()
+  def assistant_llm_options(provider_or_model, mode) do
+    provider_or_model
+    |> assistant_provider_key()
+    |> do_assistant_llm_options(normalize_assistant_mode(mode))
+  end
+
+  @doc """
   The default max-token setting used by Sheaf.
   """
   @spec default_max_tokens() :: pos_integer()
@@ -200,6 +210,20 @@ defmodule Sheaf.LLM do
   def response_usage(%ReqLLM.Response{} = response), do: Response.usage(response)
   def response_usage(%{usage: usage}) when is_map(usage), do: usage
   def response_usage(_), do: nil
+
+  defp assistant_provider_key("gpt"), do: "gpt"
+  defp assistant_provider_key(:gpt), do: "gpt"
+
+  defp assistant_provider_key(provider_or_model),
+    do: assistant_provider_for_model(provider_or_model)
+
+  defp normalize_assistant_mode(:research), do: :research
+  defp normalize_assistant_mode("research"), do: :research
+  defp normalize_assistant_mode(_mode), do: :quick
+
+  defp do_assistant_llm_options("gpt", :research), do: [reasoning_effort: :high]
+  defp do_assistant_llm_options("gpt", _mode), do: [reasoning_effort: :medium]
+  defp do_assistant_llm_options(_provider, _mode), do: []
 
   defp anthropic_adaptive_model?("anthropic:claude-opus-4-7"), do: true
   defp anthropic_adaptive_model?("claude-opus-4-7"), do: true

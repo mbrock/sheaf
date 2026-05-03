@@ -81,6 +81,14 @@ defmodule Sheaf.Assistant do
     GenServer.call(server, {:put_model, model})
   end
 
+  @doc """
+  Replaces the default LLM options used for subsequent assistant turns.
+  """
+  @spec put_llm_options(GenServer.server(), keyword()) :: :ok | {:error, :busy}
+  def put_llm_options(server, opts) when is_list(opts) do
+    GenServer.call(server, {:put_llm_options, opts})
+  end
+
   @impl true
   def init(opts) do
     {:ok,
@@ -121,6 +129,14 @@ defmodule Sheaf.Assistant do
   end
 
   def handle_call({:put_model, _model}, _from, state) do
+    {:reply, {:error, :busy}, state}
+  end
+
+  def handle_call({:put_llm_options, opts}, _from, %{task_ref: nil} = state) do
+    {:reply, :ok, %{state | llm_options: opts}}
+  end
+
+  def handle_call({:put_llm_options, _opts}, _from, state) do
     {:reply, {:error, :busy}, state}
   end
 

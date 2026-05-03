@@ -143,7 +143,9 @@ defmodule SheafWeb.AssistantChatComponent do
           if is_nil(socket.assigns.selected_chat_id) do
             put_local_error(socket, "No assistant chat is selected.")
           else
-            case put_chat_model(socket.assigns.selected_chat_id, model) do
+            llm_options = assistant_llm_options(socket.assigns.llm_options, model, mode)
+
+            case put_chat_route(socket.assigns.selected_chat_id, model, llm_options) do
               :ok ->
                 case Chat.send_user_message(
                        socket.assigns.selected_chat_id,
@@ -164,7 +166,7 @@ defmodule SheafWeb.AssistantChatComponent do
                 end
 
               {:error, reason} ->
-                put_local_error(socket, "Could not switch assistant model: #{inspect(reason)}")
+                put_local_error(socket, "Could not switch assistant route: #{inspect(reason)}")
             end
           end
 
@@ -612,10 +614,12 @@ defmodule SheafWeb.AssistantChatComponent do
   defp unsubscribe_from_previous_chat(socket, _new_id), do: socket
 
   defp chat_options(socket, kind) do
+    llm_options = assistant_llm_options(socket.assigns.llm_options, socket.assigns.model, kind)
+
     options = [
       kind: kind,
       model: socket.assigns.model,
-      llm_options: socket.assigns.llm_options
+      llm_options: llm_options
     ]
 
     case assistant_allow_notes(socket.assigns, kind) do
@@ -665,8 +669,20 @@ defmodule SheafWeb.AssistantChatComponent do
   defp normalize_model_provider("gpt"), do: "gpt"
   defp normalize_model_provider(_provider), do: "claude"
 
-  defp put_chat_model(id, model) when is_binary(id), do: Chat.put_model(id, model)
-  defp put_chat_model(_id, _model), do: :ok
+  defp put_chat_route(id, model, llm_options) when is_binary(id) do
+    with :ok <- Chat.put_model(id, model),
+         :ok <- Chat.put_llm_options(id, llm_options) do
+      :ok
+    end
+  end
+
+  defp put_chat_route(_id, _model, _llm_options), do: :ok
+
+  defp assistant_llm_options(base_options, model, kind_or_mode) do
+    model
+    |> Sheaf.LLM.assistant_llm_options(kind_or_mode)
+    |> Keyword.merge(base_options)
+  end
 
   defp selector_label_class(selected_value, value) do
     [
@@ -787,6 +803,7 @@ defmodule SheafWeb.AssistantChatComponent do
       title: "Assistant conversation",
       kind: :chat,
       model: Sheaf.LLM.default_model(),
+      llm_options: [],
       messages: [],
       pending: false,
       active_tool: nil,

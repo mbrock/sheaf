@@ -89,6 +89,10 @@ defmodule Sheaf.Assistant.Chat do
     GenServer.call(server_ref(server), {:put_model, model})
   end
 
+  def put_llm_options(server, opts) when is_list(opts) do
+    GenServer.call(server_ref(server), {:put_llm_options, opts})
+  end
+
   def subscribe(server, live_view, component, component_id) do
     GenServer.call(server_ref(server), {:subscribe, live_view, component, component_id})
   end
@@ -205,6 +209,18 @@ defmodule Sheaf.Assistant.Chat do
   def handle_call({:put_model, model}, _from, state) do
     case Assistant.put_model(state.assistant, model) do
       :ok -> {:reply, :ok, %{state | model: model}}
+      {:error, reason} -> {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call({:put_llm_options, _opts}, _from, %{pending_ref: ref} = state)
+      when not is_nil(ref) do
+    {:reply, {:error, :busy}, state}
+  end
+
+  def handle_call({:put_llm_options, opts}, _from, state) do
+    case Assistant.put_llm_options(state.assistant, opts) do
+      :ok -> {:reply, :ok, %{state | llm_options: opts}}
       {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
@@ -587,6 +603,7 @@ defmodule Sheaf.Assistant.Chat do
       title: state.title,
       kind: state.kind,
       model: state.model,
+      llm_options: state.llm_options,
       messages: state.messages,
       pending: not is_nil(state.pending_ref),
       active_tool: state.active_tool,

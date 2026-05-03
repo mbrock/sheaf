@@ -67,6 +67,13 @@ defmodule Sheaf.LLMTest do
     assert LLM.assistant_provider_for_model("anthropic:claude-opus-4-7") == "claude"
   end
 
+  test "sets GPT assistant reasoning effort by conversation mode" do
+    assert LLM.assistant_llm_options("gpt", "quick") == [reasoning_effort: :medium]
+    assert LLM.assistant_llm_options("openai:gpt-5.5", :chat) == [reasoning_effort: :medium]
+    assert LLM.assistant_llm_options("gpt", "research") == [reasoning_effort: :high]
+    assert LLM.assistant_llm_options("anthropic:claude-opus-4-7", "research") == []
+  end
+
   test "merges provider options and request overrides" do
     opts =
       LLM.request_options(
