@@ -433,6 +433,15 @@ defmodule Sheaf.Document do
     ~r/<[^>]*>/
     |> Regex.split(markup, include_captures: true, trim: false)
     |> Enum.map_join(&sanitize_markup_part/1)
+    |> render_empty_footnote_markers()
+  end
+
+  defp render_empty_footnote_markers(markup) do
+    Regex.replace(
+      ~r/<sup data-footnote="([^"]+)"><\/sup>/,
+      markup,
+      fn _match, value -> ~s(<sup data-footnote="#{value}">[#{value}]</sup>) end
+    )
   end
 
   defp sanitize_markup_part("<" <> _rest = tag) do

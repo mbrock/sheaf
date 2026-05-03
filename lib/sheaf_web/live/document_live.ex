@@ -13,9 +13,10 @@ defmodule SheafWeb.DocumentLive do
   alias SheafWeb.AssistantHistoryComponents
   import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
 
-  # Knuth-Plass justification is kept available but currently disabled because
-  # its text rewriting does not yet preserve inline markup rendering cleanly.
-  @knuth_plass? false
+  # Knuth-Plass justification is useful for short documents, but large imported
+  # books can make client-side paragraph rewriting feel sluggish.
+  @knuth_plass? true
+  @knuth_plass_max_blocks 500
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
@@ -74,7 +75,7 @@ defmodule SheafWeb.DocumentLive do
       assigns
       |> assign(:blocks, blocks)
       |> assign(:toc, Document.toc(assigns.graph, assigns.root))
-      |> assign(:knuth_plass?, @knuth_plass?)
+      |> assign(:knuth_plass?, knuth_plass?(blocks))
 
     ~H"""
     <div
@@ -155,7 +156,7 @@ defmodule SheafWeb.DocumentLive do
     <section id={"block-#{Document.id(@block.iri)}"} class="scroll-mt-6 space-y-8">
       <h1
         class={[
-          "cursor-pointer rounded-sm font-sans text-3xl font-bold tracking-tight",
+          "cursor-pointer rounded-sm font-sans text-3xl font-bold",
           selected_class(@block, @selected_id)
         ]}
         phx-click="inspect_block"
@@ -189,7 +190,7 @@ defmodule SheafWeb.DocumentLive do
         phx-click="inspect_block"
         phx-value-id={Document.id(@block.iri)}
       >
-        <h2 class="font-sans text-xl font-semibold tracking-tight">
+        <h2 class="font-sans text-xl font-semibold">
           {section_title(@block.number, Document.heading(@graph, @block.iri))}
         </h2>
       </summary>
@@ -431,6 +432,10 @@ defmodule SheafWeb.DocumentLive do
     "#{Enum.join(number, ".")}. #{heading}"
   end
 
+  defp knuth_plass?(blocks) do
+    @knuth_plass? and paragraph_block_count(blocks) <= @knuth_plass_max_blocks
+  end
+
   defp selected_class(block, selected_id) do
     if Document.id(block.iri) == selected_id do
       "bg-stone-200/70 dark:bg-stone-800/80"
@@ -452,8 +457,7 @@ defmodule SheafWeb.DocumentLive do
       "[&_mark]:bg-yellow-200/50 [&_mark]:px-0.5 [&_mark]:text-inherit dark:[&_mark]:bg-yellow-400/25",
       "[&_strong]:font-bold [&_b]:font-bold",
       "[&_sub]:text-[0.72em] [&_sup]:text-[0.72em]",
-      "[&_sup[data-footnote]]:ml-0.5 [&_sup[data-footnote]]:align-super [&_sup[data-footnote]]:font-sans [&_sup[data-footnote]]:text-sky-700 dark:[&_sup[data-footnote]]:text-sky-200",
-      "[&_sup[data-footnote]]:before:content-['['attr(data-footnote)']']",
+      "[&_sup[data-footnote]]:ml-0.5 [&_sup[data-footnote]]:align-super [&_sup[data-footnote]]:opacity-60",
       "[&_u]:underline"
     ]
   end

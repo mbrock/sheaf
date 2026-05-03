@@ -61,7 +61,6 @@ export const KnuthPlass = {
         snapshot: null,
         width: 0,
         font: null,
-        letterSpacing: 0,
         styleEpoch: -1,
         prep: null,
         prepKey: null,
@@ -103,6 +102,7 @@ export const KnuthPlass = {
   },
   wrap(scope) {
     if (!scope.isConnected) return
+    if (unsupportedScope(scope)) return
     const state = this.scopes.get(scope)
     if (!state || state.width <= 0) return
 
@@ -110,20 +110,20 @@ export const KnuthPlass = {
     if (state.styleEpoch !== fontEpoch) {
       const style = getComputedStyle(scope)
       state.font = fontShorthand(style)
-      state.letterSpacing = lengthPx(style.letterSpacing) ?? 0
       state.styleEpoch = fontEpoch
     }
 
     const targetWidth = Math.max(0, state.width - SAFETY_PX)
     if (targetWidth <= 0) return
 
-    const layoutKey = `${fontEpoch}|${state.font}|${state.letterSpacing}|${Math.round(targetWidth * 100)}`
+    const layoutKey = `${fontEpoch}|${state.font}|${Math.round(targetWidth * 100)}`
     if (state.layoutKey === layoutKey) return
     state.layoutKey = layoutKey
 
-    const prepKey = `${fontEpoch}|${state.font}|${state.letterSpacing}`
+    const prepKey = `${fontEpoch}|${state.font}`
     if (state.prepKey !== prepKey) {
-      state.prep = prepareScope(state.snapshot, state.font, state.letterSpacing)
+      refreshSnapshotMetrics(state.snapshot)
+      state.prep = prepareScope(state.snapshot, state.font)
       state.prepKey = prepKey
     }
 
@@ -139,12 +139,24 @@ function snapshotTextNodes(root) {
   while ((node = walker.nextNode())) {
     const parent = node.parentElement
     if (parent && (parent.tagName === "SCRIPT" || parent.tagName === "STYLE")) continue
-    result.push({textNode: node, original: node.nodeValue ?? ""})
+    result.push({textNode: node, original: node.nodeValue ?? "", font: null})
   }
   return result
 }
 
-function prepareScope(snapshot, font, letterSpacing) {
+function refreshSnapshotMetrics(snapshot) {
+  for (const entry of snapshot) {
+    const parent = entry.textNode.parentElement
+    if (!parent) continue
+    entry.font = fontShorthand(getComputedStyle(parent))
+  }
+}
+
+function unsupportedScope(root) {
+  return !!root.querySelector("br, code, pre, img, picture, svg, canvas, video, audio, iframe, math, table")
+}
+
+function prepareScope(snapshot, font) {
   const flat = []
   const flatOrigin = []
   let prevSpace = false
@@ -193,10 +205,44 @@ function prepareScope(snapshot, font, letterSpacing) {
     prepText += hyphenated[i] === "-" ? NON_BREAKING_HYPHEN : hyphenated[i]
   }
 
-  const prepared = prepareWithSegments(prepText, font, {letterSpacing})
-  const normalSpaceWidth = measureText(" ", font) + letterSpacing
-  const hyphenWidth = measureText("-", font) + letterSpacing
+  const prepared = prepareWithSegments(prepText, font)
+  const starts = segmentCharStarts(prepared.segments)
+  prepared.widths = prepared.segments.map((seg, index) => {
+    const start = starts[index]
+    return measureSegment(seg, hyphOrigin, start, snapshot, font)
+  })
+  const normalSpaceWidth = measureText(" ", font)
+  const hyphenWidth = measureText("-", font)
   return {prepared, hyphOrigin, normalSpaceWidth, hyphenWidth}
+}
+
+function segmentCharStarts(segments) {
+  const starts = new Int32Array(segments.length)
+  let start = 0
+  for (let i = 0; i < segments.length; i++) {
+    starts[i] = start
+    start += segments[i].length
+  }
+  return starts
+}
+
+function measureSegment(seg, origin, start, snapshot, fallbackFont) {
+  if (seg === SOFT_HYPHEN) return 0
+  let width = 0
+  let runFont = null
+  let runText = ""
+  for (let i = 0; i < seg.length; i++) {
+    const entry = snapshot[origin[start + i] ?? 0]
+    const font = entry?.font ?? fallbackFont
+    if (runFont !== null && font !== runFont) {
+      width += measureText(runText, runFont)
+      runText = ""
+    }
+    runFont = font
+    runText += seg[i]
+  }
+  if (runText !== "") width += measureText(runText, runFont ?? fallbackFont)
+  return width
 }
 
 function applyLayout(snapshot, prep, maxWidth) {
@@ -339,12 +385,6 @@ function isWhitespace(s) {
 
 function fontShorthand(style) {
   return `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
-}
-
-function lengthPx(value) {
-  if (value === "" || value === "normal") return null
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : null
 }
 
 function measureText(text, font) {

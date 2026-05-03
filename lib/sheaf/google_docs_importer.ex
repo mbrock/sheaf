@@ -633,7 +633,9 @@ defmodule Sheaf.GoogleDocsImporter do
          %{"footnoteReference" => %{"footnoteId" => id, "footnoteNumber" => number}},
          _footnotes
        ) do
-    ~s(<sup data-footnote="#{html_attr(number || id)}"></sup>)
+    marker = number || id
+    escaped_marker = html_attr(marker)
+    ~s(<sup data-footnote="#{escaped_marker}">[#{escaped_marker}]</sup>)
   end
 
   defp element_markup(_element, _footnotes), do: ""
