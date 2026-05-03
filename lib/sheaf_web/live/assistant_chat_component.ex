@@ -188,7 +188,13 @@ defmodule SheafWeb.AssistantChatComponent do
   def render(%{variant: :full_page} = assigns) do
     ~H"""
     <section class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
-      <div class="min-h-0 overflow-y-auto px-4 py-6">
+      <div
+        id={"assistant-timeline-#{@id}"}
+        class="min-h-0 overflow-y-auto px-4 py-6"
+        phx-hook="ScrollContainer"
+        data-scroll-initial="bottom"
+        data-scroll-stick-bottom="true"
+      >
         <div class="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
           <.chat_message
             :for={message <- @chat.messages}
@@ -285,7 +291,11 @@ defmodule SheafWeb.AssistantChatComponent do
 
       <div
         :if={not inline?(@variant) and @selected_chat_id}
+        id={"assistant-timeline-#{@id}"}
         class="mt-3 max-h-80 min-h-0 space-y-2 overflow-y-auto pr-1 text-sm"
+        phx-hook="ScrollContainer"
+        data-scroll-initial="bottom"
+        data-scroll-stick-bottom="true"
       >
         <.chat_message
           :for={message <- @chat.messages}
