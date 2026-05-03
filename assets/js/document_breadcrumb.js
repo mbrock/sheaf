@@ -25,13 +25,18 @@ export const DocumentBreadcrumb = {
     this.update = () => updateCurrentHeading(this)
     this.copy = () => copyMarkdown(this)
     this.navigateAssistantBlock = event => navigateAssistantBlock(this, event)
+    this.focusArticle = () => focusArticle(this)
+    this.scrollFromKey = event => scrollArticleFromKey(this, event)
 
     this.el.addEventListener("click", this.navigateAssistantBlock)
+    this.article?.addEventListener("pointerdown", this.focusArticle)
+    window.addEventListener("keydown", this.scrollFromKey)
     this.copyButton?.addEventListener("click", this.copy)
     this.handleEvent("scroll-to-block", ({id}) => scheduleScrollToBlock(this, id))
     this.handleEvent("scroll-reader-to-top", () => scheduleScrollReaderToTop(this))
 
     initObserver(this)
+    requestAnimationFrame(() => focusArticle(this))
   },
   updated() {
     refreshSections(this)
@@ -40,6 +45,8 @@ export const DocumentBreadcrumb = {
   destroyed() {
     this.observer?.disconnect()
     this.el.removeEventListener("click", this.navigateAssistantBlock)
+    this.article?.removeEventListener("pointerdown", this.focusArticle)
+    window.removeEventListener("keydown", this.scrollFromKey)
     this.copyButton?.removeEventListener("click", this.copy)
   },
 }
@@ -74,6 +81,7 @@ function scheduleScrollReaderToTop(hook) {
 function scrollReaderToTop(hook) {
   hook.article = hook.el.querySelector("#document-start")
   hook.article?.scrollTo({top: 0, behavior: "smooth"})
+  focusArticle(hook)
 }
 
 function scrollToBlock(hook, id) {
@@ -90,6 +98,40 @@ function scrollToBlock(hook, id) {
   }
 
   block.scrollIntoView({block: "center", behavior: "smooth"})
+  focusArticle(hook)
+}
+
+function focusArticle(hook) {
+  hook.article?.focus({preventScroll: true})
+}
+
+function scrollArticleFromKey(hook, event) {
+  if (!hook.article || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
+  if (isInteractiveTarget(event.target)) return
+
+  const line = 56
+  const page = Math.max(120, hook.article.clientHeight * 0.85)
+  const key = event.key
+  let top = 0
+
+  if (key === "ArrowDown" || key === "j") top = line
+  else if (key === "ArrowUp" || key === "k") top = -line
+  else if (key === "PageDown" || key === "d") top = page
+  else if (key === "PageUp" || key === "u") top = -page
+  else if (key === " " && !event.shiftKey) top = page
+  else if (key === " " && event.shiftKey) top = -page
+  else if (key === "Home") top = -hook.article.scrollTop
+  else if (key === "End") top = hook.article.scrollHeight
+  else return
+
+  event.preventDefault()
+  hook.article.scrollBy({top, behavior: "auto"})
+  focusArticle(hook)
+}
+
+function isInteractiveTarget(target) {
+  const element = target instanceof Element ? target : target?.parentElement
+  return !!element?.closest("input, textarea, select, button, a, [contenteditable='true']")
 }
 
 function cssEscape(value) {

@@ -635,7 +635,7 @@ defmodule Sheaf.GoogleDocsImporter do
        ) do
     marker = number || id
     escaped_marker = html_attr(marker)
-    ~s(<sup data-footnote="#{escaped_marker}">[#{escaped_marker}]</sup>)
+    ~s(<span data-footnote="#{escaped_marker}">[#{escaped_marker}]</span>)
   end
 
   defp element_markup(_element, _footnotes), do: ""

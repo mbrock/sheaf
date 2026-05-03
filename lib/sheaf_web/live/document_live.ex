@@ -96,7 +96,8 @@ defmodule SheafWeb.DocumentLive do
 
       <article
         id="document-start"
-        class="min-h-0 min-w-0 overflow-y-auto px-4 pb-4 lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
+        class="min-h-0 min-w-0 overflow-y-auto px-4 pb-4 focus:outline-none lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
+        tabindex="0"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
         <div class="mx-auto w-full max-w-[112ch] pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:dark:border-stone-800 lg:dark:bg-stone-900">
@@ -457,7 +458,7 @@ defmodule SheafWeb.DocumentLive do
       "[&_mark]:bg-yellow-200/50 [&_mark]:px-0.5 [&_mark]:text-inherit dark:[&_mark]:bg-yellow-400/25",
       "[&_strong]:font-bold [&_b]:font-bold",
       "[&_sub]:text-[0.72em] [&_sup]:text-[0.72em]",
-      "[&_sup[data-footnote]]:ml-0.5 [&_sup[data-footnote]]:align-super [&_sup[data-footnote]]:opacity-60",
+      "[&_span[data-footnote]]:ml-0.5 [&_span[data-footnote]]:opacity-60",
       "[&_u]:underline"
     ]
   end

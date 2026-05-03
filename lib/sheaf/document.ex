@@ -433,14 +433,21 @@ defmodule Sheaf.Document do
     ~r/<[^>]*>/
     |> Regex.split(markup, include_captures: true, trim: false)
     |> Enum.map_join(&sanitize_markup_part/1)
-    |> render_empty_footnote_markers()
+    |> render_footnote_markers()
   end
 
-  defp render_empty_footnote_markers(markup) do
+  defp render_footnote_markers(markup) do
+    markup =
+      Regex.replace(
+        ~r/<sup data-footnote="([^"]+)"><\/sup>/,
+        markup,
+        fn _match, value -> ~s(<span data-footnote="#{value}">[#{value}]</span>) end
+      )
+
     Regex.replace(
-      ~r/<sup data-footnote="([^"]+)"><\/sup>/,
+      ~r/<sup data-footnote="([^"]+)">(.+?)<\/sup>/,
       markup,
-      fn _match, value -> ~s(<sup data-footnote="#{value}">[#{value}]</sup>) end
+      fn _match, value, text -> ~s(<span data-footnote="#{value}">#{text}</span>) end
     )
   end
 
@@ -483,7 +490,7 @@ defmodule Sheaf.Document do
     end
   end
 
-  defp safe_attrs("sup", attrs) do
+  defp safe_attrs(tag, attrs) when tag in ["span", "sup"] do
     case attr_value(attrs, "data-footnote") do
       nil -> ""
       value -> safe_data_footnote_attr(value)
