@@ -200,8 +200,11 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
       {spreadsheets, errors} =
         Enum.reduce(files, {[], []}, fn path, {spreadsheets, errors} ->
           case load_workbook(conn, directory, path, loaded_at) do
-            {:ok, spreadsheet} -> {[spreadsheet | spreadsheets], errors}
-            {:error, reason} -> {spreadsheets, [%{path: path, error: reason} | errors]}
+            {:ok, spreadsheet, sheet_errors} ->
+              {[spreadsheet | spreadsheets], Enum.reverse(sheet_errors) ++ errors}
+
+            {:error, reason} ->
+              {spreadsheets, [%{path: path, error: reason} | errors]}
           end
         end)
 
@@ -304,42 +307,61 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
                  (id, title, path, basename, file_size, file_mtime, sha256, loaded_at)
                VALUES
                  (#{literal(id)}, #{literal(title)}, #{literal(Path.expand(path))},
-                  #{literal(basename)}, #{stat.size}, #{literal(mtime(stat))},
+                 #{literal(basename)}, #{stat.size}, #{literal(mtime(stat))},
                   #{literal(sha)}, #{literal(loaded_at)})
                """
              ),
-           {:ok, sheets} <- load_sheets(conn, path, id, file_key, sheet_names, loaded_at) do
-        {:ok,
-         %{
-           id: id,
-           title: title,
-           path: Path.expand(path),
-           basename: basename,
-           file_size: stat.size,
-           file_mtime: mtime(stat),
-           sha256: sha,
-           loaded_at: loaded_at,
-           sheets: sheets
-         }}
+           {:ok, sheets, sheet_errors} <-
+             load_sheets(conn, path, id, file_key, sheet_names, loaded_at) do
+        if sheets == [] do
+          {:error, {:no_readable_sheets, sheet_errors}}
+        else
+          {:ok,
+           {%{
+              id: id,
+              title: title,
+              path: Path.expand(path),
+              basename: basename,
+              file_size: stat.size,
+              file_mtime: mtime(stat),
+              sha256: sha,
+              loaded_at: loaded_at,
+              sheets: sheets,
+              sheet_errors: sheet_errors
+            }, sheet_errors}}
+        end
       end
     end)
+    |> case do
+      {:ok, {spreadsheet, sheet_errors}} -> {:ok, spreadsheet, sheet_errors}
+      error -> error
+    end
   end
 
   defp load_sheets(conn, path, spreadsheet_id, sha, sheet_names, loaded_at) do
     sheet_names
     |> Enum.with_index(1)
-    |> Enum.reduce_while({:ok, []}, fn {sheet_name, index}, {:ok, sheets} ->
+    |> Enum.reduce({[], []}, fn {sheet_name, index}, {sheets, errors} ->
       table = table_name(path, sha, index)
 
       case load_sheet(conn, path, spreadsheet_id, table, sheet_name, index, loaded_at) do
-        {:ok, sheet} -> {:cont, {:ok, [sheet | sheets]}}
-        {:error, reason} -> {:halt, {:error, reason}}
+        {:ok, sheet} ->
+          {[sheet | sheets], errors}
+
+        {:error, reason} ->
+          {sheets,
+           [
+             %{
+               path: Path.expand(path),
+               sheet: sheet_name,
+               sheet_index: index,
+               error: reason
+             }
+             | errors
+           ]}
       end
     end)
-    |> case do
-      {:ok, sheets} -> {:ok, Enum.reverse(sheets)}
-      error -> error
-    end
+    |> then(fn {sheets, errors} -> {:ok, Enum.reverse(sheets), Enum.reverse(errors)} end)
   end
 
   defp load_sheet(conn, path, spreadsheet_id, table, sheet_name, index, loaded_at) do
@@ -350,6 +372,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
       all_varchar = true,
       normalize_names = true,
       header = true,
+      stop_at_empty = false,
       ignore_errors = true
     )
     """
@@ -365,6 +388,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
            ),
          :ok <- normalize_reserved_columns(conn, table),
          {:ok, columns} <- table_columns(conn, table),
+         :ok <- delete_empty_rows(conn, table, columns),
          :ok <- add_text_column(conn, table, columns),
          {:ok, row_count} <- scalar(conn, "SELECT count(*) FROM #{identifier(table)}"),
          :ok <-
@@ -391,6 +415,18 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
          loaded_at: loaded_at
        }}
     end
+  end
+
+  defp delete_empty_rows(_conn, _table, []), do: :ok
+
+  defp delete_empty_rows(conn, table, columns) do
+    nonempty_expression =
+      columns
+      |> Enum.map_join(" OR ", fn %{name: name} ->
+        "coalesce(CAST(#{identifier(name)} AS VARCHAR), '') <> ''"
+      end)
+
+    exec(conn, "DELETE FROM #{identifier(table)} WHERE NOT (#{nonempty_expression})")
   end
 
   defp normalize_reserved_columns(conn, table) do
