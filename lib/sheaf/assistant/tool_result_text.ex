@@ -144,9 +144,9 @@ defmodule Sheaf.Assistant.ToolResultText do
     """
     SPREADSHEET QUERY
     SQL: #{result.sql}
-    Columns: #{Enum.join(result.columns, ", ")}
+    Format: TSV
 
-    #{json_rows(result.rows)}
+    #{tsv_rows(result.columns, result.rows)}
     """
     |> String.trim()
   end
@@ -155,8 +155,9 @@ defmodule Sheaf.Assistant.ToolResultText do
     """
     SPREADSHEET SEARCH
     Query: #{result.query}
+    Format: TSV
 
-    #{json_rows(result.hits)}
+    #{spreadsheet_hits_tsv(result.hits)}
     """
     |> String.trim()
   end
@@ -635,12 +636,58 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp line(nil, _level), do: nil
   defp line(text, level), do: indent(level) <> text
 
-  defp json_rows([]), do: "(no rows)"
+  defp tsv_rows(_columns, []), do: "(no rows)"
 
-  defp json_rows(rows) do
-    rows
-    |> Enum.map(&Jason.encode!/1)
+  defp tsv_rows(columns, rows) do
+    [
+      Enum.map_join(columns, "\t", &tsv_cell/1)
+      | Enum.map(rows, fn row ->
+          Enum.map_join(columns, "\t", fn column -> row |> Map.get(column) |> tsv_cell() end)
+        end)
+    ]
     |> Enum.join("\n")
+  end
+
+  defp spreadsheet_hits_tsv([]), do: "(no hits)"
+
+  defp spreadsheet_hits_tsv(hits) do
+    columns = ["spreadsheet_id", "sheet_name", "table_name", "row_number", "score", "row"]
+
+    [
+      Enum.join(columns, "\t")
+      | Enum.map(hits, fn hit ->
+          [
+            hit.spreadsheet_id,
+            hit.sheet_name,
+            hit.table_name,
+            hit.row_number,
+            hit.score,
+            spreadsheet_hit_row_text(hit.row)
+          ]
+          |> Enum.map_join("\t", &tsv_cell/1)
+        end)
+    ]
+    |> Enum.join("\n")
+  end
+
+  defp spreadsheet_hit_row_text(row) when is_map(row) do
+    row
+    |> Map.drop(["__text"])
+    |> Enum.sort_by(fn {key, _value} -> to_string(key) end)
+    |> Enum.map_join("; ", fn {key, value} -> "#{key}=#{value}" end)
+  end
+
+  defp spreadsheet_hit_row_text(row), do: to_string(row)
+
+  defp tsv_cell(nil), do: ""
+
+  defp tsv_cell(value) do
+    value
+    |> to_string()
+    |> String.replace("\t", " ")
+    |> String.replace("\r\n", "\\n")
+    |> String.replace("\n", "\\n")
+    |> String.replace("\r", "\\n")
   end
 
   defp type_label(:paragraph), do: "paragraph"

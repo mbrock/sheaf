@@ -249,20 +249,21 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp spreadsheet_label(:sqlite), do: "SQLite sidecar"
 
   defp spreadsheet_query_guidance(:duckdb) do
-    "Use DuckDB SQL; every loaded sheet table has __row_number and __text columns. " <>
+    "Use DuckDB SQL. Spreadsheet source columns are imported as VARCHAR; use try_cast for numeric/date analysis. " <>
+      "Every loaded sheet table also has __row_number and __text columns. " <>
       "You may create temporary tables or views for scratch work in this chat session."
   end
 
   defp spreadsheet_query_guidance(:sqlite) do
-    "Use SQLite syntax; every sheet table has __row_number and __text columns."
+    "Use SQLite syntax; spreadsheet source columns are TEXT, and every sheet table has __row_number and __text columns."
   end
 
   defp spreadsheet_sql_doc(:duckdb) do
-    "DuckDB SQL query or script. Example: CREATE TEMP VIEW agencies AS SELECT * FROM xlsx_inventory_abc_1; SELECT * FROM agencies LIMIT 5"
+    "DuckDB SQL query or script. Spreadsheet source columns are VARCHAR; cast with try_cast when needed. Example: CREATE TEMP VIEW agencies AS SELECT * FROM xlsx_inventory_abc_1; SELECT * FROM agencies LIMIT 5"
   end
 
   defp spreadsheet_sql_doc(:sqlite) do
-    "Read-only SQL SELECT or WITH query, for example: SELECT * FROM ss_xl_abc_1 LIMIT 5"
+    "Read-only SQL SELECT or WITH query. Spreadsheet source columns are TEXT. Example: SELECT * FROM ss_xl_abc_1 LIMIT 5"
   end
 
   defp write_note_tool_definition(notify, note_context, note_writer) do
