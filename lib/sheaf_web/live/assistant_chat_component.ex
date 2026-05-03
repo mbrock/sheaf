@@ -567,15 +567,15 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_message(assigns), do: ~H""
 
   defp tool_view(%{tool: "list_documents"} = message, _titles) do
-    tool_view("📚", "Checking", "the library", "", message)
+    tool_view("📚", "Library", "catalog", "", message)
   end
 
   defp tool_view(%{tool: "get_document", input: input} = message, titles) do
     id = tool_arg(input, :id)
-    target = "the outline"
+    target = "outline"
     scope = title_or_id(id, titles)
 
-    tool_view("📖", "Reading", target, scope, message)
+    tool_view("📖", "Document", target, scope, message)
   end
 
   defp tool_view(%{tool: "read", input: input} = message, _titles) do
@@ -584,14 +584,17 @@ defmodule SheafWeb.AssistantChatComponent do
 
     target =
       case block_ids do
-        [block_id] -> "block ##{block_id}"
-        ids when ids != [] -> "#{length(ids)} blocks"
-        _ids -> "a block"
+        [block_id] ->
+          if expanded?, do: "expanded block ##{block_id}", else: "block ##{block_id}"
+
+        ids when ids != [] ->
+          if expanded?, do: "#{length(ids)} expanded blocks", else: "#{length(ids)} blocks"
+
+        _ids ->
+          "block"
       end
 
-    scope = if expanded?, do: "full contents", else: ""
-
-    tool_view("📄", "Reading", target, scope, message)
+    tool_view("📄", "Read", target, "", message)
   end
 
   defp tool_view(%{tool: "search_text", input: input} = message, titles) do
@@ -600,7 +603,7 @@ defmodule SheafWeb.AssistantChatComponent do
     target = "“#{query}”"
     scope = if scope, do: title_or_id(scope, titles), else: "the corpus"
 
-    tool_view("🔍", "Searching for", target, scope, message)
+    tool_view("🔍", "Text", target, scope, message)
   end
 
   defp tool_view(%{tool: "list_spreadsheets", input: input} = message, _titles) do
@@ -609,7 +612,7 @@ defmodule SheafWeb.AssistantChatComponent do
     target =
       if query == "", do: "available sheets", else: "sheets matching “#{ellipsize(query, 60)}”"
 
-    tool_view("▦", "Listing", target, "", message)
+    tool_view("▦", "Sheets", target, "", message)
   end
 
   defp tool_view(%{tool: "search_spreadsheets", input: input} = message, _titles) do
@@ -618,7 +621,7 @@ defmodule SheafWeb.AssistantChatComponent do
     target =
       if query == "", do: "spreadsheet rows", else: "rows matching “#{ellipsize(query, 60)}”"
 
-    tool_view("🔍", "Searching", target, "", message)
+    tool_view("🔍", "Rows", target, "", message)
   end
 
   defp tool_view(%{tool: "write_note", input: input} = message, _titles) do
@@ -627,9 +630,9 @@ defmodule SheafWeb.AssistantChatComponent do
     target =
       if is_binary(title) and String.trim(title) != "",
         do: "“#{ellipsize(title, 60)}”",
-        else: "a research note"
+        else: "research note"
 
-    tool_view("📝", "Saving", target, "", message)
+    tool_view("📝", "Note", target, "", message)
   end
 
   defp tool_view(%{tool: "query_spreadsheets", input: input} = message, _titles) do
@@ -639,11 +642,33 @@ defmodule SheafWeb.AssistantChatComponent do
     tool_view("▦", "", target, "", message, target_class: "italic")
   end
 
-  defp tool_view(%{tool: tool} = message, _titles) when is_binary(tool) do
-    tool_view("⚙️", "Using", String.replace(tool, "_", " "), "", message)
+  defp tool_view(%{tool: "read_spreadsheet_query_result", input: input} = message, _titles) do
+    id = input |> tool_arg(:id) |> note_text_value()
+    offset = tool_arg(input, :offset)
+    limit = tool_arg(input, :limit)
+
+    target =
+      case id do
+        "" -> "saved result"
+        id -> "##{id}"
+      end
+
+    scope =
+      case {offset, limit} do
+        {nil, nil} -> "page"
+        {offset, nil} -> "from #{offset}"
+        {nil, limit} -> "#{limit} rows"
+        {offset, limit} -> "#{limit} rows from #{offset}"
+      end
+
+    tool_view("▤", "Result", target, scope, message)
   end
 
-  defp tool_view(message, _titles), do: tool_view("⚙️", "Using", "a tool", "", message)
+  defp tool_view(%{tool: tool} = message, _titles) when is_binary(tool) do
+    tool_view("⚙️", "", String.replace(tool, "_", " "), "", message)
+  end
+
+  defp tool_view(message, _titles), do: tool_view("⚙️", "Tool", "", "", message)
 
   defp tool_view(icon, action, target, scope, message, opts \\ []) do
     %{
