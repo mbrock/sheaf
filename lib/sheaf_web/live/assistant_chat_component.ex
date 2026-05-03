@@ -567,13 +567,13 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_message(assigns), do: ~H""
 
   defp tool_view(%{tool: "list_documents"} = message, _titles) do
-    tool_view("📚", "", "checking the library catalog", "", message)
+    tool_view("📚", "", "list documents", "", message)
   end
 
   defp tool_view(%{tool: "get_document", input: input} = message, titles) do
     id = tool_arg(input, :id)
     title = title_or_id(id, titles)
-    target = if title == "", do: "reading a document outline", else: "reading #{title}'s outline"
+    target = if title == "", do: "read document outline", else: "read #{title}'s outline"
 
     tool_view("📖", "", target, "", message)
   end
@@ -594,14 +594,14 @@ defmodule SheafWeb.AssistantChatComponent do
           "block"
       end
 
-    tool_view("📄", "", "reading #{target}", "", message)
+    tool_view("📄", "", "read #{target}", "", message)
   end
 
   defp tool_view(%{tool: "search_text", input: input} = message, titles) do
     query = tool_arg(input, :query) || ""
     scope = tool_arg(input, :document_id)
     scope = if scope, do: title_or_id(scope, titles), else: "the corpus"
-    target = "searching #{scope} for “#{query}”"
+    target = "find “#{query}” in #{scope}"
 
     tool_view("🔍", "", target, "", message)
   end
@@ -611,8 +611,8 @@ defmodule SheafWeb.AssistantChatComponent do
 
     target =
       if query == "",
-        do: "listing available sheets",
-        else: "listing sheets matching “#{ellipsize(query, 60)}”"
+        do: "list available sheets",
+        else: "list sheets matching “#{ellipsize(query, 60)}”"
 
     tool_view("▦", "", target, "", message)
   end
@@ -622,8 +622,8 @@ defmodule SheafWeb.AssistantChatComponent do
 
     target =
       if query == "",
-        do: "searching spreadsheet rows",
-        else: "searching rows matching “#{ellipsize(query, 60)}”"
+        do: "find spreadsheet rows",
+        else: "find rows matching “#{ellipsize(query, 60)}”"
 
     tool_view("🔍", "", target, "", message)
   end
@@ -636,43 +636,36 @@ defmodule SheafWeb.AssistantChatComponent do
         do: "“#{ellipsize(title, 60)}”",
         else: "research note"
 
-    tool_view("📝", "", "saving #{note}", "", message)
+    tool_view("📝", "", "save #{note}", "", message)
   end
 
   defp tool_view(%{tool: "query_spreadsheets", input: input} = message, _titles) do
     intent = input |> tool_arg(:intent) |> note_text_value()
-    target = if intent == "", do: "querying spreadsheets", else: ellipsize(intent, 80)
+    target = if intent == "", do: "query spreadsheets", else: ellipsize(intent, 80)
 
     tool_view("▦", "", target, "", message, target_class: "italic")
   end
 
   defp tool_view(%{tool: "read_spreadsheet_query_result", input: input} = message, _titles) do
-    id = input |> tool_arg(:id) |> note_text_value()
     offset = tool_arg(input, :offset)
     limit = tool_arg(input, :limit)
 
-    result =
-      case id do
-        "" -> "saved result"
-        id -> "##{id}"
-      end
-
-    page =
+    range =
       case {offset, limit} do
-        {nil, nil} -> "page"
-        {offset, nil} -> "from #{offset}"
-        {nil, limit} -> "#{limit} rows"
-        {offset, limit} -> "#{limit} rows from #{offset}"
+        {nil, nil} -> "rows"
+        {offset, nil} -> "rows from #{offset}"
+        {nil, limit} -> "first #{limit} rows"
+        {offset, limit} -> "rows #{offset}–#{offset + limit}"
       end
 
-    tool_view("▤", "", "reading #{page} of #{result}", "", message)
+    tool_view("▤", "", "read #{range}", "", message)
   end
 
   defp tool_view(%{tool: tool} = message, _titles) when is_binary(tool) do
-    tool_view("⚙️", "", "running #{String.replace(tool, "_", " ")}", "", message)
+    tool_view("⚙️", "", "run #{String.replace(tool, "_", " ")}", "", message)
   end
 
-  defp tool_view(message, _titles), do: tool_view("⚙️", "", "running a tool", "", message)
+  defp tool_view(message, _titles), do: tool_view("⚙️", "", "run tool", "", message)
 
   defp tool_view(icon, action, target, scope, message, opts \\ []) do
     %{
