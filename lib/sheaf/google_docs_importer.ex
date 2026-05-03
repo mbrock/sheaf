@@ -5,7 +5,7 @@ defmodule Sheaf.GoogleDocsImporter do
 
   require OpenTelemetry.Tracer, as: Tracer
 
-  alias RDF.{Dataset, Graph}
+  alias RDF.{BlankNode, Dataset, Graph, IRI}
   alias RDF.NS.RDFS
   alias Sheaf.NS.{BIRO, CITO, DOC, FABIO, FRBR}
 
@@ -100,6 +100,133 @@ defmodule Sheaf.GoogleDocsImporter do
       Tracer.set_attribute("sheaf.cited_document_count", summary.cited_document_count)
 
       {:ok, summary}
+    end
+  end
+
+  @doc """
+  Builds a dry-run replacement plan for swapping one section subtree.
+
+  The plan does not write to Quadlog. It contains:
+
+  * `:retract` - only the current parent `doc:children` list statements
+  * `:assert` - a new parent `doc:children` list plus the imported section subtree
+  * `:new_section_graph` - the coherent recursive subtree for the imported section
+
+  Existing section resources are left untouched by the planned retraction. They
+  become unreachable from the parent list, but remain in the named graph.
+  """
+  def build_section_replacement_file(path, opts) do
+    Tracer.with_span "sheaf.google_docs_importer.build_section_replacement_file", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.google_docs_importer.path", path},
+        {"sheaf.google_docs_importer.old_section_title", Keyword.get(opts, :old_section_title)},
+        {"sheaf.google_docs_importer.new_section_title", Keyword.get(opts, :new_section_title)}
+      ]
+    } do
+      document =
+        Keyword.get(opts, :document_iri) || Sheaf.Id.iri(Keyword.fetch!(opts, :document_id))
+
+      parent = Keyword.get(opts, :parent_iri, document)
+      old_title = Keyword.fetch!(opts, :old_section_title)
+      new_title = Keyword.fetch!(opts, :new_section_title)
+
+      with {:ok, existing_graph} <- Sheaf.fetch_graph(document),
+           {:ok, imported} <- build_file(path, Keyword.put(opts, :document_iri, document)),
+           {:ok, old_section} <- section_iri_by_title(existing_graph, old_title),
+           {:ok, new_section} <- section_iri_by_title(imported.graph, new_title),
+           {:ok, plan} <-
+             section_replacement_plan(
+               existing_graph,
+               parent,
+               old_section,
+               imported.graph,
+               new_section
+             ) do
+        {:ok,
+         plan
+         |> Map.put(:document, document)
+         |> Map.put(:import_summary, Map.drop(imported, [:graph]))}
+      end
+    end
+  end
+
+  @doc """
+  Finds a section resource by exact `rdfs:label`.
+  """
+  def section_iri_by_title(%Graph{} = graph, title) when is_binary(title) do
+    matches =
+      graph
+      |> Graph.triples()
+      |> Enum.flat_map(fn
+        {subject, predicate, object} ->
+          if predicate == RDFS.label() and RDF.Term.value(object) == title and
+               Sheaf.Document.block_type(graph, subject) == :section do
+            [subject]
+          else
+            []
+          end
+      end)
+      |> Enum.uniq()
+
+    case matches do
+      [section] -> {:ok, section}
+      [] -> {:error, {:section_not_found, title}}
+      sections -> {:error, {:ambiguous_section_title, title, sections}}
+    end
+  end
+
+  @doc """
+  Returns the recursive RDF subgraph rooted at a section.
+
+  This follows outgoing resource links from the section, which captures nested
+  sections, paragraphs, paragraph revisions, RDF list nodes, footnotes, and
+  citation/reference links present in the document graph.
+  """
+  def section_subgraph(%Graph{} = graph, section) do
+    resource_subgraph(graph, RDF.iri(section))
+  end
+
+  @doc """
+  Builds the graphs needed to unlink `old_section` from `parent` and link in
+  `new_section` from an imported graph.
+
+  The returned changes are suitable for a later explicit
+  `Sheaf.Repo.transact(tx, [{:retract, plan.retract}, {:assert, plan.assert}])`.
+  """
+  def section_replacement_plan(
+        %Graph{} = existing_graph,
+        parent,
+        old_section,
+        %Graph{} = imported_graph,
+        new_section
+      ) do
+    parent = RDF.iri(parent)
+    old_section = RDF.iri(old_section)
+    new_section = RDF.iri(new_section)
+
+    with {:ok, old_children} <- children_containing(existing_graph, parent, old_section),
+         {:ok, current_parent_list} <- children_list_iri(existing_graph, parent) do
+      new_children = Enum.map(old_children, &if(&1 == old_section, do: new_section, else: &1))
+      retract = list_link_graph(existing_graph, parent, current_parent_list)
+      parent_assert = parent_children_graph(existing_graph, parent, new_children)
+      new_section_graph = section_subgraph(imported_graph, new_section)
+      assert_graph = Graph.add(parent_assert, new_section_graph)
+
+      {:ok,
+       %{
+         parent: parent,
+         old_section: old_section,
+         new_section: new_section,
+         old_children: old_children,
+         new_children: new_children,
+         retract: retract,
+         assert: assert_graph,
+         new_section_graph: new_section_graph,
+         retract_statement_count: RDF.Data.statement_count(retract),
+         assert_statement_count: RDF.Data.statement_count(assert_graph),
+         new_section_statement_count: RDF.Data.statement_count(new_section_graph)
+       }}
     end
   end
 
@@ -217,6 +344,112 @@ defmodule Sheaf.GoogleDocsImporter do
       end)
 
     %{state | graph: graph}
+  end
+
+  defp resource_subgraph(%Graph{} = graph, root) do
+    subjects =
+      graph
+      |> reachable_subjects([root], MapSet.new())
+
+    triples =
+      graph
+      |> Graph.triples()
+      |> Enum.filter(fn {subject, _predicate, _object} -> MapSet.member?(subjects, subject) end)
+
+    Graph.new(triples, name: Graph.name(graph))
+  end
+
+  defp reachable_subjects(_graph, [], visited), do: visited
+
+  defp reachable_subjects(graph, [subject | rest], visited) do
+    if MapSet.member?(visited, subject) do
+      reachable_subjects(graph, rest, visited)
+    else
+      next =
+        graph
+        |> Graph.triples()
+        |> Enum.flat_map(fn
+          {^subject, _predicate, object} -> resource_objects(object)
+          _triple -> []
+        end)
+
+      reachable_subjects(graph, next ++ rest, MapSet.put(visited, subject))
+    end
+  end
+
+  defp resource_objects(%IRI{} = iri), do: [iri]
+  defp resource_objects(%BlankNode{} = blank_node), do: [blank_node]
+  defp resource_objects(_term), do: []
+
+  defp children_containing(graph, parent, child) do
+    children = Sheaf.Document.children(graph, parent)
+
+    if child in children do
+      {:ok, children}
+    else
+      {:error, {:section_not_child, parent, child}}
+    end
+  end
+
+  defp children_list_iri(graph, parent) do
+    case object(graph, parent, DOC.children()) do
+      nil -> {:error, {:children_list_not_found, parent}}
+      list -> {:ok, list}
+    end
+  end
+
+  defp parent_children_graph(existing_graph, parent, children) do
+    list = Sheaf.mint()
+
+    children
+    |> RDF.list(
+      graph: Graph.new({parent, DOC.children(), list}, name: Graph.name(existing_graph)),
+      head: list
+    )
+    |> Map.fetch!(:graph)
+  end
+
+  defp list_link_graph(graph, parent, list) do
+    triples =
+      [{parent, DOC.children(), list} | list_triples(graph, list)]
+      |> Enum.uniq()
+
+    Graph.new(triples, name: Graph.name(graph))
+  end
+
+  defp list_triples(graph, list) do
+    list_triples(graph, list, MapSet.new())
+  end
+
+  defp list_triples(_graph, nil, _visited), do: []
+
+  defp list_triples(graph, list, visited) do
+    cond do
+      list == RDF.nil() ->
+        []
+
+      MapSet.member?(visited, list) ->
+        []
+
+      true ->
+        triples =
+          graph
+          |> Graph.triples()
+          |> Enum.filter(fn {subject, predicate, _object} ->
+            subject == list and predicate in [RDF.first(), RDF.rest()]
+          end)
+
+        rest = object(Graph.new(triples), list, RDF.rest())
+
+        triples ++ list_triples(graph, rest, MapSet.put(visited, list))
+    end
+  end
+
+  defp object(graph, subject, predicate) do
+    Enum.find_value(Graph.triples(graph), fn
+      {^subject, ^predicate, object} -> object
+      _triple -> nil
+    end)
   end
 
   defp add_root_citations(graph, document, references) do
