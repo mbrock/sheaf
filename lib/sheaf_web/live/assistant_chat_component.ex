@@ -97,13 +97,14 @@ defmodule SheafWeb.AssistantChatComponent do
     model_provider = chat_params |> Map.get("model_provider", socket.assigns.model_provider)
     model_provider = normalize_model_provider(model_provider)
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
+    message = Map.get(chat_params, "message", "")
 
     {:noreply,
      socket
      |> assign(:mode, mode)
      |> assign(:model_provider, model_provider)
      |> assign(:model, model)
-     |> assign(:form, chat_form(mode, model_provider))}
+     |> assign(:form, chat_form(mode, model_provider, message))}
   end
 
   def handle_event("new_chat", %{"mode" => mode}, socket) do
@@ -231,6 +232,7 @@ defmodule SheafWeb.AssistantChatComponent do
         <textarea
           name="chat[message]"
           rows="1"
+          value={@form[:message].value}
           class="block max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-2 text-base leading-6 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:text-sm sm:leading-5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
           placeholder={input_placeholder(@mode)}
           disabled={@chat.pending}
@@ -793,8 +795,14 @@ defmodule SheafWeb.AssistantChatComponent do
     |> MDEx.to_html!(@mdex_opts)
   end
 
-  defp chat_form(mode \\ "quick", model_provider \\ Sheaf.LLM.default_assistant_provider()) do
-    to_form(%{"message" => "", "mode" => mode, "model_provider" => model_provider}, as: :chat)
+  defp chat_form(
+         mode \\ "quick",
+         model_provider \\ Sheaf.LLM.default_assistant_provider(),
+         message \\ ""
+       ) do
+    to_form(%{"message" => message, "mode" => mode, "model_provider" => model_provider},
+      as: :chat
+    )
   end
 
   defp empty_chat do
