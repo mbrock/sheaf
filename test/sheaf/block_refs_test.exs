@@ -17,6 +17,18 @@ defmodule Sheaf.BlockRefsTest do
              "Use #ABC234, [#DEF456](/b/DEF456), and query result #PK9ACK."
   end
 
+  test "can link ids to non-block resource paths" do
+    text = "Read result #PK9ACK and block #DEF456."
+
+    assert BlockRefs.linkify_markdown(text,
+             url_for: fn
+               "PK9ACK" -> "/PK9ACK"
+               "DEF456" -> "/b/DEF456"
+               _id -> nil
+             end
+           ) == "Read result [#PK9ACK](/PK9ACK) and block [#DEF456](/b/DEF456)."
+  end
+
   test "does not link SQL keywords or numeric values as bare block ids" do
     text = "SELECT COUNT(*) FILTER (WHERE try_cast(total_bids AS DOUBLE)=1), tender 152877."
 

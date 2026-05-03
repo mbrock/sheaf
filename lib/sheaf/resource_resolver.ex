@@ -10,6 +10,7 @@ defmodule Sheaf.ResourceResolver do
   @type resolution ::
           {:ok, %{kind: :document, id: String.t()}}
           | {:ok, %{kind: :assistant_conversation, id: String.t()}}
+          | {:ok, %{kind: :spreadsheet_query_result, id: String.t()}}
           | {:ok, %{kind: :block, id: String.t(), document_id: String.t()}}
           | {:error, :not_found}
 
@@ -26,6 +27,9 @@ defmodule Sheaf.ResourceResolver do
 
       assistant_conversation?(id) ->
         {:ok, %{kind: :assistant_conversation, id: id}}
+
+      spreadsheet_query_result?(id) ->
+        {:ok, %{kind: :spreadsheet_query_result, id: id}}
 
       document_id = Corpus.find_document(id) ->
         {:ok, %{kind: :block, id: id, document_id: document_id}}
@@ -47,6 +51,15 @@ defmodule Sheaf.ResourceResolver do
   end
 
   defp assistant_conversation?(id) do
+    workspace_resource?(id, DOC.AssistantConversation)
+  end
+
+  defp spreadsheet_query_result?(id) do
+    workspace_resource?(id, DOC.SpreadsheetQueryResult) or
+      workspace_resource?(id, DOC.QueryResult)
+  end
+
+  defp workspace_resource?(id, type) do
     iri = Id.iri(id)
     workspace = RDF.iri(Sheaf.Workspace.graph())
 
@@ -54,7 +67,7 @@ defmodule Sheaf.ResourceResolver do
       Sheaf.Repo.ask(fn dataset ->
         case RDF.Dataset.graph(dataset, workspace) do
           %Graph{} = graph ->
-            RDF.Data.include?(graph, {iri, RDF.type(), DOC.AssistantConversation})
+            RDF.Data.include?(graph, {iri, RDF.type(), type})
 
           _other ->
             false

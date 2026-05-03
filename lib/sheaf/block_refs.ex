@@ -37,25 +37,26 @@ defmodule Sheaf.BlockRefs do
 
   def linkify_markdown(text, opts) when is_binary(text) do
     exists? = Keyword.get(opts, :exists?, fn _id -> true end)
+    url_for = Keyword.get(opts, :url_for, fn id -> if exists?.(id), do: "/b/#{id}" end)
 
     @existing_block_link
     |> Regex.split(text, include_captures: true, trim: false)
-    |> Enum.map_join(&linkify_unless_existing_block_link(&1, exists?))
+    |> Enum.map_join(&linkify_unless_existing_block_link(&1, url_for))
   end
 
   def linkify_markdown(other, _opts), do: other
 
-  defp linkify_unless_existing_block_link(text, exists?) do
+  defp linkify_unless_existing_block_link(text, url_for) do
     if Regex.match?(@existing_block_link, text) do
       text
     else
       text =
         Regex.replace(@bracketed_bare_block_id, text, fn _match, id ->
-          if exists?.(id), do: "[##{id}](/b/#{id})", else: "[#{id}]"
+          if url = url_for.(id), do: "[##{id}](#{url})", else: "[#{id}]"
         end)
 
       Regex.replace(@hash_block_id, text, fn _match, id ->
-        if exists?.(id), do: "[##{id}](/b/#{id})", else: "##{id}"
+        if url = url_for.(id), do: "[##{id}](#{url})", else: "##{id}"
       end)
     end
   end

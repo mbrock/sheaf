@@ -11,7 +11,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   alias Sheaf.BlockRefs
   alias Sheaf.Assistant.{Chat, Chats, CorpusTools}
-  alias Sheaf.{Corpus, Document, Id}
+  alias Sheaf.{Document, Id, ResourceResolver}
 
   @mdex_opts [
     extension: [
@@ -924,11 +924,17 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp render_markdown(text) do
     text
-    |> BlockRefs.linkify_markdown(exists?: &block_ref_exists?/1)
+    |> BlockRefs.linkify_markdown(url_for: &resource_ref_path/1)
     |> MDEx.to_html!(@mdex_opts)
   end
 
-  defp block_ref_exists?(id), do: is_binary(Corpus.find_document(id))
+  defp resource_ref_path(id) do
+    case ResourceResolver.resolve(id) do
+      {:ok, %{kind: :block}} -> "/b/#{id}"
+      {:ok, %{kind: _kind}} -> "/#{id}"
+      {:error, _reason} -> nil
+    end
+  end
 
   defp chat_form(
          mode \\ "quick",

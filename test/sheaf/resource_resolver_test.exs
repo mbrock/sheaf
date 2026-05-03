@@ -12,6 +12,7 @@ defmodule Sheaf.ResourceResolverTest do
     document = Sheaf.Id.iri("DOC001")
     section = Sheaf.Id.iri("SEC001")
     conversation = Sheaf.Id.iri("CHAT01")
+    query_result = Sheaf.Id.iri("RES111")
     workspace_graph = RDF.iri(Sheaf.Repo.workspace_graph())
     metadata_graph = RDF.iri(Sheaf.Repo.metadata_graph())
 
@@ -20,7 +21,9 @@ defmodule Sheaf.ResourceResolverTest do
         [
           {conversation, RDF.type(), DOC.AssistantConversation},
           {conversation, RDF.type(), AS.OrderedCollection},
-          {conversation, RDFS.label(), RDF.literal("Assistant conversation CHAT01")}
+          {conversation, RDFS.label(), RDF.literal("Assistant conversation CHAT01")},
+          {query_result, RDF.type(), DOC.SpreadsheetQueryResult},
+          {query_result, RDFS.label(), RDF.literal("Spreadsheet query result")}
         ],
         name: workspace_graph
       )
@@ -53,6 +56,9 @@ defmodule Sheaf.ResourceResolverTest do
 
     assert {:ok, %{kind: :block, id: "SEC001", document_id: "DOC001"}} =
              ResourceResolver.resolve("SEC001")
+
+    assert {:ok, %{kind: :spreadsheet_query_result, id: "RES111"}} =
+             ResourceResolver.resolve("RES111")
 
     assert {:error, :not_found} = ResourceResolver.resolve("MISSING")
   end

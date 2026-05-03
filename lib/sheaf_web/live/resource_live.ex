@@ -6,6 +6,7 @@ defmodule SheafWeb.ResourceLive do
   use SheafWeb, :live_view
 
   alias Sheaf.{Corpus, Document, Documents, Id, ResourceResolver}
+  alias Sheaf.Assistant.QueryResults
   alias SheafWeb.AppChrome
   alias SheafWeb.AssistantChatComponent
   alias SheafWeb.AssistantHistoryComponents
@@ -81,6 +82,64 @@ defmodule SheafWeb.ResourceLive do
     """
   end
 
+  def render(%{resource_kind: :spreadsheet_query_result} = assigns) do
+    ~H"""
+    <main class="grid min-h-dvh grid-rows-[auto_1fr] bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
+      <AppChrome.toolbar section={:document} search?={false} />
+
+      <section class="mx-auto w-full max-w-6xl px-4 py-6">
+        <div class="mb-4">
+          <p class="font-sans text-xs font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
+            Spreadsheet query result
+          </p>
+          <h1 class="mt-1 font-sans text-xl font-semibold">{@resource_id}</h1>
+          <p class="mt-1 text-sm text-stone-600 dark:text-stone-400">
+            Showing {@query_result_returned} rows from {@query_result_row_count}.
+          </p>
+        </div>
+
+        <section class="mb-5">
+          <h2 class="mb-2 font-sans text-sm font-semibold">SQL</h2>
+          <pre class="overflow-x-auto rounded-sm border border-stone-200 bg-white p-3 text-xs leading-5 text-stone-800 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-100"><code>{@query_result_sql}</code></pre>
+        </section>
+
+        <section>
+          <h2 class="mb-2 font-sans text-sm font-semibold">Rows</h2>
+          <div class="overflow-x-auto rounded-sm border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900">
+            <table class="min-w-full border-collapse text-left text-xs">
+              <thead class="bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300">
+                <tr>
+                  <th
+                    :for={column <- @query_result_columns}
+                    class="border-b border-stone-200 px-2 py-1.5 font-sans font-semibold dark:border-stone-700"
+                  >
+                    {column}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  :for={row <- @query_result_rows}
+                  class="odd:bg-white even:bg-stone-50 dark:odd:bg-stone-900 dark:even:bg-stone-900/60"
+                >
+                  <td
+                    :for={column <- @query_result_columns}
+                    class="max-w-md border-b border-stone-100 px-2 py-1.5 align-top text-stone-800 dark:border-stone-800 dark:text-stone-100"
+                  >
+                    <span class="whitespace-pre-wrap break-words">
+                      {query_result_cell(row, column)}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <main class="grid min-h-dvh grid-rows-[auto_1fr] bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
@@ -114,8 +173,34 @@ defmodule SheafWeb.ResourceLive do
          |> assign(:chat_id, chat_id)
          |> assign(:selected_block_id, nil)}
 
+      {:ok, %{kind: :spreadsheet_query_result, id: result_id}} ->
+        load_spreadsheet_query_result(socket, id, result_id)
+
       {:error, reason} ->
         {:ok, assign_not_found(socket, id, reason)}
+    end
+  end
+
+  defp load_spreadsheet_query_result(socket, resource_id, result_id) do
+    case QueryResults.read(result_id, limit: 100) do
+      {:ok, result} ->
+        {:ok,
+         socket
+         |> assign(:page_title, "Spreadsheet query result #{result_id}")
+         |> assign(:resource_id, resource_id)
+         |> assign(:resource_kind, :spreadsheet_query_result)
+         |> assign(:query_result_id, result.id)
+         |> assign(:query_result_iri, result.iri)
+         |> assign(:query_result_file_iri, result.file_iri)
+         |> assign(:query_result_sql, result.sql || "")
+         |> assign(:query_result_columns, result.columns)
+         |> assign(:query_result_rows, result.rows)
+         |> assign(:query_result_row_count, result.row_count)
+         |> assign(:query_result_returned, length(result.rows))
+         |> assign(:selected_block_id, nil)}
+
+      {:error, reason} ->
+        {:ok, assign_not_found(socket, resource_id, reason)}
     end
   end
 
@@ -189,5 +274,12 @@ defmodule SheafWeb.ResourceLive do
 
   defp block_path(doc_id, block_id) do
     ~p"/#{doc_id}?block=#{block_id}" <> "#block-#{block_id}"
+  end
+
+  defp query_result_cell(row, column) do
+    case Map.get(row, column) do
+      nil -> ""
+      value -> to_string(value)
+    end
   end
 end
