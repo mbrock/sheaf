@@ -2,6 +2,7 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
   use ExUnit.Case, async: true
 
   alias Sheaf.Assistant.SpreadsheetSession
+  alias Sheaf.Spreadsheet.Metadata
   alias Sheaf.XLSXFixture
 
   @tag :tmp_dir
@@ -14,10 +15,8 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
       ["municipality", "7"]
     ])
 
-    id = "spreadsheet-test-#{System.unique_integer([:positive])}"
-
-    session =
-      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
+    {session, _graph, _result} =
+      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-test")
 
     assert {:ok, [%{sheets: [%{table_name: table, row_count: 2, col_count: 2}]}]} =
              SpreadsheetSession.list(session)
@@ -48,10 +47,8 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
       ["after spacer", "2"]
     ])
 
-    id = "spreadsheet-spacer-test-#{System.unique_integer([:positive])}"
-
-    session =
-      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
+    {session, _graph, _result} =
+      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-spacer-test")
 
     assert {:ok, [%{sheets: [%{table_name: table, row_count: 2, col_count: 2}]}]} =
              SpreadsheetSession.list(session)
@@ -88,10 +85,8 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     tool_call_iri = RDF.IRI.new!("https://example.com/sheaf/CALL11")
     test_pid = self()
 
-    id = "spreadsheet-query-result-test-#{System.unique_integer([:positive])}"
-
-    session =
-      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
+    {session, _graph, _result} =
+      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-query-result-test")
 
     assert {:ok, [%{sheets: [%{table_name: table}]}]} = SpreadsheetSession.list(session)
 
@@ -146,16 +141,14 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
       {"Empty", []}
     ])
 
-    id = "spreadsheet-empty-sheet-test-#{System.unique_integer([:positive])}"
+    {session, _graph, import_result} =
+      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-empty-sheet-test")
 
-    session =
-      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
-
-    assert {:ok, [%{sheets: [%{name: "Data", row_count: 1}], sheet_errors: [sheet_error]}]} =
-             SpreadsheetSession.list(session)
-
-    assert %{sheet: "Empty", error: error} = sheet_error
+    assert [%{sheet: "Empty", error: error}] = import_result.sheet_errors
     assert error =~ "No rows found"
+
+    assert {:ok, [%{sheets: [%{name: "Data", row_count: 1}], sheet_errors: []}]} =
+             SpreadsheetSession.list(session)
   end
 
   @tag :tmp_dir
@@ -163,10 +156,8 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     xlsx_path = Path.join(tmp_dir, "inventory.xlsx")
     XLSXFixture.write_xlsx!(xlsx_path, [["name"], ["visible"]])
 
-    id = "spreadsheet-lock-test-#{System.unique_integer([:positive])}"
-
-    session =
-      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
+    {session, _graph, _result} =
+      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-lock-test")
 
     assert {:error, read_reason} =
              SpreadsheetSession.query(session, "SELECT * FROM read_csv('/etc/passwd') LIMIT 1")
@@ -180,5 +171,32 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
              SpreadsheetSession.query(session, "SET enable_external_access = true")
 
     assert config_reason =~ "configuration has been locked"
+  end
+
+  defp start_materialized_session(tmp_dir, xlsx_path, id_prefix) do
+    blob_root = Path.join(tmp_dir, "blobs")
+    test_pid = self()
+
+    assert {:ok, result} =
+             Metadata.import_file(xlsx_path,
+               directory: tmp_dir,
+               blob_root: blob_root,
+               persist: fn graph ->
+                 send(test_pid, {:spreadsheet_workspace_graph, graph})
+                 :ok
+               end
+             )
+
+    assert_receive {:spreadsheet_workspace_graph, graph}
+
+    id = "#{id_prefix}-#{System.unique_integer([:positive])}"
+
+    session =
+      start_supervised!(
+        {SpreadsheetSession,
+         id: id, directory: tmp_dir, workspace_graph: graph, blob_root: blob_root}
+      )
+
+    {session, graph, result}
   end
 end

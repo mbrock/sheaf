@@ -60,6 +60,12 @@ defmodule Sheaf.Spreadsheet.MetadataTest do
     assert rdf_value(sheet, CSVW.name()) == "Items"
     assert rdf_value(sheet, DOC.rowCount()) == 2
 
+    parquet_iri = RDF.Description.first(sheet, DOC.materializedDistribution())
+    parquet = Graph.description(graph, parquet_iri)
+
+    assert RDF.Description.include?(parquet, {RDF.type(), DCAT.Distribution})
+    assert rdf_value(parquet, DCAT.mediaType()) == "application/vnd.apache.parquet"
+
     file_iri = RDF.Description.first(workbook, DCAT.distribution())
     file = Graph.description(graph, file_iri)
 

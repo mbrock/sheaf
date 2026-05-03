@@ -8,12 +8,13 @@ defmodule Sheaf.Spreadsheet.Metadata do
   """
 
   alias RDF.{Description, Graph}
-  alias Sheaf.Assistant.SpreadsheetSession
   alias Sheaf.BlobStore
   alias Sheaf.NS.{CSVW, DCAT, DCTERMS, DOC, FABIO, PROV}
+  alias Sheaf.Spreadsheet.Materializer
   require OpenTelemetry.Tracer, as: Tracer
 
   @xlsx_mime "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  @parquet_mime "application/vnd.apache.parquet"
 
   def import_directory(path, opts \\ []) when is_binary(path) do
     path
@@ -55,10 +56,10 @@ defmodule Sheaf.Spreadsheet.Metadata do
         {"sheaf.spreadsheet.directory", Path.expand(directory)}
       ]
     } do
-      with {:ok, %{spreadsheets: [spreadsheet]}} <-
-             SpreadsheetSession.describe_paths([path],
+      with {:ok, spreadsheet} <-
+             Materializer.materialize_file(path,
                directory: directory,
-               workspace_sources?: false
+               blob_root: Keyword.get(opts, :blob_root, configured_blob_root())
              ),
            {:ok, stored_file} <-
              BlobStore.put_file(path,
@@ -76,10 +77,10 @@ defmodule Sheaf.Spreadsheet.Metadata do
            title: spreadsheet.title,
            path: path,
            sheets: spreadsheet.sheets,
+           sheet_errors: spreadsheet.sheet_errors,
            graph: Sheaf.Workspace.graph()
          }}
       else
-        {:ok, %{spreadsheets: []}} -> {:error, :no_readable_sheets}
         {:error, reason} -> {:error, reason}
       end
     end
@@ -150,7 +151,25 @@ defmodule Sheaf.Spreadsheet.Metadata do
       |> add(sheet_iri, DOC.columnNameList(), Jason.encode!(Enum.map(columns, & &1.name)))
       |> add(schema, RDF.type(), CSVW.Schema)
       |> add_columns(schema, sheet_iri, columns)
+      |> add_materialized_distribution(sheet_iri, sheet.parquet_file)
     end)
+  end
+
+  defp add_materialized_distribution(graph, sheet_iri, stored_file) do
+    file = parquet_file_iri(sheet_iri)
+
+    graph
+    |> add(sheet_iri, DOC.materializedDistribution(), file)
+    |> add(file, RDF.type(), DCAT.Distribution)
+    |> add(file, RDF.type(), FABIO.ComputerFile)
+    |> add(file, RDF.type(), PROV.Entity)
+    |> add(file, RDF.NS.RDFS.label(), stored_file.original_filename)
+    |> add(file, DCTERMS.title(), stored_file.original_filename)
+    |> add(file, DCTERMS.identifier(), stored_file.storage_key)
+    |> add(file, DCAT.mediaType(), @parquet_mime)
+    |> add(file, DCAT.byteSize(), stored_file.byte_size)
+    |> add(file, DOC.sha256(), stored_file.hash)
+    |> add(file, DOC.originalFilename(), stored_file.original_filename)
   end
 
   defp add_columns(graph, schema, sheet, columns) do
@@ -217,6 +236,7 @@ defmodule Sheaf.Spreadsheet.Metadata do
       name: first_value(sheet, CSVW.name()) || first_value(sheet, RDF.NS.RDFS.label()),
       sheet_index: first_value(sheet, DOC.sheetIndex()),
       table_name: first_value(sheet, DOC.duckdbTableName()),
+      parquet_file_iri: sheet |> first_term(DOC.materializedDistribution()) |> to_string_or_nil(),
       row_count: first_value(sheet, DOC.rowCount()),
       columns: columns
     }
@@ -291,6 +311,7 @@ defmodule Sheaf.Spreadsheet.Metadata do
   defp sheet_iri(workbook, index), do: append_iri(workbook, "/sheet/#{index}")
   defp schema_iri(sheet), do: append_iri(sheet, "/schema")
   defp column_iri(sheet, index), do: append_iri(sheet, "/column/#{index}")
+  defp parquet_file_iri(sheet), do: append_iri(sheet, "/parquet")
 
   defp append_iri(iri, suffix), do: RDF.iri(to_string(iri) <> suffix)
 

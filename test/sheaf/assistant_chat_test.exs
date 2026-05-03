@@ -4,6 +4,7 @@ defmodule Sheaf.Assistant.ChatTest do
   alias ReqLLM.{Context, Response, Tool}
   alias ReqLLM.Message.ContentPart
   alias Sheaf.Assistant.Chat
+  alias Sheaf.Spreadsheet.Metadata
   alias Sheaf.XLSXFixture
 
   test "keeps chat messages and pending state outside the LiveView process" do
@@ -177,6 +178,19 @@ defmodule Sheaf.Assistant.ChatTest do
     ])
 
     test_pid = self()
+    blob_root = Path.join(tmp_dir, "blobs")
+
+    assert {:ok, _result} =
+             Metadata.import_file(xlsx_path,
+               directory: tmp_dir,
+               blob_root: blob_root,
+               persist: fn graph ->
+                 send(test_pid, {:spreadsheet_workspace_graph, graph})
+                 :ok
+               end
+             )
+
+    assert_receive {:spreadsheet_workspace_graph, spreadsheet_workspace_graph}
 
     generate_text = fn _model, _context, opts ->
       tools = Keyword.fetch!(opts, :tools)
@@ -212,7 +226,8 @@ defmodule Sheaf.Assistant.ChatTest do
        titles: %{},
        workspace_instructions: "Testing spreadsheet tools.",
        spreadsheet_directory: tmp_dir,
-       spreadsheet_sources: [xlsx_path],
+       spreadsheet_workspace_graph: spreadsheet_workspace_graph,
+       spreadsheet_blob_root: blob_root,
        activity_writer: nil,
        generate_text: generate_text,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}

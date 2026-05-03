@@ -1,12 +1,10 @@
 defmodule Sheaf.Assistant.SpreadsheetSession do
   @moduledoc """
-  Per-assistant-session DuckDB workspace for spreadsheet files.
+  Per-assistant-session DuckDB workspace for materialized spreadsheet sheets.
 
-  A session loads `.xlsx` files from a configured directory into an in-memory
-  DuckDB database, then disables external filesystem access before accepting
-  assistant SQL. The loaded workbook tables are disposable process-local state:
-  assistant-created tables and views survive within one chat session, but they
-  disappear when the session process stops or restarts.
+  Spreadsheet XLSX files are converted to Parquet during explicit import.
+  Assistant sessions load those Parquet sheet distributions into an in-memory
+  DuckDB database, then disable external filesystem access before accepting SQL.
   """
 
   use GenServer
@@ -15,17 +13,6 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
   alias Sheaf.Assistant.QueryResults
 
   require OpenTelemetry.Tracer, as: Tracer
-  require Record
-
-  Record.defrecord(
-    :xmlElement,
-    Record.extract(:xmlElement, from_lib: "xmerl/include/xmerl.hrl")
-  )
-
-  Record.defrecord(
-    :xmlAttribute,
-    Record.extract(:xmlAttribute, from_lib: "xmerl/include/xmerl.hrl")
-  )
 
   @registry Sheaf.Assistant.ChatRegistry
   @default_directory "var/spreadsheets"
@@ -82,25 +69,6 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   def search(server, text, opts \\ []) when is_binary(text) do
     GenServer.call(server, {:search, text, opts}, Keyword.get(opts, :timeout, 60_000))
-  end
-
-  def describe_paths(paths, opts \\ []) when is_list(paths) do
-    directory = Keyword.get_lazy(opts, :directory, &configured_directory/0)
-    sources = Enum.map(paths, &source_from_path(directory, &1))
-    id = Keyword.get(opts, :id, "spreadsheet-describe-#{System.unique_integer([:positive])}")
-
-    with {:ok, state} <- open_and_load(id, directory, sources: sources) do
-      try do
-        {:ok,
-         %{
-           spreadsheets: state.spreadsheets,
-           errors: state.errors,
-           loaded_at: state.loaded_at
-         }}
-      after
-        release_state(state)
-      end
-    end
   end
 
   @impl true
@@ -220,7 +188,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   defp load_into_connection(id, directory, db, conn, opts) do
     with :ok <- ensure_extension(conn, "core_functions"),
-         :ok <- ensure_extension(conn, "excel"),
+         :ok <- ensure_extension(conn, "parquet"),
          :ok <- create_metadata_tables(conn) do
       loaded_at = now_iso8601()
       sources = spreadsheet_sources(directory, opts)
@@ -314,18 +282,11 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
   end
 
   defp load_workbook(conn, directory, source, loaded_at) do
-    path = source.path
-    stat = File.stat!(path)
-    bytes = File.read!(path)
-    sha = :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
-
-    file_key =
-      :crypto.hash(:sha256, Path.expand(path) <> "\0" <> sha) |> Base.encode16(case: :lower)
-
-    id = Map.get(source, :id) || "xl_" <> String.slice(file_key, 0, 12)
-    basename = Map.get(source, :basename) || Path.basename(path)
-    title = Map.get(source, :title) || relative_path(directory, path)
-    sheet_names = xlsx_sheet_names(path)
+    path = source.path || ""
+    id = source.id
+    basename = source.basename || Path.basename(path)
+    title = source.title || relative_path(directory, path)
+    sheets = Map.get(source, :sheets, [])
 
     transaction(conn, fn ->
       with :ok <-
@@ -336,12 +297,12 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
                  (id, title, path, basename, file_size, file_mtime, sha256, loaded_at)
                VALUES
                  (#{literal(id)}, #{literal(title)}, #{literal(Path.expand(path))},
-                 #{literal(basename)}, #{stat.size}, #{literal(mtime(stat))},
-                  #{literal(sha)}, #{literal(loaded_at)})
+                 #{literal(basename)}, #{source.file_size || "NULL"}, #{literal(source.file_mtime)},
+                  #{literal(source.sha256 || "")}, #{literal(loaded_at)})
                """
              ),
            {:ok, sheets, sheet_errors} <-
-             load_sheets(conn, path, id, file_key, sheet_names, loaded_at) do
+             load_sheets(conn, id, sheets, loaded_at) do
         if sheets == [] do
           {:error, {:no_readable_sheets, sheet_errors}}
         else
@@ -351,9 +312,9 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
               title: title,
               path: Path.expand(path),
               basename: basename,
-              file_size: stat.size,
-              file_mtime: mtime(stat),
-              sha256: sha,
+              file_size: source.file_size,
+              file_mtime: source.file_mtime,
+              sha256: source.sha256,
               loaded_at: loaded_at,
               sheets: sheets,
               sheet_errors: sheet_errors
@@ -367,13 +328,10 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     end
   end
 
-  defp load_sheets(conn, path, spreadsheet_id, sha, sheet_names, loaded_at) do
-    sheet_names
-    |> Enum.with_index(1)
-    |> Enum.reduce({[], []}, fn {sheet_name, index}, {sheets, errors} ->
-      table = table_name(path, sha, index)
-
-      case load_sheet(conn, path, spreadsheet_id, table, sheet_name, index, loaded_at) do
+  defp load_sheets(conn, spreadsheet_id, sheet_sources, loaded_at) do
+    sheet_sources
+    |> Enum.reduce({[], []}, fn sheet, {sheets, errors} ->
+      case load_sheet(conn, spreadsheet_id, sheet, loaded_at) do
         {:ok, sheet} ->
           {[sheet | sheets], errors}
 
@@ -381,9 +339,9 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
           {sheets,
            [
              %{
-               path: Path.expand(path),
-               sheet: sheet_name,
-               sheet_index: index,
+               path: sheet.parquet_path,
+               sheet: sheet.name,
+               sheet_index: sheet.sheet_index,
                error: reason
              }
              | errors
@@ -393,32 +351,19 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     |> then(fn {sheets, errors} -> {:ok, Enum.reverse(sheets), Enum.reverse(errors)} end)
   end
 
-  defp load_sheet(conn, path, spreadsheet_id, table, sheet_name, index, loaded_at) do
-    source = """
-    read_xlsx(
-      #{literal(path)},
-      sheet = #{literal(sheet_name)},
-      all_varchar = true,
-      normalize_names = true,
-      header = true,
-      stop_at_empty = false,
-      ignore_errors = true
-    )
-    """
+  defp load_sheet(conn, spreadsheet_id, sheet, loaded_at) do
+    table = sheet.table_name
 
     with :ok <-
            exec(
              conn,
              """
                CREATE TABLE #{identifier(table)} AS
-               SELECT row_number() OVER () AS __row_number, *
-               FROM #{source}
+               SELECT *
+               FROM read_parquet(#{literal(sheet.parquet_path)})
              """
            ),
-         :ok <- normalize_reserved_columns(conn, table),
          {:ok, columns} <- table_columns(conn, table),
-         :ok <- delete_empty_rows(conn, table, columns),
-         :ok <- add_text_column(conn, table, columns),
          {:ok, row_count} <- scalar(conn, "SELECT count(*) FROM #{identifier(table)}"),
          :ok <-
            exec(
@@ -427,7 +372,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
              INSERT INTO sheaf_spreadsheet_sheets
                (spreadsheet_id, sheet_index, name, table_name, row_count, col_count, headers_json, loaded_at)
              VALUES
-               (#{literal(spreadsheet_id)}, #{index}, #{literal(sheet_name)},
+               (#{literal(spreadsheet_id)}, #{sheet.sheet_index}, #{literal(sheet.name)},
                 #{literal(table)}, #{row_count}, #{length(columns)},
                 #{literal(Jason.encode!(columns))}, #{literal(loaded_at)})
              """
@@ -435,39 +380,14 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
       {:ok,
        %{
          spreadsheet_id: spreadsheet_id,
-         sheet_index: index,
-         name: sheet_name,
+         sheet_index: sheet.sheet_index,
+         name: sheet.name,
          table_name: table,
          row_count: row_count,
          col_count: length(columns),
          columns: columns,
          loaded_at: loaded_at
        }}
-    end
-  end
-
-  defp delete_empty_rows(_conn, _table, []), do: :ok
-
-  defp delete_empty_rows(conn, table, columns) do
-    nonempty_expression =
-      columns
-      |> Enum.map_join(" OR ", fn %{name: name} ->
-        "coalesce(CAST(#{identifier(name)} AS VARCHAR), '') <> ''"
-      end)
-
-    exec(conn, "DELETE FROM #{identifier(table)} WHERE NOT (#{nonempty_expression})")
-  end
-
-  defp normalize_reserved_columns(conn, table) do
-    with {:ok, names} <- table_column_names(conn, table) do
-      if "__text" in names do
-        exec(
-          conn,
-          "ALTER TABLE #{identifier(table)} RENAME COLUMN #{identifier("__text")} TO #{identifier(unique_name("__text_source", names))}"
-        )
-      else
-        :ok
-      end
     end
   end
 
@@ -486,23 +406,6 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     with {:ok, result} <-
            query_all(conn, "PRAGMA table_info(#{identifier(table)})", @max_query_rows) do
       {:ok, Enum.map(result.rows, &Map.fetch!(&1, "name"))}
-    end
-  end
-
-  defp add_text_column(conn, table, columns) do
-    expressions =
-      columns
-      |> Enum.map(fn %{name: name} -> "coalesce(CAST(#{identifier(name)} AS VARCHAR), '')" end)
-      |> case do
-        [] -> literal("")
-        expressions -> Enum.join(expressions, ", ")
-      end
-
-    with :ok <- exec(conn, "ALTER TABLE #{identifier(table)} ADD COLUMN __text VARCHAR") do
-      exec(
-        conn,
-        "UPDATE #{identifier(table)} SET __text = concat_ws(#{literal(" | ")}, #{expressions})"
-      )
     end
   end
 
@@ -707,41 +610,8 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   defp row_map(columns, row), do: columns |> Enum.zip(row) |> Map.new()
 
-  defp release_state(state) do
-    if is_reference(state.conn), do: Duckdbex.release(state.conn)
-    if is_reference(state.db), do: Duckdbex.release(state.db)
-    :ok
-  end
-
   defp spreadsheet_sources(directory, opts) do
-    case Keyword.fetch(opts, :sources) do
-      {:ok, sources} ->
-        sources
-        |> List.wrap()
-        |> Enum.map(&normalize_source(directory, &1))
-        |> Enum.filter(&xlsx?(&1.path))
-
-      :error ->
-        workspace_sources(directory, opts)
-    end
-  end
-
-  defp source_from_path(directory, path) do
-    %{
-      path: Path.expand(path),
-      title: relative_path(directory, path),
-      basename: Path.basename(path)
-    }
-  end
-
-  defp normalize_source(directory, source) when is_binary(source),
-    do: source_from_path(directory, source)
-
-  defp normalize_source(directory, source) when is_map(source) do
-    source
-    |> Map.update!(:path, &Path.expand/1)
-    |> Map.put_new(:title, relative_path(directory, source.path))
-    |> Map.put_new(:basename, Path.basename(source.path))
+    workspace_sources(directory, opts)
   end
 
   defp workspace_sources(_directory, opts) do
@@ -749,22 +619,27 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
       Keyword.get(opts, :workspace_sources?, true) == false ->
         []
 
+      Keyword.has_key?(opts, :workspace_graph) ->
+        workspace_sources_from_graph(opts)
+
       is_nil(Process.whereis(Sheaf.Repo)) ->
         []
 
       true ->
-        with {:ok, graph} <- workspace_graph(opts) do
-          graph
-          |> RDF.Data.descriptions()
-          |> Enum.filter(
-            &Description.include?(&1, {RDF.type(), Sheaf.NS.DOC.SpreadsheetWorkbook})
-          )
-          |> Enum.flat_map(&source_from_workbook(graph, &1, opts))
-          |> Enum.uniq_by(& &1.path)
-          |> Enum.sort_by(& &1.title)
-        else
-          _ -> []
-        end
+        workspace_sources_from_graph(opts)
+    end
+  end
+
+  defp workspace_sources_from_graph(opts) do
+    with {:ok, graph} <- workspace_graph(opts) do
+      graph
+      |> RDF.Data.descriptions()
+      |> Enum.filter(&Description.include?(&1, {RDF.type(), Sheaf.NS.DOC.SpreadsheetWorkbook}))
+      |> Enum.flat_map(&source_from_workbook(graph, &1, opts))
+      |> Enum.uniq_by(& &1.id)
+      |> Enum.sort_by(& &1.title)
+    else
+      _ -> []
     end
   end
 
@@ -795,17 +670,22 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     with %RDF.IRI{} <- file_iri,
          %Description{} = file <- Graph.description(graph, file_iri),
          {:ok, path} <- Sheaf.Files.local_path(file, opts),
-         true <- File.regular?(path) do
+         sheets = sheet_sources(graph, workbook, opts),
+         true <- sheets != [] do
       [
         %{
           id: Sheaf.Id.id_from_iri(workbook.subject),
           path: Path.expand(path),
+          file_size: first_value(file, Sheaf.NS.DCAT.byteSize()),
+          file_mtime: nil,
+          sha256: first_value(file, Sheaf.NS.DOC.sha256()),
           title:
             first_value(workbook, Sheaf.NS.DCTERMS.title()) ||
               first_value(workbook, RDF.NS.RDFS.label()) ||
               first_value(file, Sheaf.NS.DOC.originalFilename()) ||
               Path.basename(path),
-          basename: first_value(file, Sheaf.NS.DOC.originalFilename()) || Path.basename(path)
+          basename: first_value(file, Sheaf.NS.DOC.originalFilename()) || Path.basename(path),
+          sheets: sheets
         }
       ]
     else
@@ -813,96 +693,62 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     end
   end
 
-  defp xlsx?(path), do: path |> Path.extname() |> String.downcase() == ".xlsx"
+  defp sheet_sources(graph, %Description{} = workbook, opts) do
+    workbook
+    |> Description.get(Sheaf.NS.CSVW.table(), [])
+    |> Enum.map(&Graph.description(graph, &1))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.flat_map(&sheet_source(graph, &1, opts))
+    |> Enum.sort_by(& &1.sheet_index)
+  end
 
-  defp xlsx_sheet_names(path) do
-    with {:ok, entries} <- :zip.extract(String.to_charlist(path), [:memory]),
-         {_, bytes} <-
-           Enum.find(entries, fn {name, _bytes} -> List.to_string(name) == "xl/workbook.xml" end),
-         {:ok, doc} <- parse_xml(bytes) do
-      doc
-      |> elements("sheet")
-      |> Enum.map(&(attr(&1, "name") || "Sheet"))
-      |> case do
-        [] -> ["Sheet1"]
-        names -> names
-      end
+  defp sheet_source(graph, %Description{} = sheet, opts) do
+    with %RDF.IRI{} = parquet_iri <-
+           first_term(sheet, Sheaf.NS.DOC.materializedDistribution()),
+         %Description{} = parquet <- Graph.description(graph, parquet_iri),
+         {:ok, parquet_path} <- Sheaf.Files.local_path(parquet, opts),
+         true <- File.regular?(parquet_path) do
+      [
+        %{
+          sheet_index: first_value(sheet, Sheaf.NS.DOC.sheetIndex()),
+          name:
+            first_value(sheet, Sheaf.NS.CSVW.name()) ||
+              first_value(sheet, RDF.NS.RDFS.label()),
+          table_name: first_value(sheet, Sheaf.NS.DOC.duckdbTableName()),
+          row_count: first_value(sheet, Sheaf.NS.DOC.rowCount()),
+          columns: columns_for_sheet(graph, sheet),
+          parquet_path: parquet_path
+        }
+      ]
     else
-      _ -> ["Sheet1"]
+      _ -> []
     end
   end
 
-  defp parse_xml(bytes) when is_binary(bytes) do
-    bytes
-    |> :binary.bin_to_list()
-    |> :xmerl_scan.string(quiet: true)
-    |> elem(0)
-    |> then(&{:ok, &1})
-  end
+  defp columns_for_sheet(graph, %Description{} = sheet) do
+    sheet
+    |> first_term(Sheaf.NS.CSVW.tableSchema())
+    |> then(&if &1, do: Graph.description(graph, &1), else: nil)
+    |> case do
+      nil ->
+        []
 
-  defp elements(root, name) do
-    root
-    |> all_elements()
-    |> Enum.filter(&(local_name(xmlElement(&1, :name)) == name))
-  end
-
-  defp all_elements(element) do
-    children =
-      element
-      |> xmlElement(:content)
-      |> Enum.filter(&xml_element?/1)
-
-    [element | Enum.flat_map(children, &all_elements/1)]
-  end
-
-  defp xml_element?(value) when Record.is_record(value, :xmlElement), do: true
-  defp xml_element?(_value), do: false
-
-  defp attr(element, name) do
-    element
-    |> xmlElement(:attributes)
-    |> Enum.find_value(fn attribute ->
-      if local_name(xmlAttribute(attribute, :name)) == name do
-        attribute |> xmlAttribute(:value) |> to_string()
-      end
-    end)
-  end
-
-  defp local_name(name) do
-    name
-    |> to_string()
-    |> String.split(":")
-    |> List.last()
-  end
-
-  defp table_name(path, sha, index) do
-    slug =
-      path
-      |> Path.basename()
-      |> Path.rootname()
-      |> String.downcase()
-      |> String.replace(~r/[^a-z0-9]+/u, "_")
-      |> String.trim("_")
-      |> case do
-        "" -> "workbook"
-        value -> String.slice(value, 0, 32)
-      end
-
-    "xlsx_#{slug}_#{String.slice(sha, 0, 8)}_#{index}"
-  end
-
-  defp unique_name(base, existing) do
-    existing = MapSet.new(existing)
-
-    Stream.iterate(1, &(&1 + 1))
-    |> Enum.find_value(fn
-      1 ->
-        if MapSet.member?(existing, base), do: nil, else: base
-
-      index ->
-        name = "#{base}_#{index}"
-        if MapSet.member?(existing, name), do: nil, else: name
-    end)
+      schema ->
+        schema
+        |> Description.get(Sheaf.NS.CSVW.column(), [])
+        |> Enum.map(&Graph.description(graph, &1))
+        |> Enum.reject(&is_nil/1)
+        |> Enum.map(fn column ->
+          %{
+            name: first_value(column, Sheaf.NS.CSVW.name()),
+            header:
+              first_value(column, Sheaf.NS.CSVW.title()) ||
+                first_value(column, Sheaf.NS.CSVW.name()),
+            index: first_value(column, Sheaf.NS.DOC.columnIndex())
+          }
+        end)
+        |> Enum.sort_by(&(&1.index || 0))
+    end
   end
 
   defp relative_path(directory, path) do
@@ -924,12 +770,6 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   defp identifier(identifier) do
     ~s("#{String.replace(to_string(identifier), "\"", "\"\"")}")
-  end
-
-  defp mtime(stat) do
-    stat.mtime
-    |> NaiveDateTime.from_erl!()
-    |> NaiveDateTime.to_iso8601()
   end
 
   defp now_iso8601 do

@@ -238,6 +238,13 @@ sheaf:duckdbTableName a rdf:Property ;
   rdfs:range xsd:string ;
   rdfs:comment "Runtime DuckDB table name used for one loaded spreadsheet sheet." .
 
+sheaf:materializedDistribution a rdf:Property ;
+  rdfs:label "has materialized distribution"@en ;
+  rdfs:domain csvw:Table ;
+  rdfs:range dcat:Distribution ;
+  rdfs:subPropertyOf dcat:distribution ;
+  rdfs:comment "Links a tabular source such as a spreadsheet sheet to a prepared file distribution used for efficient query loading." .
+
 sheaf:BatchJob a rdfs:Class ;
   rdfs:label "batch job"@en ;
   rdfs:subClassOf prov:Entity ;
