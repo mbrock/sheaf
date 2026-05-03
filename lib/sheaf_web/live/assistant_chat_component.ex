@@ -428,9 +428,9 @@ defmodule SheafWeb.AssistantChatComponent do
     assigns = assign(assigns, :messages, messages)
 
     ~H"""
-    <div class="flex flex-wrap gap-x-2 gap-y-1 px-1">
+    <ul class="space-y-0.5 px-2 text-[11px] leading-4 text-stone-600 dark:text-stone-400">
       <.tool_chip :for={message <- @messages} message={message} titles={@titles} />
-    </div>
+    </ul>
     """
   end
 
@@ -438,20 +438,15 @@ defmodule SheafWeb.AssistantChatComponent do
     assigns = assign(assigns, :tool_view, tool_view(assigns.message, assigns.titles))
 
     ~H"""
-    <div class={[
-      "inline-flex max-w-full items-center gap-1 rounded-sm border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-[11px] leading-5 text-stone-700",
-      "dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300",
-      @tool_view.status_class
-    ]}>
-      <span class="shrink-0 text-xs">{@tool_view.icon}</span>
-      <span :if={@tool_view.action != ""} class="shrink-0">{@tool_view.action}</span>
+    <li class={["flex min-w-0 gap-1", @tool_view.status_class]}>
+      <span class="shrink-0 text-stone-400 dark:text-stone-600">•</span>
       <span
-        :if={@tool_view.target != ""}
-        class={["min-w-0 truncate", @tool_view.target_class]}
+        :if={@tool_view.phrase != ""}
+        class={["min-w-0 break-words", @tool_view.phrase_class]}
       >
-        {@tool_view.target}
+        {@tool_view.phrase}
       </span>
-      <span :if={@tool_view.scope != ""} class="min-w-0 truncate">
+      <span :if={@tool_view.scope != ""} class="min-w-0 break-words">
         in <em>{@tool_view.scope}</em>
       </span>
       <span
@@ -460,7 +455,7 @@ defmodule SheafWeb.AssistantChatComponent do
       >
         {@tool_view.detail}
       </span>
-    </div>
+    </li>
     """
   end
 
@@ -523,31 +518,6 @@ defmodule SheafWeb.AssistantChatComponent do
     """
   end
 
-  defp chat_message(%{message: %{role: :tool}} = assigns) do
-    assigns = assign(assigns, :tool_view, tool_view(assigns.message, assigns.titles))
-
-    ~H"""
-    <div class="flex gap-2 px-1 py-1 text-xs ">
-      <span class="mt-0.5 w-5 shrink-0 text-center text-base ">
-        {@tool_view.icon}
-      </span>
-      <div class="min-w-0 flex-1">
-        <div class={["text-stone-700 dark:text-stone-300", @tool_view.status_class]}>
-          <span>{@tool_view.action}</span>
-          <span :if={@tool_view.target != ""}>{@tool_view.target}</span>
-          <span :if={@tool_view.scope != ""}> in <em>{@tool_view.scope}</em></span>
-        </div>
-        <div
-          :if={@tool_view.detail != ""}
-          class="mt-0.5 pl-0 text-xs  text-stone-500 dark:text-stone-400"
-        >
-          {@tool_view.detail}
-        </div>
-      </div>
-    </div>
-    """
-  end
-
   defp chat_message(%{message: %{role: :status}} = assigns) do
     ~H"""
     <div class="px-1 py-0.5 font-sans text-[11px] italic leading-5 text-stone-500 dark:text-stone-400">
@@ -567,7 +537,7 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_message(assigns), do: ~H""
 
   defp tool_view(%{tool: "list_documents"} = message, _titles) do
-    tool_view("📚", "", "list documents", "", message)
+    tool_phrase("list documents", message)
   end
 
   defp tool_view(%{tool: "get_document", input: input} = message, titles) do
@@ -575,7 +545,7 @@ defmodule SheafWeb.AssistantChatComponent do
     title = title_or_id(id, titles)
     target = if title == "", do: "read document outline", else: "read #{title}'s outline"
 
-    tool_view("📖", "", target, "", message)
+    tool_phrase(target, message)
   end
 
   defp tool_view(%{tool: "read", input: input} = message, _titles) do
@@ -594,7 +564,7 @@ defmodule SheafWeb.AssistantChatComponent do
           "block"
       end
 
-    tool_view("📄", "", "read #{target}", "", message)
+    tool_phrase("read #{target}", message)
   end
 
   defp tool_view(%{tool: "search_text", input: input} = message, titles) do
@@ -603,7 +573,7 @@ defmodule SheafWeb.AssistantChatComponent do
     scope = if scope, do: title_or_id(scope, titles), else: "the corpus"
     target = "find “#{query}” in #{scope}"
 
-    tool_view("🔍", "", target, "", message)
+    tool_phrase(target, message)
   end
 
   defp tool_view(%{tool: "list_spreadsheets", input: input} = message, _titles) do
@@ -614,7 +584,7 @@ defmodule SheafWeb.AssistantChatComponent do
         do: "list available sheets",
         else: "list sheets matching “#{ellipsize(query, 60)}”"
 
-    tool_view("▦", "", target, "", message)
+    tool_phrase(target, message)
   end
 
   defp tool_view(%{tool: "search_spreadsheets", input: input} = message, _titles) do
@@ -625,7 +595,7 @@ defmodule SheafWeb.AssistantChatComponent do
         do: "find spreadsheet rows",
         else: "find rows matching “#{ellipsize(query, 60)}”"
 
-    tool_view("🔍", "", target, "", message)
+    tool_phrase(target, message)
   end
 
   defp tool_view(%{tool: "write_note", input: input} = message, _titles) do
@@ -636,14 +606,14 @@ defmodule SheafWeb.AssistantChatComponent do
         do: "“#{ellipsize(title, 60)}”",
         else: "research note"
 
-    tool_view("📝", "", "save #{note}", "", message)
+    tool_phrase("save #{note}", message)
   end
 
   defp tool_view(%{tool: "query_spreadsheets", input: input} = message, _titles) do
     intent = input |> tool_arg(:intent) |> note_text_value()
     target = if intent == "", do: "query spreadsheets", else: ellipsize(intent, 80)
 
-    tool_view("▦", "", target, "", message, target_class: "italic")
+    tool_phrase(target, message, phrase_class: "italic")
   end
 
   defp tool_view(%{tool: "read_spreadsheet_query_result", input: input} = message, _titles) do
@@ -658,22 +628,20 @@ defmodule SheafWeb.AssistantChatComponent do
         {offset, limit} -> "rows #{offset}–#{offset + limit}"
       end
 
-    tool_view("▤", "", "read #{range}", "", message)
+    tool_phrase("read #{range}", message)
   end
 
   defp tool_view(%{tool: tool} = message, _titles) when is_binary(tool) do
-    tool_view("⚙️", "", "run #{String.replace(tool, "_", " ")}", "", message)
+    tool_phrase("run #{String.replace(tool, "_", " ")}", message)
   end
 
-  defp tool_view(message, _titles), do: tool_view("⚙️", "", "run tool", "", message)
+  defp tool_view(message, _titles), do: tool_phrase("run tool", message)
 
-  defp tool_view(icon, action, target, scope, message, opts \\ []) do
+  defp tool_phrase(phrase, message, opts \\ []) do
     %{
-      icon: icon,
-      action: action,
-      target: target || "",
-      target_class: Keyword.get(opts, :target_class, ""),
-      scope: scope || "",
+      phrase: phrase || "",
+      phrase_class: Keyword.get(opts, :phrase_class, ""),
+      scope: Keyword.get(opts, :scope, ""),
       detail: tool_detail(message),
       status_class: tool_phrase_class(Map.get(message, :status))
     }
