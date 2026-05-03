@@ -128,9 +128,14 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> Enum.join("\n\n")
   end
 
-  def to_text(%ListSpreadsheets{spreadsheets: spreadsheets}) do
-    spreadsheets
-    |> Enum.map(&spreadsheet_text/1)
+  def to_text(%ListSpreadsheets{spreadsheets: spreadsheets} = result) do
+    [
+      spreadsheet_list_summary(result),
+      spreadsheets
+      |> Enum.map(&spreadsheet_text/1)
+      |> Enum.reject(&blank?/1)
+      |> Enum.join("\n\n")
+    ]
     |> Enum.reject(&blank?/1)
     |> Enum.join("\n\n")
   end
@@ -217,6 +222,26 @@ defmodule Sheaf.Assistant.ToolResultText do
     #{Enum.map_join(spreadsheet.sheets, "\n", &spreadsheet_sheet_line/1)}
     """
     |> String.trim()
+  end
+
+  defp spreadsheet_list_summary(%ListSpreadsheets{} = result) do
+    query =
+      case result.query do
+        nil -> nil
+        "" -> nil
+        query -> "Query: #{query}"
+      end
+
+    truncated =
+      if result.truncated? do
+        "Showing #{result.returned_spreadsheets} of #{result.total_spreadsheets} spreadsheets and #{result.returned_sheets} of #{result.total_sheets} sheets. Use query to narrow the list."
+      else
+        "Showing #{result.returned_spreadsheets} spreadsheets and #{result.returned_sheets} sheets."
+      end
+
+    ["SPREADSHEETS", query, truncated]
+    |> Enum.reject(&blank?/1)
+    |> Enum.join("\n")
   end
 
   defp spreadsheet_sheet_line(%SpreadsheetSheet{} = sheet) do

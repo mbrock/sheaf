@@ -13,6 +13,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   alias Sheaf.Assistant.{SpreadsheetSession, ToolResultText, ToolResults}
 
   @search_result_limit 10
+  @spreadsheet_list_limit 50
   @default_search_kinds ~w(paragraph sourceHtml row)
 
   @doc """
@@ -175,7 +176,20 @@ defmodule Sheaf.Assistant.CorpusTools do
       name: "list_spreadsheets",
       description:
         "List spreadsheet workbooks and sheets available in the #{spreadsheet_label(spreadsheet_dialect)} workspace. " <>
-          "Returns SQL table names, row counts, and column names for query_spreadsheets.",
+          "Returns SQL table names, row counts, and column names for query_spreadsheets. " <>
+          "Use query to filter by workbook title, path, sheet name, table name, or column name.",
+      parameter_schema: [
+        query: [
+          type: :string,
+          doc:
+            "Optional case-insensitive filter for workbook title/path, sheet name, table name, or column name."
+        ],
+        limit: [
+          type: :integer,
+          default: @spreadsheet_list_limit,
+          doc: "Maximum sheets returned by the wrapper, capped by Sheaf."
+        ]
+      ],
       callback:
         instrument(notify, "list_spreadsheets", fn args ->
           list_spreadsheets_tool(args, spreadsheet_lister)
@@ -189,6 +203,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       description:
         "Run SQL against spreadsheet sheet tables in the #{spreadsheet_label(spreadsheet_dialect)} workspace. " <>
           "Call list_spreadsheets first to discover table and column names. " <>
+          "Metadata tables sheaf_spreadsheets and sheaf_spreadsheet_sheets are available for discovery. " <>
           spreadsheet_query_guidance(spreadsheet_dialect),
       parameter_schema: [
         sql: [
@@ -561,12 +576,36 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp list_spreadsheets_tool(_args, spreadsheet_lister) do
+  defp list_spreadsheets_tool(args, spreadsheet_lister) do
     case spreadsheet_lister.() do
       {:ok, spreadsheets} ->
+        query = arg(args, :query) |> normalize_optional_text()
+        limit = args |> arg(:limit) |> clamp_spreadsheet_list_limit()
+        spreadsheets = filter_spreadsheets(spreadsheets, query)
+        total_spreadsheets = length(spreadsheets)
+
+        total_sheets =
+          Enum.sum(Enum.map(spreadsheets, fn spreadsheet -> length(spreadsheet.sheets) end))
+
+        {spreadsheets, truncated?} =
+          spreadsheets
+          |> take_spreadsheet_sheets(limit)
+
         spreadsheets
         |> Enum.map(&spreadsheet_result/1)
-        |> then(&%ToolResults.ListSpreadsheets{spreadsheets: &1})
+        |> then(
+          &%ToolResults.ListSpreadsheets{
+            spreadsheets: &1,
+            query: query,
+            total_spreadsheets: total_spreadsheets,
+            total_sheets: total_sheets,
+            returned_spreadsheets: length(&1),
+            returned_sheets:
+              Enum.sum(Enum.map(&1, fn spreadsheet -> length(spreadsheet.sheets) end)),
+            limit: limit,
+            truncated?: truncated?
+          }
+        )
         |> rendered_result()
         |> then(&{:ok, &1})
 
@@ -664,6 +703,85 @@ defmodule Sheaf.Assistant.CorpusTools do
       path: spreadsheet.path,
       sheets: Enum.map(spreadsheet.sheets, &spreadsheet_sheet_result/1)
     }
+  end
+
+  defp filter_spreadsheets(spreadsheets, nil), do: spreadsheets
+
+  defp filter_spreadsheets(spreadsheets, query) do
+    terms = query |> String.downcase() |> search_terms()
+
+    Enum.flat_map(spreadsheets, fn spreadsheet ->
+      sheet_matches =
+        Enum.filter(spreadsheet.sheets, fn sheet ->
+          spreadsheet_match_text(spreadsheet, sheet)
+          |> String.downcase()
+          |> contains_all_terms?(terms)
+        end)
+
+      cond do
+        sheet_matches != [] ->
+          [Map.put(spreadsheet, :sheets, sheet_matches)]
+
+        spreadsheet_match_text(spreadsheet, nil)
+        |> String.downcase()
+        |> contains_all_terms?(terms) ->
+          [spreadsheet]
+
+        true ->
+          []
+      end
+    end)
+  end
+
+  defp spreadsheet_match_text(spreadsheet, nil) do
+    Enum.join(
+      [spreadsheet.id, spreadsheet.title, spreadsheet.path, Map.get(spreadsheet, :basename)],
+      " "
+    )
+  end
+
+  defp spreadsheet_match_text(spreadsheet, sheet) do
+    columns =
+      sheet.columns
+      |> Enum.map(fn
+        %{name: name, header: header} -> [name, header]
+        %{"name" => name, "header" => header} -> [name, header]
+        %{name: name} -> [name]
+        %{"name" => name} -> [name]
+        other -> [to_string(other)]
+      end)
+
+    [spreadsheet_match_text(spreadsheet, nil), sheet.name, sheet.table_name, columns]
+    |> List.flatten()
+    |> Enum.join(" ")
+  end
+
+  defp contains_all_terms?(_text, []), do: true
+  defp contains_all_terms?(text, terms), do: Enum.all?(terms, &String.contains?(text, &1))
+
+  defp take_spreadsheet_sheets(spreadsheets, limit) do
+    {kept, _remaining} =
+      Enum.reduce_while(spreadsheets, {[], limit}, fn spreadsheet, {kept, remaining} ->
+        cond do
+          remaining <= 0 ->
+            {:halt, {kept, remaining}}
+
+          length(spreadsheet.sheets) <= remaining ->
+            {:cont, {[spreadsheet | kept], remaining - length(spreadsheet.sheets)}}
+
+          true ->
+            spreadsheet = Map.put(spreadsheet, :sheets, Enum.take(spreadsheet.sheets, remaining))
+            {:halt, {[spreadsheet | kept], 0}}
+        end
+      end)
+
+    kept = Enum.reverse(kept)
+    returned_sheets = Enum.sum(Enum.map(kept, fn spreadsheet -> length(spreadsheet.sheets) end))
+
+    total_sheets =
+      Enum.sum(Enum.map(spreadsheets, fn spreadsheet -> length(spreadsheet.sheets) end))
+
+    {kept, returned_sheets < total_sheets}
   end
 
   defp spreadsheet_sheet_result(sheet) do
@@ -1012,6 +1130,27 @@ defmodule Sheaf.Assistant.CorpusTools do
     text
     |> normalize_text()
     |> ellipsize(180)
+  end
+
+  defp normalize_optional_text(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      text -> text
+    end
+  end
+
+  defp normalize_optional_text(_value), do: nil
+
+  defp clamp_spreadsheet_list_limit(limit) when is_integer(limit),
+    do: limit |> max(1) |> min(@spreadsheet_list_limit)
+
+  defp clamp_spreadsheet_list_limit(_limit), do: @spreadsheet_list_limit
+
+  defp search_terms(query) do
+    ~r/[\p{L}\p{N}]+/u
+    |> Regex.scan(query)
+    |> Enum.map(fn [term] -> term end)
+    |> Enum.uniq()
   end
 
   defp arg(args, key) do

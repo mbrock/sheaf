@@ -112,7 +112,14 @@ defmodule Sheaf.Assistant.ToolResults do
   end
 
   defmodule ListSpreadsheets do
-    defstruct spreadsheets: []
+    defstruct spreadsheets: [],
+              query: nil,
+              total_spreadsheets: 0,
+              total_sheets: 0,
+              returned_spreadsheets: 0,
+              returned_sheets: 0,
+              limit: nil,
+              truncated?: false
   end
 
   defmodule Spreadsheet do

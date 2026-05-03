@@ -133,6 +133,77 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert "search_spreadsheets" in tool_names
   end
 
+  test "list_spreadsheets can filter and limit sheet metadata" do
+    spreadsheets = [
+      %{
+        id: "xl_a",
+        title: "alpha.xlsx",
+        path: "/tmp/alpha.xlsx",
+        sheets: [
+          %{
+            spreadsheet_id: "xl_a",
+            name: "Summary",
+            table_name: "xlsx_alpha_1",
+            row_count: 2,
+            col_count: 1,
+            columns: [%{name: "name", header: "name"}]
+          },
+          %{
+            spreadsheet_id: "xl_a",
+            name: "Radio",
+            table_name: "xlsx_alpha_2",
+            row_count: 5,
+            col_count: 1,
+            columns: [%{name: "radio_station", header: "radio_station"}]
+          }
+        ]
+      },
+      %{
+        id: "xl_b",
+        title: "beta.xlsx",
+        path: "/tmp/beta.xlsx",
+        sheets: [
+          %{
+            spreadsheet_id: "xl_b",
+            name: "Costs",
+            table_name: "xlsx_beta_1",
+            row_count: 3,
+            col_count: 1,
+            columns: [%{name: "amount", header: "amount"}]
+          }
+        ]
+      }
+    ]
+
+    tools =
+      CorpusTools.tools(
+        include_notes?: false,
+        spreadsheet_lister: fn -> {:ok, spreadsheets} end
+      )
+
+    tool = Enum.find(tools, &(&1.name == "list_spreadsheets"))
+
+    assert tool.parameter_schema[:query]
+    assert tool.parameter_schema[:limit]
+
+    assert {:ok, result} = Tool.execute(tool, %{"query" => "radio", "limit" => 1})
+
+    assert %ToolResults.ListSpreadsheets{
+             query: "radio",
+             total_spreadsheets: 1,
+             total_sheets: 1,
+             returned_spreadsheets: 1,
+             returned_sheets: 1,
+             truncated?: false,
+             spreadsheets: [spreadsheet]
+           } = sheaf_result(result)
+
+    assert [%ToolResults.SpreadsheetSheet{name: "Radio"}] = spreadsheet.sheets
+    assert tool_text(result) =~ "Showing 1 spreadsheets and 1 sheets."
+    assert tool_text(result) =~ "xlsx_alpha_2"
+    refute tool_text(result) =~ "xlsx_beta_1"
+  end
+
   test "write_note tool persists through the configured note writer and emits events" do
     test_pid = self()
     agent = Id.iri("AGENT3")
