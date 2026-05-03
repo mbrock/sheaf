@@ -77,6 +77,7 @@ defmodule Sheaf.MixProject do
       {:req, "~> 0.5"},
       {:req_llm, "~> 1.10"},
       {:exqlite, "~> 0.36.0"},
+      {:duckdbex, "~> 0.4.0"},
       {:sqlite_vec, "~> 0.1.0"},
       {:mdex, "~> 0.12"},
       {:rdf, "~> 2.1"},
