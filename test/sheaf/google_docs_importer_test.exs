@@ -5,6 +5,7 @@ defmodule Sheaf.GoogleDocsImporterTest do
   alias RDF.NS.RDFS
   alias Sheaf.GoogleDocsImporter
   alias Sheaf.NS.DOC
+  require RDF.Graph
 
   test "extracts a coherent recursive section subgraph" do
     %{
@@ -38,13 +39,19 @@ defmodule Sheaf.GoogleDocsImporterTest do
       new_revision: new_revision
     } = fixture_graph()
 
+    activity = RDF.iri("https://example.com/sheaf/ACT")
+    generated_at = ~U[2026-05-03 12:00:00Z]
+
     assert {:ok, plan} =
              GoogleDocsImporter.section_replacement_plan(
                existing_graph,
                document,
                old_section,
                new_graph,
-               new_section
+               new_section,
+               activity_iri: activity,
+               generated_at: generated_at,
+               source_url: "https://docs.google.com/document/d/example/edit"
              )
 
     assert plan.old_children == [old_section, keep_section]
@@ -65,6 +72,34 @@ defmodule Sheaf.GoogleDocsImporterTest do
              plan.retract,
              {old_section, RDFS.label(), RDF.literal("Old chapter")}
            )
+
+    expected_provenance =
+      RDF.Graph.build activity: activity,
+                      old_section: old_section,
+                      new_section: new_section,
+                      generated_at: generated_at do
+        activity
+        |> a(Sheaf.NS.PROV.Activity)
+        |> RDFS.label("Google Docs section import")
+        |> DOC.sourceKey("https://docs.google.com/document/d/example/edit")
+        |> Sheaf.NS.PROV.used(old_section)
+        |> Sheaf.NS.PROV.generated(new_section)
+        |> Sheaf.NS.PROV.invalidated(old_section)
+        |> Sheaf.NS.PROV.endedAtTime(generated_at)
+
+        new_section
+        |> Sheaf.NS.PROV.wasRevisionOf(old_section)
+        |> Sheaf.NS.PROV.wasGeneratedBy(activity)
+        |> Sheaf.NS.PROV.generatedAtTime(generated_at)
+
+        old_section
+        |> Sheaf.NS.PROV.wasInvalidatedBy(activity)
+        |> Sheaf.NS.PROV.invalidatedAtTime(generated_at)
+      end
+      |> Graph.change_name(RDF.iri(Sheaf.Repo.workspace_graph()))
+
+    assert RDF.Graph.name(plan.provenance) == RDF.iri(Sheaf.Repo.workspace_graph())
+    assert RDF.Graph.isomorphic?(plan.provenance, expected_provenance)
   end
 
   test "finds sections by exact title" do

@@ -4,6 +4,7 @@ defmodule Sheaf.GoogleDocsImporter do
   """
 
   require OpenTelemetry.Tracer, as: Tracer
+  require RDF.Graph
 
   alias RDF.{BlankNode, Dataset, Graph, IRI}
   alias RDF.NS.RDFS
@@ -111,6 +112,7 @@ defmodule Sheaf.GoogleDocsImporter do
   * `:retract` - only the current parent `doc:children` list statements
   * `:assert` - a new parent `doc:children` list plus the imported section subtree
   * `:new_section_graph` - the coherent recursive subtree for the imported section
+  * `:provenance` - workspace-graph PROV facts for the revision activity
 
   Existing section resources are left untouched by the planned retraction. They
   become unreachable from the parent list, but remain in the named graph.
@@ -141,7 +143,11 @@ defmodule Sheaf.GoogleDocsImporter do
                parent,
                old_section,
                imported.graph,
-               new_section
+               new_section,
+               Keyword.merge(opts,
+                 source_url: imported.source_url,
+                 source_path: Keyword.get(opts, :source_path, path)
+               )
              ) do
         {:ok,
          plan
@@ -192,14 +198,15 @@ defmodule Sheaf.GoogleDocsImporter do
   `new_section` from an imported graph.
 
   The returned changes are suitable for a later explicit
-  `Sheaf.Repo.transact(tx, [{:retract, plan.retract}, {:assert, plan.assert}])`.
+  `Sheaf.Repo.transact(tx, [{:retract, plan.retract}, {:assert, plan.assert}, {:assert, plan.provenance}])`.
   """
   def section_replacement_plan(
         %Graph{} = existing_graph,
         parent,
         old_section,
         %Graph{} = imported_graph,
-        new_section
+        new_section,
+        opts \\ []
       ) do
     parent = RDF.iri(parent)
     old_section = RDF.iri(old_section)
@@ -212,6 +219,7 @@ defmodule Sheaf.GoogleDocsImporter do
       parent_assert = parent_children_graph(existing_graph, parent, new_children)
       new_section_graph = section_subgraph(imported_graph, new_section)
       assert_graph = Graph.add(parent_assert, new_section_graph)
+      provenance_graph = section_replacement_provenance(old_section, new_section, opts)
 
       {:ok,
        %{
@@ -222,9 +230,11 @@ defmodule Sheaf.GoogleDocsImporter do
          new_children: new_children,
          retract: retract,
          assert: assert_graph,
+         provenance: provenance_graph,
          new_section_graph: new_section_graph,
          retract_statement_count: RDF.Data.statement_count(retract),
          assert_statement_count: RDF.Data.statement_count(assert_graph),
+         provenance_statement_count: RDF.Data.statement_count(provenance_graph),
          new_section_statement_count: RDF.Data.statement_count(new_section_graph)
        }}
     end
@@ -380,6 +390,39 @@ defmodule Sheaf.GoogleDocsImporter do
   defp resource_objects(%IRI{} = iri), do: [iri]
   defp resource_objects(%BlankNode{} = blank_node), do: [blank_node]
   defp resource_objects(_term), do: []
+
+  defp section_replacement_provenance(old_section, new_section, opts) do
+    activity = Keyword.get_lazy(opts, :activity_iri, &Sheaf.mint/0)
+    generated_at = Keyword.get_lazy(opts, :generated_at, &now/0)
+    source_url = Keyword.get(opts, :source_url)
+    source_path = Keyword.get(opts, :source_path)
+
+    RDF.Graph.build activity: activity,
+                    old_section: old_section,
+                    new_section: new_section,
+                    generated_at: generated_at do
+      activity
+      |> a(Sheaf.NS.PROV.Activity)
+      |> RDFS.label("Google Docs section import")
+      |> Sheaf.NS.PROV.used(old_section)
+      |> Sheaf.NS.PROV.generated(new_section)
+      |> Sheaf.NS.PROV.invalidated(old_section)
+      |> Sheaf.NS.PROV.endedAtTime(generated_at)
+
+      new_section
+      |> Sheaf.NS.PROV.wasRevisionOf(old_section)
+      |> Sheaf.NS.PROV.wasGeneratedBy(activity)
+      |> Sheaf.NS.PROV.generatedAtTime(generated_at)
+
+      old_section
+      |> Sheaf.NS.PROV.wasInvalidatedBy(activity)
+      |> Sheaf.NS.PROV.invalidatedAtTime(generated_at)
+    end
+    |> Graph.change_name(RDF.iri(Sheaf.Repo.workspace_graph()))
+    |> add_optional_literal(activity, DOC.sourceKey(), source_url || source_path)
+  end
+
+  defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   defp children_containing(graph, parent, child) do
     children = Sheaf.Document.children(graph, parent)
