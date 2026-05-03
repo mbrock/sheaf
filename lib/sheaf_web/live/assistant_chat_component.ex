@@ -444,8 +444,13 @@ defmodule SheafWeb.AssistantChatComponent do
       @tool_view.status_class
     ]}>
       <span class="shrink-0 text-xs">{@tool_view.icon}</span>
-      <span class="shrink-0">{@tool_view.action}</span>
-      <span :if={@tool_view.target != ""} class="min-w-0 truncate">{@tool_view.target}</span>
+      <span :if={@tool_view.action != ""} class="shrink-0">{@tool_view.action}</span>
+      <span
+        :if={@tool_view.target != ""}
+        class={["min-w-0 truncate", @tool_view.target_class]}
+      >
+        {@tool_view.target}
+      </span>
       <span :if={@tool_view.scope != ""} class="min-w-0 truncate">
         in <em>{@tool_view.scope}</em>
       </span>
@@ -598,6 +603,24 @@ defmodule SheafWeb.AssistantChatComponent do
     tool_view("🔍", "Searching for", target, scope, message)
   end
 
+  defp tool_view(%{tool: "list_spreadsheets", input: input} = message, _titles) do
+    query = input |> tool_arg(:query) |> note_text_value()
+
+    target =
+      if query == "", do: "available sheets", else: "sheets matching “#{ellipsize(query, 60)}”"
+
+    tool_view("▦", "Listing", target, "", message)
+  end
+
+  defp tool_view(%{tool: "search_spreadsheets", input: input} = message, _titles) do
+    query = input |> tool_arg(:query) |> note_text_value()
+
+    target =
+      if query == "", do: "spreadsheet rows", else: "rows matching “#{ellipsize(query, 60)}”"
+
+    tool_view("🔍", "Searching", target, "", message)
+  end
+
   defp tool_view(%{tool: "write_note", input: input} = message, _titles) do
     title = tool_arg(input, :title) || tool_arg(input, :text)
 
@@ -611,9 +634,9 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp tool_view(%{tool: "query_spreadsheets", input: input} = message, _titles) do
     intent = input |> tool_arg(:intent) |> note_text_value()
-    target = if intent == "", do: "spreadsheets", else: ellipsize(intent, 80)
+    target = if intent == "", do: "querying spreadsheets", else: ellipsize(intent, 80)
 
-    tool_view("▦", "Spreadsheets:", target, "", message)
+    tool_view("▦", "", target, "", message, target_class: "italic")
   end
 
   defp tool_view(%{tool: tool} = message, _titles) when is_binary(tool) do
@@ -622,11 +645,12 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp tool_view(message, _titles), do: tool_view("⚙️", "Using", "a tool", "", message)
 
-  defp tool_view(icon, action, target, scope, message) do
+  defp tool_view(icon, action, target, scope, message, opts \\ []) do
     %{
       icon: icon,
       action: action,
       target: target || "",
+      target_class: Keyword.get(opts, :target_class, ""),
       scope: scope || "",
       detail: tool_detail(message),
       status_class: tool_phrase_class(Map.get(message, :status))

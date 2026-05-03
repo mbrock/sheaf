@@ -416,12 +416,17 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  def humanize("list_spreadsheets", _args, _titles), do: "Checking spreadsheets"
+  def humanize("list_spreadsheets", args, _titles) do
+    case args |> arg(:query) |> clean_intent() do
+      nil -> "Listing available spreadsheet sheets"
+      query -> "Listing spreadsheet sheets matching " <> smart_quote(query)
+    end
+  end
 
   def humanize("query_spreadsheets", args, _titles) do
     case args |> arg(:intent) |> clean_intent() do
-      nil -> "Spreadsheets"
-      intent -> "Spreadsheets: " <> intent
+      nil -> "Querying spreadsheets"
+      intent -> intent
     end
   end
 
@@ -429,7 +434,7 @@ defmodule Sheaf.Assistant.CorpusTools do
     do: "Reading spreadsheet query result"
 
   def humanize("search_spreadsheets", args, _titles) do
-    "Searching spreadsheets for " <> smart_quote(arg(args, :query) || "")
+    "Searching spreadsheet rows for " <> smart_quote(arg(args, :query) || "")
   end
 
   def humanize("write_note", _args, _titles), do: "Saving a research note"
