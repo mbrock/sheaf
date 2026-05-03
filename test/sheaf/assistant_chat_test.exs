@@ -169,7 +169,9 @@ defmodule Sheaf.Assistant.ChatTest do
 
   @tag :tmp_dir
   test "chat sessions expose per-chat DuckDB spreadsheet tools", %{tmp_dir: tmp_dir} do
-    XLSXFixture.write_xlsx!(Path.join(tmp_dir, "inventory.xlsx"), [
+    xlsx_path = Path.join(tmp_dir, "inventory.xlsx")
+
+    XLSXFixture.write_xlsx!(xlsx_path, [
       ["buyer_type", "amount"],
       ["agency", "3"]
     ])
@@ -210,6 +212,7 @@ defmodule Sheaf.Assistant.ChatTest do
        titles: %{},
        workspace_instructions: "Testing spreadsheet tools.",
        spreadsheet_directory: tmp_dir,
+       spreadsheet_sources: [xlsx_path],
        activity_writer: nil,
        generate_text: generate_text,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}

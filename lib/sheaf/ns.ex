@@ -16,6 +16,33 @@ defmodule Sheaf.NS do
     file: "../activitystreams2.ttl"
   )
 
+  defvocab(CSVW,
+    base_iri: "http://www.w3.org/ns/csvw#",
+    terms: ~w[
+      Column
+      Schema
+      Table
+      TableGroup
+      column
+      datatype
+      name
+      table
+      tableSchema
+      title
+    ]
+  )
+
+  defvocab(DCAT,
+    base_iri: "http://www.w3.org/ns/dcat#",
+    terms: ~w[
+      Dataset
+      Distribution
+      byteSize
+      distribution
+      mediaType
+    ]
+  )
+
   defvocab(PROV,
     base_iri: "http://www.w3.org/ns/prov#",
     file: "../prov-o.ttl"

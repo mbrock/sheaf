@@ -15,7 +15,9 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     ])
 
     id = "spreadsheet-test-#{System.unique_integer([:positive])}"
-    session = start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir})
+
+    session =
+      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
 
     assert {:ok, [%{sheets: [%{table_name: table, row_count: 2, col_count: 2}]}]} =
              SpreadsheetSession.list(session)
@@ -47,7 +49,9 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     ])
 
     id = "spreadsheet-spacer-test-#{System.unique_integer([:positive])}"
-    session = start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir})
+
+    session =
+      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
 
     assert {:ok, [%{sheets: [%{table_name: table, row_count: 2, col_count: 2}]}]} =
              SpreadsheetSession.list(session)
@@ -82,10 +86,12 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     result_iri = RDF.IRI.new!("https://example.com/sheaf/RES111")
     file_iri = RDF.IRI.new!("https://example.com/sheaf/FILE11")
     tool_call_iri = RDF.IRI.new!("https://example.com/sheaf/CALL11")
-    graphs = :ets.new(:spreadsheet_query_result_graphs, [:set, :public])
+    test_pid = self()
 
     id = "spreadsheet-query-result-test-#{System.unique_integer([:positive])}"
-    session = start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir})
+
+    session =
+      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
 
     assert {:ok, [%{sheets: [%{table_name: table}]}]} = SpreadsheetSession.list(session)
 
@@ -105,20 +111,15 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
                  blob_root: Path.join(tmp_dir, "blobs"),
                  result_iri: result_iri,
                  file_iri: file_iri,
-                 tool_call_iri: tool_call_iri,
-                 put_graph: fn graph_name, graph ->
-                   :ets.insert(graphs, {to_string(graph_name), graph})
+                 execution_iri: tool_call_iri,
+                 persist: fn graph ->
+                   send(test_pid, {:workspace_graph, graph})
                    :ok
                  end
                ]
              )
 
-    fetch_graph = fn iri ->
-      case :ets.lookup(graphs, to_string(iri)) do
-        [{_key, graph}] -> {:ok, graph}
-        [] -> {:error, :not_found}
-      end
-    end
+    assert_receive {:workspace_graph, workspace_graph}
 
     assert {:ok,
             %{
@@ -130,7 +131,7 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
             }} =
              Sheaf.Assistant.QueryResults.read("https://example.com/sheaf/RES111",
                blob_root: Path.join(tmp_dir, "blobs"),
-               fetch_graph: fetch_graph,
+               workspace_graph: workspace_graph,
                offset: 1,
                limit: 2
              )
@@ -146,7 +147,9 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     ])
 
     id = "spreadsheet-empty-sheet-test-#{System.unique_integer([:positive])}"
-    session = start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir})
+
+    session =
+      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
 
     assert {:ok, [%{sheets: [%{name: "Data", row_count: 1}], sheet_errors: [sheet_error]}]} =
              SpreadsheetSession.list(session)
@@ -161,7 +164,9 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     XLSXFixture.write_xlsx!(xlsx_path, [["name"], ["visible"]])
 
     id = "spreadsheet-lock-test-#{System.unique_integer([:positive])}"
-    session = start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir})
+
+    session =
+      start_supervised!({SpreadsheetSession, id: id, directory: tmp_dir, sources: [xlsx_path]})
 
     assert {:error, read_reason} =
              SpreadsheetSession.query(session, "SELECT * FROM read_csv('/etc/passwd') LIMIT 1")

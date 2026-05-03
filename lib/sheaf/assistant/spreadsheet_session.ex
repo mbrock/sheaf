@@ -11,6 +11,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   use GenServer
 
+  alias RDF.{Description, Graph}
   alias Sheaf.Assistant.QueryResults
 
   require OpenTelemetry.Tracer, as: Tracer
@@ -83,6 +84,25 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     GenServer.call(server, {:search, text, opts}, Keyword.get(opts, :timeout, 60_000))
   end
 
+  def describe_paths(paths, opts \\ []) when is_list(paths) do
+    directory = Keyword.get_lazy(opts, :directory, &configured_directory/0)
+    sources = Enum.map(paths, &source_from_path(directory, &1))
+    id = Keyword.get(opts, :id, "spreadsheet-describe-#{System.unique_integer([:positive])}")
+
+    with {:ok, state} <- open_and_load(id, directory, sources: sources) do
+      try do
+        {:ok,
+         %{
+           spreadsheets: state.spreadsheets,
+           errors: state.errors,
+           loaded_at: state.loaded_at
+         }}
+      after
+        release_state(state)
+      end
+    end
+  end
+
   @impl true
   def init(opts) do
     directory = Keyword.get_lazy(opts, :directory, &configured_directory/0)
@@ -96,7 +116,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
           {"sheaf.spreadsheet.directory", Path.expand(directory)}
         ]
       } do
-        case open_and_load(id, directory) do
+        case open_and_load(id, directory, opts) do
           {:ok, state} ->
             Tracer.set_attribute("sheaf.spreadsheet.count", length(state.spreadsheets))
             Tracer.set_attribute("sheaf.spreadsheet.load_error_count", length(state.errors))
@@ -189,30 +209,30 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     {:reply, result, state}
   end
 
-  defp open_and_load(id, directory) do
+  defp open_and_load(id, directory, opts) do
     with {:ok, db} <- Duckdbex.open() do
       case Duckdbex.connection(db) do
-        {:ok, conn} -> load_into_connection(id, directory, db, conn)
+        {:ok, conn} -> load_into_connection(id, directory, db, conn, opts)
         {:error, reason} -> release_and_error(db, reason)
       end
     end
   end
 
-  defp load_into_connection(id, directory, db, conn) do
+  defp load_into_connection(id, directory, db, conn, opts) do
     with :ok <- ensure_extension(conn, "core_functions"),
          :ok <- ensure_extension(conn, "excel"),
          :ok <- create_metadata_tables(conn) do
       loaded_at = now_iso8601()
-      files = spreadsheet_files(directory)
+      sources = spreadsheet_sources(directory, opts)
 
       {spreadsheets, errors} =
-        Enum.reduce(files, {[], []}, fn path, {spreadsheets, errors} ->
-          case load_workbook(conn, directory, path, loaded_at) do
+        Enum.reduce(sources, {[], []}, fn source, {spreadsheets, errors} ->
+          case load_workbook(conn, directory, source, loaded_at) do
             {:ok, spreadsheet, sheet_errors} ->
               {[spreadsheet | spreadsheets], Enum.reverse(sheet_errors) ++ errors}
 
             {:error, reason} ->
-              {spreadsheets, [%{path: path, error: reason} | errors]}
+              {spreadsheets, [%{path: source.path, error: reason} | errors]}
           end
         end)
 
@@ -293,7 +313,8 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     end
   end
 
-  defp load_workbook(conn, directory, path, loaded_at) do
+  defp load_workbook(conn, directory, source, loaded_at) do
+    path = source.path
     stat = File.stat!(path)
     bytes = File.read!(path)
     sha = :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
@@ -301,9 +322,9 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     file_key =
       :crypto.hash(:sha256, Path.expand(path) <> "\0" <> sha) |> Base.encode16(case: :lower)
 
-    id = "xl_" <> String.slice(file_key, 0, 12)
-    basename = Path.basename(path)
-    title = relative_path(directory, path)
+    id = Map.get(source, :id) || "xl_" <> String.slice(file_key, 0, 12)
+    basename = Map.get(source, :basename) || Path.basename(path)
+    title = Map.get(source, :title) || relative_path(directory, path)
     sheet_names = xlsx_sheet_names(path)
 
     transaction(conn, fn ->
@@ -686,23 +707,109 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   defp row_map(columns, row), do: columns |> Enum.zip(row) |> Map.new()
 
-  defp spreadsheet_files(directory) do
-    directory = Path.expand(directory)
+  defp release_state(state) do
+    if is_reference(state.conn), do: Duckdbex.release(state.conn)
+    if is_reference(state.db), do: Duckdbex.release(state.db)
+    :ok
+  end
 
-    if File.dir?(directory) do
-      directory
-      |> File.ls!()
-      |> Enum.map(&Path.join(directory, &1))
-      |> Enum.flat_map(fn path ->
-        cond do
-          File.dir?(path) -> spreadsheet_files(path)
-          xlsx?(path) -> [path]
-          true -> []
+  defp spreadsheet_sources(directory, opts) do
+    case Keyword.fetch(opts, :sources) do
+      {:ok, sources} ->
+        sources
+        |> List.wrap()
+        |> Enum.map(&normalize_source(directory, &1))
+        |> Enum.filter(&xlsx?(&1.path))
+
+      :error ->
+        workspace_sources(directory, opts)
+    end
+  end
+
+  defp source_from_path(directory, path) do
+    %{
+      path: Path.expand(path),
+      title: relative_path(directory, path),
+      basename: Path.basename(path)
+    }
+  end
+
+  defp normalize_source(directory, source) when is_binary(source),
+    do: source_from_path(directory, source)
+
+  defp normalize_source(directory, source) when is_map(source) do
+    source
+    |> Map.update!(:path, &Path.expand/1)
+    |> Map.put_new(:title, relative_path(directory, source.path))
+    |> Map.put_new(:basename, Path.basename(source.path))
+  end
+
+  defp workspace_sources(_directory, opts) do
+    cond do
+      Keyword.get(opts, :workspace_sources?, true) == false ->
+        []
+
+      is_nil(Process.whereis(Sheaf.Repo)) ->
+        []
+
+      true ->
+        with {:ok, graph} <- workspace_graph(opts) do
+          graph
+          |> RDF.Data.descriptions()
+          |> Enum.filter(
+            &Description.include?(&1, {RDF.type(), Sheaf.NS.DOC.SpreadsheetWorkbook})
+          )
+          |> Enum.flat_map(&source_from_workbook(graph, &1, opts))
+          |> Enum.uniq_by(& &1.path)
+          |> Enum.sort_by(& &1.title)
+        else
+          _ -> []
         end
-      end)
-      |> Enum.sort()
+    end
+  end
+
+  defp workspace_graph(opts) do
+    case Keyword.fetch(opts, :workspace_graph) do
+      {:ok, graph} ->
+        {:ok, graph}
+
+      :error ->
+        graph_name = RDF.iri(Sheaf.Workspace.graph())
+
+        with :ok <- Sheaf.Repo.load_once({nil, nil, nil, graph_name}) do
+          graph =
+            Sheaf.Repo.ask(fn dataset ->
+              RDF.Dataset.graph(dataset, graph_name) || Graph.new(name: graph_name)
+            end)
+
+          {:ok, graph}
+        end
+    end
+  end
+
+  defp source_from_workbook(graph, %Description{} = workbook, opts) do
+    file_iri =
+      first_term(workbook, Sheaf.NS.DOC.sourceFile()) ||
+        first_term(workbook, Sheaf.NS.DCAT.distribution())
+
+    with %RDF.IRI{} <- file_iri,
+         %Description{} = file <- Graph.description(graph, file_iri),
+         {:ok, path} <- Sheaf.Files.local_path(file, opts),
+         true <- File.regular?(path) do
+      [
+        %{
+          id: Sheaf.Id.id_from_iri(workbook.subject),
+          path: Path.expand(path),
+          title:
+            first_value(workbook, Sheaf.NS.DCTERMS.title()) ||
+              first_value(workbook, RDF.NS.RDFS.label()) ||
+              first_value(file, Sheaf.NS.DOC.originalFilename()) ||
+              Path.basename(path),
+          basename: first_value(file, Sheaf.NS.DOC.originalFilename()) || Path.basename(path)
+        }
+      ]
     else
-      []
+      _ -> []
     end
   end
 
@@ -840,6 +947,19 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   defp clamp_limit(limit) when is_integer(limit), do: limit |> max(1) |> min(@max_query_rows)
   defp clamp_limit(_limit), do: 50
+
+  defp first_term(%Description{} = description, property) do
+    Description.first(description, property)
+  end
+
+  defp first_value(%Description{} = description, property) do
+    description
+    |> first_term(property)
+    |> case do
+      nil -> nil
+      term -> RDF.Term.value(term)
+    end
+  end
 
   defp configured_directory do
     :sheaf

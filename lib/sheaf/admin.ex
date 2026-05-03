@@ -242,6 +242,36 @@ defmodule Sheaf.Admin do
     end)
   end
 
+  def import_spreadsheet_metadata(args) do
+    {opts, paths, invalid} = OptionParser.parse(args, strict: [no_backup: :boolean])
+
+    reject_invalid!(invalid)
+
+    if paths == [] do
+      fail!("Usage: sheaf-admin spreadsheets import-metadata PATH... [--no-backup]")
+    end
+
+    unless opts[:no_backup], do: backup([])
+
+    case Sheaf.Spreadsheet.Metadata.import_paths(paths) do
+      {:ok, %{imported: imported, errors: errors}} ->
+        Enum.each(imported, fn workbook ->
+          info("Imported spreadsheet metadata #{workbook.workbook}: #{workbook.title}")
+
+          Enum.each(workbook.sheets, fn sheet ->
+            info("  #{sheet.name} rows=#{sheet.row_count} cols=#{sheet.col_count}")
+          end)
+        end)
+
+        Enum.each(errors, fn error ->
+          info("Skipped spreadsheet metadata #{error.path}: #{inspect(error.error)}")
+        end)
+
+      {:error, reason} ->
+        fail!("Spreadsheet metadata import failed: #{inspect(reason)}")
+    end
+  end
+
   def list_spreadsheets(args) do
     {opts, positional, invalid} = OptionParser.parse(args, strict: [db: :string])
     reject_invalid!(invalid)

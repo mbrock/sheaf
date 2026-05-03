@@ -11,6 +11,7 @@ defmodule Sheaf.Admin.CLI do
     sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--no-backup]
     sheaf-admin import spreadsheet PATH [--title TITLE] [--graph IRI] [--no-backup]
     sheaf-admin spreadsheets import PATH... [--title TITLE] [--db PATH]
+    sheaf-admin spreadsheets import-metadata PATH... [--no-backup]
     sheaf-admin spreadsheets list [--db PATH]
     sheaf-admin spreadsheets query SQL [--db PATH] [--limit N]
     sheaf-admin search sync [--db PATH] [--limit N] [--kind KIND] [--provider NAME] [--model NAME]
@@ -69,6 +70,9 @@ defmodule Sheaf.Admin.CLI do
 
   defp dispatch(["spreadsheets", "import" | args]),
     do: run(fn -> Sheaf.Admin.import_spreadsheets(args) end)
+
+  defp dispatch(["spreadsheets", "import-metadata" | args]),
+    do: run(fn -> Sheaf.Admin.import_spreadsheet_metadata(args) end)
 
   defp dispatch(["spreadsheets", "list" | args]),
     do: run(fn -> Sheaf.Admin.list_spreadsheets(args) end)
