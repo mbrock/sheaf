@@ -6,6 +6,7 @@ defmodule Sheaf.Corpus do
 
   alias RDF.Graph
   alias Sheaf.{Document, Documents, Id}
+  alias Sheaf.NS.DOC
 
   @doc """
   Full document list (delegates to `Sheaf.Documents.list/0`).
@@ -32,15 +33,28 @@ defmodule Sheaf.Corpus do
       Sheaf.Repo.ask(fn dataset ->
         dataset
         |> RDF.Dataset.graphs()
-        |> Enum.find_value(fn graph ->
-          if Graph.describes?(graph, block) and graph.name do
-            Id.id_from_iri(graph.name)
-          end
-        end)
+        |> document_graphs_describing(block)
+        |> List.first()
+        |> case do
+          nil -> nil
+          graph -> Id.id_from_iri(graph.name)
+        end
       end)
     else
       _ -> nil
     end
+  end
+
+  defp document_graphs_describing(graphs, block) do
+    Enum.filter(graphs, fn graph ->
+      Graph.describes?(graph, block) and document_graph?(graph)
+    end)
+  end
+
+  defp document_graph?(%Graph{name: nil}), do: false
+
+  defp document_graph?(%Graph{name: name} = graph) do
+    RDF.Data.include?(graph, {name, RDF.type(), DOC.Document})
   end
 
   @doc """
