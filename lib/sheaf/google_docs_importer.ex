@@ -11,7 +11,6 @@ defmodule Sheaf.GoogleDocsImporter do
   alias Sheaf.NS.{BIRO, CITO, DOC, FABIO, FRBR}
 
   @default_title "Circulation of Things in a Swapshop in Riga, Latvia"
-  @default_source_url "https://docs.google.com/document/d/1-QPG8LIXaRH9ejNDqHZQJodkCD4MeClEdXfka7DLkGg/edit?tab=t.0"
   @default_previous_document_id "35MZYM"
   @default_expression_id "BHFQTW"
 
@@ -261,7 +260,7 @@ defmodule Sheaf.GoogleDocsImporter do
     |> Graph.add({document, RDF.type(), DOC.Document})
     |> Graph.add({document, RDF.type(), DOC.Thesis})
     |> Graph.add({document, RDFS.label(), RDF.literal(title)})
-    |> Graph.add({document, DOC.sourceKey(), RDF.literal(source_url(json, opts))})
+    |> add_optional_literal(document, DOC.sourceKey(), source_url(json, opts))
   end
 
   defp add_structural_element(%{"paragraph" => paragraph} = element, state) do
@@ -869,9 +868,15 @@ defmodule Sheaf.GoogleDocsImporter do
   defp source_url(json, opts) do
     Keyword.get(opts, :source_url) ||
       case Map.get(json, "documentId") do
-        nil -> @default_source_url
+        nil -> configured_source_url()
         id -> "https://docs.google.com/document/d/#{id}/edit?tab=t.0"
       end
+  end
+
+  defp configured_source_url do
+    :sheaf
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:source_url)
   end
 
   defp previous_document_iri(opts),
