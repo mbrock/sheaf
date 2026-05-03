@@ -157,7 +157,7 @@ defmodule SheafWeb.DocumentLive do
     <section id={"block-#{Document.id(@block.iri)}"} class="scroll-mt-6 space-y-8">
       <h1
         class={[
-          "cursor-pointer rounded-sm font-sans text-3xl font-bold",
+          "small-caps cursor-pointer rounded-sm text-3xl font-semibold leading-tight",
           selected_class(@block, @selected_id)
         ]}
         phx-click="inspect_block"
@@ -191,8 +191,9 @@ defmodule SheafWeb.DocumentLive do
         phx-click="inspect_block"
         phx-value-id={Document.id(@block.iri)}
       >
-        <h2 class="font-sans text-xl font-semibold">
-          {section_title(@block.number, Document.heading(@graph, @block.iri))}
+        <h2 class={["small-caps font-semibold leading-tight", section_heading_class(@block.number)]}>
+          <span class="text-stone-500 dark:text-stone-400">{section_number(@block.number)}</span>
+          <span class="ml-2">{Document.heading(@graph, @block.iri)}</span>
         </h2>
       </summary>
 
@@ -208,15 +209,18 @@ defmodule SheafWeb.DocumentLive do
 
   defp reader_block(%{block: %{type: :paragraph}} = assigns) do
     ~H"""
-    <article id={"block-#{Document.id(@block.iri)}"} class="relative">
-      <span class="absolute right-full top-1 mr-3 w-10 text-right font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
+    <article
+      id={"block-#{Document.id(@block.iri)}"}
+      class="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-2"
+    >
+      <span class="col-start-1 row-start-1 pt-1 text-right font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
         §{@block.number}
       </span>
 
       <p
         id={"text-#{Document.id(@block.iri)}"}
         class={[
-          "cursor-pointer rounded-sm font-serif leading-normal",
+          "col-start-2 row-start-1 min-w-0 cursor-pointer rounded-sm font-serif leading-normal",
           paragraph_markup_classes(),
           selected_class(@block, @selected_id)
         ]}
@@ -238,7 +242,7 @@ defmodule SheafWeb.DocumentLive do
 
       <div
         :if={reference_documents(@references_by_block, @block.iri) != []}
-        class="mt-2 space-y-1 pl-4 font-sans"
+        class="col-start-2 mt-2 space-y-1 pl-4 font-sans"
       >
         <.document_entry
           :for={document <- reference_documents(@references_by_block, @block.iri)}
@@ -255,17 +259,17 @@ defmodule SheafWeb.DocumentLive do
     <article
       id={"block-#{Document.id(@block.iri)}"}
       class={[
-        "relative cursor-pointer rounded-sm py-1",
+        "grid cursor-pointer grid-cols-[2rem_minmax(0,1fr)] gap-x-2 rounded-sm py-1",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
       phx-value-id={Document.id(@block.iri)}
     >
-      <span class="absolute right-full top-1 mr-3 w-10 text-right font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
+      <span class="col-start-1 row-start-1 pt-1 text-right font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
         §{@block.number}
       </span>
 
-      <div class="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
+      <div class="col-start-2 mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
         <span
           :if={Document.code_category(@graph, @block.iri) != ""}
           class="shrink-0 font-semibold text-stone-700 dark:text-stone-300"
@@ -283,7 +287,7 @@ defmodule SheafWeb.DocumentLive do
 
       <p
         id={"text-#{Document.id(@block.iri)}"}
-        class="font-serif leading-normal"
+        class="col-start-2 min-w-0 font-serif leading-normal"
         phx-update="ignore"
       >
         {Document.text(@graph, @block.iri)}
@@ -298,18 +302,18 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "relative cursor-pointer rounded-sm font-serif leading-normal",
+        "grid cursor-pointer grid-cols-[2rem_minmax(0,1fr)] gap-x-2 rounded-sm font-serif leading-normal",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
       phx-value-id={Document.id(@block.iri)}
     >
-      <span class="absolute right-full top-1 mr-3 w-10 text-right font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
+      <span class="col-start-1 row-start-1 pt-1 text-right font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
         §{@block.number}
       </span>
       <div
         id={"text-#{Document.id(@block.iri)}"}
-        class={["block" | extracted_text_block_classes()]}
+        class={["col-start-2 min-w-0" | extracted_text_block_classes()]}
         phx-update="ignore"
       >
         {raw(Document.source_html(@graph, @block.iri))}
@@ -344,7 +348,7 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <ol
       :if={@footnotes != []}
-      class="mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-serif text-sm leading-snug text-stone-700 dark:border-stone-800/80 dark:text-stone-300"
+      class="col-start-2 mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-serif text-sm leading-snug text-stone-700 dark:border-stone-800/80 dark:text-stone-300"
     >
       <li
         :for={footnote <- @footnotes}
@@ -429,9 +433,11 @@ defmodule SheafWeb.DocumentLive do
     |> elem(0)
   end
 
-  defp section_title(number, heading) do
-    "#{Enum.join(number, ".")}. #{heading}"
-  end
+  defp section_number(number), do: "#{Enum.join(number, ".")}."
+
+  defp section_heading_class([_]), do: "text-2xl"
+  defp section_heading_class([_, _]), do: "text-xl"
+  defp section_heading_class(_number), do: "text-lg"
 
   defp knuth_plass?(blocks) do
     @knuth_plass? and paragraph_block_count(blocks) <= @knuth_plass_max_blocks

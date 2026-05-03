@@ -21,10 +21,11 @@ defmodule SheafWeb.AppChrome do
         <.link
           :if={@section == :document}
           navigate={~p"/"}
-          class="inline-flex h-8 shrink-0 items-center gap-1 rounded-sm px-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          class="grid size-8 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          title="Back"
+          aria-label="Back"
         >
           <.icon name="hero-arrow-left" class="size-4" />
-          <span>Back to main</span>
         </.link>
 
         <.link

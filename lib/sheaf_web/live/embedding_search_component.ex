@@ -147,7 +147,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <section class={if @variant == :toolbar, do: "min-w-0 flex-1 sm:flex-none", else: nil}>
+    <section class={if @variant == :toolbar, do: "min-w-0 flex-none", else: nil}>
       <.toolbar_search :if={@variant == :toolbar} {assigns} />
       <.full_search :if={@variant != :toolbar} {assigns} />
     </section>
@@ -165,7 +165,10 @@ defmodule SheafWeb.EmbeddingSearchComponent do
       phx-target={@myself}
     >
       <form phx-submit="search" phx-target={@myself}>
-        <div class="flex h-9 w-full min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-2 sm:w-[min(22rem,42vw)] sm:gap-2 dark:border-stone-700 dark:bg-stone-900">
+        <div class={[
+          "group flex h-9 min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-1 transition-[width] duration-150 hover:w-[min(18rem,42vw)] focus-within:w-[min(18rem,42vw)] sm:gap-2 dark:border-stone-700 dark:bg-stone-900",
+          if(@open?, do: "w-[min(18rem,42vw)]", else: "w-9")
+        ]}>
           <input
             id={"#{@id}-input"}
             type="search"
@@ -173,7 +176,13 @@ defmodule SheafWeb.EmbeddingSearchComponent do
             value={@query}
             autocomplete="off"
             placeholder="Search"
-            class="min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-base leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 sm:text-sm dark:text-stone-50 dark:placeholder:text-stone-500"
+            class={[
+              "min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-base leading-6 text-stone-950 outline-none transition-opacity placeholder:text-stone-400 focus:ring-0 sm:text-sm dark:text-stone-50 dark:placeholder:text-stone-500",
+              if(@open?,
+                do: "opacity-100",
+                else: "opacity-0 group-hover:opacity-100 focus:opacity-100"
+              )
+            ]}
           />
           <button
             type="submit"

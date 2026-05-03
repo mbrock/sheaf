@@ -165,6 +165,8 @@
 @utility small-caps {
   font-family: "Equity Caps", "Equity", "Iowan Old Style", Georgia, serif;
   text-transform: lowercase;
+  font-variant-numeric: oldstyle-nums;
+  font-feature-settings: "onum" 1;
 }
 
 @layer base {
