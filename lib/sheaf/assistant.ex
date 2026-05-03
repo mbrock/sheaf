@@ -198,10 +198,25 @@ defmodule Sheaf.Assistant do
     if state.task_round >= state.max_tool_rounds do
       finish_run({:error, {:max_tool_rounds, response}}, %{state | context: context})
     else
-      context = Context.execute_and_append_tools(context, tool_calls, state.tools)
-      state = start_inference(%{state | context: context}, context, state.task_round + 1, [])
-      {:noreply, state}
+      case execute_tools(context, tool_calls, state.tools) do
+        {:ok, context} ->
+          state = start_inference(%{state | context: context}, context, state.task_round + 1, [])
+          {:noreply, state}
+
+        {:error, reason} ->
+          finish_run({:error, {:tool_execution_failed, reason}}, %{state | context: context})
+      end
     end
+  end
+
+  defp execute_tools(context, tool_calls, tools) do
+    {:ok, Context.execute_and_append_tools(context, tool_calls, tools)}
+  rescue
+    exception ->
+      {:error, Exception.message(exception)}
+  catch
+    kind, reason ->
+      {:error, {kind, reason}}
   end
 
   defp finish_run(result, %{pending_from: from} = state) do

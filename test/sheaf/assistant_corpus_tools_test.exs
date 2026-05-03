@@ -176,6 +176,35 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert tool_text(result) =~ "name\nalpha\nbeta"
   end
 
+  test "query_spreadsheets renders non-scalar DuckDB values in TSV" do
+    tools =
+      CorpusTools.tools(
+        include_notes?: false,
+        spreadsheet_lister: fn -> {:ok, [%{id: "xl_a", sheets: []}]} end,
+        spreadsheet_query: fn sql, opts ->
+          assert sql == "SELECT span FROM example"
+          assert opts[:limit] == 50
+
+          {:ok,
+           %{
+             columns: ["span"],
+             rows: [%{"span" => {0, 6}}],
+             row_count: 1,
+             result_id: nil,
+             result_iri: nil,
+             result_file_iri: nil
+           }}
+        end
+      )
+
+    tool = Enum.find(tools, &(&1.name == "query_spreadsheets"))
+
+    assert {:ok, result} = Tool.execute(tool, %{"sql" => "SELECT span FROM example"})
+
+    assert tool_text(result) =~ "Format: TSV"
+    assert tool_text(result) =~ "{0, 6}"
+  end
+
   test "list_spreadsheets can filter and limit sheet metadata" do
     spreadsheets = [
       %{

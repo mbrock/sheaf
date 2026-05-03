@@ -526,10 +526,20 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp instrument(notify, name, callback) do
     fn args ->
       notify.({:tool_started, name, args})
-      result = callback.(args)
+      result = safe_callback(callback, args)
       notify.({:tool_finished, name, result})
       result
     end
+  end
+
+  defp safe_callback(callback, args) do
+    callback.(args)
+  rescue
+    exception ->
+      {:error, Exception.message(exception)}
+  catch
+    kind, reason ->
+      {:error, "#{kind}: #{inspect(reason)}"}
   end
 
   defp rendered_result(result) do

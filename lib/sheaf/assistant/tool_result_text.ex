@@ -704,10 +704,19 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp spreadsheet_hit_row_text(row), do: to_string(row)
 
   defp tsv_cell(nil), do: ""
+  defp tsv_cell(value) when is_binary(value), do: escape_tsv(value)
+  defp tsv_cell(value) when is_boolean(value), do: value |> to_string() |> escape_tsv()
+  defp tsv_cell(value) when is_integer(value), do: value |> Integer.to_string() |> escape_tsv()
+  defp tsv_cell(value) when is_float(value), do: value |> Float.to_string() |> escape_tsv()
 
   defp tsv_cell(value) do
     value
-    |> to_string()
+    |> inspect()
+    |> escape_tsv()
+  end
+
+  defp escape_tsv(value) do
+    value
     |> String.replace("\t", " ")
     |> String.replace("\r\n", "\\n")
     |> String.replace("\n", "\\n")
