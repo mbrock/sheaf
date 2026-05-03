@@ -211,9 +211,9 @@ defmodule SheafWeb.AssistantChatComponent do
         data-scroll-stick-bottom="true"
       >
         <div class="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
-          <.chat_message
-            :for={message <- @chat.messages}
-            message={message}
+          <.chat_item
+            :for={item <- message_groups(@chat.messages)}
+            item={item}
             titles={Map.get(@chat, :titles, %{})}
           />
 
@@ -314,9 +314,9 @@ defmodule SheafWeb.AssistantChatComponent do
         data-scroll-initial="bottom"
         data-scroll-stick-bottom="true"
       >
-        <.chat_message
-          :for={message <- @chat.messages}
-          message={message}
+        <.chat_item
+          :for={item <- message_groups(@chat.messages)}
+          item={item}
           titles={Map.get(@chat, :titles, %{})}
         />
 
@@ -413,6 +413,49 @@ defmodule SheafWeb.AssistantChatComponent do
         </button>
       </div>
     </.form>
+    """
+  end
+
+  defp chat_item(%{item: %{kind: :message, message: message}} = assigns) do
+    assigns = assign(assigns, :message, message)
+
+    ~H"""
+    <.chat_message message={@message} titles={@titles} />
+    """
+  end
+
+  defp chat_item(%{item: %{kind: :tools, messages: messages}} = assigns) do
+    assigns = assign(assigns, :messages, messages)
+
+    ~H"""
+    <div class="flex flex-wrap gap-x-2 gap-y-1 px-1">
+      <.tool_chip :for={message <- @messages} message={message} titles={@titles} />
+    </div>
+    """
+  end
+
+  defp tool_chip(assigns) do
+    assigns = assign(assigns, :tool_view, tool_view(assigns.message, assigns.titles))
+
+    ~H"""
+    <div class={[
+      "inline-flex max-w-full items-center gap-1 rounded-sm border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-[11px] leading-5 text-stone-700",
+      "dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300",
+      @tool_view.status_class
+    ]}>
+      <span class="shrink-0 text-xs">{@tool_view.icon}</span>
+      <span class="shrink-0">{@tool_view.action}</span>
+      <span :if={@tool_view.target != ""} class="min-w-0 truncate">{@tool_view.target}</span>
+      <span :if={@tool_view.scope != ""} class="min-w-0 truncate">
+        in <em>{@tool_view.scope}</em>
+      </span>
+      <span
+        :if={@tool_view.detail != ""}
+        class="shrink-0 text-stone-500 dark:text-stone-400"
+      >
+        {@tool_view.detail}
+      </span>
+    </div>
     """
   end
 
@@ -617,6 +660,28 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp tool_arg(_, _), do: nil
+
+  defp message_groups(messages) do
+    messages
+    |> Enum.reduce([], &put_message_group/2)
+    |> Enum.reverse()
+  end
+
+  defp put_message_group(%{role: :tool, tool: tool} = message, [
+         %{kind: :tools, messages: messages} = group | rest
+       ])
+       when tool != "write_note" do
+    [%{group | messages: messages ++ [message]} | rest]
+  end
+
+  defp put_message_group(%{role: :tool, tool: tool} = message, groups)
+       when tool != "write_note" do
+    [%{kind: :tools, messages: [message]} | groups]
+  end
+
+  defp put_message_group(message, groups) do
+    [%{kind: :message, message: message} | groups]
+  end
 
   defp note_view(input) do
     %{
