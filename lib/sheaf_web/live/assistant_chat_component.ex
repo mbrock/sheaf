@@ -100,9 +100,24 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   def handle_event("set_options", %{"chat" => chat_params}, socket) do
-    mode = chat_params |> Map.get("mode", socket.assigns.mode) |> normalize_mode()
-    model_provider = chat_params |> Map.get("model_provider", socket.assigns.model_provider)
-    model_provider = normalize_model_provider(model_provider)
+    options_locked? = is_binary(socket.assigns.selected_chat_id)
+
+    mode =
+      if options_locked? do
+        socket.assigns.mode
+      else
+        chat_params |> Map.get("mode", socket.assigns.mode) |> normalize_mode()
+      end
+
+    model_provider =
+      if options_locked? do
+        socket.assigns.model_provider
+      else
+        chat_params
+        |> Map.get("model_provider", socket.assigns.model_provider)
+        |> normalize_model_provider()
+      end
+
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
     message = Map.get(chat_params, "message", "")
 
@@ -226,6 +241,7 @@ defmodule SheafWeb.AssistantChatComponent do
             form={@form}
             mode={@mode}
             model_provider={@model_provider}
+            selected_chat_id={@selected_chat_id}
             pending={@chat.pending}
             myself={@myself}
           />
@@ -285,6 +301,7 @@ defmodule SheafWeb.AssistantChatComponent do
         form={@form}
         mode={@mode}
         model_provider={@model_provider}
+        selected_chat_id={@selected_chat_id}
         pending={@chat.pending}
         myself={@myself}
       />
@@ -319,10 +336,13 @@ defmodule SheafWeb.AssistantChatComponent do
   attr :form, :any, required: true
   attr :mode, :string, required: true
   attr :model_provider, :string, required: true
+  attr :selected_chat_id, :string, default: nil
   attr :pending, :boolean, required: true
   attr :myself, :any, required: true
 
   defp composer_form(assigns) do
+    assigns = assign(assigns, :options_locked?, is_binary(assigns.selected_chat_id))
+
     ~H"""
     <.form
       for={@form}
@@ -336,29 +356,31 @@ defmodule SheafWeb.AssistantChatComponent do
         rows="1"
         value={@form[:message].value}
         class="block max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-2 text-base leading-6 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:text-sm sm:leading-5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
-        placeholder={input_placeholder(@mode)}
+        placeholder={input_placeholder(@mode, @selected_chat_id)}
         disabled={@pending}
       ></textarea>
       <div class="flex items-center justify-between gap-3">
         <div class="inline-flex items-center gap-1 font-sans text-xs">
-          <label class={selector_label_class(@mode, "quick")}>
+          <label class={selector_label_class(@mode, "quick", @options_locked?)}>
             <input
               type="radio"
               name="chat[mode]"
               value="quick"
               checked={@mode == "quick"}
               class="sr-only"
+              disabled={@options_locked?}
             />
             <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
             <span>Quick</span>
           </label>
-          <label class={selector_label_class(@mode, "research")}>
+          <label class={selector_label_class(@mode, "research", @options_locked?)}>
             <input
               type="radio"
               name="chat[mode]"
               value="research"
               checked={@mode == "research"}
               class="sr-only"
+              disabled={@options_locked?}
             />
             <.icon name="hero-beaker" class="size-3.5" />
             <span>Research</span>
@@ -367,7 +389,7 @@ defmodule SheafWeb.AssistantChatComponent do
         <div class="inline-flex items-center gap-1 font-sans text-xs">
           <label
             :for={option <- Sheaf.LLM.assistant_model_options()}
-            class={selector_label_class(@model_provider, option.provider)}
+            class={selector_label_class(@model_provider, option.provider, @options_locked?)}
           >
             <input
               type="radio"
@@ -375,6 +397,7 @@ defmodule SheafWeb.AssistantChatComponent do
               value={option.provider}
               checked={@model_provider == option.provider}
               class="sr-only"
+              disabled={@options_locked?}
             />
             <span>{option.label}</span>
           </label>
@@ -787,13 +810,19 @@ defmodule SheafWeb.AssistantChatComponent do
     |> Keyword.merge(base_options)
   end
 
-  defp selector_label_class(selected_value, value) do
+  defp selector_label_class(selected_value, value, locked?) do
     [
-      "inline-flex cursor-pointer items-center gap-1.5 rounded-sm px-2 py-1 transition-colors",
+      "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 transition-colors",
+      locked? && "cursor-not-allowed",
+      not locked? && "cursor-pointer",
       selected_value == value &&
         "text-stone-900 ring-1 ring-inset ring-stone-400/70 dark:text-stone-50 dark:ring-stone-500/80",
       selected_value != value &&
-        "text-stone-500 hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+        if(locked?,
+          do: "text-stone-400 opacity-60 dark:text-stone-600",
+          else:
+            "text-stone-500 hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+        )
     ]
   end
 
@@ -837,8 +866,11 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_model_provider(chat),
     do: chat |> chat_model() |> Sheaf.LLM.assistant_provider_for_model()
 
-  defp input_placeholder("research"), do: "Give the assistant a research task"
-  defp input_placeholder(_mode), do: "Ask a quick question"
+  defp input_placeholder(_mode, selected_chat_id) when is_binary(selected_chat_id),
+    do: "Reply to assistant"
+
+  defp input_placeholder("research", _selected_chat_id), do: "Give the assistant a research task"
+  defp input_placeholder(_mode, _selected_chat_id), do: "Ask a quick question"
 
   defp turn_context(assigns) do
     %{}
