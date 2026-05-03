@@ -8,6 +8,7 @@ defmodule Quadlog do
     GenServer.start_link(__MODULE__, {path, opts}, Keyword.take(opts, [:name]))
   end
 
+  def path(pid), do: GenServer.call(pid, :path)
   def dataset(pid), do: GenServer.call(pid, :dataset)
   def ask(pid, fun), do: GenServer.call(pid, {:ask, :otel_ctx.get_current(), fun})
   def match(pid, pattern), do: GenServer.call(pid, {:match, :otel_ctx.get_current(), pattern})
@@ -30,12 +31,13 @@ defmodule Quadlog do
            :ok <- migrate(conn),
            pattern = load_pattern(opts),
            {:ok, dataset} <- load(conn, pattern, RDF.dataset()) do
-        {:ok, %{conn: conn, dataset: dataset, loaded_patterns: MapSet.new([pattern])}}
+        {:ok, %{conn: conn, path: path, dataset: dataset, loaded_patterns: MapSet.new([pattern])}}
       end
     end)
   end
 
   @impl true
+  def handle_call(:path, _from, state), do: {:reply, state.path, state}
   def handle_call(:dataset, _from, state), do: {:reply, state.dataset, state}
 
   def handle_call({:ask, ctx, fun}, _from, state) do

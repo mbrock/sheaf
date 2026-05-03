@@ -46,6 +46,8 @@ defmodule Sheaf.Repo do
     end
   end
 
+  def path, do: Quadlog.path(__MODULE__)
+
   def ask(fun) do
     Tracer.with_span "sheaf.repo.ask", %{kind: :internal} do
       Quadlog.ask(__MODULE__, fun)

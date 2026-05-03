@@ -5,7 +5,7 @@ defmodule Sheaf.Admin.CLI do
 
   @usage """
   Usage:
-    sheaf-admin backup [--output PATH] [--timeout MS] [--no-copy]
+    sheaf-admin backup [--output PATH]
     sheaf-admin schema upload
     sheaf-admin ingest files PATH... [--recursive] [--extensions pdf,docx] [--dry-run] [--no-backup]
     sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--no-backup]

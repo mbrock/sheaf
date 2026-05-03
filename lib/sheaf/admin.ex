@@ -7,6 +7,8 @@ defmodule Sheaf.Admin do
   Operational jobs exposed by the `sheaf-admin` escript.
   """
 
+  require OpenTelemetry.Tracer, as: Tracer
+
   alias RDF.Serialization
   alias Sheaf.NS.DOC
 
@@ -393,17 +395,40 @@ defmodule Sheaf.Admin do
 
   defp backup_dataset(opts) do
     path = output_path(opts)
+    source = Sheaf.Repo.path()
 
-    with {:ok, dataset} <- Sheaf.fetch_dataset() do
+    Tracer.with_span "sheaf.admin.backup", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "sqlite"},
+        {"db.operation", "backup"},
+        {"db.name", source},
+        {"sheaf.backup.path", path}
+      ]
+    } do
       File.mkdir_p!(Path.dirname(path))
-      body = Serialization.write_string!(dataset, media_type: "application/n-quads")
-      File.write!(path, body)
-      {:ok, path}
+
+      case Exqlite.start_link(database: source) do
+        {:ok, conn} ->
+          try do
+            with {:ok, _result} <-
+                   Exqlite.query(conn, "VACUUM main INTO ?", [path], timeout: :infinity) do
+              {:ok, path}
+            else
+              {:error, reason} -> {:error, "SQLite backup failed: #{inspect(reason)}"}
+            end
+          after
+            GenServer.stop(conn)
+          end
+
+        {:error, reason} ->
+          {:error, "SQLite backup failed: #{inspect(reason)}"}
+      end
     end
   end
 
   defp output_path(opts) do
-    file = "sheaf-#{DateTime.utc_now() |> DateTime.to_unix()}.nq"
+    file = "sheaf-#{DateTime.utc_now() |> DateTime.to_unix()}.sqlite3"
 
     case Keyword.get(opts, :output) do
       nil -> Path.join(["output", "backups", file])
@@ -414,7 +439,7 @@ defmodule Sheaf.Admin do
   defp normalize_output(output, file) do
     cond do
       String.ends_with?(output, "/") -> Path.join(output, file)
-      Path.extname(output) in [".gz", ".nq", ".trig", ".ttl"] -> output
+      Path.extname(output) in [".db", ".sqlite", ".sqlite3"] -> output
       true -> Path.join(output, file)
     end
   end
