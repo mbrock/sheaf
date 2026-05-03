@@ -205,6 +205,7 @@ defmodule Sheaf.Assistant.ChatTest do
 
       {:ok, query_result} =
         Tool.execute(query_tool, %{
+          "intent" => "create and inspect an agency row view",
           "sql" => """
           CREATE TEMP VIEW agency_rows AS
           SELECT buyer_type, amount FROM "#{table}" WHERE buyer_type = 'agency';

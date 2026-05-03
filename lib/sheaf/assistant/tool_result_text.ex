@@ -144,6 +144,7 @@ defmodule Sheaf.Assistant.ToolResultText do
   def to_text(%SpreadsheetQuery{} = result) do
     """
     SPREADSHEET QUERY
+    Intent: #{result.intent}
     SQL: #{result.sql}
     Result: #{query_result_line(result)}
     Rows: showing #{length(result.rows)} of #{result.row_count}

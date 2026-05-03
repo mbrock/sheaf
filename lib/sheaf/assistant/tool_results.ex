@@ -144,6 +144,7 @@ defmodule Sheaf.Assistant.ToolResults do
 
   defmodule SpreadsheetQuery do
     defstruct [
+      :intent,
       :sql,
       :result_id,
       :result_iri,

@@ -9,7 +9,6 @@ defmodule Sheaf.Assistant.QueryResults do
   require RDF.Graph
 
   @mime_type "application/vnd.apache.parquet"
-  @read_limit 200
 
   def create(attrs, opts \\ []) when is_map(attrs) do
     try do
@@ -495,7 +494,7 @@ defmodule Sheaf.Assistant.QueryResults do
     "'" <> String.replace(value, "'", "''") <> "'"
   end
 
-  defp clamp_limit(limit) when is_integer(limit), do: limit |> max(1) |> min(@read_limit)
+  defp clamp_limit(limit) when is_integer(limit), do: max(limit, 1)
   defp clamp_limit(_limit), do: 50
 
   defp clamp_offset(offset) when is_integer(offset), do: max(offset, 0)

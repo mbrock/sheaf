@@ -566,6 +566,13 @@ defmodule SheafWeb.AssistantChatComponent do
     tool_view("📝", "Saving", target, "", message)
   end
 
+  defp tool_view(%{tool: "query_spreadsheets", input: input} = message, _titles) do
+    intent = input |> tool_arg(:intent) |> note_text_value()
+    target = if intent == "", do: "spreadsheets", else: ellipsize(intent, 80)
+
+    tool_view("▦", "Spreadsheets:", target, "", message)
+  end
+
   defp tool_view(%{tool: tool} = message, _titles) when is_binary(tool) do
     tool_view("⚙️", "Using", String.replace(tool, "_", " "), "", message)
   end

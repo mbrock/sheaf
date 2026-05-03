@@ -34,6 +34,15 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
 
     assert {:ok, [%{row_number: 2, row: %{"buyer_type" => "municipality"}}]} =
              SpreadsheetSession.search(session, "municipality")
+
+    assert {:ok, %{row_count: 250, rows: preview_rows}} =
+             SpreadsheetSession.query(
+               session,
+               "SELECT i FROM range(1, 251) AS t(i)",
+               limit: 250
+             )
+
+    assert length(preview_rows) == 250
   end
 
   @tag :tmp_dir

@@ -21,7 +21,6 @@ defmodule Sheaf.Spreadsheets do
   Record.defrecord(:xmlText, Record.extract(:xmlText, from_lib: "xmerl/include/xmerl.hrl"))
 
   @default_path "var/sheaf-embeddings.sqlite3"
-  @max_query_rows 200
 
   @type conn :: Sqlite3.db()
 
@@ -787,7 +786,7 @@ defmodule Sheaf.Spreadsheets do
     |> Enum.uniq()
   end
 
-  defp clamp_limit(limit) when is_integer(limit), do: limit |> max(1) |> min(@max_query_rows)
+  defp clamp_limit(limit) when is_integer(limit), do: max(limit, 1)
   defp clamp_limit(_limit), do: 50
 
   defp transaction(conn, fun) do

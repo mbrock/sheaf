@@ -16,7 +16,6 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   @registry Sheaf.Assistant.ChatRegistry
   @default_directory "var/spreadsheets"
-  @max_query_rows 200
 
   defstruct [
     :id,
@@ -404,7 +403,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
   defp table_column_names(conn, table) do
     with {:ok, result} <-
-           query_all(conn, "PRAGMA table_info(#{identifier(table)})", @max_query_rows) do
+           query_all(conn, "PRAGMA table_info(#{identifier(table)})", :all) do
       {:ok, Enum.map(result.rows, &Map.fetch!(&1, "name"))}
     end
   end
@@ -475,7 +474,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     with {:ok, result} <- Duckdbex.query(conn, sql) do
       try do
         columns = Duckdbex.columns(result)
-        rows = result |> fetch_limited(limit) |> Enum.map(&row_map(columns, &1))
+        rows = result |> fetch_rows(limit) |> Enum.map(&row_map(columns, &1))
         {:ok, %{columns: columns, rows: rows}}
       after
         Duckdbex.release(result)
@@ -487,7 +486,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     with {:ok, result} <- Duckdbex.query(conn, sql, args) do
       try do
         columns = Duckdbex.columns(result)
-        rows = result |> fetch_limited(limit) |> Enum.map(&row_map(columns, &1))
+        rows = result |> fetch_rows(limit) |> Enum.map(&row_map(columns, &1))
         {:ok, %{columns: columns, rows: rows}}
       after
         Duckdbex.release(result)
@@ -550,11 +549,10 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     end
   end
 
-  defp fetch_limited(result, limit), do: fetch_limited(result, limit, [])
+  defp fetch_rows(result, :all), do: fetch_all_rows(result)
+  defp fetch_rows(result, limit), do: fetch_limited(result, limit, [])
 
-  defp fetch_limited(_result, remaining, rows) when remaining <= 0 do
-    rows |> Enum.reverse() |> Enum.take(@max_query_rows)
-  end
+  defp fetch_limited(_result, remaining, rows) when remaining <= 0, do: Enum.reverse(rows)
 
   defp fetch_limited(result, remaining, rows) do
     case Duckdbex.fetch_chunk(result) do
@@ -797,7 +795,7 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     |> Enum.uniq()
   end
 
-  defp clamp_limit(limit) when is_integer(limit), do: limit |> max(1) |> min(@max_query_rows)
+  defp clamp_limit(limit) when is_integer(limit), do: max(limit, 1)
   defp clamp_limit(_limit), do: 50
 
   defp first_term(%Description{} = description, property) do

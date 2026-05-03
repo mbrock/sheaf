@@ -203,7 +203,7 @@ defmodule Sheaf.Assistant.CorpusTools do
         limit: [
           type: :integer,
           default: 50,
-          doc: "Maximum rows returned by the wrapper, capped by Sheaf."
+          doc: "Maximum rows to read from the saved result page."
         ]
       ],
       callback:
@@ -248,6 +248,12 @@ defmodule Sheaf.Assistant.CorpusTools do
           "Metadata tables sheaf_spreadsheets and sheaf_spreadsheet_sheets are available for discovery. " <>
           spreadsheet_query_guidance(spreadsheet_dialect),
       parameter_schema: [
+        intent: [
+          type: :string,
+          required: true,
+          doc:
+            "Plain-English purpose of this SQL, such as \"rank surnames by popularity\" or \"create a reusable tender summary view\"."
+        ],
         sql: [
           type: :string,
           required: true,
@@ -256,7 +262,8 @@ defmodule Sheaf.Assistant.CorpusTools do
         limit: [
           type: :integer,
           default: 50,
-          doc: "Maximum rows returned by the wrapper, capped by Sheaf."
+          doc:
+            "Preview rows to include in this tool response. The full SQL result is saved and can be paged by result id, so prefer pagination over conservative SQL LIMIT when the complete result may be useful."
         ]
       ],
       callback:
@@ -291,17 +298,19 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp spreadsheet_label(:sqlite), do: "SQLite sidecar"
 
   defp spreadsheet_query_guidance(:duckdb) do
-    "Use DuckDB SQL. Spreadsheet source columns are imported as VARCHAR; use try_cast for numeric/date analysis. " <>
+    "Use DuckDB SQL. Spreadsheet source columns are imported as VARCHAR under DuckDB-normalized SQL column names; use try_cast for numeric/date analysis. " <>
       "Every loaded sheet table also has __row_number and __text columns. " <>
-      "You may create temporary tables or views for scratch work in this chat session."
+      "You may create temporary tables or views for scratch work in this chat session. " <>
+      "The response includes a TSV preview plus a durable result id for the full final result; use read_spreadsheet_query_result to page it. " <>
+      "Do not add SQL LIMIT just to save tool-output tokens when the full result may be useful later. If a saved result is useful for the user, mention its id like #PK9ACK in your reply so Sheaf can render it as a clickable resource."
   end
 
   defp spreadsheet_query_guidance(:sqlite) do
-    "Use SQLite syntax; spreadsheet source columns are TEXT, and every sheet table has __row_number and __text columns."
+    "Use SQLite syntax; spreadsheet source columns are TEXT, and every sheet table has __row_number and __text columns. The response includes a preview plus a durable result id for the full final result."
   end
 
   defp spreadsheet_sql_doc(:duckdb) do
-    "DuckDB SQL query or script. Spreadsheet source columns are VARCHAR; cast with try_cast when needed. Example: CREATE TEMP VIEW agencies AS SELECT * FROM xlsx_inventory_abc_1; SELECT * FROM agencies LIMIT 5"
+    "DuckDB SQL query or script. Spreadsheet source columns are VARCHAR; cast with try_cast when needed. Multi-statement scripts are allowed, and the final statement is saved as the durable result. Example: CREATE TEMP VIEW tender_summary AS SELECT tender_id, try_cast(total_bids AS INTEGER) AS bids FROM xlsx_inventory_abc_1; SELECT * FROM tender_summary"
   end
 
   defp spreadsheet_sql_doc(:sqlite) do
@@ -409,7 +418,12 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   def humanize("list_spreadsheets", _args, _titles), do: "Checking spreadsheets"
 
-  def humanize("query_spreadsheets", _args, _titles), do: "Querying spreadsheets"
+  def humanize("query_spreadsheets", args, _titles) do
+    case args |> arg(:intent) |> clean_intent() do
+      nil -> "Spreadsheets"
+      intent -> "Spreadsheets: " <> intent
+    end
+  end
 
   def humanize("read_spreadsheet_query_result", _args, _titles),
     do: "Reading spreadsheet query result"
@@ -679,31 +693,49 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   defp query_spreadsheets_tool(args, spreadsheet_query) do
     sql = arg(args, :sql)
+    intent = args |> arg(:intent) |> clean_intent()
 
-    if is_binary(sql) and String.trim(sql) != "" do
-      case spreadsheet_query.(sql, limit: arg(args, :limit) || 50) do
-        {:ok, result} ->
-          %ToolResults.SpreadsheetQuery{
-            sql: sql,
-            result_id: Map.get(result, :result_id),
-            result_iri: Map.get(result, :result_iri),
-            result_file_iri: Map.get(result, :result_file_iri),
-            row_count: Map.get(result, :row_count, length(result.rows)),
-            offset: 0,
-            limit: arg(args, :limit) || 50,
-            columns: result.columns,
-            rows: result.rows
-          }
-          |> rendered_result()
-          |> then(&{:ok, &1})
+    cond do
+      not is_binary(sql) or String.trim(sql) == "" ->
+        {:error, "sql is required"}
 
-        {:error, reason} ->
-          {:error, "spreadsheet query failed: #{inspect(reason)}"}
-      end
-    else
-      {:error, "sql is required"}
+      is_nil(intent) ->
+        {:error, "intent is required"}
+
+      true ->
+        case spreadsheet_query.(sql, limit: arg(args, :limit) || 50) do
+          {:ok, result} ->
+            %ToolResults.SpreadsheetQuery{
+              intent: intent,
+              sql: sql,
+              result_id: Map.get(result, :result_id),
+              result_iri: Map.get(result, :result_iri),
+              result_file_iri: Map.get(result, :result_file_iri),
+              row_count: Map.get(result, :row_count, length(result.rows)),
+              offset: 0,
+              limit: arg(args, :limit) || 50,
+              columns: result.columns,
+              rows: result.rows
+            }
+            |> rendered_result()
+            |> then(&{:ok, &1})
+
+          {:error, reason} ->
+            {:error, "spreadsheet query failed: #{inspect(reason)}"}
+        end
     end
   end
+
+  defp clean_intent(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> case do
+      "" -> nil
+      intent -> ellipsize(intent, 120)
+    end
+  end
+
+  defp clean_intent(_value), do: nil
 
   defp read_spreadsheet_query_result_tool(args, query_result_reader) do
     id = arg(args, :id)

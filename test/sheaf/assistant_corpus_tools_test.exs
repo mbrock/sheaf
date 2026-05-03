@@ -183,7 +183,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
         spreadsheet_lister: fn -> {:ok, [%{id: "xl_a", sheets: []}]} end,
         spreadsheet_query: fn sql, opts ->
           assert sql == "SELECT span FROM example"
-          assert opts[:limit] == 50
+          assert opts[:limit] == 500
 
           {:ok,
            %{
@@ -198,10 +198,18 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
       )
 
     tool = Enum.find(tools, &(&1.name == "query_spreadsheets"))
+    assert tool.parameter_schema[:intent][:required]
+    assert tool.parameter_schema[:limit][:doc] =~ "full SQL result is saved"
 
-    assert {:ok, result} = Tool.execute(tool, %{"sql" => "SELECT span FROM example"})
+    assert {:ok, result} =
+             Tool.execute(tool, %{
+               "intent" => "inspect a hugeint rendering edge case",
+               "sql" => "SELECT span FROM example",
+               "limit" => 500
+             })
 
     assert tool_text(result) =~ "Format: TSV"
+    assert tool_text(result) =~ "Intent: inspect a hugeint rendering edge case"
     assert tool_text(result) =~ "{0, 6}"
   end
 
