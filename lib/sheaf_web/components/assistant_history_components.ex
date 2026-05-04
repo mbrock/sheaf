@@ -8,7 +8,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
   alias RDF.{Description, Graph}
   alias Sheaf.Assistant.Chats
   alias Sheaf.Id
-  alias SheafWeb.AssistantMarkdown
+  alias SheafWeb.AssistantMarkdownComponents
 
   @default_history_limit 30
 
@@ -214,7 +214,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
         <%= if @entry.type == :message and @entry.role == :user do %>
           {@entry.text}
         <% else %>
-          {raw(render_markdown(@entry.text))}
+          <AssistantMarkdownComponents.markdown text={@entry.text} />
         <% end %>
       </div>
       <.entry_links entry={@entry} />
@@ -245,7 +245,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
       <article class={history_article_class(@variant)}>
         <div class={history_text_class(@variant, :markdown)}>
-          {raw(render_markdown(@text))}
+          <AssistantMarkdownComponents.markdown text={@text} />
         </div>
         <.entry_links entry={@entry} />
       </article>
@@ -750,9 +750,5 @@ defmodule SheafWeb.AssistantHistoryComponents do
       %DateTime{} = value -> value
       value -> to_string(value)
     end
-  end
-
-  defp render_markdown(text) do
-    AssistantMarkdown.render(text)
   end
 end

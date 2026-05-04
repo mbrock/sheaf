@@ -11,7 +11,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   alias Sheaf.Assistant.{Chat, Chats, CorpusTools}
   alias Sheaf.{Document, Id}
-  alias SheafWeb.AssistantMarkdown
+  alias SheafWeb.AssistantMarkdownComponents
 
   @impl true
   def mount(socket) do
@@ -462,7 +462,7 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_message(%{message: %{role: :assistant}} = assigns) do
     ~H"""
     <div class="assistant-prose break-words px-1 text-xs text-stone-900 dark:text-stone-100">
-      {raw(render_markdown(@message.text))}
+      <AssistantMarkdownComponents.markdown text={@message.text} />
     </div>
     """
   end
@@ -497,7 +497,7 @@ defmodule SheafWeb.AssistantChatComponent do
           :if={@note_view.text != ""}
           class="assistant-prose max-h-80 overflow-y-auto break-words pr-1 text-xs leading-5 text-stone-800 dark:text-stone-100"
         >
-          {raw(render_markdown(@note_view.text))}
+          <AssistantMarkdownComponents.markdown text={@note_view.text} />
         </div>
         <p :if={@note_view.text == ""} class="text-xs text-stone-500 dark:text-stone-400">
           The assistant is preparing a note.
@@ -1016,10 +1016,6 @@ defmodule SheafWeb.AssistantChatComponent do
       Map.update!(chat, :messages, &(&1 ++ [%{role: :error, text: text}]))
       |> Map.put(:pending, false)
     end)
-  end
-
-  defp render_markdown(text) do
-    AssistantMarkdown.render(text)
   end
 
   defp chat_form(

@@ -12,14 +12,13 @@ defmodule SheafWeb.AssistantMarkdown do
       table: true,
       tasklist: true
     ],
-    render: [unsafe_: false, hardbreaks: true],
     parse: [smart: true]
   ]
 
-  def render(text) do
+  def document(text) do
     (text || "")
     |> BlockRefs.linkify_markdown(url_for: &resource_ref_path/1)
-    |> MDEx.to_html!(@mdex_opts)
+    |> MDEx.parse_document!(@mdex_opts)
   end
 
   defp resource_ref_path(id) do

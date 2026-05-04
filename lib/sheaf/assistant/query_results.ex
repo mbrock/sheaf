@@ -394,7 +394,10 @@ defmodule Sheaf.Assistant.QueryResults do
   defp cell(value) when is_binary(value), do: value
   defp cell(value) when is_boolean(value), do: to_string(value)
   defp cell(value) when is_integer(value), do: Integer.to_string(value)
-  defp cell(value) when is_float(value), do: Float.to_string(value) |> String.replace_suffix(".0", "")
+
+  defp cell(value) when is_float(value),
+    do: Float.to_string(value) |> String.replace_suffix(".0", "")
+
   defp cell(value), do: inspect(value)
 
   defp normalize_iri(%RDF.IRI{} = iri), do: {:ok, iri}
