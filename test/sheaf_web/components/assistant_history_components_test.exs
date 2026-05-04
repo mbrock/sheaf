@@ -84,8 +84,24 @@ defmodule SheafWeb.AssistantHistoryComponentsTest do
     assert html =~ "Can you find Alise quotes?"
     assert html =~ "Yes, Alise appears in"
     assert html =~ ~s(href="/b/ABC123")
+    assert html =~ ~s(href="/QUICK1")
+    assert html =~ ~s(aria-label="Open chat #QUICK1")
     assert html =~ "Map the strongest evidence."
     assert html =~ "Evidence map note"
     assert html =~ "Strongest evidence sits in"
+    assert html =~ ~s(href="/RESEA1")
+    assert html =~ ~s(aria-label="Open chat #RESEA1")
+
+    expansive_html =
+      render_component(&note_history/1,
+        notes: items,
+        notes_graph: graph,
+        research_session_titles: %{},
+        notes_error: nil,
+        variant: :expansive
+      )
+
+    assert expansive_html =~ "Open chat"
+    assert expansive_html =~ ~s(href="/RESEA1")
   end
 end

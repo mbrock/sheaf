@@ -96,6 +96,16 @@ defmodule SheafWeb.AssistantHistoryComponents do
         >
           {compact_time(@group.published_at)}
         </time>
+        <.link
+          navigate={history_group_path(@group)}
+          onclick="event.stopPropagation()"
+          class="inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-1 font-sans text-xs text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+          title={"Open chat #{history_group_resource_label(@group)}"}
+          aria-label={"Open chat #{history_group_resource_label(@group)}"}
+        >
+          <span>Open chat</span>
+          <.icon name="hero-arrow-up-right" class="size-3" />
+        </.link>
         <span class="block w-3 shrink-0 text-center font-mono text-xs leading-snug text-stone-400 transition-transform group-open:rotate-90 dark:text-stone-500">
           ▸
         </span>
@@ -128,6 +138,14 @@ defmodule SheafWeb.AssistantHistoryComponents do
         >
           {compact_time(@group.published_at)}
         </time>
+        <.link
+          navigate={history_group_path(@group)}
+          class="grid size-6 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          title={"Open chat #{history_group_resource_label(@group)}"}
+          aria-label={"Open chat #{history_group_resource_label(@group)}"}
+        >
+          <.icon name="hero-arrow-up-right" class="size-3.5" />
+        </.link>
       </div>
 
       <ol class={history_entries_class(@variant)}>
@@ -651,6 +669,11 @@ defmodule SheafWeb.AssistantHistoryComponents do
       "assistant-prose max-h-72 overflow-y-auto pr-2 break-words text-stone-800 dark:text-stone-100"
 
   defp history_group_id(%{session_iri: session_iri}), do: "history-#{Id.id_from_iri(session_iri)}"
+
+  defp history_group_path(%{session_iri: session_iri}), do: ~p"/#{session_id(session_iri)}"
+
+  defp history_group_resource_label(%{session_iri: session_iri}),
+    do: "##{session_id(session_iri)}"
 
   defp timeline_icon(%{type: :note}), do: "hero-document-text"
   defp timeline_icon(%{role: :user}), do: "hero-user"
