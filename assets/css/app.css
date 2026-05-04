@@ -76,8 +76,7 @@
   body > canvas[style*="position: fixed"],
   .document-print-marker,
   .document-print-tags,
-  .document-print-references,
-  .block-preview-card {
+  .document-print-references {
     display: none !important;
   }
 
@@ -705,33 +704,6 @@
 
   .assistant-prose em {
     font-style: italic;
-  }
-
-  .block-preview-backdrop,
-  .block-preview-card {
-    opacity: 0;
-    pointer-events: none;
-    visibility: hidden;
-    transition:
-      opacity 150ms ease,
-      visibility 0s linear 150ms;
-  }
-
-  .block-preview:hover > .block-preview-backdrop,
-  .block-preview:focus-within > .block-preview-backdrop,
-  .block-preview:hover > .block-preview-card,
-  .block-preview:focus-within > .block-preview-card {
-    opacity: 1;
-    pointer-events: auto;
-    visibility: visible;
-    transition-delay: 1400ms, 1400ms;
-  }
-
-  .block-preview[data-preview-dismissed="true"] > .block-preview-backdrop,
-  .block-preview[data-preview-dismissed="true"] > .block-preview-card {
-    opacity: 0 !important;
-    pointer-events: none !important;
-    visibility: hidden !important;
   }
 
   .rdf-class-popover {

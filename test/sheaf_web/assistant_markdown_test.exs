@@ -43,39 +43,20 @@ defmodule SheafWeb.AssistantMarkdownTest do
     assert html =~ ~s(<table class="border-separate border-spacing-0 text-left">)
   end
 
-  test "renders block reference hover cards when a preview is available" do
+  test "renders block reference buttons for LiveView preview loading" do
     html =
       render_markdown("See [#PAR111](/b/PAR111).",
-        block_previews: %{
-          "PAR111" => %{
-            id: "PAR111",
-            text: "The paragraph text appears here.",
-            document_id: "DOC111",
-            document_title: "Thesis draft",
-            document_authors: ["Mikael Brockman"],
-            document_year: "2026",
-            section_id: "SEC111",
-            section_title: "Freecycling"
-          }
-        }
+        block_ref_target: %Phoenix.LiveComponent.CID{cid: 1}
       )
 
     assert html =~ ~s(<button)
     assert html =~ ~s(type="button")
-    assert html =~ ~s(role="tooltip")
-    assert html =~ "block-preview-backdrop"
+    assert html =~ ~s(phx-click="show_block_preview")
+    assert html =~ ~s(phx-value-id="PAR111")
+    assert html =~ ~s(phx-target="1")
+    refute html =~ ~s(role="tooltip")
+    refute html =~ "block-preview-backdrop"
     refute html =~ "backdrop-blur"
-    assert html =~ "block-preview-card"
-    assert html =~ "Thesis draft"
-    assert html =~ "Mikael Brockman"
-    assert html =~ "2026"
-    assert html =~ "Freecycling"
-    refute html =~ "#DOC111"
-    refute html =~ "#SEC111"
-    assert html =~ "The paragraph text appears here."
-    assert html =~ ~s(aria-label="Open page")
-    assert html =~ ~s(href="/b/PAR111")
-    assert html =~ ~s(target="_blank")
-    assert html =~ ~s(rel="noopener noreferrer")
+    refute html =~ "block-preview-card"
   end
 end

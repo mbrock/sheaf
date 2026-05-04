@@ -5,42 +5,40 @@ defmodule SheafWeb.AssistantMarkdownComponents do
 
   use SheafWeb, :html
 
-  alias Sheaf.{BlockPreviews, BlockRefs}
   alias SheafWeb.AssistantMarkdown
   alias SheafWeb.DataTableComponents
 
   attr :text, :string, required: true
-  attr :block_previews, :map, default: nil
-  attr :resolve_block_previews, :boolean, default: true
+  attr :block_ref_target, :any, default: nil
+  attr :resolve_block_previews, :boolean, default: false
 
   def markdown(assigns) do
     assigns =
       assigns
       |> assign(:document, AssistantMarkdown.document(assigns.text))
-      |> assign(:block_previews, block_previews(assigns))
 
     ~H"""
-    <.nodes nodes={@document.nodes} block_previews={@block_previews} />
+    <.nodes nodes={@document.nodes} block_ref_target={@block_ref_target} />
     """
   end
 
   attr :nodes, :list, required: true
-  attr :block_previews, :map, required: true
+  attr :block_ref_target, :any, default: nil
 
   defp nodes(assigns) do
     ~H"""
-    <.render_node :for={node <- @nodes} node={node} block_previews={@block_previews} />
+    <.render_node :for={node <- @nodes} node={node} block_ref_target={@block_ref_target} />
     """
   end
 
   attr :node, :any, required: true
-  attr :block_previews, :map, required: true
+  attr :block_ref_target, :any, default: nil
 
   defp render_node(%{node: %MDEx.Paragraph{} = node} = assigns) do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <p><.nodes nodes={@nodes} block_previews={@block_previews} /></p>
+    <p><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></p>
     """
   end
 
@@ -51,12 +49,12 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       |> assign(:level, node.level |> max(1) |> min(6))
 
     ~H"""
-    <h1 :if={@level == 1}><.nodes nodes={@nodes} block_previews={@block_previews} /></h1>
-    <h2 :if={@level == 2}><.nodes nodes={@nodes} block_previews={@block_previews} /></h2>
-    <h3 :if={@level == 3}><.nodes nodes={@nodes} block_previews={@block_previews} /></h3>
-    <h4 :if={@level == 4}><.nodes nodes={@nodes} block_previews={@block_previews} /></h4>
-    <h5 :if={@level == 5}><.nodes nodes={@nodes} block_previews={@block_previews} /></h5>
-    <h6 :if={@level == 6}><.nodes nodes={@nodes} block_previews={@block_previews} /></h6>
+    <h1 :if={@level == 1}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h1>
+    <h2 :if={@level == 2}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h2>
+    <h3 :if={@level == 3}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h3>
+    <h4 :if={@level == 4}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h4>
+    <h5 :if={@level == 5}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h5>
+    <h6 :if={@level == 6}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h6>
     """
   end
 
@@ -103,7 +101,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <strong><.nodes nodes={@nodes} block_previews={@block_previews} /></strong>
+    <strong><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></strong>
     """
   end
 
@@ -111,7 +109,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <em><.nodes nodes={@nodes} block_previews={@block_previews} /></em>
+    <em><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></em>
     """
   end
 
@@ -119,7 +117,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <del><.nodes nodes={@nodes} block_previews={@block_previews} /></del>
+    <del><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></del>
     """
   end
 
@@ -133,21 +131,19 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       |> assign(:href, href)
       |> assign(:title, blank_to_nil(node.title))
       |> assign(:block_id, block_id)
-      |> assign(:block_preview, block_id && Map.get(assigns.block_previews, block_id))
 
     ~H"""
     <.block_ref_link
-      :if={@href && @block_preview}
-      href={@href}
+      :if={@href && @block_id && @block_ref_target}
       title={@title}
       nodes={@nodes}
-      preview={@block_preview}
-      block_previews={@block_previews}
+      block_id={@block_id}
+      block_ref_target={@block_ref_target}
     />
-    <a :if={@href && !@block_preview} href={@href} title={@title}>
-      <.nodes nodes={@nodes} block_previews={@block_previews} />
+    <a :if={@href && (!@block_id || !@block_ref_target)} href={@href} title={@title}>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
     </a>
-    <span :if={!@href}><.nodes nodes={@nodes} block_previews={@block_previews} /></span>
+    <span :if={!@href}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></span>
     """
   end
 
@@ -173,10 +169,10 @@ defmodule SheafWeb.AssistantMarkdownComponents do
 
     ~H"""
     <ol :if={@ordered?} start={@start}>
-      <.nodes nodes={@items} block_previews={@block_previews} />
+      <.nodes nodes={@items} block_ref_target={@block_ref_target} />
     </ol>
     <ul :if={!@ordered?}>
-      <.nodes nodes={@items} block_previews={@block_previews} />
+      <.nodes nodes={@items} block_ref_target={@block_ref_target} />
     </ul>
     """
   end
@@ -185,7 +181,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <li><.nodes nodes={@nodes} block_previews={@block_previews} /></li>
+    <li><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></li>
     """
   end
 
@@ -198,7 +194,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     ~H"""
     <li>
       <input type="checkbox" checked={@checked} disabled />
-      <.nodes nodes={@nodes} block_previews={@block_previews} />
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
     </li>
     """
   end
@@ -207,7 +203,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <blockquote><.nodes nodes={@nodes} block_previews={@block_previews} /></blockquote>
+    <blockquote><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></blockquote>
     """
   end
 
@@ -215,7 +211,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <blockquote><.nodes nodes={@nodes} block_previews={@block_previews} /></blockquote>
+    <blockquote><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></blockquote>
     """
   end
 
@@ -258,7 +254,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, nodes)
 
     ~H"""
-    <.nodes nodes={@nodes} block_previews={@block_previews} />
+    <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
     """
   end
 
@@ -275,11 +271,10 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     """
   end
 
-  attr :href, :string, required: true
   attr :title, :string, default: nil
   attr :nodes, :list, required: true
-  attr :preview, :map, required: true
-  attr :block_previews, :map, required: true
+  attr :block_id, :string, required: true
+  attr :block_ref_target, :any, required: true
 
   defp block_ref_link(assigns) do
     ~H"""
@@ -288,56 +283,12 @@ defmodule SheafWeb.AssistantMarkdownComponents do
         type="button"
         title={@title}
         class="block-preview-trigger cursor-pointer border-0 bg-transparent p-0 text-inherit"
+        phx-click="show_block_preview"
+        phx-value-id={@block_id}
+        phx-target={@block_ref_target}
       >
-        <.nodes nodes={@nodes} block_previews={@block_previews} />
+        <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
       </button>
-      <span
-        aria-hidden="true"
-        class="block-preview-backdrop fixed inset-0 z-40 bg-stone-950/45 dark:bg-stone-950/60"
-      >
-      </span>
-      <span
-        role="tooltip"
-        class="block-preview-card fixed inset-x-3 bottom-[4.5rem] z-50 mt-2 block max-h-[min(20rem,calc(100dvh-8rem))] w-auto max-w-none overflow-y-auto rounded-sm border border-stone-200 bg-white p-2.5 text-left shadow-lg ring-1 ring-stone-950/5 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:max-h-none sm:w-[min(24rem,calc(100vw-2rem))] sm:max-w-[calc(100vw-2rem)] sm:overflow-visible dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
-      >
-        <span class="mb-1.5 flex min-w-0 items-start gap-2 font-sans leading-4">
-          <span class="min-w-0 flex-1">
-            <span class="small-caps block truncate text-[0.78rem] text-stone-700 dark:text-stone-200">
-              {preview_document_label(@preview)}
-            </span>
-            <span
-              :if={preview_meta_label(@preview)}
-              class="flex min-w-0 items-baseline gap-2 text-[0.72rem] text-stone-500 dark:text-stone-400"
-            >
-              <span :if={preview_year(@preview)} class="shrink-0 tabular-nums">
-                {preview_year(@preview)}
-              </span>
-              <span :if={preview_authors(@preview) != []} class="small-caps min-w-0 truncate">
-                {Enum.join(preview_authors(@preview), ", ")}
-              </span>
-            </span>
-          </span>
-          <a
-            href={@href}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="grid size-6 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
-            title="Open page"
-            aria-label="Open page"
-          >
-            <.icon name="hero-arrow-up-right" class="size-3.5" />
-          </a>
-        </span>
-        <span
-          :if={preview_section_label(@preview)}
-          class="mb-1 block truncate font-sans text-[0.7rem] leading-4 text-stone-500 dark:text-stone-400"
-        >
-          {preview_section_label(@preview)}
-        </span>
-        <span class="block font-serif text-[0.84rem] leading-[1.32] text-stone-800 dark:text-stone-100">
-          {Map.get(@preview, :text)}
-        </span>
-      </span>
     </span>
     """
   end
@@ -429,53 +380,6 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     end
   end
 
-  defp block_previews(%{block_previews: previews}) when is_map(previews), do: previews
-  defp block_previews(%{resolve_block_previews: false}), do: %{}
-
-  defp block_previews(assigns) do
-    assigns.text
-    |> BlockRefs.ids_from_text()
-    |> BlockPreviews.for_ids()
-  end
-
   defp block_link_id("/b/" <> id), do: id |> String.split(["?", "#"], parts: 2) |> hd()
   defp block_link_id(_href), do: nil
-
-  defp preview_document_label(preview) do
-    title = Map.get(preview, :document_title)
-
-    cond do
-      present?(title) -> title
-      present?(Map.get(preview, :document_id)) -> "Document"
-      true -> "Document"
-    end
-  end
-
-  defp preview_section_label(preview) do
-    title = Map.get(preview, :section_title)
-
-    cond do
-      present?(title) -> title
-      true -> nil
-    end
-  end
-
-  defp preview_meta_label(preview), do: preview_year(preview) || preview_authors(preview) != []
-
-  defp preview_year(preview) do
-    case Map.get(preview, :document_year) do
-      year when is_binary(year) -> blank_to_nil(year)
-      year when not is_nil(year) -> year |> to_string() |> blank_to_nil()
-      nil -> nil
-    end
-  end
-
-  defp preview_authors(preview) do
-    preview
-    |> Map.get(:document_authors, [])
-    |> List.wrap()
-    |> Enum.filter(&present?/1)
-  end
-
-  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 end

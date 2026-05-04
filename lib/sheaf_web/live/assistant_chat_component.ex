@@ -11,7 +11,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   alias Sheaf.Assistant.{Chat, Chats, CorpusTools}
   alias Sheaf.{Document, Id}
-  alias SheafWeb.AssistantMarkdownComponents
+  alias SheafWeb.{AssistantMarkdownComponents, BlockPreviewComponent}
 
   @impl true
   def mount(socket) do
@@ -190,10 +190,9 @@ defmodule SheafWeb.AssistantChatComponent do
 
   @impl true
   def render(%{variant: :full_page} = assigns) do
-    assigns = assign(assigns, :block_previews, chat_block_previews(assigns.chat.messages))
-
     ~H"""
     <section class="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
+      <.live_component module={BlockPreviewComponent} id={block_preview_id(@id)} />
       <div
         id={"assistant-timeline-#{@id}"}
         class="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4 sm:py-6"
@@ -205,7 +204,7 @@ defmodule SheafWeb.AssistantChatComponent do
             :for={item <- message_groups(@chat.messages)}
             item={item}
             titles={Map.get(@chat, :titles, %{})}
-            block_previews={@block_previews}
+            block_ref_target={block_preview_target(@id)}
           />
 
           <div
@@ -243,10 +242,9 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   def render(assigns) do
-    assigns = assign(assigns, :block_previews, chat_block_previews(assigns.chat.messages))
-
     ~H"""
     <section class={assistant_section_class(@variant, @selected_chat_id)}>
+      <.live_component module={BlockPreviewComponent} id={block_preview_id(@id)} />
       <div :if={not inline?(@variant)} class="mb-3 space-y-2">
         <div class="flex items-center gap-2">
           <div class="min-w-0 flex-1">
@@ -311,7 +309,7 @@ defmodule SheafWeb.AssistantChatComponent do
           :for={item <- message_groups(@chat.messages)}
           item={item}
           titles={Map.get(@chat, :titles, %{})}
-          block_previews={@block_previews}
+          block_ref_target={block_preview_target(@id)}
         />
 
         <div
@@ -443,11 +441,15 @@ defmodule SheafWeb.AssistantChatComponent do
     """
   end
 
+  attr :item, :map, required: true
+  attr :titles, :map, default: %{}
+  attr :block_ref_target, :any, default: nil
+
   defp chat_item(%{item: %{kind: :message, message: message}} = assigns) do
     assigns = assign(assigns, :message, message)
 
     ~H"""
-    <.chat_message message={@message} titles={@titles} block_previews={@block_previews} />
+    <.chat_message message={@message} titles={@titles} block_ref_target={@block_ref_target} />
     """
   end
 
@@ -492,7 +494,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   attr :message, :map, required: true
   attr :titles, :map, default: %{}
-  attr :block_previews, :map, default: %{}
+  attr :block_ref_target, :any, default: nil
 
   defp chat_message(%{message: %{role: :user}} = assigns) do
     ~H"""
@@ -507,7 +509,7 @@ defmodule SheafWeb.AssistantChatComponent do
     <div class="assistant-prose font-serif break-words px-1 text-stone-900 dark:text-stone-100">
       <AssistantMarkdownComponents.markdown
         text={@message.text}
-        block_previews={@block_previews}
+        block_ref_target={@block_ref_target}
       />
     </div>
     """
@@ -545,7 +547,7 @@ defmodule SheafWeb.AssistantChatComponent do
         >
           <AssistantMarkdownComponents.markdown
             text={@note_view.text}
-            block_previews={@block_previews}
+            block_ref_target={@block_ref_target}
           />
         </div>
         <p :if={@note_view.text == ""} class="text-stone-500 dark:text-stone-400">
@@ -573,24 +575,6 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp chat_message(assigns), do: ~H""
-
-  defp chat_block_previews(messages) do
-    messages
-    |> Enum.flat_map(&message_preview_texts/1)
-    |> Enum.flat_map(&Sheaf.BlockRefs.ids_from_text/1)
-    |> Sheaf.BlockPreviews.for_ids()
-  end
-
-  defp message_preview_texts(%{text: text}) when is_binary(text), do: [text]
-
-  defp message_preview_texts(%{tool: "write_note", input: input}) do
-    case tool_arg(input, :text) |> note_text_value() do
-      "" -> []
-      text -> [text]
-    end
-  end
-
-  defp message_preview_texts(_message), do: []
 
   defp tool_view(%{tool: "list_documents"} = message, _titles) do
     tool_phrase("Listing documents", message)
@@ -1092,6 +1076,9 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_kind(%{kind: :research}), do: :research
   defp chat_kind(%{kind: "research"}), do: :research
   defp chat_kind(_chat), do: :chat
+
+  defp block_preview_id(id), do: "block-preview-#{id}"
+  defp block_preview_target(id), do: "##{block_preview_id(id)}"
 
   defp chat_mode(chat) do
     case chat_kind(chat) do
