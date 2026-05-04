@@ -6,7 +6,7 @@ defmodule SheafWeb.BlockPreviewComponent do
   use SheafWeb, :live_component
 
   import SheafWeb.DocumentEntryComponents,
-    only: [document_metadata_lines: 1]
+    only: [document_metadata_heading: 1]
 
   @impl true
   def mount(socket) do
@@ -45,60 +45,18 @@ defmodule SheafWeb.BlockPreviewComponent do
         >
           <div class="shrink-0 border-b border-stone-200 bg-stone-50 px-2.5 py-1.5 font-sans text-[0.82rem] leading-4 dark:border-stone-800 dark:bg-stone-900">
             <div class="min-w-0 flex-1">
-              <div
+              <.document_metadata_heading
                 :if={preview_document(@preview)}
-                class="min-w-0 text-stone-900 dark:text-stone-50"
-              >
-                <span>{preview_document(@preview).title}</span>
-                <span
-                  :if={metadata_only?(preview_document(@preview))}
-                  class="ml-1 inline-flex translate-y-[-0.08em] items-center rounded-sm border border-stone-300 px-1 py-0 font-sans text-[0.58rem] uppercase leading-3 tracking-wide text-stone-500 dark:border-stone-700 dark:text-stone-400"
-                >
-                  metadata
-                </span>
-                <span
-                  :if={cited?(preview_document(@preview))}
-                  class="ml-1 inline-flex translate-y-[-0.08em] items-center rounded-sm border border-amber-300 px-1 py-0 font-sans text-[0.58rem] uppercase leading-3 tracking-wide text-amber-800 dark:border-amber-700 dark:text-amber-200"
-                >
-                  cited
-                </span>
-                <span
-                  :if={preview_status(@preview) == "draft"}
-                  class="ml-1 inline-flex translate-y-[-0.08em] items-center rounded-sm border border-sky-300 px-1 py-0 font-sans text-[0.58rem] uppercase leading-3 tracking-wide text-sky-800 dark:border-sky-700 dark:text-sky-200"
-                >
-                  draft
-                </span>
-                <span
-                  :if={preview_status(@preview) == "mikael"}
-                  class="ml-1 inline-flex translate-y-[-0.08em] items-center rounded-sm border border-emerald-300 px-1 py-0 font-sans text-[0.58rem] uppercase leading-3 tracking-wide text-emerald-800 dark:border-emerald-900/70 dark:text-emerald-300"
-                >
-                  MIKAEL
-                </span>
-                <a
-                  href={Map.get(@preview, :path)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="ml-1 inline-block text-stone-500 transition-colors hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100"
-                  title="Open page"
-                  aria-label="Open page"
-                >
-                  <.icon name="hero-arrow-top-right-on-square-mini" class="size-[0.9em] align-[-0.08em]" />
-                </a>
-              </div>
+                document={preview_document(@preview)}
+                path={Map.get(@preview, :path)}
+                open_new?
+              />
               <div
                 :if={is_nil(preview_document(@preview))}
                 class="small-caps text-stone-700 dark:text-stone-200"
               >
                 {preview_document_label(@preview)}
               </div>
-              <.document_metadata_lines
-                :if={preview_document(@preview)}
-                document={preview_document(@preview)}
-                subline_class="flex min-w-0 items-baseline gap-2 text-[0.9rem] text-stone-500 dark:text-stone-400"
-                detail_class="flex min-w-0 items-baseline gap-2 truncate font-sans text-stone-500 dark:text-stone-400"
-                numeric_class="small-caps shrink-0 tabular-nums"
-                show_publisher={false}
-              />
               <div
                 :if={
                   is_nil(preview_document(@preview)) &&
@@ -124,7 +82,10 @@ defmodule SheafWeb.BlockPreviewComponent do
                   title="Open page"
                   aria-label="Open page"
                 >
-                  <.icon name="hero-arrow-top-right-on-square-mini" class="size-[0.9em] align-[-0.08em]" />
+                  <.icon
+                    name="hero-arrow-top-right-on-square-mini"
+                    class="size-[0.9em] align-[-0.08em]"
+                  />
                 </a>
               </div>
             </div>
@@ -231,19 +192,6 @@ defmodule SheafWeb.BlockPreviewComponent do
     |> String.split(~r/\n{2,}/, trim: true)
     |> Enum.map(&String.trim/1)
     |> Enum.filter(&present?/1)
-  end
-
-  defp metadata_only?(%{has_document?: false}), do: true
-  defp metadata_only?(_document), do: false
-
-  defp cited?(%{cited?: cited?}), do: cited?
-  defp cited?(_document), do: false
-
-  defp preview_status(preview) do
-    case preview_document(preview) do
-      %{metadata: %{status: status}} -> status
-      _document -> nil
-    end
   end
 
   defp present?(value), do: is_binary(value) and String.trim(value) != ""

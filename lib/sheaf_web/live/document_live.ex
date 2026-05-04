@@ -1,6 +1,6 @@
 defmodule SheafWeb.DocumentLive do
   @moduledoc """
-  Live document reader with outline navigation, block selection, and assistant context.
+  Live document reader with outline navigation and block selection.
   """
 
   use SheafWeb, :live_view
@@ -11,8 +11,7 @@ defmodule SheafWeb.DocumentLive do
   alias Sheaf.Documents
   alias Sheaf.Id
   alias SheafWeb.AppChrome
-  alias SheafWeb.AssistantHistoryComponents
-  import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
+  import SheafWeb.DocumentEntryComponents, only: [document_entry: 1, document_metadata_heading: 1]
 
   # Knuth-Plass justification is useful for short documents, but large imported
   # books can make client-side paragraph rewriting feel sluggish.
@@ -95,28 +94,32 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <div
       id="document-reader"
-      class="grid min-h-dvh bg-stone-50 text-stone-950 lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[auto_auto_auto] xl:grid-cols-[24rem_minmax(0,1fr)_30rem] xl:grid-rows-[auto_auto] dark:bg-stone-950 dark:text-stone-50"
+      class="grid min-h-dvh bg-white text-stone-950 lg:grid-cols-[24rem_minmax(0,1fr)] lg:grid-rows-[auto_auto] dark:bg-stone-950 dark:text-stone-50"
       phx-hook="DocumentBreadcrumb"
     >
       <AppChrome.toolbar
         section={:document}
-        breadcrumb_id="document-breadcrumb"
         copy_markdown?={true}
-      />
+      >
+        <.document_metadata_heading document={@document} show_open?={false} />
+      </AppChrome.toolbar>
 
-      <aside class="hidden p-4 lg:sticky lg:top-12 lg:col-start-2 lg:row-start-2 lg:block lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto xl:col-start-1 xl:row-start-2">
-        <h1 class="hidden font-bold text-lg xl:block">{document_title(@graph, @root)}</h1>
-        <.block_outline entries={@toc} emit_active_data class="text-sm xl:mt-4" />
+      <aside class="hidden border-r border-stone-200/80 bg-stone-50/80 p-3 lg:sticky lg:top-10 lg:col-start-1 lg:row-start-2 lg:block lg:max-h-[calc(100dvh-2.5rem)] lg:overflow-y-auto dark:border-stone-800/80 dark:bg-stone-950">
+        <.block_outline
+          entries={@toc}
+          emit_active_data
+          class="text-xs"
+        />
       </aside>
 
       <article
         id="document-start"
-        class="document-print-root min-w-0 px-4 pb-4 focus:outline-none lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-base lg:[&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
+        class="document-print-root min-w-0 bg-white px-4 pb-4 focus:outline-none lg:col-start-2 lg:row-span-2 lg:row-start-2 lg:px-10 lg:pb-10 dark:bg-stone-950 [&_p]:text-base lg:[&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
         tabindex="0"
         data-scroll-target="window"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
-        <div class="document-print-page mx-auto w-full max-w-[112ch] pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:dark:border-stone-800 lg:dark:bg-stone-900">
+        <div class="document-print-page mx-auto w-full max-w-[112ch] pt-4 lg:py-10">
           <.reader_blocks
             graph={@graph}
             blocks={@blocks}
@@ -126,21 +129,6 @@ defmodule SheafWeb.DocumentLive do
           />
         </div>
       </article>
-
-      <AppChrome.right_sidebar
-        assistant_id="document-assistant"
-        graph={@graph}
-        root={@root}
-        selected_id={@selected_block_id}
-        class="hidden lg:sticky lg:top-12 lg:col-start-2 lg:row-start-3 lg:block lg:max-h-[calc(100dvh-3rem)] lg:border-t xl:col-start-3 xl:row-start-2 xl:border-t-0 xl:border-l"
-      >
-        <AssistantHistoryComponents.note_history
-          notes={@notes}
-          notes_graph={@notes_graph}
-          notes_error={@notes_error}
-          research_session_titles={@research_session_titles}
-        />
-      </AppChrome.right_sidebar>
     </div>
     """
   end
@@ -232,13 +220,9 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <article
       id={"block-#{Document.id(@block.iri)}"}
-      class="document-print-paragraph grid grid-cols-1 gap-x-3 lg:grid-cols-[4.5rem_minmax(0,1fr)]"
+      class="document-print-paragraph"
     >
-      <span class="document-print-marker col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
-        {"##{Document.id(@block.iri)}"}
-      </span>
-
-      <div class="col-start-1 row-start-1 min-w-0 lg:col-start-2">
+      <div class="min-w-0">
         <div
           :if={block_tags(@tags_by_block, @block.iri) != []}
           class="document-print-tags mb-1 flex min-w-0 flex-wrap gap-1"
@@ -272,7 +256,7 @@ defmodule SheafWeb.DocumentLive do
 
       <div
         :if={reference_documents(@references_by_block, @block.iri) != []}
-        class="document-print-references col-start-1 mt-2 space-y-1 pl-4 font-sans lg:col-start-2"
+        class="document-print-references mt-2 space-y-1 pl-4 font-sans"
       >
         <.document_entry
           :for={document <- reference_documents(@references_by_block, @block.iri)}
@@ -289,17 +273,13 @@ defmodule SheafWeb.DocumentLive do
     <article
       id={"block-#{Document.id(@block.iri)}"}
       class={[
-        "document-print-row grid cursor-pointer grid-cols-1 gap-x-3 rounded-sm py-1 lg:grid-cols-[4.5rem_minmax(0,1fr)]",
+        "document-print-row cursor-pointer rounded-sm py-1",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
       phx-value-id={Document.id(@block.iri)}
     >
-      <span class="document-print-marker col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
-        {"##{Document.id(@block.iri)}"}
-      </span>
-
-      <div class="col-start-1 mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-sans text-xs leading-5 text-stone-500 lg:col-start-2 dark:text-stone-400">
+      <div class="mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-sans text-xs leading-5 text-stone-500 dark:text-stone-400">
         <span
           :if={Document.code_category(@graph, @block.iri) != ""}
           class="shrink-0 font-semibold text-stone-700 dark:text-stone-300"
@@ -317,7 +297,7 @@ defmodule SheafWeb.DocumentLive do
 
       <p
         id={"text-#{Document.id(@block.iri)}"}
-        class="document-print-text col-start-1 min-w-0 font-serif leading-normal lg:col-start-2"
+        class="document-print-text min-w-0 font-serif leading-normal"
         phx-update="ignore"
       >
         {Document.text(@graph, @block.iri)}
@@ -332,20 +312,15 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "document-print-excerpt grid cursor-pointer grid-cols-1 gap-x-3 rounded-sm font-serif leading-normal lg:grid-cols-[4.5rem_minmax(0,1fr)]",
+        "document-print-excerpt cursor-pointer rounded-sm font-serif leading-normal",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
       phx-value-id={Document.id(@block.iri)}
     >
-      <span class="document-print-marker col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
-        {"##{Document.id(@block.iri)}"}
-      </span>
       <div
         id={"text-#{Document.id(@block.iri)}"}
-        class={[
-          "document-print-text col-start-1 min-w-0 lg:col-start-2" | extracted_text_block_classes()
-        ]}
+        class={["document-print-text min-w-0" | extracted_text_block_classes()]}
         phx-update="ignore"
       >
         {raw(Document.source_html(@graph, @block.iri))}
@@ -380,7 +355,7 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <ol
       :if={@footnotes != []}
-      class="document-print-footnotes col-start-1 mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-serif text-sm leading-snug text-stone-700 lg:col-start-2 dark:border-stone-800/80 dark:text-stone-300"
+      class="document-print-footnotes mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-serif text-sm leading-snug text-stone-700 dark:border-stone-800/80 dark:text-stone-300"
     >
       <li
         :for={footnote <- @footnotes}
@@ -598,23 +573,41 @@ defmodule SheafWeb.DocumentLive do
     with {:ok, graph} <- Sheaf.fetch_graph(root),
          {:ok, references_by_block} <- Documents.references_for_document(root, graph),
          {:ok, tags_by_block} <- BlockTags.for_document(graph, root) do
-      {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes()
+      document = sidebar_document(id, root, graph)
 
       socket =
         socket
         |> assign(:page_title, page_title(graph, root))
         |> assign(:document_id, id)
+        |> assign(:document, document)
         |> assign(:graph, graph)
         |> assign(:root, root)
         |> assign(:references_by_block, references_by_block)
         |> assign(:tags_by_block, tags_by_block)
         |> assign(:selected_block_id, selected_block_id)
-        |> assign(:notes, notes)
-        |> assign(:notes_graph, notes_graph)
-        |> assign(:notes_error, notes_error)
-        |> assign(:research_session_titles, AssistantHistoryComponents.research_session_titles())
 
       {:ok, socket}
+    end
+  end
+
+  defp sidebar_document(id, root, graph) do
+    with {:ok, documents} <- Documents.list(),
+         document when not is_nil(document) <-
+           Enum.find(documents, &(to_string(&1.iri) == to_string(root))) do
+      document
+    else
+      _ ->
+        %{
+          id: id,
+          iri: root,
+          path: ~p"/#{id}",
+          title: document_title(graph, root),
+          kind: Document.kind(graph, root),
+          metadata: %{},
+          cited?: false,
+          excluded?: false,
+          has_document?: true
+        }
     end
   end
 

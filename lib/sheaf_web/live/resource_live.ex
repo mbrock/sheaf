@@ -9,7 +9,6 @@ defmodule SheafWeb.ResourceLive do
   alias Sheaf.Assistant.QueryResults
   alias SheafWeb.AppChrome
   alias SheafWeb.AssistantChatComponent
-  alias SheafWeb.AssistantHistoryComponents
   alias SheafWeb.DataTableComponents
   alias SheafWeb.DocumentLive
 
@@ -175,7 +174,7 @@ defmodule SheafWeb.ResourceLive do
     with {:ok, graph} <- Sheaf.fetch_graph(root),
          {:ok, references_by_block} <- Documents.references_for_document(root, graph),
          {:ok, tags_by_block} <- BlockTags.for_document(graph, root) do
-      {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes()
+      document = sidebar_document(document_id, root, graph)
 
       socket =
         socket
@@ -183,17 +182,35 @@ defmodule SheafWeb.ResourceLive do
         |> assign(:resource_id, resource_id)
         |> assign(:resource_kind, :document)
         |> assign(:document_id, document_id)
+        |> assign(:document, document)
         |> assign(:graph, graph)
         |> assign(:root, root)
         |> assign(:references_by_block, references_by_block)
         |> assign(:tags_by_block, tags_by_block)
         |> assign(:selected_block_id, selected_block_id)
-        |> assign(:notes, notes)
-        |> assign(:notes_graph, notes_graph)
-        |> assign(:notes_error, notes_error)
-        |> assign(:research_session_titles, AssistantHistoryComponents.research_session_titles())
 
       {:ok, socket}
+    end
+  end
+
+  defp sidebar_document(id, root, graph) do
+    with {:ok, documents} <- Documents.list(),
+         document when not is_nil(document) <-
+           Enum.find(documents, &(to_string(&1.iri) == to_string(root))) do
+      document
+    else
+      _ ->
+        %{
+          id: id,
+          iri: root,
+          path: ~p"/#{id}",
+          title: Document.title(graph, root),
+          kind: Document.kind(graph, root),
+          metadata: %{},
+          cited?: false,
+          excluded?: false,
+          has_document?: true
+        }
     end
   end
 

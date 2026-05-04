@@ -132,7 +132,9 @@ defmodule SheafWeb.DocumentEntryComponents do
       </span>
 
       <span class="small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300">
-        <span class="sm:hidden">{compact_authors_str(@document) || authors_str(@document) || ""}</span>
+        <span class="sm:hidden">
+          {compact_authors_str(@document) || authors_str(@document) || ""}
+        </span>
         <span class="hidden sm:inline">{authors_str(@document) || ""}</span>
       </span>
 
@@ -145,6 +147,66 @@ defmodule SheafWeb.DocumentEntryComponents do
         {publisher_str(@document)}
       </span>
       <span :if={pages_str(@document)} class="shrink-0">{pages_str(@document)}</span>
+    </div>
+    """
+  end
+
+  attr :document, :map, required: true
+  attr :path, :string, default: nil
+  attr :open_new?, :boolean, default: false
+  attr :show_open?, :boolean, default: true
+
+  def document_metadata_heading(assigns) do
+    assigns =
+      assign_new(assigns, :path, fn -> Map.get(assigns.document, :path) end)
+
+    ~H"""
+    <div class="min-w-0 font-sans text-[0.82rem] leading-4">
+      <div class="min-w-0 text-stone-900 dark:text-stone-50">
+        <span>{@document.title}</span>
+        <span
+          :if={metadata_only?(@document)}
+          class="ml-1 inline-flex translate-y-[-0.08em] items-center rounded-sm border border-stone-300 px-1 py-0 font-sans text-[0.58rem] uppercase leading-3 tracking-wide text-stone-500 dark:border-stone-700 dark:text-stone-400"
+        >
+          metadata
+        </span>
+        <span
+          :if={cited?(@document)}
+          class="ml-1 inline-flex translate-y-[-0.08em] items-center rounded-sm border border-amber-300 px-1 py-0 font-sans text-[0.58rem] uppercase leading-3 tracking-wide text-amber-800 dark:border-amber-700 dark:text-amber-200"
+        >
+          cited
+        </span>
+        <span
+          :if={status_str(@document) == "draft"}
+          class="ml-1 inline-flex translate-y-[-0.08em] items-center rounded-sm border border-sky-300 px-1 py-0 font-sans text-[0.58rem] uppercase leading-3 tracking-wide text-sky-800 dark:border-sky-700 dark:text-sky-200"
+        >
+          draft
+        </span>
+        <span
+          :if={status_str(@document) == "mikael"}
+          class="ml-1 inline-flex translate-y-[-0.08em] items-center rounded-sm border border-emerald-300 px-1 py-0 font-sans text-[0.58rem] uppercase leading-3 tracking-wide text-emerald-800 dark:border-emerald-900/70 dark:text-emerald-300"
+        >
+          MIKAEL
+        </span>
+        <a
+          :if={@show_open? && @path}
+          href={@path}
+          target={if @open_new?, do: "_blank"}
+          rel={if @open_new?, do: "noopener noreferrer"}
+          class="ml-1 inline-block text-stone-500 transition-colors hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100"
+          title="Open page"
+          aria-label="Open page"
+        >
+          <.icon name="hero-arrow-top-right-on-square-mini" class="size-[0.9em] align-[-0.08em]" />
+        </a>
+      </div>
+      <.document_metadata_lines
+        document={@document}
+        subline_class="flex min-w-0 items-baseline gap-2 text-[0.9rem] text-stone-500 dark:text-stone-400"
+        detail_class="flex min-w-0 items-baseline gap-2 truncate font-sans text-stone-500 dark:text-stone-400"
+        numeric_class="small-caps shrink-0 tabular-nums"
+        show_publisher={false}
+      />
     </div>
     """
   end
@@ -165,6 +227,10 @@ defmodule SheafWeb.DocumentEntryComponents do
   defp excludable?(document), do: has_document?(document)
 
   defp has_document?(document), do: Map.get(document, :has_document?, true)
+
+  defp metadata_only?(document), do: !has_document?(document)
+
+  defp cited?(document), do: Map.get(document, :cited?, false)
 
   defp workspace_owner_authored?(document),
     do: Map.get(document, :workspace_owner_authored?, false)

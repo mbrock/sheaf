@@ -78,13 +78,13 @@ defmodule SheafWeb.CoreComponents do
 
   defp block_outline_list(assigns) do
     ~H"""
-    <ol class={[@depth == 0 && "space-y-1", @depth > 0 && "ml-4 mt-1 space-y-1"]}>
+    <ol class={[@depth == 0 && "space-y-0.5", @depth > 0 && "ml-3 mt-0.5 space-y-0.5"]}>
       <li :for={entry <- @entries}>
         <a
           href={"#{@base_path || ""}#block-#{entry.id}"}
           data-toc-link={@emit_active_data && "block-#{entry.id}"}
           class={[
-            "-mx-1 flex items-baseline rounded-sm border-l-2 border-transparent py-0.5 pl-2 pr-1 transition-colors",
+            "-mx-1 flex items-baseline rounded-sm border-l-2 border-transparent py-px pl-1.5 pr-1 transition-colors",
             "data-[current=true]:border-stone-950 data-[current=true]:bg-stone-200/70 data-[current=true]:text-stone-950",
             "dark:data-[current=true]:border-stone-100 dark:data-[current=true]:bg-stone-800/80 dark:data-[current=true]:text-stone-50",
             if(length(entry.number) == 1,
@@ -93,7 +93,7 @@ defmodule SheafWeb.CoreComponents do
             )
           ]}
         >
-          <span class="min-w-0 flex-1 text-balance leading-5">
+          <span class="min-w-0 flex-1 text-balance leading-4">
             {section_title(entry.number, entry.title)}
           </span>
           <span

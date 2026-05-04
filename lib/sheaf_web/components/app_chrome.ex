@@ -10,6 +10,7 @@ defmodule SheafWeb.AppChrome do
   attr :breadcrumb_id, :string, default: nil
   attr :copy_markdown?, :boolean, default: false
   attr :search?, :boolean, default: true
+  slot :inner_block
 
   def toolbar(assigns) do
     ~H"""
@@ -39,20 +40,27 @@ defmodule SheafWeb.AppChrome do
         </.link>
 
         <span
-          :if={@breadcrumb_id}
+          :if={@breadcrumb_id && @inner_block == []}
           id={@breadcrumb_id}
           class="small-caps min-w-0 flex-1 truncate text-center text-lg text-stone-500 dark:text-stone-400"
         >
         </span>
 
-        <div :if={!@breadcrumb_id} class="hidden min-w-0 flex-1 sm:block"></div>
+        <div :if={@inner_block != []} class="min-w-0 flex-1">
+          {render_slot(@inner_block)}
+        </div>
 
-        <.live_component
+        <div :if={!@breadcrumb_id && @inner_block == []} class="hidden min-w-0 flex-1 sm:block"></div>
+
+        <.link
           :if={@search?}
-          module={SheafWeb.EmbeddingSearchComponent}
-          id="toolbar-search"
-          variant={:toolbar}
-        />
+          navigate={~p"/search"}
+          class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          title="Search"
+          aria-label="Search"
+        >
+          <.icon name="hero-magnifying-glass" class="size-4" />
+        </.link>
 
         <.link
           navigate={~p"/history"}
