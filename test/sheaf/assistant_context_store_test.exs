@@ -51,6 +51,57 @@ defmodule Sheaf.Assistant.ContextStoreTest do
              Map.fetch!(tool.metadata, "sheaf_result")
   end
 
+  test "codec preserves empty list fields in structured tool result metadata" do
+    context =
+      Context.new([
+        Context.tool_result_message(
+          "search_spreadsheets",
+          "call_1",
+          %ToolResult{
+            content: [ContentPart.text("No hits.")],
+            metadata: %{
+              sheaf_result: %ToolResults.SpreadsheetSearch{query: "missing", hits: []}
+            }
+          }
+        )
+      ])
+
+    assert {:ok, decoded} =
+             context
+             |> ContextCodec.encode_context()
+             |> Jason.encode!()
+             |> Jason.decode!()
+             |> ContextCodec.decode_context()
+
+    [tool] = decoded.messages
+    assert %ToolResults.SpreadsheetSearch{hits: []} = Map.fetch!(tool.metadata, "sheaf_result")
+  end
+
+  test "codec repairs previously encoded empty list fields in structured metadata" do
+    payload = %{
+      "messages" => [
+        %{
+          "role" => "tool",
+          "content" => [%{"type" => "text", "text" => "No hits."}],
+          "name" => "search_spreadsheets",
+          "tool_call_id" => "call_1",
+          "tool_calls" => nil,
+          "metadata" => %{
+            "sheaf_result" => %{
+              "__struct__" => "Elixir.Sheaf.Assistant.ToolResults.SpreadsheetSearch",
+              "fields" => %{"query" => "missing", "hits" => %{}}
+            }
+          },
+          "reasoning_details" => nil
+        }
+      ]
+    }
+
+    assert {:ok, decoded} = ContextCodec.decode_context(payload)
+    [tool] = decoded.messages
+    assert %ToolResults.SpreadsheetSearch{hits: []} = Map.fetch!(tool.metadata, "sheaf_result")
+  end
+
   test "stores context messages as indexed rdf:JSON payloads" do
     session = Sheaf.Id.iri("CHAT01")
     empty_graph = Graph.new(name: RDF.iri(ContextStore.graph()))

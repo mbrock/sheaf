@@ -210,6 +210,8 @@ defmodule Sheaf.Assistant.ContextCodec do
     Map.new(map, fn {key, value} -> {encode_key(key), encode_value(value)} end)
   end
 
+  defp encode_value([]), do: []
+
   defp encode_value(list) when is_list(list) do
     if Keyword.keyword?(list) do
       Map.new(list, fn {key, value} -> {encode_key(key), encode_value(value)} end)
@@ -275,12 +277,21 @@ defmodule Sheaf.Assistant.ContextCodec do
       atom_key = safe_existing_atom(key)
 
       if MapSet.member?(known_keys, atom_key) do
-        {atom_key, value}
+        {atom_key, coerce_known_struct_value(module, atom_key, value)}
       else
         {key, value}
       end
     end)
   end
+
+  defp coerce_known_struct_value(module, key, %{} = value) do
+    case Map.fetch(module.__struct__(), key) do
+      {:ok, []} when map_size(value) == 0 -> []
+      _other -> value
+    end
+  end
+
+  defp coerce_known_struct_value(_module, _key, value), do: value
 
   defp encode_key(key) when is_atom(key), do: Atom.to_string(key)
   defp encode_key(key), do: to_string(key)
