@@ -282,7 +282,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       <button
         type="button"
         title={@title}
-        class="block-preview-trigger cursor-pointer border-0 bg-transparent p-0 text-inherit"
+        class="block-preview-trigger cursor-pointer"
         phx-click="show_block_preview"
         phx-value-id={@block_id}
         phx-target={@block_ref_target}
