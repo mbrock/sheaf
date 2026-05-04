@@ -50,6 +50,7 @@ defmodule SheafWeb.DocumentEntryComponents do
   attr :link_title, :boolean, default: true
   attr :class, :string, default: "flex min-w-0 items-baseline gap-2 font-sans"
   attr :title_class, :string, default: "min-w-0 flex-1 truncate"
+  attr :show_status_pills, :boolean, default: true
 
   def document_title_line(assigns) do
     ~H"""
@@ -83,25 +84,25 @@ defmodule SheafWeb.DocumentEntryComponents do
         {@document.title}
       </span>
       <span
-        :if={!has_document?(@document)}
+        :if={@show_status_pills && !has_document?(@document)}
         class="shrink-0 rounded-sm border border-stone-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-stone-500 dark:border-stone-700 dark:text-stone-400"
       >
         metadata only
       </span>
       <span
-        :if={@document.cited? && !@nested}
+        :if={@show_status_pills && @document.cited? && !@nested}
         class="shrink-0 rounded-sm border border-amber-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-amber-800 dark:border-amber-700 dark:text-amber-200"
       >
         cited
       </span>
       <span
-        :if={status_str(@document) == "draft"}
+        :if={@show_status_pills && status_str(@document) == "draft"}
         class="shrink-0 rounded-sm border border-sky-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-sky-800 dark:border-sky-700 dark:text-sky-200"
       >
         draft
       </span>
       <span
-        :if={status_str(@document) == "mikael"}
+        :if={@show_status_pills && status_str(@document) == "mikael"}
         class="shrink-0 rounded-sm border border-emerald-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-emerald-800 dark:border-emerald-900/70 dark:text-emerald-300"
       >
         MIKAEL
@@ -111,6 +112,7 @@ defmodule SheafWeb.DocumentEntryComponents do
   end
 
   attr :document, :map, required: true
+  attr :show_publisher, :boolean, default: true
 
   attr :subline_class, :string,
     default:
@@ -120,23 +122,28 @@ defmodule SheafWeb.DocumentEntryComponents do
     default:
       "flex min-w-0 items-baseline gap-2 truncate font-sans text-xs text-stone-500 dark:text-stone-400"
 
+  attr :numeric_class, :string, default: "shrink-0 tabular-nums"
+
   def document_metadata_lines(assigns) do
     ~H"""
     <div :if={subline?(@document)} class={@subline_class}>
-      <span :if={year_str(@document) != ""} class="shrink-0 tabular-nums">
+      <span :if={year_str(@document) != ""} class={@numeric_class}>
         {year_str(@document)}
       </span>
 
       <span class="small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300">
-        {authors_str(@document) || ""}
+        <span class="sm:hidden">{compact_authors_str(@document) || authors_str(@document) || ""}</span>
+        <span class="hidden sm:inline">{authors_str(@document) || ""}</span>
       </span>
 
-      <span class="shrink-0 tabular-nums">{page_count_str(@document)}</span>
+      <span class={@numeric_class}>{page_count_str(@document)}</span>
     </div>
 
     <div :if={chapter_metadata?(@document)} class={@detail_class}>
       <span class="min-w-0 truncate italic">{chapter_venue(@document)}</span>
-      <span :if={publisher_str(@document)} class="shrink-0">{publisher_str(@document)}</span>
+      <span :if={@show_publisher && publisher_str(@document)} class="shrink-0">
+        {publisher_str(@document)}
+      </span>
       <span :if={pages_str(@document)} class="shrink-0">{pages_str(@document)}</span>
     </div>
     """
@@ -172,6 +179,22 @@ defmodule SheafWeb.DocumentEntryComponents do
       authors -> Enum.join(authors, ", ")
     end
   end
+
+  defp compact_authors_str(document) do
+    case document |> Map.get(:metadata, %{}) |> Map.get(:authors, []) do
+      [] -> nil
+      authors -> authors |> Enum.map(&surname/1) |> Enum.join(", ")
+    end
+  end
+
+  defp surname(name) when is_binary(name) do
+    name
+    |> String.split(~r/\s+/, trim: true)
+    |> List.last()
+    |> Kernel.||(name)
+  end
+
+  defp surname(name), do: to_string(name)
 
   defp year_str(document) do
     case document |> Map.get(:metadata, %{}) |> Map.get(:year) do

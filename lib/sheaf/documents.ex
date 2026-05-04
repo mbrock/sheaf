@@ -9,7 +9,7 @@ defmodule Sheaf.Documents do
 
   alias Sheaf.Id
   alias Sheaf.NS.{BIBO, BIRO, CITO, DCTERMS, FABIO, FOAF, FRBR, DOC}
-  alias RDF.{Graph, Literal}
+  alias RDF.{Description, Graph, Literal}
   alias RDF.NS.RDFS
 
   def list(opts \\ []) do
@@ -21,11 +21,33 @@ defmodule Sheaf.Documents do
       ]
     } do
       with :ok <- load_document_index_cache() do
-        documents = Sheaf.Repo.ask(&from_dataset(&1, opts))
+        documents =
+          case cached_list(opts) do
+            {:ok, documents} ->
+              Tracer.set_attribute("sheaf.documents.cache_hit", true)
+              documents
+
+            :miss ->
+              Tracer.set_attribute("sheaf.documents.cache_hit", false)
+
+              documents =
+                Sheaf.Repo.ask(&from_dataset(&1, opts))
+
+              cache_list(opts, documents)
+              documents
+          end
+
         Tracer.set_attribute("sheaf.document_count", length(documents))
         {:ok, documents}
       end
     end
+  end
+
+  @doc false
+  def clear_cache do
+    :persistent_term.erase(cache_key(true))
+    :persistent_term.erase(cache_key(false))
+    :ok
   end
 
   def references_for_document(document_iri, graph \\ nil)
@@ -164,6 +186,26 @@ defmodule Sheaf.Documents do
     end)
   end
 
+  defp cached_list(opts) do
+    opts
+    |> cache_key()
+    |> :persistent_term.get(:miss)
+    |> case do
+      :miss -> :miss
+      documents -> {:ok, documents}
+    end
+  end
+
+  defp cache_list(opts, documents) do
+    :persistent_term.put(cache_key(opts), documents)
+  end
+
+  defp cache_key(opts) when is_list(opts),
+    do: cache_key(Keyword.get(opts, :include_excluded, true))
+
+  defp cache_key(include_excluded?) when is_boolean(include_excluded?),
+    do: {__MODULE__, :list, include_excluded?}
+
   defp dataset_rows(dataset) do
     Tracer.with_span "Sheaf.Documents.dataset_rows", %{
       kind: :internal,
@@ -228,45 +270,19 @@ defmodule Sheaf.Documents do
       cites = CITO.cites()
 
       index =
-        Enum.reduce(RDF.Dataset.graphs(dataset), empty_document_index(), fn graph, index ->
-          graph_name = graph.name
+        Enum.reduce(RDF.Dataset.graphs(dataset), empty_document_index(), fn
+          %{name: nil}, index ->
+            index
 
-          Enum.reduce(Graph.triples(graph), index, fn
-            {subject, ^rdf_type, object}, index ->
-              index =
-                if MapSet.member?(kinds, object) do
-                  update_document_index(index, subject, :kinds, object)
-                else
-                  index
-                end
-
-              if graph_name && object == thesis do
-                update_graph_set(index, :theses_by_graph, graph_name, subject)
-              else
-                index
-              end
-
-            {subject, ^label, object}, index ->
-              update_document_index(index, subject, :labels, object)
-
-            {subject, ^page_count, object}, index ->
-              update_document_index(index, subject, :page_counts, page_number(object))
-
-            {subject, ^cites, object}, index ->
-              if graph_name do
-                update_graph_list(index, :cites_by_graph, graph_name, {subject, object})
-              else
-                index
-              end
-
-            _triple, index ->
-              index
-          end)
+          %Graph{name: graph_name} = graph, index ->
+            graph
+            |> Graph.description(graph_name)
+            |> document_index_description(index, graph_name, kinds, thesis, rdf_type, label, page_count, cites)
         end)
 
       documents =
         index.documents
-        |> add_legacy_page_ranges(page_ranges_from_dataset(dataset))
+        |> add_legacy_page_ranges(page_ranges_from_dataset(dataset, documents_missing_page_counts(index.documents)))
         |> Enum.filter(fn {_doc, info} -> info.kinds != [] end)
         |> Map.new()
 
@@ -295,6 +311,52 @@ defmodule Sheaf.Documents do
   defp empty_document_index do
     %{documents: %{}, theses_by_graph: %{}, cites_by_graph: %{}}
   end
+
+  defp document_index_description(
+         %Description{} = description,
+         index,
+         graph_name,
+         kinds,
+         thesis,
+         rdf_type,
+         label,
+         page_count,
+         cites
+       ) do
+    types = Description.get(description, rdf_type, [])
+    document_kinds = Enum.filter(types, &MapSet.member?(kinds, &1))
+
+    index =
+      Enum.reduce(document_kinds, index, fn kind, index ->
+        update_document_index(index, graph_name, :kinds, kind)
+      end)
+
+    index =
+      if thesis in types do
+        update_graph_set(index, :theses_by_graph, graph_name, graph_name)
+      else
+        index
+      end
+
+    index =
+      description
+      |> Description.get(label, [])
+      |> Enum.reduce(index, &update_document_index(&2, graph_name, :labels, &1))
+
+    index =
+      description
+      |> Description.get(page_count, [])
+      |> Enum.reduce(index, &update_document_index(&2, graph_name, :page_counts, page_number(&1)))
+
+    description
+    |> Description.get(cites, [])
+    |> Enum.reduce(index, fn cited_doc, index ->
+      update_graph_list(index, :cites_by_graph, graph_name, {graph_name, cited_doc})
+    end)
+  end
+
+  defp document_index_description(nil, index, _graph_name, _kinds, _thesis, _rdf_type, _label, _page_count, _cites),
+    do: index
 
   defp update_document_index(index, _doc, _key, nil), do: index
 
@@ -562,28 +624,34 @@ defmodule Sheaf.Documents do
     end
   end
 
-  defp page_ranges_from_dataset(dataset) do
+  defp documents_missing_page_counts(documents) do
+    documents
+    |> Enum.filter(fn {_doc, info} -> info.page_counts == [] end)
+    |> Map.new(fn {doc, _info} -> {doc, true} end)
+  end
+
+  defp page_ranges_from_dataset(_dataset, documents) when map_size(documents) == 0, do: %{}
+
+  defp page_ranges_from_dataset(dataset, documents) do
     source_page = DOC.sourcePage()
 
-    dataset
-    |> RDF.Dataset.graphs()
-    |> Enum.reduce(%{}, fn graph, ranges ->
-      if graph.name do
+    Enum.reduce(documents, %{}, fn {doc, _missing?}, ranges ->
+      case RDF.Dataset.graph(dataset, doc) do
+        %Graph{} = graph ->
         pages =
           graph
-          |> Graph.triples()
-          |> Enum.flat_map(fn
-            {_subject, ^source_page, object} -> [page_number(object)]
-            _triple -> []
-          end)
+          |> Graph.descriptions()
+          |> Enum.flat_map(&Description.get(&1, source_page, []))
+          |> Enum.map(&page_number/1)
           |> Enum.reject(&is_nil/1)
 
         case pages do
           [] -> ranges
           pages -> Map.put(ranges, graph.name, {Enum.min(pages), Enum.max(pages)})
         end
-      else
-        ranges
+
+        _other ->
+          ranges
       end
     end)
   end

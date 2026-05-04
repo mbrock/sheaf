@@ -191,11 +191,11 @@ defmodule SheafWeb.AssistantChatComponent do
   @impl true
   def render(%{variant: :full_page} = assigns) do
     ~H"""
-    <section class="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
+    <section class="grid min-h-[calc(100dvh-3.5rem)] min-w-0 grid-rows-[1fr_auto] sm:h-full sm:min-h-0 sm:grid-rows-[minmax(0,1fr)_auto]">
       <.live_component module={BlockPreviewComponent} id={block_preview_id(@id)} />
       <div
         id={"assistant-timeline-#{@id}"}
-        class="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4 sm:py-6"
+        class="min-w-0 overflow-x-hidden px-3 py-4 sm:min-h-0 sm:overflow-y-auto sm:px-4 sm:py-6"
         phx-hook="ScrollContainer"
         data-scroll-stick-bottom="true"
       >
@@ -225,7 +225,7 @@ defmodule SheafWeb.AssistantChatComponent do
         </div>
       </div>
 
-      <div class="min-w-0 border-t border-stone-200/80 bg-stone-50/95 px-3 py-2 dark:border-stone-800/80 dark:bg-stone-950/95 sm:px-4 sm:py-3">
+      <div class="sticky bottom-0 z-30 min-w-0 border-t border-stone-200/80 bg-stone-50/95 px-3 py-1 dark:border-stone-800/80 dark:bg-stone-950/95 sm:static sm:px-4 sm:py-2">
         <div class="mx-auto w-full max-w-3xl min-w-0">
           <.composer_form
             form={@form}
@@ -348,13 +348,13 @@ defmodule SheafWeb.AssistantChatComponent do
           name="chat[message]"
           rows="1"
           value={@form[:message].value}
-          class="block max-h-28 min-h-9 min-w-0 flex-1 resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-1.5 text-base leading-6 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:text-sm sm:leading-5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
+          class="block max-h-24 min-h-8 min-w-0 flex-1 resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-2.5 py-1 text-base leading-5 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:max-h-28 sm:min-h-9 sm:px-3 sm:py-1.5 sm:text-sm dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
           placeholder={input_placeholder(@mode, @selected_chat_id)}
           disabled={@pending}
         ></textarea>
         <button
           type="submit"
-          class="grid size-9 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
+          class="grid size-8 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 sm:size-9 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
           title="Send"
           aria-label="Send"
           disabled={@pending}
@@ -510,6 +510,7 @@ defmodule SheafWeb.AssistantChatComponent do
       <AssistantMarkdownComponents.markdown
         text={@message.text}
         block_ref_target={@block_ref_target}
+        resolve_block_previews={false}
       />
     </div>
     """

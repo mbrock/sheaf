@@ -74,16 +74,45 @@ defmodule SheafWeb.AssistantMarkdownTest do
     refute html =~ ">#DOC111</button>"
   end
 
-  test "keeps punctuation tight after block reference buttons" do
+  test "renders parenthesized reference lists without parens or commas" do
     html =
       render_markdown("See ([#PAR111](/b/PAR111) , [#PAR222](/b/PAR222) ).",
         block_ref_target: %Phoenix.LiveComponent.CID{cid: 1}
       )
 
-    assert html =~ ~r/PAR111<\/button>\s*<\/span>,/
-    assert html =~ ~r/PAR222<\/button>\s*<\/span>\)\./
-    refute html =~ "PAR111 ,"
-    refute html =~ "PAR222 )"
-    refute html =~ ") ."
+    assert html =~ ~r/>PAR111<\/button>\s*<\/span>\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR222<\/button>\.\s*<\/span>/
+    refute html =~ "(PAR111"
+    refute html =~ "PAR111,"
+    refute html =~ "PAR222)"
+    refute html =~ ","
+    refute html =~ ")"
+  end
+
+  test "renders a single parenthesized reference without parens" do
+    html =
+      render_markdown("See ([#PAR111](/b/PAR111)). More.",
+        block_ref_target: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ ~r/See\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR111<\/button>\.\s*<\/span>/
+    assert html =~ "More."
+    refute html =~ "(PAR111"
+    refute html =~ "PAR111)"
+    refute html =~ ")"
+  end
+
+  test "renders multiple parenthesized reference groups in one paragraph" do
+    html =
+      render_markdown(
+        "First ([#PAR111](/b/PAR111)). Later ([#PAR222](/b/PAR222), [#PAR333](/b/PAR333)).",
+        block_ref_target: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ ~r/>PAR111<\/button>\.\s*<\/span>/
+    assert html =~ ~r/>PAR222<\/button>\s*<\/span>\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR333<\/button>\.\s*<\/span>/
+    refute html =~ "(PAR111"
+    refute html =~ "(PAR222"
+    refute html =~ "PAR222,"
+    refute html =~ "PAR333)"
   end
 end

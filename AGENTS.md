@@ -101,11 +101,6 @@ Keep deployment-specific hosts and secrets out of tracked files. See `.env`
 for local `PHX_HOST`, ports, SPARQL endpoints, and other machine-specific
 settings.
 
-Commit liberally when you've completed a task. Even if the user may want to
-change something or continue working, it's good to have checkpoints. It's also
-fine to commit in the middle of a complex task when the code is in a coherent
-state and you're about to embark on a new sub-task.
-
 ## Local Commands
 
 `bin/start` starts the configured local service mode and waits for `/health`.

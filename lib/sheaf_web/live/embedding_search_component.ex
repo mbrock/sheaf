@@ -166,8 +166,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
     >
       <form phx-submit="search" phx-target={@myself}>
         <div class={[
-          "group flex min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-1 duration-150 sm:gap-2 dark:border-stone-700 dark:bg-stone-900",
-
+          "group flex min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-1 duration-150 sm:gap-2 dark:border-stone-700 dark:bg-stone-900"
         ]}>
           <input
             id={"#{@id}-input"}

@@ -96,6 +96,8 @@ defmodule Sheaf.Repo do
         {"db.operation", "clear_cache"}
       ]
     } do
+      Sheaf.Documents.clear_cache()
+
       with :ok <- Quadlog.clear_cache(__MODULE__),
            :ok <- load({nil, nil, nil, RDF.iri(@workspace_graph)}),
            :ok <- load({nil, nil, nil, RDF.iri(@metadata_graph)}) do
@@ -124,7 +126,13 @@ defmodule Sheaf.Repo do
       kind: :internal,
       attributes: tx_attributes(tx) ++ changes_attributes(changes) ++ metadata
     } do
-      Quadlog.transact(__MODULE__, tx, changes)
+      result = Quadlog.transact(__MODULE__, tx, changes)
+
+      if result == :ok do
+        Sheaf.Documents.clear_cache()
+      end
+
+      result
     end
   end
 

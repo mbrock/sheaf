@@ -26,12 +26,18 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   attr :block_ref_target, :any, default: nil
 
   defp nodes(assigns) do
-    assigns = assign(assigns, :nodes, attach_ref_punctuation(assigns.nodes))
+    nodes =
+      assigns.nodes
+      |> normalize_ref_lists()
+      |> attach_ref_punctuation()
+
+    assigns = assign(assigns, :nodes, nodes)
 
     ~H"""
     <.render_node
-      :for={{node, trailing_punctuation} <- @nodes}
+      :for={{node, leading_punctuation, trailing_punctuation} <- @nodes}
       node={node}
+      leading_punctuation={leading_punctuation}
       trailing_punctuation={trailing_punctuation}
       block_ref_target={@block_ref_target}
     />
@@ -39,6 +45,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   end
 
   attr :node, :any, required: true
+  attr :leading_punctuation, :string, default: nil
   attr :trailing_punctuation, :string, default: nil
   attr :block_ref_target, :any, default: nil
 
@@ -146,6 +153,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       title={@title}
       resource_id={@resource_id}
       block_ref_target={@block_ref_target}
+      leading_punctuation={@leading_punctuation}
       trailing_punctuation={@trailing_punctuation}
     />
     <a :if={@href && (!@resource_id || !@block_ref_target)} href={@href} title={@title}>
@@ -279,10 +287,122 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     """
   end
 
+  defp normalize_ref_lists(nodes) do
+    nodes
+    |> do_normalize_ref_lists([])
+    |> Enum.reverse()
+  end
+
+  defp do_normalize_ref_lists(
+         [%MDEx.Text{literal: literal} = text, %MDEx.Link{} = link | rest],
+         acc
+       ) do
+    with true <- resource_link?(link),
+         {before, _list_text} <- split_ref_list_start(literal),
+         {links, closing_text, rest} <- collect_ref_list(rest, [link]) do
+      nodes =
+        [
+          maybe_text_node(%{text | literal: before}),
+          ref_list_nodes(Enum.reverse(links), text),
+          maybe_text_node(closing_text)
+        ]
+        |> List.flatten()
+        |> Enum.reject(&is_nil/1)
+
+      do_normalize_ref_lists(nodes ++ rest, acc)
+    else
+      _other -> do_normalize_ref_lists([link | rest], [text | acc])
+    end
+  end
+
+  defp do_normalize_ref_lists([node | rest], acc) do
+    do_normalize_ref_lists(rest, [node | acc])
+  end
+
+  defp do_normalize_ref_lists([], acc), do: acc
+
+  defp split_ref_list_start(literal) do
+    case Regex.run(~r/^(.*?)\(\s*$/s, literal) do
+      [_, before] -> {before, "("}
+      _other -> nil
+    end
+  end
+
+  defp collect_ref_list([%MDEx.Text{literal: literal} = text | rest], links) do
+    cond do
+      Regex.match?(~r/^\s*,\s*$/s, literal) ->
+        collect_ref_list_after_separator(rest, links)
+
+      match = Regex.run(~r/^\s*\)([.;:!?]*)(.*)$/s, literal) ->
+        [_, punctuation, remaining] = match
+        closing_literal = punctuation <> remaining
+        {links, %{text | literal: closing_literal}, rest}
+
+      true ->
+        nil
+    end
+  end
+
+  defp collect_ref_list(_nodes, _links), do: nil
+
+  defp collect_ref_list_after_separator([%MDEx.Link{} = link | rest], links) do
+    if resource_link?(link), do: collect_ref_list(rest, [link | links]), else: nil
+  end
+
+  defp collect_ref_list_after_separator(_nodes, _links), do: nil
+
+  defp ref_list_nodes(links, text) do
+    links
+    |> Enum.intersperse(%{text | literal: " "})
+  end
+
+  defp maybe_text_node(%MDEx.Text{literal: ""}), do: nil
+  defp maybe_text_node(%MDEx.Text{} = text), do: text
+
   defp attach_ref_punctuation(nodes) do
     nodes
     |> do_attach_ref_punctuation([])
     |> Enum.reverse()
+  end
+
+  defp do_attach_ref_punctuation(
+         [%MDEx.Text{literal: literal} = text, %MDEx.Link{} = link, %MDEx.Text{literal: next_literal} = next_text | rest],
+         acc
+       ) do
+    with {before, leading_punctuation} <- trailing_punctuation_before_ref(link, literal) do
+      {trailing_punctuation, next_literal} =
+        leading_punctuation_after_ref(link, next_literal) || {nil, next_literal}
+
+      rest = [%{next_text | literal: next_literal} | rest]
+
+      acc =
+        acc
+        |> maybe_push_text(%{text | literal: before})
+        |> then(&[{link, leading_punctuation, trailing_punctuation} | &1])
+
+      do_attach_ref_punctuation(rest, acc)
+    else
+      _other ->
+        do_attach_ref_punctuation([link, next_text | rest], [{text, nil, nil} | acc])
+    end
+  end
+
+  defp do_attach_ref_punctuation(
+         [%MDEx.Text{literal: literal} = text, %MDEx.Link{} = link | rest],
+         acc
+       ) do
+    case trailing_punctuation_before_ref(link, literal) do
+      {before, leading_punctuation} ->
+        acc =
+          acc
+          |> maybe_push_text(%{text | literal: before})
+          |> then(&[{link, leading_punctuation, nil} | &1])
+
+        do_attach_ref_punctuation(rest, acc)
+
+      nil ->
+        do_attach_ref_punctuation([link | rest], [{text, nil, nil} | acc])
+    end
   end
 
   defp do_attach_ref_punctuation(
@@ -292,19 +412,31 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     case leading_punctuation_after_ref(link, literal) do
       {punctuation, literal} ->
         do_attach_ref_punctuation([%{text | literal: literal} | rest], [
-          {link, punctuation} | acc
+          {link, nil, punctuation} | acc
         ])
 
       nil ->
-        do_attach_ref_punctuation([text | rest], [{link, nil} | acc])
+        do_attach_ref_punctuation([text | rest], [{link, nil, nil} | acc])
     end
   end
 
   defp do_attach_ref_punctuation([node | rest], acc) do
-    do_attach_ref_punctuation(rest, [{node, nil} | acc])
+    do_attach_ref_punctuation(rest, [{node, nil, nil} | acc])
   end
 
   defp do_attach_ref_punctuation([], acc), do: acc
+
+  defp maybe_push_text(acc, %MDEx.Text{literal: ""}), do: acc
+  defp maybe_push_text(acc, %MDEx.Text{} = text), do: [{text, nil, nil} | acc]
+
+  defp trailing_punctuation_before_ref(%MDEx.Link{} = link, literal) do
+    with resource_id when is_binary(resource_id) <- resource_link_id(safe_href(link.url)),
+         [_, before, punctuation] <- Regex.run(~r/^(.*?)([\(\[\{])[\t ]*$/s, literal) do
+      {before, punctuation}
+    else
+      _other -> nil
+    end
+  end
 
   defp leading_punctuation_after_ref(%MDEx.Link{} = link, literal) do
     with resource_id when is_binary(resource_id) <- resource_link_id(safe_href(link.url)),
@@ -315,15 +447,25 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     end
   end
 
+  defp resource_link?(%MDEx.Link{} = link), do: is_binary(resource_link_id(safe_href(link.url)))
+
   attr :title, :string, default: nil
   attr :resource_id, :string, required: true
   attr :block_ref_target, :any, required: true
+  attr :leading_punctuation, :string, default: nil
   attr :trailing_punctuation, :string, default: nil
 
   defp resource_ref_link(assigns) do
+    {leading_punctuation, trailing_punctuation} =
+      display_ref_punctuation(assigns.leading_punctuation, assigns.trailing_punctuation)
+
+    assigns =
+      assigns
+      |> assign(:leading_punctuation, leading_punctuation)
+      |> assign(:trailing_punctuation, trailing_punctuation)
+
     ~H"""
-    <span class="block-preview relative inline-block align-baseline">
-      <button
+    <span class="whitespace-nowrap">{@leading_punctuation}<button
         type="button"
         title={@title}
         aria-label={"##{@resource_id}"}
@@ -331,10 +473,13 @@ defmodule SheafWeb.AssistantMarkdownComponents do
         phx-click="show_resource_preview"
         phx-value-id={@resource_id}
         phx-target={@block_ref_target}
-      >{@resource_id}</button>
-    </span>{@trailing_punctuation}
+      >{@resource_id}</button>{@trailing_punctuation}
+    </span>
     """
   end
+
+  defp display_ref_punctuation("(", ")" <> trailing), do: {nil, trailing}
+  defp display_ref_punctuation(leading, trailing), do: {leading, trailing}
 
   defp table_data(%MDEx.Table{nodes: rows}) do
     {header_rows, body_rows} = Enum.split_with(rows, &match?(%MDEx.TableRow{header: true}, &1))

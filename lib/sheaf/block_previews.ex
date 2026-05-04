@@ -6,6 +6,7 @@ defmodule Sheaf.BlockPreviews do
   alias RDF.{Description, Graph, Literal}
   alias Sheaf.{Corpus, Document, Id}
   alias Sheaf.NS.{DCTERMS, FABIO, FOAF}
+  alias RDF.NS.RDFS
 
   require OpenTelemetry.Tracer, as: Tracer
 
@@ -82,7 +83,9 @@ defmodule Sheaf.BlockPreviews do
         document_title: entry_title(document, doc_id),
         document_authors: document_authors(document_metadata),
         document_year: document_year(document_metadata),
+        document_status: document_status(document_metadata),
         section_id: entry_id(section),
+        section_number: section_number(graph, Id.iri(doc_id), entry_id(section)),
         section_title: entry_title(section, nil),
         path: block_path(doc_id, id)
       }
@@ -106,6 +109,7 @@ defmodule Sheaf.BlockPreviews do
 
     %{
       authors: author_names(metadata, expression),
+      status: document_status(metadata, expression),
       year: first_object(metadata, expression, FABIO.hasPublicationYear()) |> term_value()
     }
   end
@@ -115,6 +119,41 @@ defmodule Sheaf.BlockPreviews do
 
   defp document_year(%{year: year}) when not is_nil(year), do: to_string(year)
   defp document_year(_metadata), do: nil
+
+  defp document_status(%{status: status}), do: status
+  defp document_status(_metadata), do: nil
+
+  defp document_status(_metadata, nil), do: nil
+
+  defp document_status(metadata, expression) do
+    status = first_object(metadata, expression, bibo_status())
+    label = first_object(metadata, status, RDFS.label())
+
+    (label || status)
+    |> status_name()
+  end
+
+  defp section_number(_graph, _root, nil), do: nil
+
+  defp section_number(graph, root, section_id) do
+    graph
+    |> Document.toc(root)
+    |> find_section_number(section_id)
+    |> case do
+      nil -> nil
+      number -> Enum.join(number, ".")
+    end
+  end
+
+  defp find_section_number(entries, section_id) do
+    Enum.find_value(entries, fn entry ->
+      if entry.id == section_id do
+        entry.number
+      else
+        find_section_number(entry.children, section_id)
+      end
+    end)
+  end
 
   defp author_names(_metadata, nil), do: []
 
@@ -154,11 +193,52 @@ defmodule Sheaf.BlockPreviews do
   defp term_value(nil), do: nil
   defp term_value(term), do: term |> RDF.Term.value() |> to_string()
 
+  defp status_name(nil), do: nil
+
+  defp status_name(status) do
+    status
+    |> term_value()
+    |> String.split(["#", "/"])
+    |> List.last()
+    |> String.replace("-", " ")
+    |> String.downcase()
+  end
+
+  defp bibo_status, do: RDF.iri("http://purl.org/ontology/bibo/status")
+
   defp block_text(graph, iri, :paragraph), do: Document.paragraph_text(graph, iri)
-  defp block_text(graph, iri, :section), do: Document.heading(graph, iri)
+  defp block_text(graph, iri, :section), do: section_text(graph, iri)
   defp block_text(graph, iri, :row), do: Document.text(graph, iri)
   defp block_text(graph, iri, :extracted), do: graph |> Document.source_html(iri) |> plain_text()
   defp block_text(_graph, _iri, _type), do: ""
+
+  defp section_text(graph, iri) do
+    graph
+    |> section_text_blocks(iri)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n\n")
+  end
+
+  defp section_text_blocks(graph, iri) do
+    heading = Document.heading(graph, iri) |> normalize_plain_text()
+
+    child_blocks =
+      graph
+      |> Document.children(iri)
+      |> Enum.flat_map(&block_text_blocks(graph, &1))
+
+    [heading | child_blocks]
+  end
+
+  defp block_text_blocks(graph, iri) do
+    case Document.block_type(graph, iri) do
+      :section -> section_text_blocks(graph, iri)
+      :paragraph -> [Document.paragraph_text(graph, iri) |> normalize_plain_text()]
+      :row -> [Document.text(graph, iri) |> normalize_plain_text()]
+      :extracted -> [graph |> Document.source_html(iri) |> plain_text()]
+      _other -> []
+    end
+  end
 
   defp block_path(doc_id, id) when doc_id == id, do: "/#{doc_id}"
   defp block_path(doc_id, id), do: "/#{doc_id}?block=#{id}#block-#{id}"
@@ -181,6 +261,12 @@ defmodule Sheaf.BlockPreviews do
     |> String.replace("&gt;", ">")
     |> String.replace("&quot;", ~s("))
     |> String.replace("&#39;", "'")
+    |> normalize_plain_text()
+  end
+
+  defp normalize_plain_text(text) do
+    text
+    |> to_string()
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
   end

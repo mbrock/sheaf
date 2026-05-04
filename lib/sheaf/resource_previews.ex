@@ -15,7 +15,7 @@ defmodule Sheaf.ResourcePreviews do
       Tracer.set_attribute("sheaf.resource_id", id)
 
       case ResourceResolver.resolve(id) do
-        {:ok, %{kind: :block}} -> BlockPreviews.get(id)
+        {:ok, %{kind: :block}} -> block_preview(id)
         {:ok, %{kind: :document}} -> document_preview(id)
         _other -> nil
       end
@@ -23,6 +23,16 @@ defmodule Sheaf.ResourcePreviews do
   end
 
   def get(_id), do: nil
+
+  defp block_preview(id) do
+    case BlockPreviews.get(id) do
+      %{document_id: doc_id} = preview ->
+        Map.put(preview, :document, preview_document_entry(preview, doc_id))
+
+      preview ->
+        preview
+    end
+  end
 
   defp document_preview(id) do
     with iri = Id.iri(id),
@@ -66,6 +76,26 @@ defmodule Sheaf.ResourcePreviews do
           title: Document.title(graph, iri) || id
         }
     end
+  end
+
+  defp preview_document_entry(preview, id) do
+    %{
+      id: id,
+      iri: to_string(Id.iri(id)),
+      kind: :document,
+      cited?: false,
+      excluded?: false,
+      has_document?: true,
+      metadata: %{
+        authors: Map.get(preview, :document_authors, []),
+        status: Map.get(preview, :document_status),
+        year: Map.get(preview, :document_year)
+      },
+      path: "/#{id}",
+      workspace_owner_authored?: false,
+      workspace_owner_name: nil,
+      title: Map.get(preview, :document_title) || id
+    }
   end
 
   defp toc_preview(entries, max_depth) do
