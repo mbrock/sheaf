@@ -54,9 +54,17 @@ defmodule SheafWeb.DocumentLive do
 
   def handle_event("assistant_block_link", %{"id" => block_id}, socket)
       when is_binary(block_id) and block_id != "" do
+    current_document_id = Map.get(socket.assigns, :document_id)
+
     case target_document_id(block_id, socket) do
       nil ->
         {:noreply, put_flash(socket, :error, "Block #{block_id} was not found.")}
+
+      ^current_document_id ->
+        {:noreply,
+         socket
+         |> assign(:selected_block_id, block_id)
+         |> push_event("scroll-to-block", %{id: block_id})}
 
       doc_id when doc_id == block_id ->
         {:noreply, push_patch(socket, to: ~p"/#{doc_id}")}
@@ -192,6 +200,7 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <details
       id={"block-#{Document.id(@block.iri)}"}
+      open
       class="scroll-mt-6 space-y-4 pt-2 [&:not([open])>summary]:text-stone-500 [&:not([open])>summary]:dark:text-stone-500 [&[open]>summary]:pb-3 [&[open]>summary]:text-stone-900 [&[open]>summary]:dark:text-stone-100 [&>summary::-webkit-details-marker]:hidden"
     >
       <summary class={[
@@ -219,10 +228,10 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <article
       id={"block-#{Document.id(@block.iri)}"}
-      class="grid grid-cols-1 gap-x-2 lg:grid-cols-[2rem_minmax(0,1fr)]"
+      class="grid grid-cols-1 gap-x-3 lg:grid-cols-[4.5rem_minmax(0,1fr)]"
     >
-      <span class="col-start-1 row-start-1 hidden pt-1 text-right font-sans text-xs leading-5 text-stone-500 lg:block dark:text-stone-400">
-        §{@block.number}
+      <span class="col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
+        {"##{Document.id(@block.iri)}"}
       </span>
 
       <div class="col-start-1 row-start-1 min-w-0 lg:col-start-2">
@@ -276,14 +285,14 @@ defmodule SheafWeb.DocumentLive do
     <article
       id={"block-#{Document.id(@block.iri)}"}
       class={[
-        "grid cursor-pointer grid-cols-1 gap-x-2 rounded-sm py-1 lg:grid-cols-[2rem_minmax(0,1fr)]",
+        "grid cursor-pointer grid-cols-1 gap-x-3 rounded-sm py-1 lg:grid-cols-[4.5rem_minmax(0,1fr)]",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
       phx-value-id={Document.id(@block.iri)}
     >
-      <span class="col-start-1 row-start-1 hidden pt-1 text-right font-sans text-xs leading-5 text-stone-500 lg:block dark:text-stone-400">
-        §{@block.number}
+      <span class="col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
+        {"##{Document.id(@block.iri)}"}
       </span>
 
       <div class="col-start-1 mb-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 font-sans text-xs leading-5 text-stone-500 lg:col-start-2 dark:text-stone-400">
@@ -319,14 +328,14 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "grid cursor-pointer grid-cols-1 gap-x-2 rounded-sm font-serif leading-normal lg:grid-cols-[2rem_minmax(0,1fr)]",
+        "grid cursor-pointer grid-cols-1 gap-x-3 rounded-sm font-serif leading-normal lg:grid-cols-[4.5rem_minmax(0,1fr)]",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
       phx-value-id={Document.id(@block.iri)}
     >
-      <span class="col-start-1 row-start-1 hidden pt-1 text-right font-sans text-xs leading-5 text-stone-500 lg:block dark:text-stone-400">
-        §{@block.number}
+      <span class="col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
+        {"##{Document.id(@block.iri)}"}
       </span>
       <div
         id={"text-#{Document.id(@block.iri)}"}

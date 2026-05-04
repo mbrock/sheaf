@@ -49,9 +49,17 @@ defmodule SheafWeb.ResourceLive do
 
   def handle_event("assistant_block_link", %{"id" => block_id}, socket)
       when is_binary(block_id) and block_id != "" do
+    current_document_id = Map.get(socket.assigns, :document_id)
+
     case target_document_id(block_id, socket) do
       nil ->
         {:noreply, put_flash(socket, :error, "Block #{block_id} was not found.")}
+
+      ^current_document_id ->
+        {:noreply,
+         socket
+         |> assign(:selected_block_id, block_id)
+         |> push_event("scroll-to-block", %{id: block_id})}
 
       doc_id when doc_id == block_id ->
         {:noreply, push_patch(socket, to: ~p"/#{doc_id}")}
