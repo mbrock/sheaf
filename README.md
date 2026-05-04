@@ -78,13 +78,13 @@ Useful graph commands:
 ```bash
 mix escript.build
 bin/search-sync
-bin/sheaf-admin backup
+bin/backup
 bin/sheaf-admin schema upload
 ```
 
-`bin/sheaf-admin backup` writes a Fuseki backup of the configured dataset under
-`output/backups/`. `bin/sheaf-admin schema upload` uploads
-`priv/sheaf-schema.ttl` and supporting ontology graphs.
+`bin/backup` writes a SQLite backup of the configured Quadlog database under
+`output/backups/`. `bin/sheaf-admin schema upload` uploads `priv/sheaf-schema.ttl`
+and supporting ontology graphs.
 
 ## Storage
 

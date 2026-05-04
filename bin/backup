@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+
+. "$SCRIPT_DIR/lib/runtime_env.sh"
+require_sheaf_env "$APP_ROOT"
+
+cd "$APP_ROOT"
+
+usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") [--output PATH] [--force]
+
+Back up the configured Quadlog SQLite database with SQLite's online backup API.
+If PATH is a directory, the backup file is created inside it.
+EOF
+}
+
+quote_sqlite_cli_arg() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '"%s"' "$value"
+}
+
+output=""
+force=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output|-o)
+      if [ "$#" -lt 2 ]; then
+        usage
+        exit 2
+      fi
+      output="$2"
+      shift 2
+      ;;
+    --force)
+      force=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      printf 'Unknown option: %s\n' "$1" >&2
+      usage
+      exit 2
+      ;;
+    *)
+      if [ -n "$output" ]; then
+        printf 'Unexpected argument: %s\n' "$1" >&2
+        usage
+        exit 2
+      fi
+      output="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ "$#" -gt 0 ]; then
+  printf 'Unexpected argument: %s\n' "$1" >&2
+  usage
+  exit 2
+fi
+
+if ! command -v sqlite3 >/dev/null 2>&1; then
+  printf 'sqlite3 is required for backups.\n' >&2
+  exit 1
+fi
+
+source_db="${SHEAF_QUADLOG_DB:-var/sheaf-quadlog.sqlite3}"
+
+if [ ! -s "$source_db" ]; then
+  printf 'Quadlog SQLite database is missing or empty: %s\n' "$source_db" >&2
+  exit 1
+fi
+
+timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+default_file="sheaf-${timestamp}.sqlite3"
+
+if [ -z "$output" ]; then
+  output="output/backups/$default_file"
+elif [ -d "$output" ] || [[ "$output" == */ ]]; then
+  output="${output%/}/$default_file"
+fi
+
+mkdir -p "$(dirname -- "$output")"
+
+if [ -e "$output" ] && [ "$force" -ne 1 ]; then
+  printf 'Backup output already exists: %s\n' "$output" >&2
+  printf 'Use --force to replace it.\n' >&2
+  exit 1
+fi
+
+tmp_output="${output}.tmp.$$"
+rm -f -- "$tmp_output"
+trap 'rm -f -- "$tmp_output"' EXIT
+
+sqlite3 "$source_db" \
+  ".timeout 60000" \
+  ".backup main $(quote_sqlite_cli_arg "$tmp_output")"
+
+quick_check="$(sqlite3 "$tmp_output" 'PRAGMA quick_check;' 2>/dev/null || true)"
+
+if [ "$quick_check" != "ok" ]; then
+  printf 'SQLite backup quick_check failed for %s: %s\n' "$tmp_output" "${quick_check:-unknown error}" >&2
+  exit 1
+fi
+
+mv -f -- "$tmp_output" "$output"
+trap - EXIT
+
+printf 'Backed up Quadlog SQLite database\n'
+printf '  Source: %s\n' "$source_db"
+printf '  Output: %s\n' "$output"
