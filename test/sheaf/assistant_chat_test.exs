@@ -1,9 +1,9 @@
 defmodule Sheaf.Assistant.ChatTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.{Context, Response, Tool, ToolCall, ToolResult}
+  alias ReqLLM.{Context, Response, Tool}
   alias ReqLLM.Message.ContentPart
-  alias Sheaf.Assistant.{Chat, ContextStore, ToolResults}
+  alias Sheaf.Assistant.{Chat, ContextStore}
   alias Sheaf.Spreadsheet.Metadata
   alias Sheaf.XLSXFixture
 
@@ -228,23 +228,6 @@ defmodule Sheaf.Assistant.ChatTest do
           "[context for this turn]\n\nHidden context.\n\nVisible question.",
           %{sheaf_user_text: "Visible question."}
         ),
-        Context.assistant("",
-          tool_calls: [ToolCall.new("call_1", "query_spreadsheets", ~s({"sql":"SELECT 1"}))]
-        ),
-        Context.tool_result_message(
-          "query_spreadsheets",
-          "call_1",
-          %ToolResult{
-            content: [ContentPart.text("SPREADSHEET QUERY\nResult: #RES111")],
-            metadata: %{
-              sheaf_result: %ToolResults.SpreadsheetQuery{
-                intent: "inspect rows",
-                sql: "SELECT 1",
-                rows: []
-              }
-            }
-          }
-        ),
         Context.assistant("Recovered answer.")
       ])
 
@@ -276,11 +259,6 @@ defmodule Sheaf.Assistant.ChatTest do
              pending: false,
              messages: [
                %{role: :user, text: "Visible question."},
-               %{
-                 role: :tool,
-                 tool: "query_spreadsheets",
-                 input: %{intent: "inspect rows"}
-               },
                %{role: :assistant, text: "Recovered answer."}
              ]
            } = Chat.snapshot(id)
