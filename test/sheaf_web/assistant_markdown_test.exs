@@ -64,6 +64,7 @@ defmodule SheafWeb.AssistantMarkdownTest do
     assert html =~ ~s(type="button")
     assert html =~ ~s(role="tooltip")
     assert html =~ "block-preview-backdrop"
+    refute html =~ "backdrop-blur"
     assert html =~ "block-preview-card"
     assert html =~ "Thesis draft"
     assert html =~ "Mikael Brockman"

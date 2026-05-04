@@ -293,7 +293,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       </button>
       <span
         aria-hidden="true"
-        class="block-preview-backdrop fixed inset-0 z-40 bg-stone-950/45 backdrop-blur-[1px] dark:bg-stone-950/60"
+        class="block-preview-backdrop fixed inset-0 z-40 bg-stone-950/45 dark:bg-stone-950/60"
       >
       </span>
       <span

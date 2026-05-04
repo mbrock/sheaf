@@ -727,6 +727,13 @@
     transition-delay: 1400ms, 1400ms;
   }
 
+  .block-preview[data-preview-dismissed="true"] > .block-preview-backdrop,
+  .block-preview[data-preview-dismissed="true"] > .block-preview-card {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+  }
+
   .rdf-class-popover {
     border: 0;
     border-radius: 0;
