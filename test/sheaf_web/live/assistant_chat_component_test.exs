@@ -1,6 +1,8 @@
 defmodule SheafWeb.AssistantChatComponentTest do
   use ExUnit.Case, async: true
 
+  import Phoenix.LiveViewTest
+
   alias SheafWeb.AssistantChatComponent
 
   test "option changes preserve the drafted message" do
@@ -88,5 +90,24 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert socket.assigns.model_provider == "claude"
     assert socket.assigns.model == Sheaf.LLM.default_model()
     assert socket.assigns.form.params["message"] == "Reply draft."
+  end
+
+  test "existing full-page conversations render a compact reply composer" do
+    html =
+      render_component(&AssistantChatComponent.render/1,
+        id: "assistant-conversation-CHAT01",
+        variant: :full_page,
+        chat: %{messages: [], pending: false, titles: %{}},
+        selected_chat_id: "CHAT01",
+        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        mode: "quick",
+        model_provider: "claude",
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ ~s(placeholder="Reply to assistant")
+    assert html =~ ~s(aria-label="Send")
+    refute html =~ ~s(name="chat[mode]")
+    refute html =~ ~s(name="chat[model_provider]")
   end
 end

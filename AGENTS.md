@@ -235,9 +235,13 @@ No BEAM code changes to reload. Asset build completed.
 Run `mix precommit` before committing. It runs compile checks, formatting,
 schema upload, and tests.
 
-For browser checks, use Playwright with Chrome via `uvx`/`uv` against the
-service URL. Browser automation is appropriate for nondestructive UI checks,
-visual inspection, and screenshots of the running service.
+For quick browser screenshots, prefer `wd screenshot` against the service URL.
+It can navigate, set a viewport, and capture the full page in one command:
+`wd screenshot --url http://127.0.0.1:4042/PATH --page --viewport md`. The
+`--viewport` value can be a Tailwind-style breakpoint such as `sm` or `md`, or
+an explicit size such as `390x844`. Use Playwright with Chrome via `uvx`/`uv`
+when you need richer browser automation beyond screenshots and simple DOM
+checks.
 
 `bin/show [count]` captures one or more screenshots from the running service
 and sends them to the configured Telegram chat using the Bot API. If the user

@@ -191,14 +191,14 @@ defmodule SheafWeb.AssistantChatComponent do
   @impl true
   def render(%{variant: :full_page} = assigns) do
     ~H"""
-    <section class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+    <section class="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
       <div
         id={"assistant-timeline-#{@id}"}
-        class="min-h-0 overflow-y-auto px-4 py-6"
+        class="min-h-0 min-w-0 overflow-y-auto px-3 py-4 sm:px-4 sm:py-6"
         phx-hook="ScrollContainer"
         data-scroll-stick-bottom="true"
       >
-        <div class="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
+        <div class="mx-auto flex min-h-full w-full max-w-3xl min-w-0 flex-col justify-end gap-4 sm:gap-5">
           <.chat_item
             :for={item <- message_groups(@chat.messages)}
             item={item}
@@ -223,8 +223,8 @@ defmodule SheafWeb.AssistantChatComponent do
         </div>
       </div>
 
-      <div class="border-t border-stone-200/80 bg-stone-50/95 px-4 py-3 dark:border-stone-800/80 dark:bg-stone-950/95">
-        <div class="mx-auto w-full max-w-3xl">
+      <div class="min-w-0 border-t border-stone-200/80 bg-stone-50/95 px-3 py-2 dark:border-stone-800/80 dark:bg-stone-950/95 sm:px-4 sm:py-3">
+        <div class="mx-auto w-full max-w-3xl min-w-0">
           <.composer_form
             form={@form}
             mode={@mode}
@@ -339,7 +339,28 @@ defmodule SheafWeb.AssistantChatComponent do
       phx-target={@myself}
       class="space-y-2"
     >
+      <div :if={@options_locked?} class="flex min-w-0 items-end gap-2">
+        <textarea
+          name="chat[message]"
+          rows="1"
+          value={@form[:message].value}
+          class="block max-h-28 min-h-9 min-w-0 flex-1 resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-1.5 text-base leading-6 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:text-sm sm:leading-5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
+          placeholder={input_placeholder(@mode, @selected_chat_id)}
+          disabled={@pending}
+        ></textarea>
+        <button
+          type="submit"
+          class="grid size-9 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
+          title="Send"
+          aria-label="Send"
+          disabled={@pending}
+        >
+          <.icon name="hero-paper-airplane" class="size-4" />
+        </button>
+      </div>
+
       <textarea
+        :if={!@options_locked?}
         name="chat[message]"
         rows="1"
         value={@form[:message].value}
@@ -347,7 +368,7 @@ defmodule SheafWeb.AssistantChatComponent do
         placeholder={input_placeholder(@mode, @selected_chat_id)}
         disabled={@pending}
       ></textarea>
-      <div class="flex items-center justify-between gap-3">
+      <div :if={!@options_locked?} class="flex items-center justify-between gap-3">
         <div class="inline-flex items-center gap-1 font-sans text-xs">
           <label class={selector_label_class(@mode, "quick", @options_locked?)}>
             <input
