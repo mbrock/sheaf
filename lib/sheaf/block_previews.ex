@@ -3,7 +3,9 @@ defmodule Sheaf.BlockPreviews do
   Small previews for block references rendered in assistant Markdown.
   """
 
-  alias Sheaf.{Corpus, Document, Documents, Id}
+  alias RDF.{Description, Graph, Literal}
+  alias Sheaf.{Corpus, Document, Id}
+  alias Sheaf.NS.{DCTERMS, FABIO, FOAF}
 
   require OpenTelemetry.Tracer, as: Tracer
 
@@ -37,16 +39,18 @@ defmodule Sheaf.BlockPreviews do
   defp previews_for_documents(grouped_ids) when map_size(grouped_ids) == 0, do: []
 
   defp previews_for_documents(grouped_ids) do
-    documents_by_id = documents_by_id()
+    metadata_graph = metadata_graph()
 
     Enum.flat_map(grouped_ids, fn {doc_id, ids} ->
-      previews_for_document(doc_id, ids, Map.get(documents_by_id, doc_id))
+      previews_for_document(doc_id, ids, metadata_graph)
     end)
   end
 
-  defp previews_for_document(doc_id, ids, document_metadata) do
+  defp previews_for_document(doc_id, ids, metadata_graph) do
     case Corpus.graph(doc_id) do
       {:ok, graph} ->
+        document_metadata = document_metadata(graph, metadata_graph, doc_id)
+
         ids
         |> Enum.map(fn id -> {id, preview_from_graph(graph, doc_id, id, document_metadata)} end)
         |> Enum.reject(fn {_id, preview} -> is_nil(preview) end)
@@ -87,18 +91,68 @@ defmodule Sheaf.BlockPreviews do
     end
   end
 
-  defp documents_by_id do
-    case Documents.list() do
-      {:ok, documents} -> Map.new(documents, &{&1.id, &1})
-      {:error, _reason} -> %{}
+  defp metadata_graph do
+    case Sheaf.fetch_graph(Sheaf.Repo.metadata_graph()) do
+      {:ok, %Graph{} = graph} -> graph
+      {:error, _reason} -> Graph.new()
     end
   end
 
-  defp document_authors(%{metadata: %{authors: authors}}) when is_list(authors), do: authors
-  defp document_authors(_document), do: []
+  defp document_metadata(%Graph{} = graph, %Graph{} = metadata, doc_id) do
+    doc = Id.iri(doc_id)
+    description = RDF.Data.description(graph, doc)
+    expression = Description.first(description, FABIO.isRepresentationOf())
+    expression = expression || first_object(metadata, doc, FABIO.isRepresentationOf())
 
-  defp document_year(%{metadata: %{year: year}}) when not is_nil(year), do: to_string(year)
-  defp document_year(_document), do: nil
+    %{
+      authors: author_names(metadata, expression),
+      year: first_object(metadata, expression, FABIO.hasPublicationYear()) |> term_value()
+    }
+  end
+
+  defp document_authors(%{authors: authors}) when is_list(authors), do: authors
+  defp document_authors(_metadata), do: []
+
+  defp document_year(%{year: year}) when not is_nil(year), do: to_string(year)
+  defp document_year(_metadata), do: nil
+
+  defp author_names(_metadata, nil), do: []
+
+  defp author_names(metadata, expression) do
+    metadata
+    |> objects_for(expression, DCTERMS.creator())
+    |> Enum.flat_map(fn
+      %Literal{} = literal -> [Literal.lexical(literal)]
+      author -> first_object(metadata, author, FOAF.name()) |> List.wrap()
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&term_value/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp first_object(_graph, nil, _predicate), do: nil
+
+  defp first_object(graph, subject, predicate) do
+    graph
+    |> objects_for(subject, predicate)
+    |> List.first()
+  end
+
+  defp objects_for(_graph, nil, _predicate), do: []
+
+  defp objects_for(%Graph{} = graph, subject, predicate) do
+    graph
+    |> Graph.triples()
+    |> Enum.flat_map(fn
+      {^subject, ^predicate, object} -> [object]
+      _triple -> []
+    end)
+  end
+
+  defp term_value(nil), do: nil
+  defp term_value(term), do: term |> RDF.Term.value() |> to_string()
 
   defp block_text(graph, iri, :paragraph), do: Document.paragraph_text(graph, iri)
   defp block_text(graph, iri, :section), do: Document.heading(graph, iri)
