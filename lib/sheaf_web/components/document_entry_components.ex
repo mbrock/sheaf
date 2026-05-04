@@ -28,66 +28,84 @@ defmodule SheafWeb.DocumentEntryComponents do
   attr :document, :map, required: true
   attr :show_checkbox, :boolean, default: false
   attr :nested, :boolean, default: false
+  attr :link_title, :boolean, default: true
 
   def document_row(assigns) do
     ~H"""
     <div class={["leading-snug", if(@nested, do: "px-2 py-1.5", else: "px-2 py-1")]}>
-      <div class="flex min-w-0 items-baseline gap-2 font-sans">
-        <input
-          :if={@show_checkbox && checkbox_visible?(@document)}
-          type="checkbox"
-          checked={checkbox_checked?(@document)}
-          disabled={!excludable?(@document)}
-          phx-click="toggle_document_exclusion"
-          phx-value-id={@document.id}
-          phx-value-included={if(@document.excluded?, do: "true", else: "false")}
-          aria-label={checkbox_label(@document)}
-          title={checkbox_label(@document)}
-          class="inline-block size-3.5 shrink-0 rounded-sm border border-stone-400 bg-stone-100 text-stone-600 accent-stone-500 focus:ring-1 focus:ring-stone-400 dark:border-stone-500 dark:bg-stone-800 dark:text-stone-300 dark:accent-stone-400"
-        />
-        <.link
-          :if={@document.path}
-          navigate={@document.path}
-          class="min-w-0 flex-1 truncate transition-colors"
-        >
-          {@document.title}
-        </.link>
-        <span
-          :if={is_nil(@document.path)}
-          class={[
-            "min-w-0 flex-1 truncate",
-            !has_document?(@document) && "text-stone-600 dark:text-stone-300"
-          ]}
-        >
-          {@document.title}
-        </span>
-        <span
-          :if={!has_document?(@document)}
-          class="shrink-0 rounded-sm border border-stone-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-stone-500 dark:border-stone-700 dark:text-stone-400"
-        >
-          metadata only
-        </span>
-        <span
-          :if={@document.cited? && !@nested}
-          class="shrink-0 rounded-sm border border-amber-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-amber-800 dark:border-amber-700 dark:text-amber-200"
-        >
-          cited
-        </span>
-        <span
-          :if={status_str(@document) == "draft"}
-          class="shrink-0 rounded-sm border border-sky-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-sky-800 dark:border-sky-700 dark:text-sky-200"
-        >
-          draft
-        </span>
-        <span
-          :if={status_str(@document) == "mikael"}
-          class="shrink-0 rounded-sm border border-emerald-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-emerald-800 dark:border-emerald-900/70 dark:text-emerald-300"
-        >
-          MIKAEL
-        </span>
-      </div>
-
+      <.document_title_line
+        document={@document}
+        show_checkbox={@show_checkbox}
+        nested={@nested}
+        link_title={@link_title}
+      />
       <.document_metadata_lines document={@document} />
+    </div>
+    """
+  end
+
+  attr :document, :map, required: true
+  attr :show_checkbox, :boolean, default: false
+  attr :nested, :boolean, default: false
+  attr :link_title, :boolean, default: true
+  attr :class, :string, default: "flex min-w-0 items-baseline gap-2 font-sans"
+  attr :title_class, :string, default: "min-w-0 flex-1 truncate"
+
+  def document_title_line(assigns) do
+    ~H"""
+    <div class={@class}>
+      <input
+        :if={@show_checkbox && checkbox_visible?(@document)}
+        type="checkbox"
+        checked={checkbox_checked?(@document)}
+        disabled={!excludable?(@document)}
+        phx-click="toggle_document_exclusion"
+        phx-value-id={@document.id}
+        phx-value-included={if(@document.excluded?, do: "true", else: "false")}
+        aria-label={checkbox_label(@document)}
+        title={checkbox_label(@document)}
+        class="inline-block size-3.5 shrink-0 rounded-sm border border-stone-400 bg-stone-100 text-stone-600 accent-stone-500 focus:ring-1 focus:ring-stone-400 dark:border-stone-500 dark:bg-stone-800 dark:text-stone-300 dark:accent-stone-400"
+      />
+      <.link
+        :if={@link_title && @document.path}
+        navigate={@document.path}
+        class={[@title_class, "transition-colors"]}
+      >
+        {@document.title}
+      </.link>
+      <span
+        :if={!@link_title || is_nil(@document.path)}
+        class={[
+          @title_class,
+          !has_document?(@document) && "text-stone-600 dark:text-stone-300"
+        ]}
+      >
+        {@document.title}
+      </span>
+      <span
+        :if={!has_document?(@document)}
+        class="shrink-0 rounded-sm border border-stone-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-stone-500 dark:border-stone-700 dark:text-stone-400"
+      >
+        metadata only
+      </span>
+      <span
+        :if={@document.cited? && !@nested}
+        class="shrink-0 rounded-sm border border-amber-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-amber-800 dark:border-amber-700 dark:text-amber-200"
+      >
+        cited
+      </span>
+      <span
+        :if={status_str(@document) == "draft"}
+        class="shrink-0 rounded-sm border border-sky-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-sky-800 dark:border-sky-700 dark:text-sky-200"
+      >
+        draft
+      </span>
+      <span
+        :if={status_str(@document) == "mikael"}
+        class="shrink-0 rounded-sm border border-emerald-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-emerald-800 dark:border-emerald-900/70 dark:text-emerald-300"
+      >
+        MIKAEL
+      </span>
     </div>
     """
   end

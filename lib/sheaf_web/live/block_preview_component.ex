@@ -5,7 +5,8 @@ defmodule SheafWeb.BlockPreviewComponent do
 
   use SheafWeb, :live_component
 
-  import SheafWeb.DocumentEntryComponents, only: [document_metadata_lines: 1]
+  import SheafWeb.DocumentEntryComponents,
+    only: [document_metadata_lines: 1, document_title_line: 1]
 
   @impl true
   def mount(socket) do
@@ -44,7 +45,14 @@ defmodule SheafWeb.BlockPreviewComponent do
         >
           <div class="mb-1.5 flex min-w-0 items-start gap-2 font-sans leading-4">
             <div class="min-w-0 flex-1">
+              <.document_title_line
+                :if={preview_document(@preview)}
+                document={preview_document(@preview)}
+                link_title={false}
+                title_class="min-w-0 flex-1 truncate text-[0.92rem] text-stone-900 dark:text-stone-50"
+              />
               <div class="small-caps truncate text-[0.78rem] text-stone-700 dark:text-stone-200">
+                :if={is_nil(preview_document(@preview))}
                 {preview_document_label(@preview)}
               </div>
               <.document_metadata_lines
