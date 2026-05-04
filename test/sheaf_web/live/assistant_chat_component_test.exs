@@ -41,6 +41,26 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert socket.assigns.form.params["message"] == "Keep this draft."
   end
 
+  test "option changes accept edit mode" do
+    {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
+
+    assert {:noreply, socket} =
+             AssistantChatComponent.handle_event(
+               "set_options",
+               %{
+                 "chat" => %{
+                   "message" => "Move this paragraph.",
+                   "mode" => "edit",
+                   "model_provider" => "claude"
+                 }
+               },
+               socket
+             )
+
+    assert socket.assigns.mode == "edit"
+    assert socket.assigns.form.params["message"] == "Move this paragraph."
+  end
+
   test "existing conversations keep their original mode and model options" do
     {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
 

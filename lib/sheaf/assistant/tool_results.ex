@@ -207,4 +207,31 @@ defmodule Sheaf.Assistant.ToolResults do
               tag_iris: [],
               statement_count: 0
   end
+
+  defmodule BlockEdit do
+    defstruct [
+      :action,
+      :document_id,
+      :block_id,
+      :block_type,
+      :target_id,
+      :position,
+      :text,
+      :previous_text,
+      affected_blocks: [],
+      statement_count: 0
+    ]
+  end
+
+  defmodule SearchIndexUpdate do
+    defstruct block_ids: [],
+              affected_blocks: [],
+              embedding_target_count: 0,
+              embedding_embedded_count: 0,
+              embedding_skipped_count: 0,
+              embedding_error_count: 0,
+              embedding_status: nil,
+              search_count: 0,
+              search_synced_at: nil
+  end
 end

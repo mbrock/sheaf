@@ -373,6 +373,18 @@ defmodule SheafWeb.AssistantChatComponent do
             <.icon name="hero-beaker" class="size-3.5" />
             <span>Research</span>
           </label>
+          <label class={selector_label_class(@mode, "edit", @options_locked?)}>
+            <input
+              type="radio"
+              name="chat[mode]"
+              value="edit"
+              checked={@mode == "edit"}
+              class="sr-only"
+              disabled={@options_locked?}
+            />
+            <.icon name="hero-pencil-square" class="size-3.5" />
+            <span>Edit</span>
+          </label>
         </div>
         <div class="inline-flex items-center gap-1 font-sans text-xs">
           <label
@@ -616,6 +628,59 @@ defmodule SheafWeb.AssistantChatComponent do
         {count, []} when count > 1 -> "Tagging #{count} paragraphs"
         {count, tags} when count > 1 -> "Tagging #{count} paragraphs as #{Enum.join(tags, ", ")}"
         _ -> "Tagging paragraphs"
+      end
+
+    tool_phrase(target, message)
+  end
+
+  defp tool_view(%{tool: "update_block_text", input: input} = message, _titles) do
+    block = tool_arg(input, :block)
+
+    target =
+      if is_binary(block) and block != "",
+        do: "Updating block #{block}",
+        else: "Updating a block"
+
+    tool_phrase(target, message)
+  end
+
+  defp tool_view(%{tool: "move_block", input: input} = message, _titles) do
+    block = tool_arg(input, :block)
+    target = tool_arg(input, :target)
+    position = tool_arg(input, :position)
+
+    target =
+      if is_binary(block) and is_binary(target) and is_binary(position) do
+        "Moving #{block} #{position} #{target}"
+      else
+        "Moving a block"
+      end
+
+    tool_phrase(target, message)
+  end
+
+  defp tool_view(%{tool: "insert_paragraph", input: input} = message, _titles) do
+    target_id = tool_arg(input, :target)
+    position = tool_arg(input, :position)
+
+    target =
+      if is_binary(target_id) and is_binary(position) do
+        "Inserting a paragraph #{position} #{target_id}"
+      else
+        "Inserting a paragraph"
+      end
+
+    tool_phrase(target, message)
+  end
+
+  defp tool_view(%{tool: "update_search_index", input: input} = message, _titles) do
+    block_count = input |> tool_blocks() |> length()
+
+    target =
+      case block_count do
+        1 -> "Updating search indexes for 1 block"
+        count when count > 1 -> "Updating search indexes for #{count} blocks"
+        _ -> "Updating search indexes"
       end
 
     tool_phrase(target, message)
@@ -905,9 +970,11 @@ defmodule SheafWeb.AssistantChatComponent do
   defp maybe_navigate_after_send(socket), do: socket
 
   defp normalize_mode("research"), do: "research"
+  defp normalize_mode("edit"), do: "edit"
   defp normalize_mode(_mode), do: "quick"
 
   defp mode_kind("research"), do: :research
+  defp mode_kind("edit"), do: :edit
   defp mode_kind(_mode), do: :chat
 
   defp normalize_model_provider("gpt"), do: "gpt"
@@ -960,6 +1027,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_kind_icon(chat) do
     case chat_kind(chat) do
+      :edit -> "hero-pencil-square"
       :research -> "hero-beaker"
       _kind -> "hero-chat-bubble-left-ellipsis"
     end
@@ -967,12 +1035,15 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_listed?(chats, id), do: Enum.any?(chats, &(&1.id == id))
 
+  defp chat_kind(%{kind: :edit}), do: :edit
+  defp chat_kind(%{kind: "edit"}), do: :edit
   defp chat_kind(%{kind: :research}), do: :research
   defp chat_kind(%{kind: "research"}), do: :research
   defp chat_kind(_chat), do: :chat
 
   defp chat_mode(chat) do
     case chat_kind(chat) do
+      :edit -> "edit"
       :research -> "research"
       _kind -> "quick"
     end
@@ -987,6 +1058,7 @@ defmodule SheafWeb.AssistantChatComponent do
   defp input_placeholder(_mode, selected_chat_id) when is_binary(selected_chat_id),
     do: "Reply to assistant"
 
+  defp input_placeholder("edit", _selected_chat_id), do: "Tell the assistant what to edit"
   defp input_placeholder("research", _selected_chat_id), do: "Give the assistant a research task"
   defp input_placeholder(_mode, _selected_chat_id), do: "Ask a quick question"
 

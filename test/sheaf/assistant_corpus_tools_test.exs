@@ -389,6 +389,74 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert Enum.any?(tools, &(&1.name == "search_text"))
   end
 
+  test "edit tool set exposes document mutation tools and visible search index refresh" do
+    test_pid = self()
+
+    tools =
+      CorpusTools.tools(
+        tool_set: :edit,
+        include_notes?: true,
+        block_text_replacer: fn block, text ->
+          send(test_pid, {:replace, block, text})
+
+          {:ok,
+           %{
+             action: :replace_paragraph_text,
+             document_id: "DOC111",
+             block_id: block,
+             block_type: :paragraph,
+             text: text,
+             affected_blocks: [block],
+             statement_count: 6
+           }}
+        end,
+        search_index_updater: fn blocks ->
+          send(test_pid, {:index, blocks})
+
+          {:ok,
+           %{
+             block_ids: blocks,
+             affected_blocks: blocks,
+             embedding: %{target_count: length(blocks), embedded_count: 1, skipped_count: 0},
+             search: %{count: 12, synced_at: "2026-05-04T12:00:00Z"}
+           }}
+        end
+      )
+
+    tool_names = Enum.map(tools, & &1.name)
+
+    assert "update_block_text" in tool_names
+    assert "move_block" in tool_names
+    assert "insert_paragraph" in tool_names
+    assert "update_search_index" in tool_names
+    refute "write_note" in tool_names
+    refute "query_spreadsheets" in tool_names
+
+    update_tool = Enum.find(tools, &(&1.name == "update_block_text"))
+
+    assert {:ok, update_result} =
+             Tool.execute(update_tool, %{"block" => "PAR111", "text" => "New."})
+
+    assert_receive {:replace, "PAR111", "New."}
+
+    assert %ToolResults.BlockEdit{block_id: "PAR111", statement_count: 6} =
+             sheaf_result(update_result)
+
+    assert tool_text(update_result) =~ "BLOCK EDIT APPLIED"
+
+    index_tool = Enum.find(tools, &(&1.name == "update_search_index"))
+    assert {:ok, index_result} = Tool.execute(index_tool, %{"blocks" => ["PAR111"]})
+    assert_receive {:index, ["PAR111"]}
+
+    assert %ToolResults.SearchIndexUpdate{
+             affected_blocks: ["PAR111"],
+             embedding_target_count: 1,
+             search_count: 12
+           } = sheaf_result(index_result)
+
+    assert tool_text(index_result) =~ "SEARCH INDEX UPDATED"
+  end
+
   test "read tool accepts only a blocks list and optional expansion" do
     tools = CorpusTools.tools(include_notes?: false)
     tool = Enum.find(tools, &(&1.name == "read"))

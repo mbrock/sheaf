@@ -129,6 +129,60 @@ defmodule Sheaf.Assistant.ChatTest do
            } = wait_for_messages(id, 2)
   end
 
+  test "edit-mode conversations get edit tools and prompt guidance" do
+    test_pid = self()
+
+    generate_text = fn _model, context, opts ->
+      send(test_pid, {:edit_inference_started, self(), context, opts})
+
+      tool_names = Enum.map(opts[:tools], & &1.name)
+      assert "update_block_text" in tool_names
+      assert "move_block" in tool_names
+      assert "insert_paragraph" in tool_names
+      assert "update_search_index" in tool_names
+      refute "write_note" in tool_names
+
+      receive do
+        :finish ->
+          {:ok, response(Context.assistant("Updated #PAR111."), finish_reason: :stop)}
+      end
+    end
+
+    id = Sheaf.Id.generate()
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       kind: :edit,
+       model: "test-model",
+       titles: %{},
+       workspace_instructions: "This workspace is for an edit-mode test thesis.",
+       activity_writer: nil,
+       generate_text: generate_text,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    assert %{title: "Assistant conversation", kind: :edit, pending: false} = Chat.snapshot(id)
+
+    assert :ok = Chat.send_user_message(id, "Replace #PAR111 with this paragraph.")
+
+    assert_receive {:edit_inference_started, task_pid, context, _opts}
+    assert system_text(context) =~ "Edit mode:"
+    assert system_text(context) =~ "update_search_index"
+    assert system_text(context) =~ "mikael-tagged"
+
+    send(task_pid, :finish)
+
+    assert %{
+             kind: :edit,
+             pending: false,
+             messages: [
+               %{role: :user, text: "Replace #PAR111 with this paragraph."},
+               %{role: :assistant, text: "Updated #PAR111."}
+             ]
+           } = wait_for_messages(id, 2)
+  end
+
   test "can switch the routed model before the next turn" do
     test_pid = self()
 

@@ -47,7 +47,7 @@ defmodule Sheaf.Assistant.Chat.Server do
   @type snapshot :: %{
           id: String.t(),
           title: String.t(),
-          kind: :chat | :research,
+          kind: :chat | :research | :edit,
           messages: [map()],
           pending: boolean(),
           active_tool: String.t() | nil,
@@ -138,11 +138,12 @@ defmodule Sheaf.Assistant.Chat.Server do
 
     tools =
       CorpusTools.tools(
+        tool_set: tool_set(kind),
         include_notes?: allow_notes?,
         notify: fn event -> GenServer.cast(chat, {:assistant_event, event}) end,
         note_context: %{
           agent_iri: agent_iri,
-          agent_label: "Sheaf research assistant",
+          agent_label: agent_label(kind),
           session_iri: session_iri,
           session_label: session_label(kind, id),
           conversation_mode: conversation_mode(kind, allow_notes?)
@@ -521,10 +522,19 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp session_label(_kind, id), do: "Assistant conversation #{id}"
 
+  defp agent_label(:edit), do: "Sheaf edit assistant"
+  defp agent_label(_kind), do: "Sheaf research assistant"
+
+  defp tool_set(:edit), do: :edit
+  defp tool_set(_kind), do: :default
+
+  defp conversation_mode(:edit, _allow_notes?), do: "edit"
   defp conversation_mode(:research, _allow_notes?), do: "research"
   defp conversation_mode(_kind, true), do: "research"
   defp conversation_mode(_kind, _allow_notes?), do: "quick"
 
+  defp normalize_kind(:edit), do: :edit
+  defp normalize_kind("edit"), do: :edit
   defp normalize_kind(:research), do: :research
   defp normalize_kind("research"), do: :research
   defp normalize_kind(_kind), do: :chat
@@ -866,9 +876,8 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp system_prompt(kind, allow_notes?, workspace_instructions) do
     """
-    You are a research assistant embedded in Sheaf, a reading and writing
-    environment for a thesis project. Be concrete and help the user move the
-    work forward.
+    You are an assistant embedded in Sheaf, a reading and writing environment
+    for a thesis project. Be concrete and help the user move the work forward.
 
     Project context:
     #{workspace_instructions}
@@ -904,6 +913,7 @@ defmodule Sheaf.Assistant.Chat.Server do
         blocks that are placeholders, fragments, need evidence, or need
         revision. Pass all relevant paragraph ids in blocks and choose from
         placeholder, needs_evidence, needs_revision, and fragment.
+    #{edit_tool_prompt(kind)}
     #{note_tool_prompt(allow_notes?)}
 
     How to help:
@@ -959,6 +969,36 @@ defmodule Sheaf.Assistant.Chat.Server do
   end
 
   defp note_tool_prompt(false), do: ""
+
+  defp edit_tool_prompt(:edit) do
+    """
+      * Use update_block_text to replace a paragraph's full text or change a
+        section heading title when the user asks for a concrete edit.
+      * Use move_block to move or reparent an existing block. For example, use
+        position=after to make one block the next sibling of another.
+      * Use insert_paragraph to add a new paragraph block at a specified place.
+      * After update_block_text, move_block, or insert_paragraph, call
+        update_search_index with the edited, moved, or inserted block ids so
+        embeddings and full-text search reflect the changed draft.
+    """
+  end
+
+  defp edit_tool_prompt(_kind), do: ""
+
+  defp mode_prompt(:edit, _allow_notes?) do
+    """
+    Edit mode:
+      * Treat the user message as a specific editing instruction for an
+        existing thesis draft, not as an open-ended research task.
+      * If the target draft or block is ambiguous, inspect the documents and
+        relevant block context before editing. The workspace may contain both a
+        draft-tagged and a mikael-tagged active thesis draft.
+      * Make only the requested edits. Do not rewrite neighboring paragraphs
+        unless the user explicitly asks.
+      * After applying edit tools and update_search_index, finish with a short
+        confirmation naming the changed block ids.
+    """
+  end
 
   defp mode_prompt(:research, true) do
     """

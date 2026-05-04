@@ -8,9 +8,11 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   alias ReqLLM.{Tool, ToolResult}
   alias ReqLLM.Message.ContentPart
-  alias Sheaf.{BlockTags, Corpus, Document, Documents, Id, Spreadsheets}
+  alias Sheaf.{BlockTags, Corpus, Document, DocumentEdits, Documents, Id, Spreadsheets}
   alias Sheaf.Assistant.Notes
   alias Sheaf.Assistant.{QueryResults, SpreadsheetSession, ToolResultText, ToolResults}
+  alias Sheaf.Embedding.Index, as: EmbeddingIndex
+  alias Sheaf.Search.Index, as: SearchIndex
 
   @search_result_limit 10
   @spreadsheet_list_limit 50
@@ -32,9 +34,19 @@ defmodule Sheaf.Assistant.CorpusTools do
     exact_search = Keyword.get(opts, :exact_search, &Sheaf.Embedding.Index.exact_search/2)
     paragraph_tagger = Keyword.get(opts, :paragraph_tagger, &BlockTags.attach/2)
     include_notes? = Keyword.get(opts, :include_notes?, true)
+    tool_set = Keyword.get(opts, :tool_set, :default)
     spreadsheet_session = Keyword.get(opts, :spreadsheet_session)
     query_result_context = Keyword.get(opts, :query_result_context, [])
     query_result_reader = Keyword.get(opts, :query_result_reader, &QueryResults.read/2)
+
+    block_text_replacer =
+      Keyword.get(opts, :block_text_replacer, &DocumentEdits.replace_block_text/2)
+
+    block_mover = Keyword.get(opts, :block_mover, &DocumentEdits.move_block/3)
+    paragraph_inserter = Keyword.get(opts, :paragraph_inserter, &DocumentEdits.insert_paragraph/3)
+
+    search_index_updater =
+      Keyword.get(opts, :search_index_updater, &update_search_index_for_blocks/1)
 
     {spreadsheet_lister, spreadsheet_query, spreadsheet_search, spreadsheet_dialect,
      spreadsheet_result_reader} =
@@ -133,17 +145,28 @@ defmodule Sheaf.Assistant.CorpusTools do
     ]
 
     tools =
-      tools ++
-        sidecar_spreadsheet_tools(
-          notify,
-          spreadsheet_lister,
-          spreadsheet_query,
-          spreadsheet_search,
-          spreadsheet_result_reader,
-          spreadsheet_dialect
-        )
+      if tool_set == :edit do
+        tools ++
+          edit_tool_definitions(
+            notify,
+            block_text_replacer,
+            block_mover,
+            paragraph_inserter,
+            search_index_updater
+          )
+      else
+        tools ++
+          sidecar_spreadsheet_tools(
+            notify,
+            spreadsheet_lister,
+            spreadsheet_query,
+            spreadsheet_search,
+            spreadsheet_result_reader,
+            spreadsheet_dialect
+          )
+      end
 
-    if include_notes? do
+    if include_notes? and tool_set != :edit do
       note_context = Keyword.get_lazy(opts, :note_context, &default_note_context/0) |> Map.new()
       note_writer = Keyword.get(opts, :note_writer, &Notes.write/1)
 
@@ -154,6 +177,102 @@ defmodule Sheaf.Assistant.CorpusTools do
     else
       tools
     end
+  end
+
+  defp edit_tool_definitions(
+         notify,
+         block_text_replacer,
+         block_mover,
+         paragraph_inserter,
+         search_index_updater
+       ) do
+    [
+      Tool.new!(
+        name: "update_block_text",
+        description:
+          "Replace the full text of one editable thesis block. For a paragraph block, " <>
+            "this creates a new active paragraph revision and invalidates the old one. " <>
+            "For a section block, this changes the heading title. Only paragraph and " <>
+            "section blocks are accepted.",
+        parameter_schema: [
+          block: [type: :string, required: true, doc: "Paragraph or section block id."],
+          text: [
+            type: :string,
+            required: true,
+            doc: "Complete replacement paragraph text or complete replacement heading title."
+          ]
+        ],
+        callback:
+          instrument(notify, "update_block_text", fn args ->
+            update_block_text_tool(args, block_text_replacer)
+          end)
+      ),
+      Tool.new!(
+        name: "move_block",
+        description:
+          "Move an existing block to a new location in the same document. " <>
+            "Use position=after to make block the next sibling of target, " <>
+            "position=before to make it the previous sibling, or first_child/last_child " <>
+            "to reparent it under a section or document block.",
+        parameter_schema: [
+          block: [type: :string, required: true, doc: "Block id to move."],
+          target: [type: :string, required: true, doc: "Block id used as the placement target."],
+          position: [
+            type: {:in, ["before", "after", "first_child", "last_child"]},
+            required: true,
+            doc: "Where to place block relative to target."
+          ]
+        ],
+        callback:
+          instrument(notify, "move_block", fn args ->
+            move_block_tool(args, block_mover)
+          end)
+      ),
+      Tool.new!(
+        name: "insert_paragraph",
+        description:
+          "Insert a new thesis paragraph block at a specific location. " <>
+            "Use position=after to insert as the next sibling of target, " <>
+            "position=before for previous sibling, or first_child/last_child under " <>
+            "a section or document block.",
+        parameter_schema: [
+          target: [type: :string, required: true, doc: "Block id used as the placement target."],
+          position: [
+            type: {:in, ["before", "after", "first_child", "last_child"]},
+            required: true,
+            doc: "Where to insert the paragraph relative to target."
+          ],
+          text: [
+            type: :string,
+            required: true,
+            doc: "Full text for the new paragraph block."
+          ]
+        ],
+        callback:
+          instrument(notify, "insert_paragraph", fn args ->
+            insert_paragraph_tool(args, paragraph_inserter)
+          end)
+      ),
+      Tool.new!(
+        name: "update_search_index",
+        description:
+          "Refresh derived search indexes after document edits. " <>
+            "Pass the paragraph, section, or document blocks affected by the edit. " <>
+            "The tool re-embeds stale affected text blocks and updates the SQLite FTS mirror.",
+        parameter_schema: [
+          blocks: [
+            type: {:list, :string},
+            required: true,
+            doc:
+              "Edited, inserted, or moved block ids. Section/document ids are expanded to text-bearing descendants."
+          ]
+        ],
+        callback:
+          instrument(notify, "update_search_index", fn args ->
+            update_search_index_tool(args, search_index_updater)
+          end)
+      )
+    ]
   end
 
   defp spreadsheet_backend(opts, nil, _query_result_context, query_result_reader) do
@@ -474,6 +593,46 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
+  def humanize("update_block_text", args, _titles) do
+    case arg(args, :block) do
+      block when is_binary(block) and block != "" -> "Updating ##{block}"
+      _ -> "Updating a block"
+    end
+  end
+
+  def humanize("move_block", args, _titles) do
+    block = arg(args, :block)
+    target = arg(args, :target)
+    position = arg(args, :position)
+
+    if is_binary(block) and is_binary(target) and is_binary(position) do
+      "Moving ##{block} #{position} ##{target}"
+    else
+      "Moving a block"
+    end
+  end
+
+  def humanize("insert_paragraph", args, _titles) do
+    target = arg(args, :target)
+    position = arg(args, :position)
+
+    if is_binary(target) and is_binary(position) do
+      "Inserting a paragraph #{position} ##{target}"
+    else
+      "Inserting a paragraph"
+    end
+  end
+
+  def humanize("update_search_index", args, _titles) do
+    block_ids = requested_blocks(args)
+
+    case block_ids do
+      [block_id] -> "Updating search indexes for ##{block_id}"
+      ids when is_list(ids) and ids != [] -> "Updating search indexes for #{length(ids)} blocks"
+      _ids -> "Updating search indexes"
+    end
+  end
+
   def humanize(name, _args, _titles), do: name
 
   @doc """
@@ -558,6 +717,16 @@ defmodule Sheaf.Assistant.CorpusTools do
   def result_summary("tag_paragraphs", {:ok, %ToolResults.ParagraphTags{} = result}) do
     "#{pluralize(length(result.tags), "tag", "tags")} on " <>
       pluralize(length(result.block_ids), "paragraph", "paragraphs")
+  end
+
+  def result_summary(name, {:ok, %ToolResults.BlockEdit{} = result})
+      when name in ["update_block_text", "move_block", "insert_paragraph"] do
+    "changed " <> pluralize(result.statement_count, "statement", "statements")
+  end
+
+  def result_summary("update_search_index", {:ok, %ToolResults.SearchIndexUpdate{} = result}) do
+    "#{pluralize(length(result.affected_blocks), "affected block", "affected blocks")}, " <>
+      "#{pluralize(result.embedding_embedded_count, "embedding", "embeddings")} refreshed"
   end
 
   def result_summary(_name, {:error, reason}) when is_binary(reason) do
@@ -877,6 +1046,187 @@ defmodule Sheaf.Assistant.CorpusTools do
 
       other ->
         {:error, "could not tag paragraphs: unexpected result #{inspect(other)}"}
+    end
+  end
+
+  defp update_block_text_tool(args, block_text_replacer) do
+    block = arg(args, :block)
+    text = arg(args, :text)
+
+    cond do
+      not is_binary(block) or String.trim(block) == "" ->
+        {:error, "block is required"}
+
+      not is_binary(text) ->
+        {:error, "text is required"}
+
+      true ->
+        case block_text_replacer.(block, text) do
+          {:ok, result} ->
+            result
+            |> block_edit_result()
+            |> rendered_result()
+            |> then(&{:ok, &1})
+
+          {:error, reason} when is_binary(reason) ->
+            {:error, "could not update block text: #{reason}"}
+
+          {:error, reason} ->
+            {:error, "could not update block text: #{inspect(reason)}"}
+
+          other ->
+            {:error, "could not update block text: unexpected result #{inspect(other)}"}
+        end
+    end
+  end
+
+  defp move_block_tool(args, block_mover) do
+    block = arg(args, :block)
+    target = arg(args, :target)
+    position = arg(args, :position)
+
+    cond do
+      not is_binary(block) or String.trim(block) == "" ->
+        {:error, "block is required"}
+
+      not is_binary(target) or String.trim(target) == "" ->
+        {:error, "target is required"}
+
+      not is_binary(position) or String.trim(position) == "" ->
+        {:error, "position is required"}
+
+      true ->
+        case block_mover.(block, target, position) do
+          {:ok, result} ->
+            result
+            |> block_edit_result()
+            |> rendered_result()
+            |> then(&{:ok, &1})
+
+          {:error, reason} when is_binary(reason) ->
+            {:error, "could not move block: #{reason}"}
+
+          {:error, reason} ->
+            {:error, "could not move block: #{inspect(reason)}"}
+
+          other ->
+            {:error, "could not move block: unexpected result #{inspect(other)}"}
+        end
+    end
+  end
+
+  defp insert_paragraph_tool(args, paragraph_inserter) do
+    target = arg(args, :target)
+    position = arg(args, :position)
+    text = arg(args, :text)
+
+    cond do
+      not is_binary(target) or String.trim(target) == "" ->
+        {:error, "target is required"}
+
+      not is_binary(position) or String.trim(position) == "" ->
+        {:error, "position is required"}
+
+      not is_binary(text) ->
+        {:error, "text is required"}
+
+      true ->
+        case paragraph_inserter.(target, position, text) do
+          {:ok, result} ->
+            result
+            |> block_edit_result()
+            |> rendered_result()
+            |> then(&{:ok, &1})
+
+          {:error, reason} when is_binary(reason) ->
+            {:error, "could not insert paragraph: #{reason}"}
+
+          {:error, reason} ->
+            {:error, "could not insert paragraph: #{inspect(reason)}"}
+
+          other ->
+            {:error, "could not insert paragraph: unexpected result #{inspect(other)}"}
+        end
+    end
+  end
+
+  defp update_search_index_tool(args, search_index_updater) do
+    block_ids = requested_blocks(args)
+
+    if block_ids == [] do
+      {:error, "blocks is required"}
+    else
+      case search_index_updater.(block_ids) do
+        {:ok, result} ->
+          result
+          |> search_index_update_result(block_ids)
+          |> rendered_result()
+          |> then(&{:ok, &1})
+
+        {:error, reason} when is_binary(reason) ->
+          {:error, "could not update search indexes: #{reason}"}
+
+        {:error, reason} ->
+          {:error, "could not update search indexes: #{inspect(reason)}"}
+
+        other ->
+          {:error, "could not update search indexes: unexpected result #{inspect(other)}"}
+      end
+    end
+  end
+
+  defp block_edit_result(result) when is_map(result) do
+    %ToolResults.BlockEdit{
+      action: Map.get(result, :action),
+      document_id: Map.get(result, :document_id),
+      block_id: Map.get(result, :block_id),
+      block_type: Map.get(result, :block_type),
+      target_id: Map.get(result, :target_id),
+      position: Map.get(result, :position),
+      text: Map.get(result, :text),
+      previous_text: Map.get(result, :previous_text),
+      affected_blocks: Map.get(result, :affected_blocks, []),
+      statement_count: Map.get(result, :statement_count, 0)
+    }
+  end
+
+  defp search_index_update_result(result, requested_blocks) when is_map(result) do
+    embedding = Map.get(result, :embedding, %{})
+    search = Map.get(result, :search, %{})
+
+    %ToolResults.SearchIndexUpdate{
+      block_ids: Map.get(result, :block_ids, requested_blocks),
+      affected_blocks: Map.get(result, :affected_blocks, []),
+      embedding_target_count: Map.get(embedding, :target_count, 0),
+      embedding_embedded_count: Map.get(embedding, :embedded_count, 0),
+      embedding_skipped_count: Map.get(embedding, :skipped_count, 0),
+      embedding_error_count: Map.get(embedding, :error_count, 0),
+      embedding_status: Map.get(embedding, :status),
+      search_count: Map.get(search, :count, 0),
+      search_synced_at: Map.get(search, :synced_at)
+    }
+  end
+
+  defp update_search_index_for_blocks(block_ids) do
+    with {:ok, affected_blocks} <- DocumentEdits.text_block_ids(block_ids),
+         {:ok, rows} <- Sheaf.TextUnits.fetch_rows(),
+         affected_iris = MapSet.new(Enum.map(affected_blocks, &(Id.iri(&1) |> to_string()))),
+         embedding_units =
+           rows
+           |> Enum.filter(fn row ->
+             iri = row |> Map.fetch!("iri") |> RDF.Term.value() |> to_string()
+             MapSet.member?(affected_iris, iri)
+           end)
+           |> EmbeddingIndex.units_from_rows(),
+         {:ok, embedding} <- EmbeddingIndex.sync_units(embedding_units),
+         {:ok, search} <- SearchIndex.sync() do
+      {:ok,
+       %{
+         block_ids: block_ids,
+         affected_blocks: affected_blocks,
+         embedding: embedding,
+         search: search
+       }}
     end
   end
 

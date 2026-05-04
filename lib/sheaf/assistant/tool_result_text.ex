@@ -7,6 +7,7 @@ defmodule Sheaf.Assistant.ToolResultText do
   """
 
   alias Sheaf.Assistant.ToolResults.{
+    BlockEdit,
     Block,
     Blocks,
     Child,
@@ -17,6 +18,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     Note,
     OutlineEntry,
     ParagraphTags,
+    SearchIndexUpdate,
     SearchHit,
     SearchResults,
     Spreadsheet,
@@ -200,6 +202,30 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
+  def to_text(%BlockEdit{} = result) do
+    """
+    BLOCK EDIT APPLIED
+    Action: #{result.action}
+    Document: ##{result.document_id}
+    Block: ##{result.block_id}
+    #{edit_target_line(result)}
+    Affected text blocks: #{tagged_blocks(result.affected_blocks)}
+    Statements changed: #{result.statement_count}
+    """
+    |> String.trim()
+  end
+
+  def to_text(%SearchIndexUpdate{} = result) do
+    """
+    SEARCH INDEX UPDATED
+    Requested blocks: #{tagged_blocks(result.block_ids)}
+    Affected text blocks: #{tagged_blocks(result.affected_blocks)}
+    Embeddings: target=#{result.embedding_target_count} embedded=#{result.embedding_embedded_count} skipped=#{result.embedding_skipped_count} errors=#{result.embedding_error_count} status=#{result.embedding_status || "not run"}
+    FTS rows: #{result.search_count}
+    """
+    |> String.trim()
+  end
+
   def selected_block_text(%Block{} = block) do
     [
       selected_block_heading(block),
@@ -264,7 +290,16 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp tagged_blocks(block_ids) do
     block_ids
     |> List.wrap()
-    |> Enum.map_join(", ", &"##{&1}")
+    |> case do
+      [] -> "(none)"
+      ids -> Enum.map_join(ids, ", ", &"##{&1}")
+    end
+  end
+
+  defp edit_target_line(%BlockEdit{target_id: nil}), do: ""
+
+  defp edit_target_line(%BlockEdit{} = result) do
+    "Target: ##{result.target_id} #{result.position}"
   end
 
   defp spreadsheet_list_summary(%ListSpreadsheets{} = result) do

@@ -188,6 +188,8 @@ defmodule Sheaf.Assistant.Chats do
     DateTime.utc_now() |> DateTime.truncate(:second)
   end
 
+  defp normalize_kind(:edit), do: :edit
+  defp normalize_kind("edit"), do: :edit
   defp normalize_kind(:research), do: :research
   defp normalize_kind("research"), do: :research
   defp normalize_kind(_kind), do: :chat
