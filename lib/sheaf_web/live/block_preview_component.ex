@@ -46,9 +46,14 @@ defmodule SheafWeb.BlockPreviewComponent do
                 {preview_document_label(@preview)}
               </div>
               <div
-                :if={preview_year(@preview) || preview_authors(@preview) != []}
+                :if={
+                  preview_kind(@preview) || preview_year(@preview) || preview_authors(@preview) != []
+                }
                 class="flex min-w-0 items-baseline gap-2 text-[0.72rem] text-stone-500 dark:text-stone-400"
               >
+                <span :if={preview_kind(@preview)} class="small-caps shrink-0">
+                  {preview_kind(@preview)}
+                </span>
                 <span :if={preview_year(@preview)} class="shrink-0 tabular-nums">
                   {preview_year(@preview)}
                 </span>
@@ -74,9 +79,26 @@ defmodule SheafWeb.BlockPreviewComponent do
           >
             {preview_section_label(@preview)}
           </div>
-          <div class="font-serif text-[0.84rem] leading-[1.32] text-stone-800 dark:text-stone-100">
+          <div
+            :if={present?(Map.get(@preview, :text))}
+            class="font-serif text-[0.84rem] leading-[1.32] text-stone-800 dark:text-stone-100"
+          >
             {Map.get(@preview, :text)}
           </div>
+          <ol
+            :if={preview_toc(@preview) != []}
+            class="mt-2 space-y-0.5 border-t border-stone-200 pt-2 font-sans text-[0.72rem] leading-4 dark:border-stone-800"
+          >
+            <li
+              :for={entry <- preview_toc(@preview)}
+              class="flex gap-2 text-stone-600 dark:text-stone-300"
+            >
+              <span class="shrink-0 tabular-nums text-stone-400 dark:text-stone-500">
+                {entry.number}
+              </span>
+              <span class="min-w-0 truncate">{entry.title}</span>
+            </li>
+          </ol>
         </aside>
       </div>
     </div>
@@ -98,6 +120,8 @@ defmodule SheafWeb.BlockPreviewComponent do
     if present?(title), do: title
   end
 
+  defp preview_kind(preview), do: Map.get(preview, :document_kind) |> blank_to_nil()
+
   defp preview_year(preview) do
     case Map.get(preview, :document_year) do
       year when is_binary(year) -> blank_to_nil(year)
@@ -111,6 +135,13 @@ defmodule SheafWeb.BlockPreviewComponent do
     |> Map.get(:document_authors, [])
     |> List.wrap()
     |> Enum.filter(&present?/1)
+  end
+
+  defp preview_toc(preview) do
+    preview
+    |> Map.get(:toc, [])
+    |> List.wrap()
+    |> Enum.filter(fn entry -> present?(entry[:title]) end)
   end
 
   defp present?(value), do: is_binary(value) and String.trim(value) != ""

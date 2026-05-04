@@ -33,11 +33,13 @@ defmodule Sheaf.ResourcePreviews do
       %{
         id: id,
         type: :document,
-        text: Document.text_preview(graph, iri, chars: 700),
+        text: nil,
         document_id: id,
+        document_kind: graph |> Document.kind(iri) |> document_kind_label(),
         document_title: Document.title(graph, iri) || id,
         document_authors: document_authors(metadata),
         document_year: document_year(metadata),
+        toc: graph |> Document.toc(iri) |> toc_preview(),
         path: "/#{id}"
       }
     else
@@ -69,6 +71,30 @@ defmodule Sheaf.ResourcePreviews do
 
   defp document_year(%{year: year}) when not is_nil(year), do: to_string(year)
   defp document_year(_metadata), do: nil
+
+  defp document_kind_label(:thesis), do: "Thesis"
+  defp document_kind_label(:transcript), do: "Transcript"
+  defp document_kind_label(:paper), do: "Paper"
+  defp document_kind_label(:spreadsheet), do: "Spreadsheet"
+  defp document_kind_label(_kind), do: "Document"
+
+  defp toc_preview(entries) do
+    entries
+    |> flatten_toc()
+    |> Enum.take(8)
+  end
+
+  defp flatten_toc(entries) do
+    Enum.flat_map(entries, fn entry ->
+      current = %{
+        id: entry.id,
+        number: Enum.join(entry.number, "."),
+        title: entry.title
+      }
+
+      [current | flatten_toc(entry.children)]
+    end)
+  end
 
   defp author_names(_metadata, nil), do: []
 
