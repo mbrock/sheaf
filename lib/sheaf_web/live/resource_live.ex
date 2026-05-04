@@ -87,8 +87,8 @@ defmodule SheafWeb.ResourceLive do
     <main class="grid min-h-dvh grid-rows-[auto_1fr] bg-stone-100 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
       <AppChrome.toolbar section={:document} search?={false} />
 
-      <section class="mx-auto w-full max-w-[92rem] px-4 py-5 sm:px-6 lg:px-8">
-        <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <section class="w-full py-5">
+        <div class="mb-4 flex flex-col gap-3 px-4 sm:flex-row sm:items-end sm:justify-between sm:px-6 lg:px-8">
           <div>
             <p class="font-mono text-[11px] font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
               Spreadsheet query result
@@ -99,7 +99,7 @@ defmodule SheafWeb.ResourceLive do
           </div>
 
           <div class="flex items-center gap-2">
-            <span class="rounded-sm border border-stone-300 bg-white px-2.5 py-1 font-mono text-xs text-stone-700 shadow-sm dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300">
+            <span class="rounded-sm border border-stone-300 bg-white px-2.5 py-1 font-mono text-xs text-stone-700 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300">
               {@query_result_returned} rows
             </span>
             <span class="font-mono text-xs text-stone-500 dark:text-stone-400">
@@ -108,7 +108,7 @@ defmodule SheafWeb.ResourceLive do
           </div>
         </div>
 
-        <details class="group mb-5 overflow-hidden rounded-md border border-stone-300 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-900">
+        <details class="group mx-4 mb-5 overflow-hidden rounded-md border border-stone-300 bg-white sm:mx-6 lg:mx-8 dark:border-stone-800 dark:bg-stone-900">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 font-sans text-sm font-semibold text-stone-800 marker:hidden dark:text-stone-100">
             <span>SQL</span>
             <.icon
@@ -120,8 +120,8 @@ defmodule SheafWeb.ResourceLive do
         </details>
 
         <section>
-          <div class="overflow-hidden rounded-md border border-stone-300 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-900">
-            <div class="flex items-center justify-between gap-3 border-b border-stone-200 bg-white px-4 py-3 dark:border-stone-800 dark:bg-stone-900">
+          <div class="overflow-hidden border-y border-stone-300 bg-white dark:border-stone-800 dark:bg-stone-900">
+            <div class="flex items-center justify-between gap-3 border-b border-stone-200 bg-white px-4 py-2.5 sm:px-6 lg:px-8 dark:border-stone-800 dark:bg-stone-900">
               <h2 class="font-sans text-sm font-semibold text-stone-950 dark:text-stone-50">Rows</h2>
               <span class="font-mono text-xs text-stone-500 dark:text-stone-400">
                 {length(@query_result_columns)} columns
@@ -129,14 +129,14 @@ defmodule SheafWeb.ResourceLive do
             </div>
 
             <div class="overflow-x-auto">
-              <table class="w-full min-w-[64rem] border-separate border-spacing-0 text-left text-sm">
+              <table class="w-full min-w-[64rem] border-separate border-spacing-0 text-left text-[11px]">
                 <thead class="text-stone-600 dark:text-stone-300">
                   <tr>
                     <th
                       :for={column <- @query_result_columns}
                       class={[
-                        "sticky top-0 z-10 whitespace-nowrap border-b border-stone-300 bg-stone-100 px-3 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wide dark:border-stone-700 dark:bg-stone-800",
-                        "first:pl-4 last:pr-4",
+                        "sticky top-0 z-10 whitespace-nowrap border-b border-stone-300 bg-stone-100 px-2 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide dark:border-stone-700 dark:bg-stone-800",
+                        "first:pl-4 last:pr-4 lg:first:pl-6 lg:last:pr-6",
                         query_result_heading_class(@query_result_column_kinds[column]),
                         query_result_column_width_class(@query_result_column_kinds[column])
                       ]}
@@ -153,8 +153,8 @@ defmodule SheafWeb.ResourceLive do
                     <td
                       :for={column <- @query_result_columns}
                       class={[
-                        "border-b border-stone-200/80 px-3 py-2 align-middle text-stone-800 dark:border-stone-800 dark:text-stone-100",
-                        "first:pl-4 last:pr-4",
+                        "border-b border-stone-200/80 px-2 py-1 align-middle text-stone-800 dark:border-stone-800 dark:text-stone-100",
+                        "first:pl-4 last:pr-4 lg:first:pl-6 lg:last:pr-6",
                         query_result_cell_class(@query_result_column_kinds[column]),
                         query_result_column_width_class(@query_result_column_kinds[column])
                       ]}
@@ -173,7 +173,7 @@ defmodule SheafWeb.ResourceLive do
                       >
                         <span
                           :for={value <- query_result_list_values(row, column)}
-                          class="shrink-0 truncate rounded-sm border border-stone-300 bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] leading-4 text-stone-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200"
+                          class="shrink-0 truncate rounded-sm border border-stone-300 bg-stone-100 px-1 py-0 font-mono text-[10px] leading-4 text-stone-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200"
                           title={value}
                         >
                           {value}
