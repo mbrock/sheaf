@@ -2,6 +2,7 @@ defmodule SheafWeb.DocumentLiveTest do
   use ExUnit.Case, async: true
 
   alias RDF.NS.RDFS
+  alias Sheaf.Id
   alias Sheaf.NS.DOC
   alias SheafWeb.DocumentLive
 
@@ -138,5 +139,44 @@ defmodule SheafWeb.DocumentLiveTest do
     ] = DocumentLive.document_blocks(graph, paper)
 
     refute Map.has_key?(picture_block, :number)
+  end
+
+  test "aggregates paragraph tags into section toc entries" do
+    thesis = RDF.IRI.new!("https://example.com/sheaf/DOC123")
+    root_list = RDF.IRI.new!("https://example.com/sheaf/LST123")
+    section = RDF.IRI.new!("https://example.com/sheaf/SEC111")
+    section_list = RDF.IRI.new!("https://example.com/sheaf/LST111")
+    paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR111")
+    paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV1111")
+
+    graph =
+      RDF.Graph.new([
+        {thesis, RDF.type(), DOC.Document},
+        {thesis, DOC.children(), root_list},
+        {section, RDF.type(), DOC.Section},
+        {section, RDFS.label(), RDF.literal("Tagged section")},
+        {section, DOC.children(), section_list},
+        {paragraph, RDF.type(), DOC.ParagraphBlock},
+        {paragraph, DOC.paragraph(), paragraph_revision},
+        {paragraph_revision, RDF.type(), DOC.Paragraph},
+        {paragraph_revision, DOC.text(), RDF.literal("Needs evidence.")}
+      ])
+      |> then(fn graph -> RDF.list([section], graph: graph, head: root_list).graph end)
+      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: section_list).graph end)
+
+    [entry] =
+      graph
+      |> Sheaf.Document.toc(thesis)
+      |> DocumentLive.tagged_toc_entries(graph, %{
+        Id.id_from_iri(paragraph) => [
+          %{name: "needs_evidence", label: "needs evidence"},
+          %{name: "fragment", label: "fragment"}
+        ]
+      })
+
+    assert entry.tags == [
+             %{name: "needs_evidence", label: "needs evidence"},
+             %{name: "fragment", label: "fragment"}
+           ]
   end
 end

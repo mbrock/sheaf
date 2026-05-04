@@ -5,6 +5,7 @@ defmodule SheafWeb.DocumentLive do
 
   use SheafWeb, :live_view
 
+  alias Sheaf.BlockTags
   alias Sheaf.Corpus
   alias Sheaf.Document
   alias Sheaf.Documents
@@ -73,8 +74,14 @@ defmodule SheafWeb.DocumentLive do
 
     assigns =
       assigns
+      |> assign_new(:tags_by_block, fn -> %{} end)
       |> assign(:blocks, blocks)
-      |> assign(:toc, Document.toc(assigns.graph, assigns.root))
+      |> assign(
+        :toc,
+        assigns.graph
+        |> Document.toc(assigns.root)
+        |> tagged_toc_entries(assigns.graph, assigns.tags_by_block)
+      )
       |> assign(:knuth_plass?, knuth_plass?(blocks))
 
     ~H"""
@@ -106,6 +113,7 @@ defmodule SheafWeb.DocumentLive do
             blocks={@blocks}
             selected_id={@selected_block_id}
             references_by_block={@references_by_block}
+            tags_by_block={@tags_by_block}
           />
         </div>
       </article>
@@ -132,6 +140,7 @@ defmodule SheafWeb.DocumentLive do
   attr :graph, :any, required: true
   attr :selected_id, :string, default: nil
   attr :references_by_block, :map, default: %{}
+  attr :tags_by_block, :map, default: %{}
 
   defp reader_blocks(assigns) do
     ~H"""
@@ -142,6 +151,7 @@ defmodule SheafWeb.DocumentLive do
         block={block}
         selected_id={@selected_id}
         references_by_block={@references_by_block}
+        tags_by_block={@tags_by_block}
       />
     </div>
     """
@@ -151,6 +161,7 @@ defmodule SheafWeb.DocumentLive do
   attr :graph, :any, required: true
   attr :selected_id, :string, default: nil
   attr :references_by_block, :map, default: %{}
+  attr :tags_by_block, :map, default: %{}
 
   defp reader_block(%{block: %{type: :document}} = assigns) do
     ~H"""
@@ -171,6 +182,7 @@ defmodule SheafWeb.DocumentLive do
         blocks={@block.children}
         selected_id={@selected_id}
         references_by_block={@references_by_block}
+        tags_by_block={@tags_by_block}
       />
     </section>
     """
@@ -197,6 +209,7 @@ defmodule SheafWeb.DocumentLive do
         blocks={@block.children}
         selected_id={@selected_id}
         references_by_block={@references_by_block}
+        tags_by_block={@tags_by_block}
       />
     </details>
     """
@@ -212,23 +225,32 @@ defmodule SheafWeb.DocumentLive do
         §{@block.number}
       </span>
 
-      <p
-        id={"text-#{Document.id(@block.iri)}"}
-        class={[
-          "col-start-1 row-start-1 min-w-0 cursor-pointer rounded-sm font-serif leading-normal lg:col-start-2",
-          paragraph_markup_classes(),
-          selected_class(@block, @selected_id)
-        ]}
-        phx-click="inspect_block"
-        phx-value-id={Document.id(@block.iri)}
-        phx-update="ignore"
-      >
-        <%= if markup = Document.paragraph_markup(@graph, @block.iri) do %>
-          {raw(markup)}
-        <% else %>
-          {Document.paragraph_text(@graph, @block.iri)}
-        <% end %>
-      </p>
+      <div class="col-start-1 row-start-1 min-w-0 lg:col-start-2">
+        <div
+          :if={block_tags(@tags_by_block, @block.iri) != []}
+          class="mb-1 flex min-w-0 flex-wrap gap-1"
+        >
+          <.writing_tag :for={tag <- block_tags(@tags_by_block, @block.iri)} tag={tag} />
+        </div>
+
+        <p
+          id={"text-#{Document.id(@block.iri)}"}
+          class={[
+            "min-w-0 cursor-pointer rounded-sm font-serif leading-normal",
+            paragraph_markup_classes(),
+            selected_class(@block, @selected_id)
+          ]}
+          phx-click="inspect_block"
+          phx-value-id={Document.id(@block.iri)}
+          phx-update="ignore"
+        >
+          <%= if markup = Document.paragraph_markup(@graph, @block.iri) do %>
+            {raw(markup)}
+          <% else %>
+            {Document.paragraph_text(@graph, @block.iri)}
+          <% end %>
+        </p>
+      </div>
 
       <.footnote_blocks
         footnotes={Document.footnotes(@graph, @block.iri)}
@@ -370,6 +392,22 @@ defmodule SheafWeb.DocumentLive do
     """
   end
 
+  attr :tag, :map, required: true
+
+  defp writing_tag(assigns) do
+    ~H"""
+    <span
+      title={@tag.label}
+      class={[
+        "inline-flex h-5 max-w-full items-center rounded-sm border px-1.5 font-sans text-[0.68rem] font-medium leading-none",
+        writing_tag_class(@tag.name)
+      ]}
+    >
+      {@tag.label}
+    </span>
+    """
+  end
+
   @doc false
   def paragraph_block_count(blocks) do
     Enum.reduce(blocks, 0, fn
@@ -438,6 +476,44 @@ defmodule SheafWeb.DocumentLive do
     @knuth_plass? and paragraph_block_count(blocks) <= @knuth_plass_max_blocks
   end
 
+  @doc false
+  def tagged_toc_entries(entries, graph, tags_by_block) do
+    Enum.map(entries, &tagged_toc_entry(&1, graph, tags_by_block))
+  end
+
+  defp tagged_toc_entry(entry, graph, tags_by_block) do
+    children = tagged_toc_entries(entry.children, graph, tags_by_block)
+
+    entry
+    |> Map.put(:children, children)
+    |> Map.put(:tags, section_tags(graph, entry.iri, tags_by_block))
+  end
+
+  defp section_tags(graph, section, tags_by_block) do
+    graph
+    |> descendant_blocks(section)
+    |> Enum.flat_map(&block_tags(tags_by_block, &1))
+    |> unique_tags()
+  end
+
+  defp descendant_blocks(graph, block) do
+    graph
+    |> Document.children(block)
+    |> Enum.flat_map(fn child -> [child | descendant_blocks(graph, child)] end)
+  end
+
+  defp block_tags(tags_by_block, iri) do
+    Map.get(tags_by_block, Document.id(iri), [])
+  end
+
+  defp unique_tags(tags) do
+    order = Map.new(Enum.with_index(BlockTags.tag_names()))
+
+    tags
+    |> Enum.uniq_by(& &1.name)
+    |> Enum.sort_by(&Map.get(order, &1.name, 999))
+  end
+
   defp selected_class(block, selected_id) do
     if Document.id(block.iri) == selected_id do
       "bg-stone-200/70 dark:bg-stone-800/80"
@@ -464,6 +540,26 @@ defmodule SheafWeb.DocumentLive do
     ]
   end
 
+  defp writing_tag_class("placeholder") do
+    "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700/70 dark:bg-amber-950/30 dark:text-amber-200"
+  end
+
+  defp writing_tag_class("needs_evidence") do
+    "border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-700/70 dark:bg-sky-950/30 dark:text-sky-200"
+  end
+
+  defp writing_tag_class("needs_revision") do
+    "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-700/70 dark:bg-rose-950/30 dark:text-rose-200"
+  end
+
+  defp writing_tag_class("fragment") do
+    "border-violet-300 bg-violet-50 text-violet-800 dark:border-violet-700/70 dark:bg-violet-950/30 dark:text-violet-200"
+  end
+
+  defp writing_tag_class(_name) do
+    "border-stone-300 bg-stone-100 text-stone-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200"
+  end
+
   defp extracted_other_block_classes do
     [
       "[&_a]:text-sky-700 [&_a]:underline",
@@ -485,7 +581,8 @@ defmodule SheafWeb.DocumentLive do
     root = Id.iri(id)
 
     with {:ok, graph} <- Sheaf.fetch_graph(root),
-         {:ok, references_by_block} <- Documents.references_for_document(root, graph) do
+         {:ok, references_by_block} <- Documents.references_for_document(root, graph),
+         {:ok, tags_by_block} <- BlockTags.for_document(graph, root) do
       {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes()
 
       socket =
@@ -495,6 +592,7 @@ defmodule SheafWeb.DocumentLive do
         |> assign(:graph, graph)
         |> assign(:root, root)
         |> assign(:references_by_block, references_by_block)
+        |> assign(:tags_by_block, tags_by_block)
         |> assign(:selected_block_id, selected_block_id)
         |> assign(:notes, notes)
         |> assign(:notes_graph, notes_graph)

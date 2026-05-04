@@ -10,16 +10,55 @@ defmodule Sheaf.BlockTags do
   alias Sheaf.NS.{AS, DOC}
 
   @tags [
-    {"placeholder", DOC.PlaceholderTag},
-    {"needs_evidence", DOC.NeedsEvidenceTag},
-    {"needs_revision", DOC.NeedsRevisionTag},
-    {"fragment", DOC.FragmentTag}
+    {"placeholder", RDF.iri(DOC.PlaceholderTag)},
+    {"needs_evidence", RDF.iri(DOC.NeedsEvidenceTag)},
+    {"needs_revision", RDF.iri(DOC.NeedsRevisionTag)},
+    {"fragment", RDF.iri(DOC.FragmentTag)}
   ]
 
   @tag_names Enum.map(@tags, &elem(&1, 0))
   @tag_index Map.new(@tags)
+  @tag_info_by_iri Map.new(@tags, fn {name, iri} ->
+                     {iri,
+                      %{name: name, label: String.replace(name, "_", " "), iri: to_string(iri)}}
+                   end)
 
   def tag_names, do: @tag_names
+
+  def label(tag_name) do
+    tag_name
+    |> to_string()
+    |> String.replace("_", " ")
+  end
+
+  @doc """
+  Returns writing tags attached to paragraph blocks reachable in a document graph.
+
+  The result is keyed by short block id:
+
+      %{"PAR111" => [%{name: "needs_evidence", label: "needs evidence", iri: "..."}]}
+  """
+  def for_document(%Graph{} = graph, root, opts \\ []) do
+    root = RDF.iri(root)
+
+    Tracer.with_span "sheaf.block_tags.for_document", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "quadlog"},
+        {"db.operation", "match"},
+        {"sheaf.document", to_string(root)},
+        {"sheaf.graph", to_string(Sheaf.Workspace.graph())}
+      ]
+    } do
+      blocks = paragraph_blocks_in_graph(graph, root)
+
+      with {:ok, workspace} <- workspace_graph(opts) do
+        tags = tags_for_blocks(workspace, blocks)
+        Tracer.set_attribute("sheaf.tagged_block_count", map_size(tags))
+        {:ok, tags}
+      end
+    end
+  end
 
   @doc """
   Attaches writing tags to one or more paragraph blocks in the workspace graph.
@@ -115,6 +154,67 @@ defmodule Sheaf.BlockTags do
       [] -> {:ok, Enum.map(tag_names, &Map.fetch!(@tag_index, &1))}
       _ -> {:error, "unknown writing tag(s): #{Enum.join(invalid, ", ")}"}
     end
+  end
+
+  defp workspace_graph(opts) do
+    case Keyword.fetch(opts, :workspace_graph) do
+      {:ok, %Graph{} = graph} ->
+        {:ok, graph}
+
+      :error ->
+        workspace = RDF.iri(Sheaf.Workspace.graph())
+
+        with :ok <- Sheaf.Repo.load_once({nil, AS.tag(), nil, workspace}) do
+          graph =
+            Sheaf.Repo.ask(fn dataset ->
+              RDF.Dataset.graph(dataset, workspace) || Graph.new(name: workspace)
+            end)
+
+          {:ok, graph}
+        end
+    end
+  end
+
+  defp paragraph_blocks_in_graph(graph, root) do
+    root
+    |> reachable_blocks(graph)
+    |> Enum.filter(&(Document.block_type(graph, &1) == :paragraph))
+    |> MapSet.new()
+  end
+
+  defp reachable_blocks(root, graph) do
+    graph
+    |> Document.children(root)
+    |> Enum.flat_map(fn child -> [child | reachable_blocks(child, graph)] end)
+  end
+
+  defp tags_for_blocks(workspace, blocks) do
+    tag_order = Map.new(Enum.with_index(@tag_names))
+    tag_predicate = AS.tag()
+
+    workspace
+    |> Graph.triples()
+    |> Enum.reduce(%{}, fn
+      {block, ^tag_predicate, tag}, acc ->
+        if MapSet.member?(blocks, block) and Map.has_key?(@tag_info_by_iri, tag) do
+          Map.update(acc, Id.id_from_iri(block), [Map.fetch!(@tag_info_by_iri, tag)], fn tags ->
+            [Map.fetch!(@tag_info_by_iri, tag) | tags]
+          end)
+        else
+          acc
+        end
+
+      _triple, acc ->
+        acc
+    end)
+    |> Map.new(fn {block_id, tags} ->
+      tags =
+        tags
+        |> Enum.uniq_by(& &1.name)
+        |> Enum.sort_by(&Map.fetch!(tag_order, &1.name))
+
+      {block_id, tags}
+    end)
   end
 
   defp paragraph_blocks(block_ids, opts) do

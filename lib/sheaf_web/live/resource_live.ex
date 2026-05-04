@@ -5,7 +5,7 @@ defmodule SheafWeb.ResourceLive do
 
   use SheafWeb, :live_view
 
-  alias Sheaf.{Corpus, Document, Documents, Id, ResourceResolver}
+  alias Sheaf.{BlockTags, Corpus, Document, Documents, Id, ResourceResolver}
   alias Sheaf.Assistant.QueryResults
   alias SheafWeb.AppChrome
   alias SheafWeb.AssistantChatComponent
@@ -165,7 +165,8 @@ defmodule SheafWeb.ResourceLive do
     root = Id.iri(document_id)
 
     with {:ok, graph} <- Sheaf.fetch_graph(root),
-         {:ok, references_by_block} <- Documents.references_for_document(root, graph) do
+         {:ok, references_by_block} <- Documents.references_for_document(root, graph),
+         {:ok, tags_by_block} <- BlockTags.for_document(graph, root) do
       {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes()
 
       socket =
@@ -177,6 +178,7 @@ defmodule SheafWeb.ResourceLive do
         |> assign(:graph, graph)
         |> assign(:root, root)
         |> assign(:references_by_block, references_by_block)
+        |> assign(:tags_by_block, tags_by_block)
         |> assign(:selected_block_id, selected_block_id)
         |> assign(:notes, notes)
         |> assign(:notes_graph, notes_graph)

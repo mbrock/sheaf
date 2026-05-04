@@ -96,6 +96,17 @@ defmodule SheafWeb.CoreComponents do
           <span class="min-w-0 flex-1 text-balance leading-5">
             {section_title(entry.number, entry.title)}
           </span>
+          <span
+            :if={Map.get(entry, :tags, []) != []}
+            class="ml-1.5 flex shrink-0 items-center gap-1"
+            title={tag_summary(entry.tags)}
+            aria-label={tag_summary(entry.tags)}
+          >
+            <span
+              :for={tag <- entry.tags}
+              class={["size-1.5 rounded-full", outline_tag_dot_class(tag.name)]}
+            />
+          </span>
         </a>
 
         <.block_outline_list
@@ -113,6 +124,18 @@ defmodule SheafWeb.CoreComponents do
   defp section_title(number, title) do
     "#{Enum.join(number, ".")}. #{title}"
   end
+
+  defp tag_summary(tags) do
+    tags
+    |> List.wrap()
+    |> Enum.map_join(", ", &Map.get(&1, :label, Map.get(&1, "label", "")))
+  end
+
+  defp outline_tag_dot_class("placeholder"), do: "bg-amber-500 dark:bg-amber-300"
+  defp outline_tag_dot_class("needs_evidence"), do: "bg-sky-500 dark:bg-sky-300"
+  defp outline_tag_dot_class("needs_revision"), do: "bg-rose-500 dark:bg-rose-300"
+  defp outline_tag_dot_class("fragment"), do: "bg-violet-500 dark:bg-violet-300"
+  defp outline_tag_dot_class(_name), do: "bg-stone-500 dark:bg-stone-300"
 
   @doc """
   Renders flash notices.

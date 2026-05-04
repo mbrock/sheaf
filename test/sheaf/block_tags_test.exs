@@ -35,8 +35,47 @@ defmodule Sheaf.BlockTagsTest do
 
     assert_receive {:persist, graph}
     assert graph.name == RDF.iri(Sheaf.Workspace.graph())
-    assert RDF.Data.include?(graph, {block, AS.tag(), DOC.NeedsEvidenceTag})
-    assert RDF.Data.include?(graph, {block, AS.tag(), DOC.FragmentTag})
+    assert RDF.Data.include?(graph, {block, AS.tag(), RDF.iri(DOC.NeedsEvidenceTag)})
+    assert RDF.Data.include?(graph, {block, AS.tag(), RDF.iri(DOC.FragmentTag)})
+  end
+
+  test "returns tags for reachable paragraph blocks in document order" do
+    document = Id.iri("DOC111")
+    root_list = Id.iri("LST111")
+    section = Id.iri("SEC111")
+    section_list = Id.iri("LST222")
+    paragraph = Id.iri("PAR111")
+    other_paragraph = Id.iri("PAR222")
+
+    graph =
+      Graph.new([
+        {document, RDF.type(), DOC.Document},
+        {document, DOC.children(), root_list},
+        {section, RDF.type(), DOC.Section},
+        {section, DOC.children(), section_list},
+        {paragraph, RDF.type(), DOC.ParagraphBlock},
+        {other_paragraph, RDF.type(), DOC.ParagraphBlock}
+      ])
+      |> then(fn graph -> RDF.list([section], graph: graph, head: root_list).graph end)
+      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: section_list).graph end)
+
+    workspace =
+      Graph.new(
+        [
+          {paragraph, AS.tag(), RDF.iri(DOC.NeedsEvidenceTag)},
+          {paragraph, AS.tag(), RDF.iri(DOC.FragmentTag)},
+          {other_paragraph, AS.tag(), RDF.iri(DOC.NeedsRevisionTag)}
+        ],
+        name: Sheaf.Workspace.graph()
+      )
+
+    assert {:ok,
+            %{
+              "PAR111" => [
+                %{name: "needs_evidence", label: "needs evidence"},
+                %{name: "fragment", label: "fragment"}
+              ]
+            }} = BlockTags.for_document(graph, document, workspace_graph: workspace)
   end
 
   test "rejects non-paragraph blocks" do
