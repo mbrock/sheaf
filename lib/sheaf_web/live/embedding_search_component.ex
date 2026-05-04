@@ -160,14 +160,14 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
     ~H"""
     <div
-      class="relative z-20 min-w-0"
+      class={["relative z-20 min-w-0"]}
       phx-click-away="reset"
       phx-target={@myself}
     >
       <form phx-submit="search" phx-target={@myself}>
         <div class={[
-          "group flex h-9 min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-1 transition-[width] duration-150 hover:w-[min(18rem,42vw)] focus-within:w-[min(18rem,42vw)] sm:gap-2 dark:border-stone-700 dark:bg-stone-900",
-          if(@open?, do: "w-[min(18rem,42vw)]", else: "w-9")
+          "group flex min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-1 duration-150 sm:gap-2 dark:border-stone-700 dark:bg-stone-900",
+
         ]}>
           <input
             id={"#{@id}-input"}

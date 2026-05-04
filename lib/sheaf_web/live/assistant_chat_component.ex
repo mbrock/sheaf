@@ -196,7 +196,6 @@ defmodule SheafWeb.AssistantChatComponent do
         id={"assistant-timeline-#{@id}"}
         class="min-h-0 overflow-y-auto px-4 py-6"
         phx-hook="ScrollContainer"
-        data-scroll-initial="bottom"
         data-scroll-stick-bottom="true"
       >
         <div class="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end gap-5">
@@ -208,7 +207,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
           <div
             :if={@chat.pending}
-            class="flex items-center gap-2 px-1 py-2 text-sm leading-5 text-stone-500 dark:text-stone-400"
+            class="flex items-center gap-2 px-1 py-2 text-stone-500 dark:text-stone-400"
           >
             <span class="size-2.5 shrink-0 animate-pulse rounded-full bg-stone-500 dark:bg-stone-300">
             </span>
@@ -217,7 +216,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
           <div
             :if={@selected_chat_id == nil}
-            class="rounded-sm border border-stone-200 bg-white p-4 text-sm text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400"
+            class="rounded-sm border border-stone-200 bg-white p-4 text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400"
           >
             This conversation is not active in the current app process.
           </div>
@@ -246,10 +245,10 @@ defmodule SheafWeb.AssistantChatComponent do
       <div :if={not inline?(@variant)} class="mb-3 space-y-2">
         <div class="flex items-center gap-2">
           <div class="min-w-0 flex-1">
-            <div class="font-sans text-[11px] uppercase text-stone-500 dark:text-stone-400">
+            <div class="font-sans uppercase text-stone-500 dark:text-stone-400">
               Current
             </div>
-            <div class="truncate font-sans text-sm font-medium text-stone-800 dark:text-stone-100">
+            <div class="truncate font-sans font-medium text-stone-800 dark:text-stone-100">
               {current_chat_title(@chat, @selected_chat_id)}
             </div>
           </div>
@@ -268,7 +267,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
         <div
           :if={@chats != []}
-          class="flex gap-1 overflow-x-auto pb-1 font-sans text-xs"
+          class="flex gap-1 overflow-x-auto pb-1 font-sans"
           aria-label="Assistant conversations"
         >
           <button
@@ -298,7 +297,7 @@ defmodule SheafWeb.AssistantChatComponent do
       <div
         :if={not inline?(@variant) and @selected_chat_id}
         id={"assistant-timeline-#{@id}"}
-        class="mt-3 max-h-80 min-h-0 space-y-2 overflow-y-auto pr-1 text-sm"
+        class="mt-3 max-h-80 min-h-0 space-y-2 overflow-y-auto pr-1"
         phx-hook="ScrollContainer"
         data-scroll-initial="bottom"
         data-scroll-stick-bottom="true"
@@ -311,7 +310,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
         <div
           :if={@chat.pending}
-          class="flex items-center gap-2 px-1 py-2 text-sm leading-5 text-stone-500 dark:text-stone-400"
+          class="flex items-center gap-2 px-1 py-2 text-stone-500 dark:text-stone-400"
         >
           <span class="size-2.5 shrink-0 animate-pulse rounded-full bg-stone-500 dark:bg-stone-300">
           </span>
@@ -417,7 +416,7 @@ defmodule SheafWeb.AssistantChatComponent do
     assigns = assign(assigns, :messages, messages)
 
     ~H"""
-    <ul class="space-y-0.5 px-2 text-[11px] leading-4 text-stone-600 dark:text-stone-400">
+    <ul class="text-stone-600 dark:text-stone-400 space-y-2">
       <.tool_chip :for={message <- @messages} message={message} titles={@titles} />
     </ul>
     """
@@ -427,20 +426,21 @@ defmodule SheafWeb.AssistantChatComponent do
     assigns = assign(assigns, :tool_view, tool_view(assigns.message, assigns.titles))
 
     ~H"""
-    <li class={["flex min-w-0 gap-1", @tool_view.status_class]}>
-      <span class="shrink-0 text-stone-400 dark:text-stone-600">•</span>
+    <li class={["flex flex-col items-start border-l-4 border-stone-200 dark:border-stone-800 pl-2", @tool_view.status_class]}>
       <span
         :if={@tool_view.phrase != ""}
-        class={["min-w-0 break-words", @tool_view.phrase_class]}
+        class={["text-sm flex gap-2 font-mono", @tool_view.phrase_class]}
       >
-        {@tool_view.phrase}
-      </span>
-      <span :if={@tool_view.scope != ""} class="min-w-0 break-words">
-        in <em>{@tool_view.scope}</em>
+        <span>
+          {@tool_view.phrase}
+        </span>
+        <span :if={@tool_view.scope != ""}>
+          [{@tool_view.scope}]
+        </span>
       </span>
       <span
         :if={@tool_view.detail != ""}
-        class="shrink-0 text-stone-500 dark:text-stone-400"
+        class="hidden text-sm w-full flex px-3 py-1 border border-stone-200 dark:border-stone-800 bg-stone-100 dark:bg-stone-950/70 text-stone-500 dark:text-stone-400"
       >
         {@tool_view.detail}
       </span>
@@ -453,7 +453,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :user}} = assigns) do
     ~H"""
-    <div class="rounded-sm bg-stone-200/70 px-3 py-1.5 text-sm leading-snug text-stone-950 dark:bg-stone-800 dark:text-stone-50">
+    <div class="text-lg px-3 py-1.5 font-mono bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800">
       <div class="whitespace-pre-line break-words">{@message.text}</div>
     </div>
     """
@@ -461,7 +461,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :assistant}} = assigns) do
     ~H"""
-    <div class="assistant-prose break-words px-1 text-xs text-stone-900 dark:text-stone-100">
+    <div class="assistant-prose font-serif break-words px-1 text-stone-900 dark:text-stone-100">
       <AssistantMarkdownComponents.markdown text={@message.text} />
     </div>
     """
@@ -474,7 +474,7 @@ defmodule SheafWeb.AssistantChatComponent do
       |> assign(:note_view, note_view(input))
 
     ~H"""
-    <div class="px-1 py-1 text-xs">
+    <div class="px-1 py-1">
       <article class="rounded-sm border border-emerald-200 bg-emerald-50/60 p-3 text-stone-900 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-stone-100">
         <div class="mb-2 flex items-start gap-2">
           <span class="mt-0.5 shrink-0 text-base">📝</span>
@@ -495,11 +495,11 @@ defmodule SheafWeb.AssistantChatComponent do
         </div>
         <div
           :if={@note_view.text != ""}
-          class="assistant-prose max-h-80 overflow-y-auto break-words pr-1 text-xs leading-5 text-stone-800 dark:text-stone-100"
+          class="assistant-prose max-h-80 overflow-y-auto break-words pr-1 text-stone-800 dark:text-stone-100"
         >
           <AssistantMarkdownComponents.markdown text={@note_view.text} />
         </div>
-        <p :if={@note_view.text == ""} class="text-xs text-stone-500 dark:text-stone-400">
+        <p :if={@note_view.text == ""} class="text-stone-500 dark:text-stone-400">
           The assistant is preparing a note.
         </p>
       </article>
@@ -509,7 +509,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :status}} = assigns) do
     ~H"""
-    <div class="px-1 py-0.5 font-sans text-[11px] italic leading-5 text-stone-500 dark:text-stone-400">
+    <div class="px-1 py-0.5 font-sans italic text-stone-500 dark:text-stone-400">
       {@message.text}
     </div>
     """
@@ -517,7 +517,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :error}} = assigns) do
     ~H"""
-    <div class="rounded-sm bg-red-50/70 px-3 py-1 text-xs leading-5 text-red-800 dark:bg-red-950/30 dark:text-red-300">
+    <div class="rounded-sm bg-red-50/70 px-3 py-1 text-red-800 dark:bg-red-950/30 dark:text-red-300">
       {@message.text}
     </div>
     """
@@ -526,13 +526,13 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_message(assigns), do: ~H""
 
   defp tool_view(%{tool: "list_documents"} = message, _titles) do
-    tool_phrase("list documents", message)
+    tool_phrase("Listing documents", message)
   end
 
   defp tool_view(%{tool: "get_document", input: input} = message, titles) do
     id = tool_arg(input, :id)
     title = title_or_id(id, titles)
-    target = if title == "", do: "read document outline", else: "read #{title}'s outline"
+    target = if title == "", do: "Reading document outline", else: "Reading #{title}'s outline"
 
     tool_phrase(target, message)
   end
@@ -544,23 +544,23 @@ defmodule SheafWeb.AssistantChatComponent do
     target =
       case block_ids do
         [block_id] ->
-          if expanded?, do: "expanded block ##{block_id}", else: "block ##{block_id}"
+          if expanded?, do: "Reading expanded block #{block_id}", else: "Reading block #{block_id}"
 
         ids when ids != [] ->
-          if expanded?, do: "#{length(ids)} expanded blocks", else: "#{length(ids)} blocks"
+          if expanded?, do: "Reading #{length(ids)} expanded blocks", else: "Reading #{length(ids)} blocks"
 
         _ids ->
-          "block"
+          "Reading a block"
       end
 
-    tool_phrase("read #{target}", message)
+    tool_phrase(target, message)
   end
 
   defp tool_view(%{tool: "search_text", input: input} = message, titles) do
     query = tool_arg(input, :query) || ""
     scope = tool_arg(input, :document_id)
     scope = if scope, do: title_or_id(scope, titles), else: "the corpus"
-    target = "find “#{query}” in #{scope}"
+    target = "Searching for “#{query}” in #{scope}"
 
     tool_phrase(target, message)
   end
@@ -570,8 +570,8 @@ defmodule SheafWeb.AssistantChatComponent do
 
     target =
       if query == "",
-        do: "list available sheets",
-        else: "list sheets matching “#{ellipsize(query, 60)}”"
+        do: "Listing spreadsheets",
+        else: "Listing spreadsheets matching “#{query}”"
 
     tool_phrase(target, message)
   end
@@ -581,8 +581,8 @@ defmodule SheafWeb.AssistantChatComponent do
 
     target =
       if query == "",
-        do: "find spreadsheet rows",
-        else: "find rows matching “#{ellipsize(query, 60)}”"
+        do: "Searching spreadsheet rows",
+        else: "Searching spreadsheet rows matching “#{query}”"
 
     tool_phrase(target, message)
   end
@@ -592,7 +592,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
     note =
       if is_binary(title) and String.trim(title) != "",
-        do: "“#{ellipsize(title, 60)}”",
+        do: "“#{title}”",
         else: "research note"
 
     tool_phrase("save #{note}", message)
@@ -600,7 +600,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp tool_view(%{tool: "query_spreadsheets", input: input} = message, _titles) do
     intent = input |> tool_arg(:intent) |> note_text_value()
-    target = if intent == "", do: "query spreadsheets", else: ellipsize(intent, 80)
+    target = if intent == "", do: "Querying spreadsheets", else: intent
 
     tool_phrase(target, message, phrase_class: "italic")
   end
@@ -617,14 +617,14 @@ defmodule SheafWeb.AssistantChatComponent do
         {offset, limit} -> "rows #{offset}–#{offset + limit}"
       end
 
-    tool_phrase("read #{range}", message)
+    tool_phrase("Reading #{range}", message)
   end
 
   defp tool_view(%{tool: tool} = message, _titles) when is_binary(tool) do
-    tool_phrase("run #{String.replace(tool, "_", " ")}", message)
+    tool_phrase("Running #{String.replace(tool, "_", " ")}", message)
   end
 
-  defp tool_view(message, _titles), do: tool_phrase("run tool", message)
+  defp tool_view(message, _titles), do: tool_phrase("Running tool", message)
 
   defp tool_phrase(phrase, message, opts \\ []) do
     %{
@@ -636,15 +636,14 @@ defmodule SheafWeb.AssistantChatComponent do
     }
   end
 
-  defp tool_detail(%{status: :pending}), do: "working…"
+  defp tool_detail(%{status: :pending}), do: "Working…"
   defp tool_detail(%{status: :ok, summary: summary}) when summary in [nil, ""], do: "done"
   defp tool_detail(%{status: :ok, summary: summary}), do: detail_text(summary)
   defp tool_detail(%{status: :error, summary: summary}) when summary in [nil, ""], do: "error"
   defp tool_detail(%{status: :error, summary: summary}), do: detail_text(summary)
   defp tool_detail(_), do: ""
 
-  defp detail_text("“" <> _ = summary), do: summary
-  defp detail_text(summary), do: "(" <> summary <> ")"
+  defp detail_text(summary), do: summary
 
   defp tool_phrase_class(:error), do: "text-red-700 dark:text-red-300"
   defp tool_phrase_class(_), do: ""

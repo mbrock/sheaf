@@ -15,9 +15,9 @@ defmodule SheafWeb.AppChrome do
     ~H"""
     <div
       id={@id}
-      class="relative z-50 col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-2 py-2 backdrop-blur sm:px-4 dark:border-stone-800/80 dark:bg-stone-950/90"
+      class="relative z-50 col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-2 py-1 backdrop-blur sm:px-4 dark:border-stone-800/80 dark:bg-stone-950/90"
     >
-      <div class="flex min-h-8 w-full items-center gap-2 overflow-visible sm:gap-3">
+      <div class="flex w-full items-center gap-2 overflow-visible sm:gap-3">
         <.link
           :if={@section == :document}
           navigate={~p"/"}
