@@ -11,7 +11,16 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   alias ReqLLM.{Context, Response}
   alias Sheaf.Assistant
-  alias Sheaf.Assistant.{Activity, Chats, ContextStore, CorpusTools, SpreadsheetSession}
+
+  alias Sheaf.Assistant.{
+    Activity,
+    Chats,
+    ContextStore,
+    CorpusTools,
+    SpreadsheetSession,
+    ToolResults
+  }
+
   alias Sheaf.Id
 
   @registry Sheaf.Assistant.ChatRegistry
@@ -606,6 +615,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     name = Map.get(message, :name)
     id = Map.get(message, :tool_call_id)
     result = message |> Map.get(:metadata, %{}) |> sheaf_result_from_metadata()
+    input = tool_result_input(name, result)
     summary = if name && result, do: CorpusTools.result_summary(name, {:ok, result})
 
     {messages, updated?} =
@@ -617,7 +627,7 @@ defmodule Sheaf.Assistant.Chat.Server do
             {msg, updated?}
 
           Map.get(msg, :role) == :tool and Map.get(msg, :tool_call_id) == id ->
-            {Map.merge(msg, %{status: :ok, summary: summary}), true}
+            {msg |> Map.merge(%{status: :ok, summary: summary}) |> merge_tool_input(input), true}
 
           true ->
             {msg, updated?}
@@ -629,8 +639,43 @@ defmodule Sheaf.Assistant.Chat.Server do
     if updated? do
       messages
     else
-      messages ++ [%{role: :tool, tool: name, input: %{}, status: :ok, summary: summary}]
+      messages ++ [%{role: :tool, tool: name, input: input, status: :ok, summary: summary}]
     end
+  end
+
+  defp merge_tool_input(message, input) when map_size(input) == 0, do: message
+
+  defp merge_tool_input(message, input) do
+    Map.update(message, :input, input, fn existing ->
+      if is_map(existing), do: merge_missing_input(input, existing), else: input
+    end)
+  end
+
+  defp merge_missing_input(input, existing) do
+    Enum.reduce(input, existing, fn {key, value}, acc ->
+      string_key = if is_atom(key), do: Atom.to_string(key)
+
+      if Map.has_key?(acc, key) or (string_key && Map.has_key?(acc, string_key)) do
+        acc
+      else
+        Map.put(acc, key, value)
+      end
+    end)
+  end
+
+  defp tool_result_input("query_spreadsheets", %ToolResults.SpreadsheetQuery{} = result) do
+    %{
+      intent: result.intent,
+      sql: result.sql,
+      limit: result.limit
+    }
+    |> reject_blank_values()
+  end
+
+  defp tool_result_input(_name, _result), do: %{}
+
+  defp reject_blank_values(map) do
+    Map.reject(map, fn {_key, value} -> value in [nil, ""] end)
   end
 
   defp message_text(%{content: content} = message) when is_list(content) do

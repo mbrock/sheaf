@@ -600,7 +600,14 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp tool_view(%{tool: "query_spreadsheets", input: input} = message, _titles) do
     intent = input |> tool_arg(:intent) |> note_text_value()
-    target = if intent == "", do: "query spreadsheets", else: ellipsize(intent, 80)
+    sql = input |> tool_arg(:sql) |> sql_preview()
+
+    target =
+      cond do
+        intent != "" -> ellipsize(intent, 80)
+        sql != "" -> sql
+        true -> "query spreadsheets"
+      end
 
     tool_phrase(target, message, phrase_class: "italic")
   end
@@ -695,6 +702,18 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp note_text_value(value) when is_binary(value), do: String.trim(value)
   defp note_text_value(_value), do: ""
+
+  defp sql_preview(value) when is_binary(value) do
+    value
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+    |> case do
+      "" -> ""
+      sql -> "SQL: " <> ellipsize(sql, 80)
+    end
+  end
+
+  defp sql_preview(_value), do: ""
 
   defp tool_blocks(input) do
     input
