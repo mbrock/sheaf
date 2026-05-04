@@ -84,55 +84,106 @@ defmodule SheafWeb.ResourceLive do
 
   def render(%{resource_kind: :spreadsheet_query_result} = assigns) do
     ~H"""
-    <main class="grid min-h-dvh grid-rows-[auto_1fr] bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
+    <main class="grid min-h-dvh grid-rows-[auto_1fr] bg-stone-100 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
       <AppChrome.toolbar section={:document} search?={false} />
 
-      <section class="mx-auto w-full max-w-6xl px-4 py-6">
-        <div class="mb-4">
-          <p class="font-sans text-xs font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
-            Spreadsheet query result
-          </p>
-          <h1 class="mt-1 font-sans text-xl font-semibold">{@resource_id}</h1>
-          <p class="mt-1 text-sm text-stone-600 dark:text-stone-400">
-            Showing {@query_result_returned} rows from {@query_result_row_count}.
-          </p>
+      <section class="mx-auto w-full max-w-[92rem] px-4 py-5 sm:px-6 lg:px-8">
+        <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p class="font-mono text-[11px] font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
+              Spreadsheet query result
+            </p>
+            <h1 class="mt-1 font-sans text-2xl font-semibold tracking-normal text-stone-950 dark:text-stone-50">
+              {@resource_id}
+            </h1>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span class="rounded-sm border border-stone-300 bg-white px-2.5 py-1 font-mono text-xs text-stone-700 shadow-sm dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300">
+              {@query_result_returned} rows
+            </span>
+            <span class="font-mono text-xs text-stone-500 dark:text-stone-400">
+              from {@query_result_row_count}
+            </span>
+          </div>
         </div>
 
-        <section class="mb-5">
-          <h2 class="mb-2 font-sans text-sm font-semibold">SQL</h2>
-          <pre class="overflow-x-auto rounded-sm border border-stone-200 bg-white p-3 text-xs leading-5 text-stone-800 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-100"><code>{@query_result_sql}</code></pre>
-        </section>
+        <details class="group mb-5 overflow-hidden rounded-md border border-stone-300 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-900">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 font-sans text-sm font-semibold text-stone-800 marker:hidden dark:text-stone-100">
+            <span>SQL</span>
+            <.icon
+              name="hero-chevron-right"
+              class="size-4 text-stone-500 transition-transform group-open:rotate-90 dark:text-stone-400"
+            />
+          </summary>
+          <pre class="overflow-x-auto border-t border-stone-200 bg-stone-50 p-4 font-mono text-xs leading-5 text-stone-800 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"><code>{@query_result_sql}</code></pre>
+        </details>
 
         <section>
-          <h2 class="mb-2 font-sans text-sm font-semibold">Rows</h2>
-          <div class="overflow-x-auto rounded-sm border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900">
-            <table class="min-w-full border-collapse text-left text-xs">
-              <thead class="bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300">
-                <tr>
-                  <th
-                    :for={column <- @query_result_columns}
-                    class="border-b border-stone-200 px-2 py-1.5 font-sans font-semibold dark:border-stone-700"
+          <div class="overflow-hidden rounded-md border border-stone-300 bg-white shadow-sm dark:border-stone-800 dark:bg-stone-900">
+            <div class="flex items-center justify-between gap-3 border-b border-stone-200 bg-white px-4 py-3 dark:border-stone-800 dark:bg-stone-900">
+              <h2 class="font-sans text-sm font-semibold text-stone-950 dark:text-stone-50">Rows</h2>
+              <span class="font-mono text-xs text-stone-500 dark:text-stone-400">
+                {length(@query_result_columns)} columns
+              </span>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[64rem] border-separate border-spacing-0 text-left text-sm">
+                <thead class="text-stone-600 dark:text-stone-300">
+                  <tr>
+                    <th
+                      :for={column <- @query_result_columns}
+                      class={[
+                        "sticky top-0 z-10 whitespace-nowrap border-b border-stone-300 bg-stone-100 px-3 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-wide dark:border-stone-700 dark:bg-stone-800",
+                        "first:pl-4 last:pr-4",
+                        query_result_heading_class(@query_result_column_kinds[column]),
+                        query_result_column_width_class(@query_result_column_kinds[column])
+                      ]}
+                    >
+                      {column}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    :for={row <- @query_result_rows}
+                    class="group odd:bg-white even:bg-stone-50/70 hover:bg-amber-50/80 dark:odd:bg-stone-900 dark:even:bg-stone-900/60 dark:hover:bg-stone-800/70"
                   >
-                    {column}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  :for={row <- @query_result_rows}
-                  class="odd:bg-white even:bg-stone-50 dark:odd:bg-stone-900 dark:even:bg-stone-900/60"
-                >
-                  <td
-                    :for={column <- @query_result_columns}
-                    class="max-w-md border-b border-stone-100 px-2 py-1.5 align-top text-stone-800 dark:border-stone-800 dark:text-stone-100"
-                  >
-                    <span class="whitespace-pre-wrap break-words">
-                      {query_result_cell(row, column)}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                    <td
+                      :for={column <- @query_result_columns}
+                      class={[
+                        "border-b border-stone-200/80 px-3 py-2 align-middle text-stone-800 dark:border-stone-800 dark:text-stone-100",
+                        "first:pl-4 last:pr-4",
+                        query_result_cell_class(@query_result_column_kinds[column]),
+                        query_result_column_width_class(@query_result_column_kinds[column])
+                      ]}
+                    >
+                      <div
+                        :if={query_result_list_values(row, column) == []}
+                        class="truncate whitespace-nowrap"
+                        title={query_result_cell(row, column)}
+                      >
+                        {query_result_cell(row, column)}
+                      </div>
+
+                      <div
+                        :if={query_result_list_values(row, column) != []}
+                        class="flex flex-nowrap justify-end gap-1 overflow-hidden"
+                      >
+                        <span
+                          :for={value <- query_result_list_values(row, column)}
+                          class="shrink-0 truncate rounded-sm border border-stone-300 bg-stone-100 px-1.5 py-0.5 font-mono text-[11px] leading-4 text-stone-700 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-200"
+                          title={value}
+                        >
+                          {value}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       </section>
@@ -195,6 +246,10 @@ defmodule SheafWeb.ResourceLive do
          |> assign(:query_result_sql, result.sql || "")
          |> assign(:query_result_columns, result.columns)
          |> assign(:query_result_rows, result.rows)
+         |> assign(
+           :query_result_column_kinds,
+           query_result_column_kinds(result.columns, result.rows)
+         )
          |> assign(:query_result_row_count, result.row_count)
          |> assign(:query_result_returned, length(result.rows))
          |> assign(:selected_block_id, nil)}
@@ -280,6 +335,85 @@ defmodule SheafWeb.ResourceLive do
     case Map.get(row, column) do
       nil -> ""
       value -> to_string(value)
+    end
+  end
+
+  defp query_result_column_kinds(columns, rows) do
+    Map.new(columns, fn column ->
+      {column, query_result_column_kind(column, rows)}
+    end)
+  end
+
+  defp query_result_column_kind(column, rows) do
+    values =
+      rows
+      |> Enum.map(&Map.get(&1, column))
+      |> Enum.reject(&blank_query_result_value?/1)
+
+    cond do
+      query_result_identifier_column?(column) ->
+        :identifier
+
+      values != [] and Enum.all?(values, &query_result_number?/1) ->
+        :number
+
+      query_result_list_column?(column) ->
+        :list
+
+      true ->
+        :text
+    end
+  end
+
+  defp query_result_identifier_column?(column) do
+    column == "id" or String.ends_with?(column, "_id") or String.ends_with?(column, "_iri")
+  end
+
+  defp query_result_list_column?(column) do
+    String.ends_with?(column, "_types") or String.ends_with?(column, "_tags")
+  end
+
+  defp query_result_number?(value) when is_integer(value) or is_float(value), do: true
+
+  defp query_result_number?(value) when is_binary(value) do
+    case Float.parse(String.trim(value)) do
+      {_number, ""} -> true
+      _ -> false
+    end
+  end
+
+  defp query_result_number?(_value), do: false
+
+  defp blank_query_result_value?(nil), do: true
+  defp blank_query_result_value?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank_query_result_value?(_value), do: false
+
+  defp query_result_heading_class(:number), do: "text-right"
+  defp query_result_heading_class(:list), do: "text-right"
+  defp query_result_heading_class(_kind), do: "text-left"
+
+  defp query_result_cell_class(:identifier),
+    do: "font-mono text-xs text-stone-700 dark:text-stone-300"
+
+  defp query_result_cell_class(:number), do: "text-right font-mono text-xs tabular-nums"
+  defp query_result_cell_class(:list), do: "text-right"
+  defp query_result_cell_class(_kind), do: "text-left"
+
+  defp query_result_column_width_class(:identifier), do: "min-w-24"
+  defp query_result_column_width_class(:number), do: "min-w-24"
+  defp query_result_column_width_class(:list), do: "min-w-[26rem] max-w-2xl"
+  defp query_result_column_width_class(_kind), do: "min-w-36 max-w-md"
+
+  defp query_result_list_values(row, column) do
+    value = query_result_cell(row, column)
+
+    if query_result_list_column?(column) and String.contains?(value, ",") do
+      value
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+    else
+      []
     end
   end
 end
