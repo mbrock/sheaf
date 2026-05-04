@@ -11,6 +11,7 @@ defmodule SheafWeb.ResourceLive do
   alias SheafWeb.AssistantChatComponent
   alias SheafWeb.AssistantHistoryComponents
   alias SheafWeb.DocumentLive
+  alias SheafWeb.SpreadsheetQueryResultComponents
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
@@ -84,69 +85,11 @@ defmodule SheafWeb.ResourceLive do
 
   def render(%{resource_kind: :spreadsheet_query_result} = assigns) do
     ~H"""
-    <main class="grid min-h-dvh grid-rows-[auto_1fr] bg-stone-100 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
-      <AppChrome.toolbar section={:document} search?={false} />
-
-      <section class="w-full py-5">
-        <section class="flex justify-center">
-          <table class="border-separate border-spacing-0 text-left">
-            <thead class="font-mono">
-              <tr>
-                <th
-                  :for={column <- @query_result_columns}
-                  class="relative h-16 overflow-visible align-bottom"
-                  title={column}
-                >
-                  <span class="absolute bottom-0 left-0 z-20 pl-2 origin-bottom-left font-normal text-xs tracking-tighter -rotate-[22deg] whitespace-nowrap text-stone-700 dark:text-stone-300 border-b border-stone-300 dark:border-stone-700">
-                    {query_result_heading(column)}
-                  </span>
-                </th>
-              </tr>
-            </thead>
-            <tbody class="outline outline-1 outline-stone-300 dark:outline-stone-700">
-              <tr
-                :for={row <- @query_result_rows}
-                class="group odd:bg-white even:bg-stone-50/70 hover:bg-amber-50/80 dark:odd:bg-stone-900 dark:even:bg-stone-900/60 dark:hover:bg-stone-800/70"
-              >
-                <td
-                  :for={column <- @query_result_columns}
-                  class={[
-                    "px-2 min-w-12 align-middle text-stone-800 dark:text-stone-100",
-                    "border-l border-stone-300 dark:border-stone-700",
-                    query_result_cell_class(@query_result_column_kinds[column])
-                  ]}
-                >
-                  <div
-                    :if={query_result_list_values(row, column) == []}
-                    class="whitespace-nowrap"
-                    title={query_result_cell(row, column)}
-                  >
-                    {query_result_cell(row, column)}
-                  </div>
-
-                  <div
-                    :if={query_result_list_values(row, column) != []}
-                    class={[
-                      "flex flex-wrap gap-2",
-                      query_result_list_justify_class(@query_result_column_kinds[column])
-                    ]}
-                  >
-                    <span
-                      :for={value <- query_result_list_values(row, column)}
-                      class="shrink-0 text-sm"
-                      title={value}
-                    >
-                      {value}
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-      </section>
-      <pre class="overflow-x-auto border-t border-stone-200 bg-stone-50 p-4 font-mono text-xs leading-5 text-stone-800 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"><code>{@query_result_sql}</code></pre>
-    </main>
+    <SpreadsheetQueryResultComponents.page
+      sql={@query_result_sql}
+      columns={@query_result_columns}
+      rows={@query_result_rows}
+    />
     """
   end
 
@@ -205,10 +148,6 @@ defmodule SheafWeb.ResourceLive do
          |> assign(:query_result_sql, result.sql || "")
          |> assign(:query_result_columns, result.columns)
          |> assign(:query_result_rows, result.rows)
-         |> assign(
-           :query_result_column_kinds,
-           query_result_column_kinds(result.columns, result.rows)
-         )
          |> assign(:query_result_row_count, result.row_count)
          |> assign(:query_result_returned, length(result.rows))
          |> assign(:selected_block_id, nil)}
@@ -288,89 +227,5 @@ defmodule SheafWeb.ResourceLive do
 
   defp block_path(doc_id, block_id) do
     ~p"/#{doc_id}?block=#{block_id}" <> "#block-#{block_id}"
-  end
-
-  defp query_result_cell(row, column) do
-    case Map.get(row, column) do
-      nil -> ""
-      value -> to_string(value) |> String.replace_suffix(".0", "")
-    end
-  end
-
-  defp query_result_column_kinds(columns, rows) do
-    Map.new(columns, fn column ->
-      {column, query_result_column_kind(column, rows)}
-    end)
-  end
-
-  defp query_result_column_kind(column, rows) do
-    values =
-      rows
-      |> Enum.map(&Map.get(&1, column))
-      |> Enum.reject(&blank_query_result_value?/1)
-
-    cond do
-      query_result_identifier_column?(column) ->
-        :identifier
-
-      values != [] and Enum.all?(values, &query_result_number?/1) ->
-        :number
-
-      query_result_list_column?(column) ->
-        :list
-
-      true ->
-        :text
-    end
-  end
-
-  defp query_result_identifier_column?(column) do
-    column == "id" or String.ends_with?(column, "_id") or String.ends_with?(column, "_iri")
-  end
-
-  defp query_result_list_column?(column) do
-    String.ends_with?(column, "_types") or String.ends_with?(column, "_tags")
-  end
-
-  defp query_result_number?(value) when is_integer(value) or is_float(value), do: true
-
-  defp query_result_number?(value) when is_binary(value) do
-    case Float.parse(String.trim(value)) do
-      {_number, ""} -> true
-      _ -> false
-    end
-  end
-
-  defp query_result_number?(_value), do: false
-
-  defp blank_query_result_value?(nil), do: true
-  defp blank_query_result_value?(value) when is_binary(value), do: String.trim(value) == ""
-  defp blank_query_result_value?(_value), do: false
-
-  defp query_result_cell_class(:identifier),
-    do: "text-sm font-mono text-stone-700 dark:text-stone-300"
-
-  defp query_result_cell_class(:number), do: "text-right text-sm font-mono tabular-nums"
-  defp query_result_cell_class(:list), do: "text-left text-sm"
-  defp query_result_cell_class(_kind), do: "text-left text-sm"
-
-  defp query_result_list_justify_class(:list), do: "justify-start"
-  defp query_result_list_justify_class(_kind), do: "justify-end"
-
-  defp query_result_heading(column) do
-    String.replace(column, "_", " ")
-  end
-
-  defp query_result_list_values(row, column) do
-    value = query_result_cell(row, column)
-
-    if query_result_list_column?(column) and String.contains?(value, ",") do
-      value
-      |> String.split(",")
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-    else
-      []
-    end
   end
 end
