@@ -109,7 +109,7 @@ defmodule SheafWeb.AssistantChatComponent do
       end
 
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
-    message = Map.get(chat_params, "message", "")
+    message = Map.get(chat_params, "message", current_form_message(socket))
 
     {:noreply,
      socket
@@ -234,6 +234,7 @@ defmodule SheafWeb.AssistantChatComponent do
               selected_chat_id={@selected_chat_id}
               pending={@chat.pending}
               myself={@myself}
+              id={@id}
             />
           </div>
         </div>
@@ -307,6 +308,7 @@ defmodule SheafWeb.AssistantChatComponent do
         selected_chat_id={@selected_chat_id}
         pending={@chat.pending}
         myself={@myself}
+        id={@id}
       />
 
       <div
@@ -343,6 +345,7 @@ defmodule SheafWeb.AssistantChatComponent do
   attr :selected_chat_id, :string, default: nil
   attr :pending, :boolean, required: true
   attr :myself, :any, required: true
+  attr :id, :string, required: true
 
   defp composer_form(assigns) do
     assigns = assign(assigns, :options_locked?, is_binary(assigns.selected_chat_id))
@@ -353,7 +356,7 @@ defmodule SheafWeb.AssistantChatComponent do
       phx-change="set_options"
       phx-submit="send"
       phx-target={@myself}
-      class="space-y-2"
+      class="min-w-0"
     >
       <div
         :if={@options_locked?}
@@ -378,79 +381,87 @@ defmodule SheafWeb.AssistantChatComponent do
         </button>
       </div>
 
-      <textarea
+      <div
         :if={!@options_locked?}
-        name="chat[message]"
-        rows="1"
-        value={@form[:message].value}
-        class="block max-h-40 min-h-24 w-full resize-none overflow-y-auto rounded-lg border border-stone-200 bg-white px-3 py-3 text-base leading-6 text-stone-950 shadow-sm shadow-stone-950/5 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-400 sm:text-sm sm:leading-5 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:shadow-black/20 dark:focus:border-stone-600"
-        placeholder={input_placeholder(@mode, @selected_chat_id)}
-        disabled={@pending}
-      ></textarea>
-      <div :if={!@options_locked?} class="flex items-center justify-between gap-3">
-        <div class="inline-flex items-center gap-1 font-sans text-xs">
-          <label class={selector_label_class(@mode, "quick", @options_locked?)}>
-            <input
-              type="radio"
-              name="chat[mode]"
-              value="quick"
-              checked={@mode == "quick"}
-              class="sr-only"
-              disabled={@options_locked?}
-            />
-            <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
-            <span>Quick</span>
-          </label>
-          <label class={selector_label_class(@mode, "research", @options_locked?)}>
-            <input
-              type="radio"
-              name="chat[mode]"
-              value="research"
-              checked={@mode == "research"}
-              class="sr-only"
-              disabled={@options_locked?}
-            />
-            <.icon name="hero-beaker" class="size-3.5" />
-            <span>Research</span>
-          </label>
-          <label class={selector_label_class(@mode, "edit", @options_locked?)}>
-            <input
-              type="radio"
-              name="chat[mode]"
-              value="edit"
-              checked={@mode == "edit"}
-              class="sr-only"
-              disabled={@options_locked?}
-            />
-            <.icon name="hero-pencil-square" class="size-3.5" />
-            <span>Edit</span>
-          </label>
-        </div>
-        <div class="inline-flex items-center gap-1 font-sans text-xs">
-          <label
-            :for={option <- Sheaf.LLM.assistant_model_options()}
-            class={selector_label_class(@model_provider, option.provider, @options_locked?)}
-          >
-            <input
-              type="radio"
-              name="chat[model_provider]"
-              value={option.provider}
-              checked={@model_provider == option.provider}
-              class="sr-only"
-              disabled={@options_locked?}
-            />
-            <span>{option.label}</span>
-          </label>
-        </div>
-        <button
-          type="submit"
-          class="grid size-8 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
-          title="Send"
-          aria-label="Send"
+        class="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm shadow-stone-950/5 transition-colors focus-within:border-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20 dark:focus-within:border-stone-600"
+      >
+        <textarea
+          name="chat[message]"
+          rows="1"
+          value={@form[:message].value}
+          class="block max-h-40 min-h-24 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-base leading-6 text-stone-950 outline-none [field-sizing:content] placeholder:text-stone-400 focus:ring-0 sm:text-sm sm:leading-5 dark:text-stone-50 dark:placeholder:text-stone-500"
+          placeholder={input_placeholder(@mode, @selected_chat_id)}
           disabled={@pending}
-        >
-          <.icon name="hero-paper-airplane" class="size-4" />
-        </button>
+        ></textarea>
+
+        <div class="flex min-w-0 items-center gap-1 border-t border-stone-200 bg-stone-50/80 px-1.5 py-1 font-sans text-xs dark:border-stone-800 dark:bg-stone-950/30">
+          <div class="inline-flex min-w-0 items-center gap-0.5">
+            <label class={selector_label_class(@mode, "quick", @options_locked?)}>
+              <input
+                type="radio"
+                name="chat[mode]"
+                value="quick"
+                checked={@mode == "quick"}
+                class="sr-only"
+                disabled={@options_locked?}
+              />
+              <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
+              <span class="hidden sm:inline">Quick</span>
+            </label>
+            <label class={selector_label_class(@mode, "research", @options_locked?)}>
+              <input
+                type="radio"
+                name="chat[mode]"
+                value="research"
+                checked={@mode == "research"}
+                class="sr-only"
+                disabled={@options_locked?}
+              />
+              <.icon name="hero-beaker" class="size-3.5" />
+              <span class="hidden sm:inline">Research</span>
+            </label>
+            <label class={selector_label_class(@mode, "edit", @options_locked?)}>
+              <input
+                type="radio"
+                name="chat[mode]"
+                value="edit"
+                checked={@mode == "edit"}
+                class="sr-only"
+                disabled={@options_locked?}
+              />
+              <.icon name="hero-pencil-square" class="size-3.5" />
+              <span class="hidden sm:inline">Edit</span>
+            </label>
+          </div>
+
+          <span class="min-w-0 flex-1"></span>
+
+          <label class="sr-only" for={"#{@id}-model-provider"}>Model</label>
+          <select
+            id={"#{@id}-model-provider"}
+            name="chat[model_provider]"
+            class="h-7 rounded-sm border border-stone-200 bg-white px-1.5 py-0 text-xs text-stone-700 outline-none focus:border-stone-400 focus:ring-0 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200"
+            disabled={@options_locked?}
+          >
+            <option
+              :for={option <- Sheaf.LLM.assistant_model_options()}
+              value={option.provider}
+              selected={@model_provider == option.provider}
+            >
+              {option.label}
+            </option>
+          </select>
+
+          <button
+            type="submit"
+            class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
+            title="Send"
+            aria-label="Send"
+            disabled={@pending}
+          >
+            <.icon name="hero-paper-airplane" class="size-4" />
+          </button>
+        </div>
       </div>
     </.form>
     """
@@ -1049,7 +1060,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp selector_label_class(selected_value, value, locked?) do
     [
-      "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 transition-colors",
+      "inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 transition-colors",
       locked? && "cursor-not-allowed",
       not locked? && "cursor-pointer",
       selected_value == value &&

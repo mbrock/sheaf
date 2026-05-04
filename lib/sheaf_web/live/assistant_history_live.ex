@@ -45,7 +45,7 @@ defmodule SheafWeb.AssistantHistoryLive do
       <AppChrome.toolbar section={:history} />
 
       <div class="mx-auto w-full max-w-5xl px-2 py-2 sm:px-4 sm:py-4">
-        <section class="mb-3 rounded-lg border border-stone-200 bg-white p-2 shadow-sm shadow-stone-950/5 sm:p-3 dark:border-stone-800 dark:bg-stone-900/80 dark:shadow-black/20">
+        <section class="mb-3">
           <.live_component
             module={AssistantChatComponent}
             id="assistant-history-composer"
@@ -86,6 +86,10 @@ defmodule SheafWeb.AssistantHistoryLive do
                   <.icon name={row.icon} class={row.icon_class} />
                 </span>
 
+                <span :if={row.provider_label} class="shrink-0">
+                  {row.provider_label}
+                </span>
+
                 <time
                   :if={row.published_at}
                   datetime={DateTime.to_iso8601(row.published_at)}
@@ -95,10 +99,6 @@ defmodule SheafWeb.AssistantHistoryLive do
                 </time>
 
                 <span class="min-w-0 flex-1"></span>
-
-                <span :if={row.provider_label} class="shrink-0">
-                  {row.provider_label}
-                </span>
 
                 <span :if={row.assistant_count > 0} class="shrink-0 tabular-nums">
                   {row.assistant_count}
