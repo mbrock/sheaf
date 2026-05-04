@@ -503,6 +503,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
             iri: to_string(description.subject),
             type: :message,
             role: message_role(description, graph),
+            model_name: message_model_name(description, graph),
             text: text,
             preview: text_preview(text),
             published_at: published_at(description),
@@ -540,6 +541,20 @@ defmodule SheafWeb.AssistantHistoryComponents do
               :assistant
           end
       end
+    end
+  end
+
+  defp message_model_name(%Description{} = description, graph) do
+    description
+    |> Description.first(Sheaf.NS.AS.attributedTo())
+    |> case do
+      nil ->
+        nil
+
+      actor ->
+        graph
+        |> RDF.Data.description(actor)
+        |> first_value(Sheaf.NS.DOC.assistantModelName())
     end
   end
 
@@ -604,22 +619,37 @@ defmodule SheafWeb.AssistantHistoryComponents do
   defp normalize_limit(_limit), do: @default_history_limit
 
   defp limit_history_graph(%Graph{} = graph, limit) do
+    descriptions = RDF.Data.descriptions(graph)
+
     sessions =
-      graph
-      |> RDF.Data.descriptions()
+      descriptions
       |> Enum.filter(&Description.include?(&1, {RDF.type(), Sheaf.NS.DOC.AssistantConversation}))
       |> Enum.sort_by(&session_sort_key(graph, &1), :desc)
       |> Enum.take(limit)
       |> Enum.map(& &1.subject)
       |> MapSet.new()
 
-    graph
-    |> RDF.Data.descriptions()
-    |> Enum.filter(fn description ->
-      MapSet.member?(sessions, description.subject) ||
+    entries =
+      descriptions
+      |> Enum.filter(fn description ->
         description
         |> Description.first(Sheaf.NS.AS.context())
         |> then(&MapSet.member?(sessions, &1))
+      end)
+
+    entry_subjects = entries |> Enum.map(& &1.subject) |> MapSet.new()
+
+    actors =
+      entries
+      |> Enum.map(&Description.first(&1, Sheaf.NS.AS.attributedTo()))
+      |> Enum.reject(&is_nil/1)
+      |> MapSet.new()
+
+    descriptions
+    |> Enum.filter(fn description ->
+      MapSet.member?(sessions, description.subject) or
+        MapSet.member?(entry_subjects, description.subject) or
+        MapSet.member?(actors, description.subject)
     end)
     |> Graph.new()
   end

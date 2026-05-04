@@ -147,7 +147,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <section class={if @variant == :toolbar, do: "min-w-0 flex-none", else: nil}>
+    <section class={if @variant == :toolbar, do: "min-w-0 flex-1 sm:max-w-72 md:max-w-96", else: nil}>
       <.toolbar_search :if={@variant == :toolbar} {assigns} />
       <.full_search :if={@variant != :toolbar} {assigns} />
     </section>
@@ -164,9 +164,9 @@ defmodule SheafWeb.EmbeddingSearchComponent do
       phx-click-away="reset"
       phx-target={@myself}
     >
-      <form phx-submit="search" phx-target={@myself}>
+      <form phx-submit="search" phx-target={@myself} class="w-full">
         <div class={[
-          "group flex min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-1 duration-150 sm:gap-2 dark:border-stone-700 dark:bg-stone-900"
+          "group flex w-full min-w-0 items-center gap-1.5 rounded-sm border border-stone-300 bg-white px-1 duration-150 sm:gap-2 dark:border-stone-700 dark:bg-stone-900"
         ]}>
           <input
             id={"#{@id}-input"}
@@ -176,11 +176,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
             autocomplete="off"
             placeholder="Search"
             class={[
-              "min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-base leading-6 text-stone-950 outline-none transition-opacity placeholder:text-stone-400 focus:ring-0 sm:text-sm dark:text-stone-50 dark:placeholder:text-stone-500",
-              if(@open?,
-                do: "opacity-100",
-                else: "opacity-0 group-hover:opacity-100 focus:opacity-100"
-              )
+              "min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-base leading-6 text-stone-950 outline-none placeholder:text-stone-400 focus:ring-0 sm:text-sm dark:text-stone-50 dark:placeholder:text-stone-500"
             ]}
           />
           <button

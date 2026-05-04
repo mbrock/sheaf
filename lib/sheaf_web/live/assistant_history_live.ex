@@ -94,20 +94,19 @@ defmodule SheafWeb.AssistantHistoryLive do
                   {time_label(row.published_at)}
                 </time>
 
+                <span class="min-w-0 flex-1"></span>
+
+                <span :if={row.provider_label} class="shrink-0">
+                  {row.provider_label}
+                </span>
+
                 <span :if={row.assistant_count > 0} class="shrink-0 tabular-nums">
                   {row.assistant_count}
                 </span>
-
-                <span class="min-w-0 flex-1"></span>
-
-                <.icon
-                  name="hero-arrow-up-right"
-                  class="size-3.5 shrink-0 text-stone-400 dark:text-stone-500"
-                />
               </span>
 
               <span class="mt-1 block min-w-0">
-                <span class="line-clamp-4 text-sm font-medium leading-5 text-stone-950 sm:line-clamp-3 dark:text-stone-50">
+                <span class="line-clamp-5 text-[13px] font-normal leading-5 text-stone-800 sm:line-clamp-4 dark:text-stone-100">
                   {row.initial_message}
                 </span>
               </span>
@@ -139,6 +138,7 @@ defmodule SheafWeb.AssistantHistoryLive do
           entries,
           &(Map.get(&1, :type) == :message and Map.get(&1, :role) == :assistant)
         ),
+      provider_label: provider_label(entries),
       mode_label: mode_label(group.mode),
       icon: row_icon(group.mode),
       icon_class: row_icon_class(group.mode)
@@ -161,6 +161,31 @@ defmodule SheafWeb.AssistantHistoryLive do
 
   defp mode_label("research"), do: "research"
   defp mode_label(_mode), do: "chat"
+
+  defp provider_label(entries) do
+    Enum.find_value(entries, fn
+      %{type: :message, role: :assistant, model_name: model_name} when is_binary(model_name) ->
+        model_provider_label(model_name)
+
+      _entry ->
+        nil
+    end)
+  end
+
+  defp model_provider_label(model_name) do
+    normalized = String.downcase(model_name)
+
+    cond do
+      String.contains?(normalized, "gpt") or String.contains?(normalized, "openai") ->
+        "GPT"
+
+      String.contains?(normalized, "claude") or String.contains?(normalized, "anthropic") ->
+        "Claude"
+
+      true ->
+        nil
+    end
+  end
 
   defp row_icon("research"), do: "hero-beaker"
   defp row_icon(_mode), do: "hero-chat-bubble-left-ellipsis"
