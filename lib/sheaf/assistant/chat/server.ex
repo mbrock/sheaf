@@ -11,7 +11,7 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   alias ReqLLM.{Context, Response}
   alias Sheaf.Assistant
-  alias Sheaf.Assistant.{Activity, Chats, CorpusTools, SpreadsheetSession}
+  alias Sheaf.Assistant.{Activity, Chats, ContextStore, CorpusTools, SpreadsheetSession}
   alias Sheaf.Id
 
   @registry Sheaf.Assistant.ChatRegistry
@@ -30,6 +30,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     :session_iri,
     :last_user_message_iri,
     :activity_writer,
+    :context_store,
     title: @default_title,
     kind: @default_kind,
     messages: [],
@@ -116,6 +117,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     session_iri = Keyword.get_lazy(opts, :session_iri, fn -> Id.iri(id) end)
     agent_iri = Keyword.get_lazy(opts, :agent_iri, &Sheaf.mint/0)
     activity_writer = Keyword.get(opts, :activity_writer, Activity)
+    context_store = Keyword.get(opts, :context_store, ContextStore)
 
     spreadsheet_session =
       Keyword.get_lazy(opts, :spreadsheet_session, fn -> SpreadsheetSession.via(id) end)
@@ -127,7 +129,12 @@ defmodule Sheaf.Assistant.Chat.Server do
       Keyword.get(opts, :allow_notes?, Keyword.get(opts, :allow_notes, kind == :research))
 
     context =
-      Context.new([Context.system(system_prompt(kind, allow_notes?, workspace_instructions))])
+      Keyword.get(opts, :context) ||
+        persisted_context(context_store, session_iri) ||
+        Context.new([Context.system(system_prompt(kind, allow_notes?, workspace_instructions))])
+
+    messages = visible_messages_from_context(context, titles)
+    title = maybe_title_from_context(title, kind, messages)
 
     tools =
       CorpusTools.tools(
@@ -146,6 +153,8 @@ defmodule Sheaf.Assistant.Chat.Server do
         ],
         spreadsheet_session: spreadsheet_session
       )
+
+    context = put_context_tools(context, tools)
 
     case Assistant.start_link(
            model: model,
@@ -166,13 +175,15 @@ defmodule Sheaf.Assistant.Chat.Server do
            agent_iri: agent_iri,
            session_iri: session_iri,
            activity_writer: activity_writer,
+           context_store: context_store,
            allow_notes?: allow_notes?,
            model: model,
            llm_options: llm_options,
            max_tool_rounds: max_tool_rounds,
            task_supervisor: task_supervisor,
            generate_text: generate_text,
-           titles: titles
+           titles: titles,
+           messages: messages
          }}
 
       {:error, reason} ->
@@ -183,6 +194,11 @@ defmodule Sheaf.Assistant.Chat.Server do
   @impl true
   def handle_call(:snapshot, _from, state) do
     {:reply, snapshot_from_state(state), state}
+  end
+
+  def handle_call(:persist_context, _from, state) do
+    state = persist_context(state)
+    {:reply, :ok, state}
   end
 
   def handle_call({:send_user_message, text, _turn_context}, _from, state)
@@ -270,6 +286,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     input = user_input(text, turn_context)
     state = maybe_title_from(state, text)
     state = persist_user_message(state, text)
+    state = persist_context_with_input(state, input)
 
     case Task.Supervisor.start_child(state.task_supervisor, fn ->
            result = safe_run(assistant, input)
@@ -301,6 +318,7 @@ defmodule Sheaf.Assistant.Chat.Server do
 
     state
     |> persist_assistant_message(text)
+    |> persist_context()
     |> Map.put(:pending_ref, nil)
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, nil)
@@ -311,6 +329,7 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp handle_assistant_result(state, {:error, reason}) do
     state
+    |> persist_context()
     |> Map.put(:pending_ref, nil)
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, nil)
@@ -424,6 +443,80 @@ defmodule Sheaf.Assistant.Chat.Server do
     apply(writer, function, [attrs])
   end
 
+  defp put_context_tools(%Context{} = context, tools) when is_list(tools) do
+    %{context | tools: tools}
+  end
+
+  defp persisted_context(nil, _session_iri), do: nil
+  defp persisted_context(false, _session_iri), do: nil
+
+  defp persisted_context(store, session_iri) when is_atom(store) do
+    case store.read(session_iri) do
+      {:ok, %Context{} = context} -> context
+      _other -> nil
+    end
+  rescue
+    _error -> nil
+  catch
+    _kind, _reason -> nil
+  end
+
+  defp persisted_context({store, opts}, session_iri) when is_atom(store) and is_list(opts) do
+    case store.read(session_iri, opts) do
+      {:ok, %Context{} = context} -> context
+      _other -> nil
+    end
+  rescue
+    _error -> nil
+  catch
+    _kind, _reason -> nil
+  end
+
+  defp persist_context_with_input(state, input) do
+    case Assistant.context(state.assistant) do
+      %Context{} = context ->
+        persist_context_value(state, Context.append(context, input))
+
+      _other ->
+        state
+    end
+  rescue
+    _error -> state
+  catch
+    _kind, _reason -> state
+  end
+
+  defp persist_context(state) do
+    state =
+      case Assistant.context(state.assistant) do
+        %Context{} = context -> persist_context_value(state, context)
+        _other -> state
+      end
+
+    state
+  rescue
+    _error -> state
+  catch
+    _kind, _reason -> state
+  end
+
+  defp persist_context_value(state, context) do
+    case context_store(state) do
+      store when store in [nil, false] ->
+        state
+
+      store when is_atom(store) ->
+        _ = store.write(state.session_iri, context)
+        state
+
+      {store, opts} when is_atom(store) and is_list(opts) ->
+        _ = store.write(state.session_iri, context, opts)
+        state
+    end
+  end
+
+  defp context_store(state), do: Map.get(state, :context_store, ContextStore)
+
   defp default_title(_kind), do: "Assistant conversation"
 
   defp session_label(_kind, id), do: "Assistant conversation #{id}"
@@ -444,11 +537,155 @@ defmodule Sheaf.Assistant.Chat.Server do
     |> truncate(48)
   end
 
+  defp maybe_title_from_context(title, kind, messages) do
+    if title == default_title(kind) do
+      messages
+      |> Enum.find(&(Map.get(&1, :role) == :user))
+      |> case do
+        %{text: text} when is_binary(text) -> title_from_text(text)
+        _other -> title
+      end
+    else
+      title
+    end
+  end
+
+  defp visible_messages_from_context(%Context{} = context, titles) do
+    context.messages
+    |> Enum.reduce([], &append_visible_message(&2, &1, titles))
+  end
+
+  defp append_visible_message(messages, %{role: :system}, _titles), do: messages
+
+  defp append_visible_message(messages, %{role: :user} = message, _titles) do
+    append_if_text(messages, :user, message_text(message))
+  end
+
+  defp append_visible_message(
+         messages,
+         %{role: :assistant, tool_calls: tool_calls} = message,
+         titles
+       )
+       when is_list(tool_calls) do
+    messages
+    |> append_if_text(:assistant, message_text(message))
+    |> then(fn messages ->
+      Enum.reduce(tool_calls, messages, fn tool_call, messages ->
+        {name, args, id} = tool_call_view(tool_call)
+
+        messages ++
+          [
+            %{
+              role: :tool,
+              tool: name,
+              input: args,
+              status: :pending,
+              summary: nil,
+              tool_call_id: id,
+              status_line: CorpusTools.humanize(name, args, titles)
+            }
+          ]
+      end)
+    end)
+  end
+
+  defp append_visible_message(messages, %{role: :assistant} = message, _titles) do
+    append_if_text(messages, :assistant, message_text(message))
+  end
+
+  defp append_visible_message(messages, %{role: :tool} = message, _titles) do
+    update_visible_tool_result(messages, message)
+  end
+
+  defp append_visible_message(messages, _message, _titles), do: messages
+
+  defp append_if_text(messages, _role, ""), do: messages
+  defp append_if_text(messages, role, text), do: messages ++ [%{role: role, text: text}]
+
+  defp update_visible_tool_result(messages, message) do
+    name = Map.get(message, :name)
+    id = Map.get(message, :tool_call_id)
+    result = message |> Map.get(:metadata, %{}) |> sheaf_result_from_metadata()
+    summary = if name && result, do: CorpusTools.result_summary(name, {:ok, result})
+
+    {messages, updated?} =
+      messages
+      |> Enum.reverse()
+      |> Enum.map_reduce(false, fn msg, updated? ->
+        cond do
+          updated? ->
+            {msg, updated?}
+
+          Map.get(msg, :role) == :tool and Map.get(msg, :tool_call_id) == id ->
+            {Map.merge(msg, %{status: :ok, summary: summary}), true}
+
+          true ->
+            {msg, updated?}
+        end
+      end)
+
+    messages = Enum.reverse(messages)
+
+    if updated? do
+      messages
+    else
+      messages ++ [%{role: :tool, tool: name, input: %{}, status: :ok, summary: summary}]
+    end
+  end
+
+  defp message_text(%{content: content} = message) when is_list(content) do
+    case message_metadata_text(message) do
+      text when is_binary(text) and text != "" ->
+        text
+
+      _other ->
+        content
+        |> Enum.filter(&(Map.get(&1, :type) == :text))
+        |> Enum.map_join("", &(Map.get(&1, :text) || ""))
+        |> String.trim()
+    end
+  end
+
+  defp message_text(_message), do: ""
+
+  defp message_metadata_text(%{metadata: metadata}) when is_map(metadata) do
+    Map.get(metadata, :sheaf_user_text) || Map.get(metadata, "sheaf_user_text")
+  end
+
+  defp message_metadata_text(_message), do: nil
+
+  defp tool_call_view(%ReqLLM.ToolCall{} = tool_call) do
+    {
+      ReqLLM.ToolCall.name(tool_call),
+      ReqLLM.ToolCall.args_map(tool_call) || %{},
+      tool_call.id
+    }
+  end
+
+  defp tool_call_view(%{id: id, name: name, arguments: args}) do
+    {name, args || %{}, id}
+  end
+
+  defp tool_call_view(%{"id" => id, "name" => name, "arguments" => args}) do
+    {name, args || %{}, id}
+  end
+
+  defp sheaf_result_from_metadata(metadata) when is_map(metadata) do
+    Map.get(metadata, :sheaf_result) || Map.get(metadata, "sheaf_result")
+  end
+
+  defp sheaf_result_from_metadata(_metadata), do: nil
+
   defp truncate(text, limit) do
     if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 3) <> "..."
   end
 
   defp user_input(text, turn_context) do
+    metadata = %{
+      sheaf_user_text: text,
+      sheaf_turn_context: turn_context
+    }
+
     context_sections =
       []
       |> maybe_add_working_document(turn_context)
@@ -457,15 +694,18 @@ defmodule Sheaf.Assistant.Chat.Server do
 
     case context_sections do
       [] ->
-        Context.user(text)
+        Context.user(text, metadata)
 
       sections ->
-        Context.user("""
-        [context for this turn]
-        #{Enum.join(sections, "\n\n")}
+        Context.user(
+          """
+          [context for this turn]
+          #{Enum.join(sections, "\n\n")}
 
-        #{text}
-        """)
+          #{text}
+          """,
+          metadata
+        )
     end
   end
 

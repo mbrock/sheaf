@@ -143,6 +143,16 @@ sheaf:ToolCall a rdfs:Class ;
   rdfs:subClassOf prov:Activity ;
   rdfs:comment "An invocation of a tool by an assistant during a conversation." .
 
+sheaf:LLMContext a rdfs:Class ;
+  rdfs:label "LLM context"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "An operational persisted ReqLLM conversation context used to continue assistant sessions across process restarts." .
+
+sheaf:LLMContextMessage a rdfs:Class ;
+  rdfs:label "LLM context message"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "One indexed ReqLLM message payload in a persisted LLM context." .
+
 sheaf:SpreadsheetWorkbook a rdfs:Class ;
   rdfs:label "spreadsheet workbook"@en ;
   rdfs:subClassOf dcat:Dataset,
@@ -190,6 +200,36 @@ sheaf:toolName a rdf:Property ;
   rdfs:domain sheaf:ToolCall ;
   rdfs:range xsd:string ;
   rdfs:comment "Names the assistant tool invoked by a tool call." .
+
+sheaf:forAssistantConversation a rdf:Property ;
+  rdfs:label "is for assistant conversation"@en ;
+  rdfs:domain sheaf:LLMContext ;
+  rdfs:range sheaf:AssistantConversation ;
+  rdfs:comment "Links a persisted LLM context to the assistant conversation it operationally continues." .
+
+sheaf:hasContextMessage a rdf:Property ;
+  rdfs:label "has context message"@en ;
+  rdfs:domain sheaf:LLMContext ;
+  rdfs:range sheaf:LLMContextMessage ;
+  rdfs:comment "Links a persisted LLM context to one of its indexed ReqLLM message payloads." .
+
+sheaf:messageIndex a rdf:Property ;
+  rdfs:label "has message index"@en ;
+  rdfs:domain sheaf:LLMContextMessage ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "Zero-based append position of a ReqLLM message inside a persisted LLM context." .
+
+sheaf:reqLLMMessage a rdf:Property ;
+  rdfs:label "has ReqLLM message"@en ;
+  rdfs:domain sheaf:LLMContextMessage ;
+  rdfs:range rdf:JSON ;
+  rdfs:comment "JSON payload of one persisted ReqLLM message, including provider-specific metadata required for continuation." .
+
+sheaf:toolSchemaList a rdf:Property ;
+  rdfs:label "has tool schema list"@en ;
+  rdfs:domain sheaf:LLMContext ;
+  rdfs:range rdf:JSON ;
+  rdfs:comment "JSON payload describing the assistant tool schemas available to a persisted LLM context." .
 
 sheaf:resultFile a rdf:Property ;
   rdfs:label "has result file"@en ;

@@ -41,6 +41,10 @@ defmodule Sheaf.Assistant.Chat do
     GenServer.call(server_ref(server), {:send_user_message, text, turn_context})
   end
 
+  def persist_context(server) do
+    GenServer.call(server_ref(server), :persist_context)
+  end
+
   def put_model(server, model) do
     GenServer.call(server_ref(server), {:put_model, model})
   end

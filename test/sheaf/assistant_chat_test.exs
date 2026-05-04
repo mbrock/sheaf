@@ -3,7 +3,7 @@ defmodule Sheaf.Assistant.ChatTest do
 
   alias ReqLLM.{Context, Response, Tool}
   alias ReqLLM.Message.ContentPart
-  alias Sheaf.Assistant.Chat
+  alias Sheaf.Assistant.{Chat, ContextStore}
   alias Sheaf.Spreadsheet.Metadata
   alias Sheaf.XLSXFixture
 
@@ -166,6 +166,134 @@ defmodule Sheaf.Assistant.ChatTest do
                %{role: :assistant, text: "Routed."}
              ]
            } = wait_for_messages(id, 2)
+  end
+
+  test "persists the ReqLLM context at the start of a turn" do
+    test_pid = self()
+    empty_graph = RDF.Graph.new(name: RDF.iri(ContextStore.graph()))
+
+    generate_text = fn _model, _context, _opts ->
+      send(test_pid, {:inference_started, self()})
+
+      receive do
+        :finish ->
+          {:ok, response(Context.assistant("Saved."), finish_reason: :stop)}
+      end
+    end
+
+    id = Sheaf.Id.generate()
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       model: "test-model",
+       titles: %{},
+       workspace_instructions: "Testing context persistence.",
+       activity_writer: nil,
+       context_store:
+         {ContextStore,
+          [
+            graph: empty_graph,
+            persist: fn graph ->
+              send(test_pid, {:persisted_context_graph, graph})
+              :ok
+            end
+          ]},
+       generate_text: generate_text,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    assert :ok = Chat.send_user_message(id, "Persist this before the model answers.")
+    assert_receive {:persisted_context_graph, graph}
+    assert {:ok, persisted} = ContextStore.read(Sheaf.Id.iri(id), graph: graph)
+    assert Enum.map(persisted.messages, & &1.role) == [:system, :user]
+
+    assert List.last(persisted.messages).metadata["sheaf_user_text"] ==
+             "Persist this before the model answers."
+
+    assert_receive {:inference_started, task_pid}
+    send(task_pid, :finish)
+    assert %{pending: false} = wait_for_messages(id, 2)
+  end
+
+  test "restores visible chat messages from a persisted ReqLLM context" do
+    id = Sheaf.Id.generate()
+    session = Sheaf.Id.iri(id)
+    empty_graph = RDF.Graph.new(name: RDF.iri(ContextStore.graph()))
+
+    context =
+      Context.new([
+        Context.system("System prompt."),
+        Context.user(
+          "[context for this turn]\n\nHidden context.\n\nVisible question.",
+          %{sheaf_user_text: "Visible question."}
+        ),
+        Context.assistant("Recovered answer.")
+      ])
+
+    assert :ok =
+             ContextStore.write(session, context,
+               graph: empty_graph,
+               persist: fn graph ->
+                 send(self(), {:seed_context_graph, graph})
+                 :ok
+               end
+             )
+
+    assert_receive {:seed_context_graph, graph}
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       model: "test-model",
+       titles: %{},
+       workspace_instructions: "Testing context hydration.",
+       activity_writer: nil,
+       context_store: {ContextStore, graph: graph},
+       generate_text: fn _model, _context, _opts -> flunk("unexpected inference") end,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    assert %{
+             title: "Visible question.",
+             pending: false,
+             messages: [
+               %{role: :user, text: "Visible question."},
+               %{role: :assistant, text: "Recovered answer."}
+             ]
+           } = Chat.snapshot(id)
+  end
+
+  test "can explicitly persist a live chat context" do
+    test_pid = self()
+    id = Sheaf.Id.generate()
+    empty_graph = RDF.Graph.new(name: RDF.iri(ContextStore.graph()))
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       model: "test-model",
+       titles: %{},
+       workspace_instructions: "Testing manual context persistence.",
+       activity_writer: nil,
+       context: Context.new([Context.system("System prompt."), Context.user("Keep this.")]),
+       context_store:
+         {ContextStore,
+          [
+            graph: empty_graph,
+            persist: fn graph ->
+              send(test_pid, {:persisted_context_graph, graph})
+              :ok
+            end
+          ]},
+       generate_text: fn _model, _context, _opts -> flunk("unexpected inference") end,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    assert :ok = Chat.persist_context(id)
+    assert_receive {:persisted_context_graph, graph}
+    assert {:ok, persisted} = ContextStore.read(Sheaf.Id.iri(id), graph: graph)
+    assert Enum.map(persisted.messages, & &1.role) == [:system, :user]
   end
 
   @tag :tmp_dir

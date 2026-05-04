@@ -729,10 +729,15 @@ defmodule SheafWeb.AssistantChatComponent do
          %{assigns: %{chat_id: id, selected_chat_id: selected_id}} = socket
        )
        when is_binary(id) and id != "" and id != selected_id do
-    if Chat.exists?(id) do
-      select_chat(socket, id)
-    else
-      socket
+    cond do
+      Chat.exists?(id) ->
+        select_chat(socket, id)
+
+      history_enabled?(socket.assigns) ->
+        create_existing_conversation(socket, id)
+
+      true ->
+        socket
     end
   end
 
@@ -775,6 +780,22 @@ defmodule SheafWeb.AssistantChatComponent do
 
       {:error, reason} ->
         put_local_error(socket, "Could not start assistant chat: #{inspect(reason)}")
+    end
+  end
+
+  defp create_existing_conversation(socket, id) do
+    case Chats.create(
+           chat_options(socket, mode_kind(socket.assigns.mode))
+           |> Keyword.put(:id, id)
+           |> Keyword.put(:listed?, history_enabled?(socket.assigns))
+         ) do
+      %{id: ^id} ->
+        socket
+        |> assign(:chats, Chats.list())
+        |> select_chat(id)
+
+      {:error, _reason} ->
+        socket
     end
   end
 
