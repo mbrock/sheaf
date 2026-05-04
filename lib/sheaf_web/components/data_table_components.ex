@@ -1,29 +1,9 @@
-defmodule SheafWeb.SpreadsheetQueryResultComponents do
+defmodule SheafWeb.DataTableComponents do
   @moduledoc """
-  Components for saved spreadsheet query result pages.
+  Components for rendering tabular data.
   """
 
   use SheafWeb, :html
-
-  alias SheafWeb.AppChrome
-
-  attr :sql, :string, required: true
-  attr :columns, :list, required: true
-  attr :rows, :list, required: true
-
-  def page(assigns) do
-    ~H"""
-    <main class="grid min-h-dvh grid-rows-[auto_1fr_auto] bg-stone-100 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
-      <AppChrome.toolbar section={:document} search?={false} />
-
-      <section class="w-full py-5">
-        <.data_table columns={@columns} rows={@rows} />
-      </section>
-
-      <pre class="overflow-x-auto border-t border-stone-200 bg-stone-50 p-4 font-mono text-xs leading-5 text-stone-800 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"><code>{@sql}</code></pre>
-    </main>
-    """
-  end
 
   attr :columns, :list, required: true
   attr :rows, :list, required: true

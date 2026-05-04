@@ -10,8 +10,8 @@ defmodule SheafWeb.ResourceLive do
   alias SheafWeb.AppChrome
   alias SheafWeb.AssistantChatComponent
   alias SheafWeb.AssistantHistoryComponents
+  alias SheafWeb.DataTableComponents
   alias SheafWeb.DocumentLive
-  alias SheafWeb.SpreadsheetQueryResultComponents
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
@@ -85,11 +85,15 @@ defmodule SheafWeb.ResourceLive do
 
   def render(%{resource_kind: :spreadsheet_query_result} = assigns) do
     ~H"""
-    <SpreadsheetQueryResultComponents.page
-      sql={@query_result_sql}
-      columns={@query_result_columns}
-      rows={@query_result_rows}
-    />
+    <main class="grid min-h-dvh grid-rows-[auto_1fr_auto] bg-stone-100 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
+      <AppChrome.toolbar section={:document} search?={false} />
+
+      <section class="w-full py-5">
+        <DataTableComponents.data_table columns={@query_result_columns} rows={@query_result_rows} />
+      </section>
+
+      <pre class="overflow-x-auto border-t border-stone-200 bg-stone-50 p-4 font-mono text-xs leading-5 text-stone-800 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"><code>{@query_result_sql}</code></pre>
+    </main>
     """
   end
 
