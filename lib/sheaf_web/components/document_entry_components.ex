@@ -79,6 +79,12 @@ defmodule SheafWeb.DocumentEntryComponents do
         >
           draft
         </span>
+        <span
+          :if={status_str(@document) == "mikael"}
+          class="shrink-0 rounded-sm border border-emerald-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-emerald-800 dark:border-emerald-900/70 dark:text-emerald-300"
+        >
+          MIKAEL
+        </span>
       </div>
 
       <div

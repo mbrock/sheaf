@@ -43,4 +43,23 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
 
     assert html =~ ~r/>\s*draft\s*<\/span>/
   end
+
+  test "renders a Mikael status pill" do
+    html =
+      render_component(&document_entry/1,
+        document: %{
+          id: "DOC2",
+          kind: :thesis,
+          path: "/DOC2",
+          title: "Mikael thesis",
+          metadata: %{status: "mikael"},
+          excluded?: false,
+          cited?: false,
+          has_document?: true,
+          workspace_owner_authored?: true
+        }
+      )
+
+    assert html =~ ~r/>\s*MIKAEL\s*<\/span>/
+  end
 end
