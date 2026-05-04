@@ -79,31 +79,21 @@ defmodule SheafWeb.AssistantHistoryLive do
           <li :for={row <- @rows}>
             <.link
               navigate={~p"/#{row.id}"}
-              class="grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2 px-2 py-2.5 transition-colors hover:bg-stone-100/80 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto] sm:px-3 dark:hover:bg-stone-800/70"
+              class="grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2 px-2 py-2 transition-colors hover:bg-stone-100/80 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto] sm:px-3 dark:hover:bg-stone-800/70"
             >
               <span class="mt-0.5 flex size-5 items-center justify-center">
                 <.icon name={row.icon} class={row.icon_class} />
               </span>
 
               <span class="min-w-0">
-                <span class="flex min-w-0 items-center gap-2">
-                  <span class="truncate font-sans text-sm font-medium text-stone-950 dark:text-stone-50">
-                    {row.title}
-                  </span>
-                  <span class="hidden shrink-0 rounded-sm bg-stone-100 px-1.5 py-0.5 font-sans text-[10px] uppercase tracking-wide text-stone-500 sm:inline dark:bg-stone-800 dark:text-stone-400">
+                <span class="line-clamp-2 text-sm font-medium leading-5 text-stone-950 sm:line-clamp-1 dark:text-stone-50">
+                  {row.initial_message}
+                </span>
+
+                <span class="mt-1 flex min-w-0 items-center gap-2 font-sans text-[11px] text-stone-500 dark:text-stone-400">
+                  <span class="shrink-0 rounded-sm bg-stone-100 px-1.5 py-0.5 uppercase tracking-wide dark:bg-stone-800">
                     {row.mode_label}
                   </span>
-                </span>
-
-                <span class="mt-0.5 line-clamp-2 text-xs leading-5 text-stone-600 sm:line-clamp-1 dark:text-stone-300">
-                  {row.preview}
-                </span>
-
-                <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-sans text-[11px] text-stone-500 dark:text-stone-400">
-                  <span>{row.entry_count} entries</span>
-                  <span :if={row.note_count > 0}>{row.note_count} notes</span>
-                  <span :if={row.user_count > 0}>{row.user_count} user</span>
-                  <span :if={row.assistant_count > 0}>{row.assistant_count} assistant</span>
                 </span>
               </span>
 
@@ -141,49 +131,26 @@ defmodule SheafWeb.AssistantHistoryLive do
 
     %{
       id: id,
-      title: group.title,
-      preview: row_preview(entries),
+      initial_message: initial_user_message(entries) || group.title || "Untitled conversation",
       published_at: group.published_at,
-      entry_count: length(entries),
-      note_count: Enum.count(entries, &(&1.type == :note)),
-      user_count:
-        Enum.count(entries, &(Map.get(&1, :type) == :message and Map.get(&1, :role) == :user)),
-      assistant_count:
-        Enum.count(
-          entries,
-          &(Map.get(&1, :type) == :message and Map.get(&1, :role) == :assistant)
-        ),
       mode_label: mode_label(group.mode),
       icon: row_icon(group.mode),
       icon_class: row_icon_class(group.mode)
     }
   end
 
-  defp row_preview(entries) do
+  defp initial_user_message(entries) do
     entries
     |> Enum.find_value(fn
       %{type: :message, role: :user, preview: preview} when is_binary(preview) -> preview
       _entry -> nil
     end)
-    |> case do
-      nil ->
-        entries
-        |> Enum.reverse()
-        |> Enum.find_value(fn
-          %{preview: preview} when is_binary(preview) -> preview
-          %{title: title} when is_binary(title) -> title
-          _entry -> nil
-        end)
-
-      preview ->
-        preview
-    end
-    |> case do
-      nil -> "No preview"
-      "" -> "No preview"
-      preview -> preview
-    end
+    |> blank_to_nil()
   end
+
+  defp blank_to_nil(nil), do: nil
+  defp blank_to_nil(value) when is_binary(value) and value == "", do: nil
+  defp blank_to_nil(value), do: value
 
   defp mode_label("research"), do: "research"
   defp mode_label(_mode), do: "chat"
