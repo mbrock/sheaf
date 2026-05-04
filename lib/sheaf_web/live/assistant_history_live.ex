@@ -79,36 +79,37 @@ defmodule SheafWeb.AssistantHistoryLive do
           <li :for={row <- @rows}>
             <.link
               navigate={~p"/#{row.id}"}
-              class="grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2 px-2 py-2 transition-colors hover:bg-stone-100/80 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto] sm:px-3 dark:hover:bg-stone-800/70"
+              class="block min-w-0 px-2 py-2.5 transition-colors hover:bg-stone-100/80 sm:px-3 dark:hover:bg-stone-800/70"
             >
-              <span class="mt-0.5 flex size-5 items-center justify-center">
-                <.icon name={row.icon} class={row.icon_class} />
-              </span>
-
-              <span class="min-w-0">
-                <span class="line-clamp-2 text-sm font-medium leading-5 text-stone-950 sm:line-clamp-1 dark:text-stone-50">
-                  {row.initial_message}
+              <span class="flex min-w-0 items-center gap-2 font-sans text-[11px] text-stone-500 dark:text-stone-400">
+                <span class="flex size-5 shrink-0 items-center justify-center" title={row.mode_label}>
+                  <.icon name={row.icon} class={row.icon_class} />
                 </span>
 
-                <span class="mt-1 flex min-w-0 items-center gap-2 font-sans text-[11px] text-stone-500 dark:text-stone-400">
-                  <span class="shrink-0 rounded-sm bg-stone-100 px-1.5 py-0.5 uppercase tracking-wide dark:bg-stone-800">
-                    {row.mode_label}
-                  </span>
-                </span>
-              </span>
-
-              <span class="col-start-2 mt-1 flex items-center justify-between gap-2 sm:col-start-3 sm:row-start-1 sm:mt-0 sm:self-start">
                 <time
                   :if={row.published_at}
                   datetime={DateTime.to_iso8601(row.published_at)}
-                  class="shrink-0 font-sans text-[11px] tabular-nums text-stone-500 dark:text-stone-400"
+                  class="shrink-0 tabular-nums"
                 >
                   {time_label(row.published_at)}
                 </time>
+
+                <span :if={row.assistant_count > 0} class="shrink-0 tabular-nums">
+                  {row.assistant_count}
+                </span>
+
+                <span class="min-w-0 flex-1"></span>
+
                 <.icon
                   name="hero-arrow-up-right"
                   class="size-3.5 shrink-0 text-stone-400 dark:text-stone-500"
                 />
+              </span>
+
+              <span class="mt-1 block min-w-0">
+                <span class="line-clamp-4 text-sm font-medium leading-5 text-stone-950 sm:line-clamp-3 dark:text-stone-50">
+                  {row.initial_message}
+                </span>
               </span>
             </.link>
           </li>
@@ -133,6 +134,11 @@ defmodule SheafWeb.AssistantHistoryLive do
       id: id,
       initial_message: initial_user_message(entries) || group.title || "Untitled conversation",
       published_at: group.published_at,
+      assistant_count:
+        Enum.count(
+          entries,
+          &(Map.get(&1, :type) == :message and Map.get(&1, :role) == :assistant)
+        ),
       mode_label: mode_label(group.mode),
       icon: row_icon(group.mode),
       icon_class: row_icon_class(group.mode)
@@ -142,6 +148,7 @@ defmodule SheafWeb.AssistantHistoryLive do
   defp initial_user_message(entries) do
     entries
     |> Enum.find_value(fn
+      %{type: :message, role: :user, text: text} when is_binary(text) -> text
       %{type: :message, role: :user, preview: preview} when is_binary(preview) -> preview
       _entry -> nil
     end)
