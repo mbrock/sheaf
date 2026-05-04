@@ -1424,6 +1424,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       document_id: result.doc_iri && Id.id_from_iri(result.doc_iri),
       document_title: result.doc_title,
       document_authors: Map.get(result, :doc_authors, []),
+      document_status: Map.get(result, :doc_status),
       block_id: Id.id_from_iri(result.iri),
       kind: search_hit_kind(result.kind),
       text: search_hit_text(result),

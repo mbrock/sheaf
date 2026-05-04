@@ -780,12 +780,33 @@ defmodule Sheaf.Embedding.Index do
            title: description |> Description.first(RDFS.label()) |> term_value(),
            kind: document_kind(description),
            excluded?: MapSet.member?(excluded, RDF.iri(doc)),
-           authors: authors
+           authors: authors,
+           status: document_status(metadata, expression)
          }}
       end)
       |> Map.new()
       |> then(&{:ok, &1})
     end
+  end
+
+  defp document_status(_metadata, nil), do: nil
+
+  defp document_status(metadata, expression) do
+    status = first_object(metadata, expression, bibo_status())
+
+    (first_object(metadata, status, RDFS.label()) || status)
+    |> status_value()
+  end
+
+  defp status_value(nil), do: nil
+
+  defp status_value(status) do
+    status
+    |> term_value()
+    |> String.split(["#", "/"])
+    |> List.last()
+    |> String.replace("-", " ")
+    |> String.downcase()
   end
 
   defp fetch_document_graphs(doc_iris) do
@@ -979,6 +1000,7 @@ defmodule Sheaf.Embedding.Index do
           doc_title: Map.get(doc, :title),
           doc_kind: Map.get(doc, :kind),
           doc_authors: Map.get(doc, :authors, []),
+          doc_status: Map.get(doc, :status),
           doc_excluded?: Map.get(doc, :excluded?, false)
         })
     end
@@ -1170,6 +1192,7 @@ defmodule Sheaf.Embedding.Index do
       doc_title: doc_title,
       doc_kind: Map.get(doc, :kind),
       doc_authors: Map.get(doc, :authors, []),
+      doc_status: Map.get(doc, :status),
       doc_excluded?: Map.get(doc, :excluded?, false),
       source_page: description |> Description.first(Sheaf.NS.DOC.sourcePage()) |> integer_value(),
       source_block_type: first_value(description, Sheaf.NS.DOC.sourceBlockType()),
@@ -1271,6 +1294,8 @@ defmodule Sheaf.Embedding.Index do
 
   defp term_value(nil), do: nil
   defp term_value(term), do: term |> RDF.Term.value() |> to_string()
+
+  defp bibo_status, do: RDF.iri("http://purl.org/ontology/bibo/status")
 
   defp integer_value(nil), do: nil
 

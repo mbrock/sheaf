@@ -183,6 +183,7 @@ defmodule Sheaf.Assistant.ToolResults do
       :document_id,
       :document_title,
       :document_authors,
+      :document_status,
       :block_id,
       :kind,
       :text,

@@ -18,6 +18,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
            iri: to_string(Id.iri("BLK123")),
            doc_iri: to_string(Id.iri("DOC123")),
            doc_title: "A paper",
+           doc_status: "mikael",
            kind: "sourceHtml",
            text: "<p>Plastic packaging.</p>",
            source_page: 4,
@@ -36,6 +37,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
            iri: to_string(Id.iri("EXACT1")),
            doc_iri: to_string(Id.iri("DOC123")),
            doc_title: "A paper",
+           doc_status: "draft",
            kind: "paragraph",
            text: "Plastic appears exactly here.",
            source_page: nil,
@@ -62,8 +64,10 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
            } = sheaf_result(result)
 
     assert tool_text(result) =~ "Exact matches"
+    assert tool_text(result) =~ "Source: A paper [draft] (#DOC123)"
     assert tool_text(result) =~ "Matching paragraph #EXACT1:"
     assert tool_text(result) =~ "Approximate matches"
+    assert tool_text(result) =~ "Source: A paper [MIKAEL] (#DOC123)"
     assert tool_text(result) =~ "Related excerpt #BLK123:"
 
     assert_received {:search_args, "plastic", opts}
@@ -83,6 +87,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              document_id: "DOC123",
              document_title: "A paper",
              document_authors: [],
+             document_status: "draft",
              block_id: "EXACT1",
              kind: :paragraph,
              text: "Plastic appears exactly here.",
@@ -95,6 +100,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              document_id: "DOC123",
              document_title: "A paper",
              document_authors: [],
+             document_status: "mikael",
              block_id: "BLK123",
              kind: :extracted,
              text: "Plastic packaging.",
@@ -102,6 +108,35 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              match: :both,
              score: 0.99
            }
+  end
+
+  test "list document text renders all document statuses" do
+    text =
+      ToolResultText.to_text(%ToolResults.ListDocuments{
+        documents: [
+          %ToolResults.DocumentSummary{
+            id: "DOC111",
+            kind: :thesis,
+            title: "Same thesis",
+            authors: ["Ieva Lange"],
+            year: "2026",
+            status: "mikael",
+            workspace_owner_authored?: true
+          },
+          %ToolResults.DocumentSummary{
+            id: "DOC222",
+            kind: :thesis,
+            title: "Same thesis",
+            authors: ["Ieva Lange"],
+            year: "2026",
+            status: "draft",
+            workspace_owner_authored?: true
+          }
+        ]
+      })
+
+    assert text =~ "- #DOC111 Same thesis [MIKAEL] - 2026 | Ieva Lange"
+    assert text =~ "- #DOC222 Same thesis [draft] - 2026 | Ieva Lange"
   end
 
   test "sidecar spreadsheet tools are hidden when no sidecar sheets are imported" do

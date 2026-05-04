@@ -392,7 +392,7 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp document_badges(doc) do
     [
       if(doc.cited?, do: "cited"),
-      if(doc.status == "draft", do: "draft")
+      format_status(doc.status)
     ]
     |> Enum.reject(&blank?/1)
     |> case do
@@ -655,6 +655,11 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp doi(""), do: nil
   defp doi(doi), do: "doi:#{doi}"
 
+  defp format_status(nil), do: nil
+  defp format_status(""), do: nil
+  defp format_status("mikael"), do: "MIKAEL"
+  defp format_status(status), do: status
+
   defp score(nil), do: nil
   defp score(score) when is_float(score), do: "Score: #{Float.round(score, 3)}"
   defp score(score), do: "Score: #{score}"
@@ -663,7 +668,8 @@ defmodule Sheaf.Assistant.ToolResultText do
     page = if hit.source_page, do: ", p. #{hit.source_page}", else: ""
     authors = authors(hit.document_authors)
     byline = if blank?(authors), do: "", else: ", #{authors}"
-    "Source: #{hit.document_title} (##{hit.document_id})#{byline}#{page}"
+    status = if status = format_status(hit.document_status), do: " [#{status}]", else: ""
+    "Source: #{hit.document_title}#{status} (##{hit.document_id})#{byline}#{page}"
   end
 
   defp search_context([]), do: nil
