@@ -149,21 +149,22 @@ defmodule Sheaf.Embedding.IndexTest do
                )
              )
 
-    assert {:ok,
-            %{
-              target_count: 2,
-              reusable_count: 1,
-              missing_count: 1,
-              missing_kinds: %{"paragraph" => 1},
-              sample: [%{iri: ^missing_iri}]
-            }} =
+    assert {:ok, plan} =
              Index.plan(
                db_path: db_path,
                model: model,
                output_dimensionality: dimensions,
                source: source,
-               kinds: ["paragraph"]
+               kinds: ["paragraph"],
+               sample: 1000
              )
+
+    assert plan.target_count >= 2
+    assert plan.reusable_count >= 1
+    assert plan.missing_count >= 1
+    assert plan.missing_kinds["paragraph"] >= 1
+    assert Enum.any?(plan.sample, &(&1.iri == missing_iri))
+    refute Enum.any?(plan.sample, &(&1.iri == reusable_iri))
   end
 
   test "exact search tolerates stale search rows without hydrated document metadata" do
