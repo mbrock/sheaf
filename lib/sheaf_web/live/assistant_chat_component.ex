@@ -406,7 +406,7 @@ defmodule SheafWeb.AssistantChatComponent do
                 disabled={@options_locked?}
               />
               <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
-              <span class="hidden sm:inline">Quick</span>
+              <span>Quick</span>
             </label>
             <label class={selector_label_class(@mode, "research", @options_locked?)}>
               <input
@@ -418,7 +418,7 @@ defmodule SheafWeb.AssistantChatComponent do
                 disabled={@options_locked?}
               />
               <.icon name="hero-beaker" class="size-3.5" />
-              <span class="hidden sm:inline">Research</span>
+              <span>Research</span>
             </label>
             <label class={selector_label_class(@mode, "edit", @options_locked?)}>
               <input
@@ -430,7 +430,7 @@ defmodule SheafWeb.AssistantChatComponent do
                 disabled={@options_locked?}
               />
               <.icon name="hero-pencil-square" class="size-3.5" />
-              <span class="hidden sm:inline">Edit</span>
+              <span>Edit</span>
             </label>
           </div>
 
