@@ -58,11 +58,16 @@ defmodule SheafWeb.AssistantMarkdownTest do
         }
       )
 
-    assert html =~ ~s(href="/b/PAR111")
+    assert html =~ ~s(<button)
+    assert html =~ ~s(type="button")
     assert html =~ ~s(role="tooltip")
     assert html =~ "block-preview-card"
     assert html =~ "Thesis draft #DOC111"
     assert html =~ "Freecycling #SEC111"
     assert html =~ "The paragraph text appears here."
+    assert html =~ "Open page"
+    assert html =~ ~s(href="/b/PAR111")
+    assert html =~ ~s(target="_blank")
+    assert html =~ ~s(rel="noopener noreferrer")
   end
 end

@@ -284,9 +284,13 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   defp block_ref_link(assigns) do
     ~H"""
     <span class="block-preview relative inline-block align-baseline">
-      <a href={@href} title={@title}>
+      <button
+        type="button"
+        title={@title}
+        class="block-preview-trigger cursor-pointer border-0 bg-transparent p-0 text-inherit"
+      >
         <.nodes nodes={@nodes} block_previews={@block_previews} />
-      </a>
+      </button>
       <span
         role="tooltip"
         class="block-preview-card absolute left-0 top-full z-50 mt-2 block w-[min(28rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-sm border border-stone-200 bg-white p-3 text-left shadow-lg ring-1 ring-stone-950/5 dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
@@ -308,6 +312,15 @@ defmodule SheafWeb.AssistantMarkdownComponents do
         <span class="block font-serif text-[0.92rem] leading-5 text-stone-800 dark:text-stone-100">
           {Map.get(@preview, :text)}
         </span>
+        <a
+          href={@href}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mt-3 inline-flex items-center gap-1 font-sans text-xs font-medium text-sky-700 hover:underline dark:text-sky-300"
+        >
+          <span>Open page</span>
+          <.icon name="hero-arrow-up-right" class="size-3" />
+        </a>
       </span>
     </span>
     """

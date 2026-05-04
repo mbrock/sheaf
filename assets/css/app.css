@@ -688,6 +688,17 @@
     text-decoration: underline;
   }
 
+  .assistant-prose .block-preview-trigger {
+    color: rgb(2 132 199);
+    font: inherit;
+    text-underline-offset: 2px;
+  }
+
+  .assistant-prose .block-preview-trigger:hover,
+  .assistant-prose .block-preview-trigger:focus-visible {
+    text-decoration: underline;
+  }
+
   .assistant-prose strong {
     font-weight: 600;
   }
