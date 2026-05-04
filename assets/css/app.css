@@ -707,6 +707,7 @@
     font-style: italic;
   }
 
+  .block-preview-backdrop,
   .block-preview-card {
     opacity: 0;
     pointer-events: none;
@@ -716,6 +717,8 @@
       visibility 0s linear 150ms;
   }
 
+  .block-preview:hover > .block-preview-backdrop,
+  .block-preview:focus-within > .block-preview-backdrop,
   .block-preview:hover > .block-preview-card,
   .block-preview:focus-within > .block-preview-card {
     opacity: 1;

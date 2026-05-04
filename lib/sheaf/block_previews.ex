@@ -3,7 +3,7 @@ defmodule Sheaf.BlockPreviews do
   Small previews for block references rendered in assistant Markdown.
   """
 
-  alias Sheaf.{Corpus, Document, Id}
+  alias Sheaf.{Corpus, Document, Documents, Id}
 
   require OpenTelemetry.Tracer, as: Tracer
 
@@ -17,7 +17,7 @@ defmodule Sheaf.BlockPreviews do
       |> Enum.map(fn id -> {id, safe_find_document(id)} end)
       |> Enum.reject(fn {_id, doc_id} -> is_nil(doc_id) end)
       |> Enum.group_by(fn {_id, doc_id} -> doc_id end, fn {id, _doc_id} -> id end)
-      |> Enum.flat_map(fn {doc_id, ids} -> previews_for_document(doc_id, ids) end)
+      |> previews_for_documents()
       |> Map.new()
     end
   end
@@ -34,11 +34,21 @@ defmodule Sheaf.BlockPreviews do
     end
   end
 
-  defp previews_for_document(doc_id, ids) do
+  defp previews_for_documents(grouped_ids) when map_size(grouped_ids) == 0, do: []
+
+  defp previews_for_documents(grouped_ids) do
+    documents_by_id = documents_by_id()
+
+    Enum.flat_map(grouped_ids, fn {doc_id, ids} ->
+      previews_for_document(doc_id, ids, Map.get(documents_by_id, doc_id))
+    end)
+  end
+
+  defp previews_for_document(doc_id, ids, document_metadata) do
     case Corpus.graph(doc_id) do
       {:ok, graph} ->
         ids
-        |> Enum.map(fn id -> {id, preview_from_graph(graph, doc_id, id)} end)
+        |> Enum.map(fn id -> {id, preview_from_graph(graph, doc_id, id, document_metadata)} end)
         |> Enum.reject(fn {_id, preview} -> is_nil(preview) end)
 
       {:error, _reason} ->
@@ -52,7 +62,7 @@ defmodule Sheaf.BlockPreviews do
     :exit, _reason -> nil
   end
 
-  defp preview_from_graph(graph, doc_id, id) do
+  defp preview_from_graph(graph, doc_id, id, document_metadata) do
     with iri = Id.iri(id),
          type when not is_nil(type) <- Document.block_type(graph, iri),
          text when text != "" <- block_text(graph, iri, type) do
@@ -66,6 +76,8 @@ defmodule Sheaf.BlockPreviews do
         text: text,
         document_id: doc_id,
         document_title: entry_title(document, doc_id),
+        document_authors: document_authors(document_metadata),
+        document_year: document_year(document_metadata),
         section_id: entry_id(section),
         section_title: entry_title(section, nil),
         path: block_path(doc_id, id)
@@ -74,6 +86,19 @@ defmodule Sheaf.BlockPreviews do
       _other -> nil
     end
   end
+
+  defp documents_by_id do
+    case Documents.list() do
+      {:ok, documents} -> Map.new(documents, &{&1.id, &1})
+      {:error, _reason} -> %{}
+    end
+  end
+
+  defp document_authors(%{metadata: %{authors: authors}}) when is_list(authors), do: authors
+  defp document_authors(_document), do: []
+
+  defp document_year(%{metadata: %{year: year}}) when not is_nil(year), do: to_string(year)
+  defp document_year(_document), do: nil
 
   defp block_text(graph, iri, :paragraph), do: Document.paragraph_text(graph, iri)
   defp block_text(graph, iri, :section), do: Document.heading(graph, iri)

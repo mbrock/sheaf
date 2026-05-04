@@ -292,35 +292,51 @@ defmodule SheafWeb.AssistantMarkdownComponents do
         <.nodes nodes={@nodes} block_previews={@block_previews} />
       </button>
       <span
-        role="tooltip"
-        class="block-preview-card fixed inset-x-3 bottom-[4.5rem] z-50 mt-2 block max-h-[min(22rem,calc(100dvh-8rem))] w-auto max-w-none overflow-y-auto rounded-sm border border-stone-200 bg-white p-3 text-left shadow-lg ring-1 ring-stone-950/5 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:max-h-none sm:w-[min(28rem,calc(100vw-2rem))] sm:max-w-[calc(100vw-2rem)] sm:overflow-visible dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
+        aria-hidden="true"
+        class="block-preview-backdrop fixed inset-0 z-40 bg-stone-950/45 backdrop-blur-[1px] dark:bg-stone-950/60"
       >
-        <span class="mb-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 font-sans text-[11px] leading-4 text-stone-500 dark:text-stone-400">
-          <span class="truncate font-medium text-stone-700 dark:text-stone-200">
-            {preview_document_label(@preview)}
+      </span>
+      <span
+        role="tooltip"
+        class="block-preview-card fixed inset-x-3 bottom-[4.5rem] z-50 mt-2 block max-h-[min(20rem,calc(100dvh-8rem))] w-auto max-w-none overflow-y-auto rounded-sm border border-stone-200 bg-white p-2.5 text-left shadow-lg ring-1 ring-stone-950/5 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:max-h-none sm:w-[min(24rem,calc(100vw-2rem))] sm:max-w-[calc(100vw-2rem)] sm:overflow-visible dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
+      >
+        <span class="mb-1.5 flex min-w-0 items-start gap-2 font-sans leading-4">
+          <span class="min-w-0 flex-1">
+            <span class="small-caps block truncate text-[0.78rem] text-stone-700 dark:text-stone-200">
+              {preview_document_label(@preview)}
+            </span>
+            <span
+              :if={preview_meta_label(@preview)}
+              class="flex min-w-0 items-baseline gap-2 text-[0.72rem] text-stone-500 dark:text-stone-400"
+            >
+              <span :if={preview_year(@preview)} class="shrink-0 tabular-nums">
+                {preview_year(@preview)}
+              </span>
+              <span :if={preview_authors(@preview) != []} class="small-caps min-w-0 truncate">
+                {Enum.join(preview_authors(@preview), ", ")}
+              </span>
+            </span>
           </span>
-          <span :if={preview_section_label(@preview)} class="text-stone-300 dark:text-stone-600">
-            /
-          </span>
-          <span :if={preview_section_label(@preview)} class="truncate">
-            {preview_section_label(@preview)}
-          </span>
-          <span class="ml-auto shrink-0 font-mono text-[10px] text-stone-400 dark:text-stone-500">
-            #{Map.get(@preview, :id)}
-          </span>
+          <a
+            href={@href}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="grid size-6 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
+            title="Open page"
+            aria-label="Open page"
+          >
+            <.icon name="hero-arrow-up-right" class="size-3.5" />
+          </a>
         </span>
-        <span class="block font-serif text-[0.92rem] leading-5 text-stone-800 dark:text-stone-100">
+        <span
+          :if={preview_section_label(@preview)}
+          class="mb-1 block truncate font-sans text-[0.7rem] leading-4 text-stone-500 dark:text-stone-400"
+        >
+          {preview_section_label(@preview)}
+        </span>
+        <span class="block font-serif text-[0.84rem] leading-[1.32] text-stone-800 dark:text-stone-100">
           {Map.get(@preview, :text)}
         </span>
-        <a
-          href={@href}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="mt-3 inline-flex items-center gap-1 font-sans text-xs font-medium text-sky-700 hover:underline dark:text-sky-300"
-        >
-          <span>Open page</span>
-          <.icon name="hero-arrow-up-right" class="size-3" />
-        </a>
       </span>
     </span>
     """
@@ -427,26 +443,38 @@ defmodule SheafWeb.AssistantMarkdownComponents do
 
   defp preview_document_label(preview) do
     title = Map.get(preview, :document_title)
-    id = Map.get(preview, :document_id)
 
     cond do
-      present?(title) and present?(id) -> "#{title} ##{id}"
       present?(title) -> title
-      present?(id) -> "##{id}"
+      present?(Map.get(preview, :document_id)) -> "Document"
       true -> "Document"
     end
   end
 
   defp preview_section_label(preview) do
     title = Map.get(preview, :section_title)
-    id = Map.get(preview, :section_id)
 
     cond do
-      present?(title) and present?(id) -> "#{title} ##{id}"
       present?(title) -> title
-      present?(id) -> "##{id}"
       true -> nil
     end
+  end
+
+  defp preview_meta_label(preview), do: preview_year(preview) || preview_authors(preview) != []
+
+  defp preview_year(preview) do
+    case Map.get(preview, :document_year) do
+      year when is_binary(year) -> blank_to_nil(year)
+      year when not is_nil(year) -> year |> to_string() |> blank_to_nil()
+      nil -> nil
+    end
+  end
+
+  defp preview_authors(preview) do
+    preview
+    |> Map.get(:document_authors, [])
+    |> List.wrap()
+    |> Enum.filter(&present?/1)
   end
 
   defp present?(value), do: is_binary(value) and String.trim(value) != ""

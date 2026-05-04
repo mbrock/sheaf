@@ -52,6 +52,8 @@ defmodule SheafWeb.AssistantMarkdownTest do
             text: "The paragraph text appears here.",
             document_id: "DOC111",
             document_title: "Thesis draft",
+            document_authors: ["Mikael Brockman"],
+            document_year: "2026",
             section_id: "SEC111",
             section_title: "Freecycling"
           }
@@ -61,11 +63,16 @@ defmodule SheafWeb.AssistantMarkdownTest do
     assert html =~ ~s(<button)
     assert html =~ ~s(type="button")
     assert html =~ ~s(role="tooltip")
+    assert html =~ "block-preview-backdrop"
     assert html =~ "block-preview-card"
-    assert html =~ "Thesis draft #DOC111"
-    assert html =~ "Freecycling #SEC111"
+    assert html =~ "Thesis draft"
+    assert html =~ "Mikael Brockman"
+    assert html =~ "2026"
+    assert html =~ "Freecycling"
+    refute html =~ "#DOC111"
+    refute html =~ "#SEC111"
     assert html =~ "The paragraph text appears here."
-    assert html =~ "Open page"
+    assert html =~ ~s(aria-label="Open page")
     assert html =~ ~s(href="/b/PAR111")
     assert html =~ ~s(target="_blank")
     assert html =~ ~s(rel="noopener noreferrer")
