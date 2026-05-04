@@ -29,6 +29,13 @@ export const KnuthPlass = {
     this.scopes = new Map()
     this.pending = new Set()
     this.raf = null
+    this.beforePrint = () => this.invalidateAll({immediate: true})
+    this.afterPrint = () => this.invalidateAll()
+    this.printMedia = window.matchMedia ? window.matchMedia("print") : null
+    this.printMediaListener = event => {
+      if (event.matches) this.invalidateAll({immediate: true})
+      else this.invalidateAll()
+    }
     this.observer = new ResizeObserver(entries => {
       for (const entry of entries) {
         const state = this.scopes.get(entry.target)
@@ -42,6 +49,15 @@ export const KnuthPlass = {
       this.schedulePending()
     })
     allHooks.add(this)
+    window.addEventListener("beforeprint", this.beforePrint)
+    window.addEventListener("afterprint", this.afterPrint)
+    if (this.printMedia) {
+      if (this.printMedia.addEventListener) {
+        this.printMedia.addEventListener("change", this.printMediaListener)
+      } else if (this.printMedia.addListener) {
+        this.printMedia.addListener(this.printMediaListener)
+      }
+    }
     this.sync()
   },
   updated() {
@@ -50,6 +66,15 @@ export const KnuthPlass = {
   destroyed() {
     this.observer.disconnect()
     allHooks.delete(this)
+    window.removeEventListener("beforeprint", this.beforePrint)
+    window.removeEventListener("afterprint", this.afterPrint)
+    if (this.printMedia) {
+      if (this.printMedia.removeEventListener) {
+        this.printMedia.removeEventListener("change", this.printMediaListener)
+      } else if (this.printMedia.removeListener) {
+        this.printMedia.removeListener(this.printMediaListener)
+      }
+    }
     if (this.raf !== null) cancelAnimationFrame(this.raf)
   },
   sync() {
@@ -67,6 +92,7 @@ export const KnuthPlass = {
         layoutKey: null,
       })
       this.observer.observe(p)
+      this.pending.add(p)
     }
     for (const p of this.scopes.keys()) {
       if (seen.has(p)) continue
@@ -74,15 +100,18 @@ export const KnuthPlass = {
       this.scopes.delete(p)
       this.pending.delete(p)
     }
+    this.schedulePending()
   },
-  invalidateAll() {
+  invalidateAll(opts = {}) {
     for (const state of this.scopes.values()) {
+      if (state.snapshot !== null) restoreSnapshot(state.snapshot)
       state.styleEpoch = -1
       state.prepKey = null
       state.layoutKey = null
     }
     for (const p of this.scopes.keys()) this.pending.add(p)
-    this.schedulePending()
+    if (opts.immediate) this.flushPending()
+    else this.schedulePending()
   },
   schedulePending() {
     if (this.raf !== null || this.pending.size === 0) return
@@ -100,11 +129,30 @@ export const KnuthPlass = {
       }
     })
   },
+  flushPending() {
+    if (this.raf !== null) {
+      cancelAnimationFrame(this.raf)
+      this.raf = null
+    }
+    while (this.pending.size > 0) {
+      const scope = this.pending.values().next().value
+      this.pending.delete(scope)
+      this.wrap(scope)
+    }
+  },
   wrap(scope) {
     if (!scope.isConnected) return
     if (unsupportedScope(scope)) return
     const state = this.scopes.get(scope)
-    if (!state || state.width <= 0) return
+    if (!state) return
+
+    const currentWidth = scope.getBoundingClientRect().width
+    if (currentWidth > 0 && currentWidth !== state.width) {
+      state.width = currentWidth
+      state.layoutKey = null
+    }
+
+    if (state.width <= 0) return
 
     if (state.snapshot === null) state.snapshot = snapshotTextNodes(scope)
     if (state.styleEpoch !== fontEpoch) {
@@ -142,6 +190,12 @@ function snapshotTextNodes(root) {
     result.push({textNode: node, original: node.nodeValue ?? "", font: null})
   }
   return result
+}
+
+function restoreSnapshot(snapshot) {
+  for (const entry of snapshot) {
+    if (entry.textNode.isConnected) entry.textNode.nodeValue = entry.original
+  }
 }
 
 function refreshSnapshotMetrics(snapshot) {

@@ -24,6 +24,351 @@
   --container-prose: 88ch;
 }
 
+@page {
+  size: A4;
+  margin: 24mm 23mm 25mm;
+
+  @bottom-center {
+    color: #6f6a60;
+    content: counter(page);
+    font-family: "Equity Caps", "Equity", "Iowan Old Style", Georgia, serif;
+    font-size: 8pt;
+  }
+}
+
+@page :left {
+  margin-left: 27mm;
+  margin-right: 21mm;
+}
+
+@page :right {
+  margin-left: 21mm;
+  margin-right: 27mm;
+}
+
+@media print {
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    min-height: auto !important;
+  }
+
+  body {
+    font-family: "Equity", "Iowan Old Style", Georgia, serif !important;
+    font-size: 10.5pt !important;
+    line-height: 1.36 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  #app-toolbar,
+  #document-reader > aside,
+  #document-reader > aside *,
+  #document-reader [phx-hook="ScrollContainer"],
+  body > canvas[style*="position: fixed"],
+  .document-print-marker,
+  .document-print-tags,
+  .document-print-references,
+  .block-preview-card {
+    display: none !important;
+  }
+
+  #document-reader {
+    background: #fff !important;
+    color: #111 !important;
+    display: block !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+
+  .document-print-root {
+    background: #fff !important;
+    color: #111 !important;
+    display: block !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .document-print-page {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: #111 !important;
+    margin: 0 auto !important;
+    max-width: 145mm !important;
+    padding: 0 !important;
+    width: 145mm !important;
+  }
+
+  .document-print-flow {
+    display: block !important;
+  }
+
+  .document-print-flow > * {
+    margin-bottom: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  .document-print-document {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .document-print-document > h1 {
+    break-after: avoid-page;
+    color: #111 !important;
+    font-family: "Equity Caps", "Equity", "Iowan Old Style", Georgia, serif !important;
+    font-size: 20pt !important;
+    font-weight: 400 !important;
+    letter-spacing: 0 !important;
+    line-height: 1.08 !important;
+    margin: 0 0 20pt !important;
+    max-width: 118mm;
+    text-align: left;
+    text-transform: lowercase;
+  }
+
+  .document-print-section {
+    border: 0 !important;
+    break-inside: auto;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .document-print-section > summary {
+    break-after: avoid-page;
+    cursor: default !important;
+    display: block !important;
+    list-style: none !important;
+    margin: 18pt 0 7pt !important;
+    padding: 0 !important;
+  }
+
+  .document-print-section > summary::-webkit-details-marker {
+    display: none !important;
+  }
+
+  .document-print-section > summary h2 {
+    color: #111 !important;
+    font-family: "Equity Caps", "Equity", "Iowan Old Style", Georgia, serif !important;
+    font-size: 13pt !important;
+    font-weight: 400 !important;
+    letter-spacing: 0 !important;
+    line-height: 1.18 !important;
+    margin: 0 !important;
+    text-transform: lowercase;
+  }
+
+  .document-print-section > summary h2 span:first-child {
+    color: #59544c !important;
+    display: inline-block;
+    min-width: 1.8em;
+  }
+
+  .document-print-section > summary h2 span + span {
+    margin-left: 0.35em !important;
+  }
+
+  .document-print-section .document-print-section > summary {
+    margin-top: 14pt !important;
+  }
+
+  .document-print-section .document-print-section > summary h2 {
+    font-size: 11.3pt !important;
+  }
+
+  .document-print-paragraph,
+  .document-print-row,
+  .document-print-excerpt {
+    break-inside: auto;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .document-print-text,
+  .document-print-excerpt p,
+  .document-print-row p {
+    color: #111 !important;
+    font-family: "Equity", "Iowan Old Style", Georgia, serif !important;
+    font-size: 10.5pt !important;
+    font-variant-numeric: oldstyle-nums;
+    hyphens: manual;
+    line-height: 1.36 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    orphans: 3;
+    overflow-wrap: normal;
+    padding: 0 !important;
+    text-align: left !important;
+    text-indent: 0;
+    widows: 3;
+  }
+
+  .document-print-paragraph + .document-print-paragraph .document-print-text,
+  .document-print-paragraph + .document-print-row .document-print-text,
+  .document-print-row + .document-print-paragraph .document-print-text,
+  .document-print-excerpt + .document-print-paragraph .document-print-text {
+    text-indent: 1.35em;
+  }
+
+  .document-print-section > .document-print-flow > .document-print-paragraph:first-child .document-print-text,
+  .document-print-section > .document-print-flow > .document-print-row:first-child .document-print-text {
+    text-indent: 0;
+  }
+
+  .document-print-text a,
+  .document-print-excerpt a {
+    color: #111 !important;
+    text-decoration: none !important;
+  }
+
+  .document-print-text a[href^="http"]::after,
+  .document-print-excerpt a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 8pt;
+    overflow-wrap: anywhere;
+  }
+
+  .document-print-text code {
+    background: transparent !important;
+    border: 0.2pt solid #d8d2c6;
+    border-radius: 1pt;
+    font-family: "Berkeley Mono", ui-monospace, monospace !important;
+    font-size: 8.7pt !important;
+    padding: 0 1.5pt !important;
+  }
+
+  .document-print-text mark {
+    background: transparent !important;
+    color: inherit !important;
+    font-style: italic;
+    padding: 0 !important;
+  }
+
+  .document-print-text span[data-footnote] {
+    font-size: 7.5pt !important;
+    margin-left: 0 !important;
+    opacity: 1 !important;
+    vertical-align: super;
+  }
+
+  .document-print-footnotes {
+    border-top: 0.35pt solid #bdb6aa !important;
+    break-inside: avoid-page;
+    color: #333 !important;
+    display: block !important;
+    font-size: 8.5pt !important;
+    line-height: 1.24 !important;
+    list-style: none !important;
+    margin: 5pt 0 7pt !important;
+    padding: 3pt 0 0 !important;
+  }
+
+  .document-print-footnotes li {
+    break-inside: avoid-page;
+    margin: 0 0 2pt !important;
+    padding: 0 !important;
+  }
+
+  .document-print-footnotes div {
+    display: block !important;
+  }
+
+  .document-print-footnotes span {
+    color: #6a645c !important;
+    float: left;
+    font-family: "Equity Caps", "Equity", "Iowan Old Style", Georgia, serif !important;
+    font-size: 7.2pt !important;
+    line-height: 1.24 !important;
+    margin-right: 0.5em;
+  }
+
+  .document-print-media {
+    break-inside: avoid-page;
+    color: #2f2b25 !important;
+    font-size: 8.5pt !important;
+    line-height: 1.28 !important;
+    margin: 8pt 0 !important;
+  }
+
+  .document-print-media img,
+  .document-print-media table,
+  .document-print-excerpt img,
+  .document-print-excerpt table {
+    break-inside: avoid-page;
+    max-width: 100% !important;
+  }
+
+  .document-print-media table,
+  .document-print-excerpt table {
+    border-collapse: collapse !important;
+    font-size: 8pt !important;
+    margin: 8pt 0 !important;
+    width: 100% !important;
+  }
+
+  .document-print-media th,
+  .document-print-media td,
+  .document-print-excerpt th,
+  .document-print-excerpt td {
+    border: 0.35pt solid #bdb6aa !important;
+    padding: 2.5pt 3pt !important;
+  }
+
+  .document-print-row {
+    border-left: 0.8pt solid #bdb6aa;
+    margin: 6pt 0 !important;
+    padding-left: 8pt !important;
+  }
+
+  .document-print-row > div {
+    color: #585249 !important;
+    display: block !important;
+    font-family: "Berkeley Mono", ui-monospace, monospace !important;
+    font-size: 6.8pt !important;
+    line-height: 1.2 !important;
+    margin: 0 0 2pt !important;
+  }
+
+  .document-print-excerpt {
+    margin: 6pt 0 !important;
+  }
+
+  .document-print-excerpt .document-print-text {
+    color: #222 !important;
+  }
+
+  .document-print-document,
+  .document-print-section,
+  .document-print-paragraph,
+  .document-print-row,
+  .document-print-excerpt,
+  .document-print-media {
+    background: transparent !important;
+    border-radius: 0 !important;
+    cursor: default !important;
+  }
+
+  .bg-stone-200\/70,
+  .dark\:bg-stone-800\/80 {
+    background: transparent !important;
+  }
+}
+
 /* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
    curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui.js
    Make sure to look at the daisyUI changelog: https://daisyui.com/docs/changelog/ */

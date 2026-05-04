@@ -111,11 +111,11 @@ defmodule SheafWeb.DocumentLive do
 
       <article
         id="document-start"
-        class="min-h-0 min-w-0 overflow-y-auto px-4 pb-4 focus:outline-none lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-base lg:[&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
+        class="document-print-root min-h-0 min-w-0 overflow-y-auto px-4 pb-4 focus:outline-none lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-base lg:[&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
         tabindex="0"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
-        <div class="mx-auto w-full max-w-[112ch] pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:dark:border-stone-800 lg:dark:bg-stone-900">
+        <div class="document-print-page mx-auto w-full max-w-[112ch] pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:dark:border-stone-800 lg:dark:bg-stone-900">
           <.reader_blocks
             graph={@graph}
             blocks={@blocks}
@@ -152,7 +152,7 @@ defmodule SheafWeb.DocumentLive do
 
   defp reader_blocks(assigns) do
     ~H"""
-    <div class="space-y-5">
+    <div class="document-print-flow space-y-5">
       <.reader_block
         :for={block <- @blocks}
         graph={@graph}
@@ -173,7 +173,10 @@ defmodule SheafWeb.DocumentLive do
 
   defp reader_block(%{block: %{type: :document}} = assigns) do
     ~H"""
-    <section id={"block-#{Document.id(@block.iri)}"} class="scroll-mt-6 space-y-8">
+    <section
+      id={"block-#{Document.id(@block.iri)}"}
+      class="document-print-document scroll-mt-6 space-y-8"
+    >
       <h1
         class={[
           "small-caps cursor-pointer rounded-sm text-3xl font-semibold leading-tight",
@@ -201,7 +204,7 @@ defmodule SheafWeb.DocumentLive do
     <details
       id={"block-#{Document.id(@block.iri)}"}
       open
-      class="scroll-mt-6 space-y-4 pt-2 [&:not([open])>summary]:text-stone-500 [&:not([open])>summary]:dark:text-stone-500 [&[open]>summary]:pb-3 [&[open]>summary]:text-stone-900 [&[open]>summary]:dark:text-stone-100 [&>summary::-webkit-details-marker]:hidden"
+      class="document-print-section scroll-mt-6 space-y-4 pt-2 [&:not([open])>summary]:text-stone-500 [&:not([open])>summary]:dark:text-stone-500 [&[open]>summary]:pb-3 [&[open]>summary]:text-stone-900 [&[open]>summary]:dark:text-stone-100 [&>summary::-webkit-details-marker]:hidden"
     >
       <summary class={[
         "cursor-pointer list-none rounded-sm",
@@ -228,16 +231,16 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <article
       id={"block-#{Document.id(@block.iri)}"}
-      class="grid grid-cols-1 gap-x-3 lg:grid-cols-[4.5rem_minmax(0,1fr)]"
+      class="document-print-paragraph grid grid-cols-1 gap-x-3 lg:grid-cols-[4.5rem_minmax(0,1fr)]"
     >
-      <span class="col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
+      <span class="document-print-marker col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
         {"##{Document.id(@block.iri)}"}
       </span>
 
       <div class="col-start-1 row-start-1 min-w-0 lg:col-start-2">
         <div
           :if={block_tags(@tags_by_block, @block.iri) != []}
-          class="mb-1 flex min-w-0 flex-wrap gap-1"
+          class="document-print-tags mb-1 flex min-w-0 flex-wrap gap-1"
         >
           <.writing_tag :for={tag <- block_tags(@tags_by_block, @block.iri)} tag={tag} />
         </div>
@@ -245,7 +248,7 @@ defmodule SheafWeb.DocumentLive do
         <p
           id={"text-#{Document.id(@block.iri)}"}
           class={[
-            "min-w-0 cursor-pointer rounded-sm font-serif leading-normal",
+            "document-print-text min-w-0 cursor-pointer rounded-sm font-serif leading-normal",
             paragraph_markup_classes(),
             selected_class(@block, @selected_id)
           ]}
@@ -268,7 +271,7 @@ defmodule SheafWeb.DocumentLive do
 
       <div
         :if={reference_documents(@references_by_block, @block.iri) != []}
-        class="col-start-1 mt-2 space-y-1 pl-4 font-sans lg:col-start-2"
+        class="document-print-references col-start-1 mt-2 space-y-1 pl-4 font-sans lg:col-start-2"
       >
         <.document_entry
           :for={document <- reference_documents(@references_by_block, @block.iri)}
@@ -285,13 +288,13 @@ defmodule SheafWeb.DocumentLive do
     <article
       id={"block-#{Document.id(@block.iri)}"}
       class={[
-        "grid cursor-pointer grid-cols-1 gap-x-3 rounded-sm py-1 lg:grid-cols-[4.5rem_minmax(0,1fr)]",
+        "document-print-row grid cursor-pointer grid-cols-1 gap-x-3 rounded-sm py-1 lg:grid-cols-[4.5rem_minmax(0,1fr)]",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
       phx-value-id={Document.id(@block.iri)}
     >
-      <span class="col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
+      <span class="document-print-marker col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
         {"##{Document.id(@block.iri)}"}
       </span>
 
@@ -313,7 +316,7 @@ defmodule SheafWeb.DocumentLive do
 
       <p
         id={"text-#{Document.id(@block.iri)}"}
-        class="col-start-1 min-w-0 font-serif leading-normal lg:col-start-2"
+        class="document-print-text col-start-1 min-w-0 font-serif leading-normal lg:col-start-2"
         phx-update="ignore"
       >
         {Document.text(@graph, @block.iri)}
@@ -328,18 +331,20 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "grid cursor-pointer grid-cols-1 gap-x-3 rounded-sm font-serif leading-normal lg:grid-cols-[4.5rem_minmax(0,1fr)]",
+        "document-print-excerpt grid cursor-pointer grid-cols-1 gap-x-3 rounded-sm font-serif leading-normal lg:grid-cols-[4.5rem_minmax(0,1fr)]",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
       phx-value-id={Document.id(@block.iri)}
     >
-      <span class="col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
+      <span class="document-print-marker col-start-1 row-start-1 hidden pt-1 text-right font-mono text-[0.68rem] leading-5 text-stone-500 lg:block dark:text-stone-400">
         {"##{Document.id(@block.iri)}"}
       </span>
       <div
         id={"text-#{Document.id(@block.iri)}"}
-        class={["col-start-1 min-w-0 lg:col-start-2" | extracted_text_block_classes()]}
+        class={[
+          "document-print-text col-start-1 min-w-0 lg:col-start-2" | extracted_text_block_classes()
+        ]}
         phx-update="ignore"
       >
         {raw(Document.source_html(@graph, @block.iri))}
@@ -354,7 +359,7 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "relative cursor-pointer rounded-sm font-sans text-sm leading-6 text-stone-700 dark:text-stone-300",
+        "document-print-media relative cursor-pointer rounded-sm font-sans text-sm leading-6 text-stone-700 dark:text-stone-300",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
@@ -374,7 +379,7 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <ol
       :if={@footnotes != []}
-      class="col-start-1 mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-serif text-sm leading-snug text-stone-700 lg:col-start-2 dark:border-stone-800/80 dark:text-stone-300"
+      class="document-print-footnotes col-start-1 mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-serif text-sm leading-snug text-stone-700 lg:col-start-2 dark:border-stone-800/80 dark:text-stone-300"
     >
       <li
         :for={footnote <- @footnotes}
