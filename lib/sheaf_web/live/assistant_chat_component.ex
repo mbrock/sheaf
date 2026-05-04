@@ -109,7 +109,7 @@ defmodule SheafWeb.AssistantChatComponent do
       end
 
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
-    message = Map.get(chat_params, "message", current_form_message(socket))
+    message = Map.get(chat_params, "message", "")
 
     {:noreply,
      socket
@@ -362,14 +362,14 @@ defmodule SheafWeb.AssistantChatComponent do
         :if={@options_locked?}
         class="flex min-w-0 items-end gap-2 rounded-lg border border-stone-200 bg-white p-2 shadow-sm shadow-stone-950/5 transition-colors focus-within:border-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20 dark:focus-within:border-stone-600"
       >
-        <textarea
-          name="chat[message]"
+        <.input
+          field={@form[:message]}
+          type="textarea"
           rows="1"
-          value={@form[:message].value}
           class="block max-h-28 min-h-10 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1 py-2 text-base leading-6 text-stone-950 outline-none [field-sizing:content] placeholder:text-stone-400 sm:text-sm sm:leading-5 dark:text-stone-50 dark:placeholder:text-stone-500"
           placeholder={input_placeholder(@mode, @selected_chat_id)}
           disabled={@pending}
-        ></textarea>
+        />
         <button
           type="submit"
           class="grid size-9 shrink-0 place-items-center rounded-md bg-stone-950 text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400 dark:bg-stone-50 dark:text-stone-950 dark:hover:bg-stone-200 dark:disabled:bg-stone-800 dark:disabled:text-stone-600"
@@ -385,14 +385,14 @@ defmodule SheafWeb.AssistantChatComponent do
         :if={!@options_locked?}
         class="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm shadow-stone-950/5 transition-colors focus-within:border-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20 dark:focus-within:border-stone-600"
       >
-        <textarea
-          name="chat[message]"
+        <.input
+          field={@form[:message]}
+          type="textarea"
           rows="1"
-          value={@form[:message].value}
           class="block max-h-40 min-h-24 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-base leading-6 text-stone-950 outline-none [field-sizing:content] placeholder:text-stone-400 focus:ring-0 sm:text-sm sm:leading-5 dark:text-stone-50 dark:placeholder:text-stone-500"
           placeholder={input_placeholder(@mode, @selected_chat_id)}
           disabled={@pending}
-        ></textarea>
+        />
 
         <div class="flex min-w-0 items-center gap-1 border-t border-stone-200 bg-stone-50/80 px-1.5 py-1 font-sans text-xs dark:border-stone-800 dark:bg-stone-950/30">
           <div class="inline-flex min-w-0 items-center gap-0.5">
