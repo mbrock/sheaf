@@ -70,6 +70,7 @@ defmodule SheafWeb.AssistantChatComponent do
       end)
       |> assign_new(:llm_options, fn -> [] end)
       |> assign_new(:variant, fn -> :full end)
+      |> assign_new(:composer_only?, fn -> false end)
       |> maybe_ensure_chat_index_subscription()
       |> maybe_ensure_selected_chat()
 
@@ -256,7 +257,7 @@ defmodule SheafWeb.AssistantChatComponent do
     ~H"""
     <section class={assistant_section_class(@variant, @selected_chat_id)}>
       <.live_component module={BlockPreviewComponent} id={block_preview_id(@id)} />
-      <div :if={not inline?(@variant)} class="mb-3 space-y-2">
+      <div :if={not inline?(@variant) and not @composer_only?} class="mb-3 space-y-2">
         <div class="flex items-center gap-2">
           <div class="min-w-0 flex-1">
             <div class="font-sans uppercase text-stone-500 dark:text-stone-400">
@@ -309,7 +310,7 @@ defmodule SheafWeb.AssistantChatComponent do
       />
 
       <div
-        :if={not inline?(@variant) and @selected_chat_id}
+        :if={not inline?(@variant) and not @composer_only? and @selected_chat_id}
         id={"assistant-timeline-#{@id}"}
         class="mt-3 max-h-80 min-h-0 space-y-2 overflow-y-auto pr-1"
         phx-hook="ScrollContainer"

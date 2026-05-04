@@ -1,9 +1,11 @@
 defmodule SheafWeb.AssistantHistoryLive do
   @moduledoc """
-  Expansive browser for persisted assistant conversations and research notes.
+  Index of persisted assistant conversations and research notes.
   """
 
   use SheafWeb, :live_view
+
+  require OpenTelemetry.Tracer, as: Tracer
 
   alias SheafWeb.AppChrome
   alias SheafWeb.AssistantChatComponent
@@ -11,20 +13,29 @@ defmodule SheafWeb.AssistantHistoryLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes(limit: 100)
-    research_session_titles = AssistantHistoryComponents.research_session_titles()
+    Tracer.with_span "SheafWeb.AssistantHistoryLive.mount", %{
+      kind: :internal,
+      attributes: [{"sheaf.live.connected", connected?(socket)}]
+    } do
+      {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes(limit: 100)
+      research_session_titles = AssistantHistoryComponents.research_session_titles()
 
-    groups =
-      AssistantHistoryComponents.history_groups(notes, notes_graph, research_session_titles)
+      groups =
+        AssistantHistoryComponents.history_groups(notes, notes_graph, research_session_titles)
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Assistant")
-     |> assign(:notes, notes)
-     |> assign(:notes_graph, notes_graph)
-     |> assign(:notes_error, notes_error)
-     |> assign(:research_session_titles, research_session_titles)
-     |> assign(:groups, groups)}
+      rows = Enum.map(groups, &history_row/1)
+
+      Tracer.set_attributes([
+        {"sheaf.note_count", length(notes)},
+        {"sheaf.history_group_count", length(groups)}
+      ])
+
+      {:ok,
+       socket
+       |> assign(:page_title, "Assistant history")
+       |> assign(:notes_error, notes_error)
+       |> assign(:rows, rows)}
+    end
   end
 
   @impl true
@@ -33,28 +44,157 @@ defmodule SheafWeb.AssistantHistoryLive do
     <main class="min-h-dvh bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
       <AppChrome.toolbar section={:history} />
 
-      <div class="px-2 py-2 sm:px-3">
-        <div class="mx-auto grid w-full max-w-7xl gap-3 lg:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
-          <section class="min-w-0 rounded-sm border border-stone-200/80 bg-white px-3 py-3 dark:border-stone-800/80 dark:bg-stone-900/70">
-            <.live_component
-              module={AssistantChatComponent}
-              id="assistant-page-agent"
-              variant={:assistant_page}
-            />
-          </section>
+      <div class="mx-auto w-full max-w-5xl px-2 py-2 sm:px-4 sm:py-4">
+        <section class="mb-3 rounded-lg border border-stone-200 bg-white p-2 shadow-sm shadow-stone-950/5 sm:p-3 dark:border-stone-800 dark:bg-stone-900/80 dark:shadow-black/20">
+          <.live_component
+            module={AssistantChatComponent}
+            id="assistant-history-composer"
+            variant={:assistant_page}
+            composer_only?={true}
+          />
+        </section>
 
-          <section class="min-w-0">
-            <AssistantHistoryComponents.note_history
-              notes={@notes}
-              notes_graph={@notes_graph}
-              notes_error={@notes_error}
-              research_session_titles={@research_session_titles}
-              variant={:expansive}
-            />
-          </section>
+        <div class="mb-2 flex items-end justify-between gap-3 px-1">
+          <div class="min-w-0">
+            <h1 class="font-sans text-sm font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+              Assistant history
+            </h1>
+            <p class="mt-0.5 truncate font-sans text-xs text-stone-500 dark:text-stone-400">
+              Recent conversations and research notes
+            </p>
+          </div>
+          <span class="font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
+            {length(@rows)}
+          </span>
         </div>
+
+        <p :if={@notes_error} class="px-1 py-2 text-sm text-rose-700">
+          {@notes_error}
+        </p>
+
+        <ol
+          :if={@rows != []}
+          class="divide-y divide-stone-200/80 border-y border-stone-200/80 bg-white dark:divide-stone-800 dark:border-stone-800 dark:bg-stone-900/70"
+        >
+          <li :for={row <- @rows}>
+            <.link
+              navigate={~p"/#{row.id}"}
+              class="grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2 px-2 py-2.5 transition-colors hover:bg-stone-100/80 sm:grid-cols-[1.5rem_minmax(0,1fr)_auto] sm:px-3 dark:hover:bg-stone-800/70"
+            >
+              <span class="mt-0.5 flex size-5 items-center justify-center">
+                <.icon name={row.icon} class={row.icon_class} />
+              </span>
+
+              <span class="min-w-0">
+                <span class="flex min-w-0 items-center gap-2">
+                  <span class="truncate font-sans text-sm font-medium text-stone-950 dark:text-stone-50">
+                    {row.title}
+                  </span>
+                  <span class="hidden shrink-0 rounded-sm bg-stone-100 px-1.5 py-0.5 font-sans text-[10px] uppercase tracking-wide text-stone-500 sm:inline dark:bg-stone-800 dark:text-stone-400">
+                    {row.mode_label}
+                  </span>
+                </span>
+
+                <span class="mt-0.5 line-clamp-2 text-xs leading-5 text-stone-600 sm:line-clamp-1 dark:text-stone-300">
+                  {row.preview}
+                </span>
+
+                <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-sans text-[11px] text-stone-500 dark:text-stone-400">
+                  <span>{row.entry_count} entries</span>
+                  <span :if={row.note_count > 0}>{row.note_count} notes</span>
+                  <span :if={row.user_count > 0}>{row.user_count} user</span>
+                  <span :if={row.assistant_count > 0}>{row.assistant_count} assistant</span>
+                </span>
+              </span>
+
+              <span class="col-start-2 mt-1 flex items-center justify-between gap-2 sm:col-start-3 sm:row-start-1 sm:mt-0 sm:self-start">
+                <time
+                  :if={row.published_at}
+                  datetime={DateTime.to_iso8601(row.published_at)}
+                  class="shrink-0 font-sans text-[11px] tabular-nums text-stone-500 dark:text-stone-400"
+                >
+                  {time_label(row.published_at)}
+                </time>
+                <.icon
+                  name="hero-arrow-up-right"
+                  class="size-3.5 shrink-0 text-stone-400 dark:text-stone-500"
+                />
+              </span>
+            </.link>
+          </li>
+        </ol>
+
+        <p
+          :if={@rows == [] and is_nil(@notes_error)}
+          class="px-1 py-3 text-sm text-stone-500 dark:text-stone-400"
+        >
+          No assistant history yet.
+        </p>
       </div>
     </main>
     """
+  end
+
+  defp history_row(group) do
+    entries = group.entries
+    id = group.session_iri |> to_string() |> Sheaf.Id.id_from_iri()
+
+    %{
+      id: id,
+      title: group.title,
+      preview: row_preview(entries),
+      published_at: group.published_at,
+      entry_count: length(entries),
+      note_count: Enum.count(entries, &(&1.type == :note)),
+      user_count:
+        Enum.count(entries, &(Map.get(&1, :type) == :message and Map.get(&1, :role) == :user)),
+      assistant_count:
+        Enum.count(
+          entries,
+          &(Map.get(&1, :type) == :message and Map.get(&1, :role) == :assistant)
+        ),
+      mode_label: mode_label(group.mode),
+      icon: row_icon(group.mode),
+      icon_class: row_icon_class(group.mode)
+    }
+  end
+
+  defp row_preview(entries) do
+    entries
+    |> Enum.find_value(fn
+      %{type: :message, role: :user, preview: preview} when is_binary(preview) -> preview
+      _entry -> nil
+    end)
+    |> case do
+      nil ->
+        entries
+        |> Enum.reverse()
+        |> Enum.find_value(fn
+          %{preview: preview} when is_binary(preview) -> preview
+          %{title: title} when is_binary(title) -> title
+          _entry -> nil
+        end)
+
+      preview ->
+        preview
+    end
+    |> case do
+      nil -> "No preview"
+      "" -> "No preview"
+      preview -> preview
+    end
+  end
+
+  defp mode_label("research"), do: "research"
+  defp mode_label(_mode), do: "chat"
+
+  defp row_icon("research"), do: "hero-beaker"
+  defp row_icon(_mode), do: "hero-chat-bubble-left-ellipsis"
+
+  defp row_icon_class("research"), do: "size-4 text-emerald-600 dark:text-emerald-300"
+  defp row_icon_class(_mode), do: "size-4 text-stone-400 dark:text-stone-500"
+
+  defp time_label(%DateTime{} = datetime) do
+    Calendar.strftime(datetime, "%Y-%m-%d %H:%M")
   end
 end
