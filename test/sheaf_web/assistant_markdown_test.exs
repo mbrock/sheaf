@@ -59,4 +59,17 @@ defmodule SheafWeb.AssistantMarkdownTest do
     refute html =~ "backdrop-blur"
     refute html =~ "block-preview-card"
   end
+
+  test "keeps punctuation tight after block reference buttons" do
+    html =
+      render_markdown("See ([#PAR111](/b/PAR111) , [#PAR222](/b/PAR222) ).",
+        block_ref_target: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ ~r/PAR111<\/button>\s*<\/span>,/
+    assert html =~ ~r/PAR222<\/button>\s*<\/span>\)\./
+    refute html =~ "PAR111 ,"
+    refute html =~ "PAR222 )"
+    refute html =~ ") ."
+  end
 end

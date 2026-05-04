@@ -26,12 +26,20 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   attr :block_ref_target, :any, default: nil
 
   defp nodes(assigns) do
+    assigns = assign(assigns, :nodes, attach_ref_punctuation(assigns.nodes))
+
     ~H"""
-    <.render_node :for={node <- @nodes} node={node} block_ref_target={@block_ref_target} />
+    <.render_node
+      :for={{node, trailing_punctuation} <- @nodes}
+      node={node}
+      trailing_punctuation={trailing_punctuation}
+      block_ref_target={@block_ref_target}
+    />
     """
   end
 
   attr :node, :any, required: true
+  attr :trailing_punctuation, :string, default: nil
   attr :block_ref_target, :any, default: nil
 
   defp render_node(%{node: %MDEx.Paragraph{} = node} = assigns) do
@@ -136,9 +144,9 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     <.block_ref_link
       :if={@href && @block_id && @block_ref_target}
       title={@title}
-      nodes={@nodes}
       block_id={@block_id}
       block_ref_target={@block_ref_target}
+      trailing_punctuation={@trailing_punctuation}
     />
     <a :if={@href && (!@block_id || !@block_ref_target)} href={@href} title={@title}>
       <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
@@ -271,10 +279,46 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     """
   end
 
+  defp attach_ref_punctuation(nodes) do
+    nodes
+    |> do_attach_ref_punctuation([])
+    |> Enum.reverse()
+  end
+
+  defp do_attach_ref_punctuation(
+         [%MDEx.Link{} = link, %MDEx.Text{literal: literal} = text | rest],
+         acc
+       ) do
+    case leading_punctuation_after_ref(link, literal) do
+      {punctuation, literal} ->
+        do_attach_ref_punctuation([%{text | literal: literal} | rest], [
+          {link, punctuation} | acc
+        ])
+
+      nil ->
+        do_attach_ref_punctuation([text | rest], [{link, nil} | acc])
+    end
+  end
+
+  defp do_attach_ref_punctuation([node | rest], acc) do
+    do_attach_ref_punctuation(rest, [{node, nil} | acc])
+  end
+
+  defp do_attach_ref_punctuation([], acc), do: acc
+
+  defp leading_punctuation_after_ref(%MDEx.Link{} = link, literal) do
+    with block_id when is_binary(block_id) <- block_link_id(safe_href(link.url)),
+         [_, punctuation, rest] <- Regex.run(~r/^[ \t]*([,.;:!?\)\]\}]+)(.*)$/s, literal) do
+      {punctuation, rest}
+    else
+      _other -> nil
+    end
+  end
+
   attr :title, :string, default: nil
-  attr :nodes, :list, required: true
   attr :block_id, :string, required: true
   attr :block_ref_target, :any, required: true
+  attr :trailing_punctuation, :string, default: nil
 
   defp block_ref_link(assigns) do
     ~H"""
@@ -287,10 +331,8 @@ defmodule SheafWeb.AssistantMarkdownComponents do
         phx-click="show_block_preview"
         phx-value-id={@block_id}
         phx-target={@block_ref_target}
-      >
-        {@block_id}
-      </button>
-    </span>
+      >{@block_id}</button>
+    </span>{@trailing_punctuation}
     """
   end
 

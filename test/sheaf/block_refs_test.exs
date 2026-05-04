@@ -30,7 +30,7 @@ defmodule Sheaf.BlockRefsTest do
   end
 
   test "accepts looser hash refs and normalizes spaces before punctuation" do
-    text = "Compare #foo , #BAR and #LONGER12345 !"
+    text = "Compare (#foo , #BAR and #LONGER12345 !)"
 
     assert BlockRefs.linkify_markdown(text,
              url_for: fn
@@ -40,7 +40,7 @@ defmodule Sheaf.BlockRefsTest do
                _id -> nil
              end
            ) ==
-             "Compare [#FOO](/b/FOO), [#BAR](/b/BAR) and [#LONGER12345](/b/LONGER12345)!"
+             "Compare ([#FOO](/b/FOO), [#BAR](/b/BAR) and [#LONGER12345](/b/LONGER12345)!)"
   end
 
   test "turns resource-only inline code spans into normal links" do

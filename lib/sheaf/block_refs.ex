@@ -8,7 +8,7 @@ defmodule Sheaf.BlockRefs do
   @block_href ~r/\/b\/([A-Z0-9]{3,12})\b/i
   @bracketed_bare_block_id ~r/\[([A-Z0-9]{3,12})\](?!\()/i
   @existing_block_link ~r/(\[#[A-Z0-9]{3,12}\]\(\/b\/[A-Z0-9]{3,12}\))/i
-  @space_before_punctuation ~r/[ \t]+([,.;:!?])/
+  @space_before_punctuation ~r/[ \t]+([,.;:!?\)\]\}])/
 
   @doc """
   Extracts block ids from bare ids, `#ID`, and `/b/ID` links.
