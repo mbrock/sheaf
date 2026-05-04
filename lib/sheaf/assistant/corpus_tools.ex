@@ -8,7 +8,7 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   alias ReqLLM.{Tool, ToolResult}
   alias ReqLLM.Message.ContentPart
-  alias Sheaf.{Corpus, Document, Documents, Id, Spreadsheets}
+  alias Sheaf.{BlockTags, Corpus, Document, Documents, Id, Spreadsheets}
   alias Sheaf.Assistant.Notes
   alias Sheaf.Assistant.{QueryResults, SpreadsheetSession, ToolResultText, ToolResults}
 
@@ -30,6 +30,7 @@ defmodule Sheaf.Assistant.CorpusTools do
     notify = Keyword.get(opts, :notify, fn _event -> :ok end)
     search = Keyword.get(opts, :search, &Sheaf.Embedding.Index.search/2)
     exact_search = Keyword.get(opts, :exact_search, &Sheaf.Embedding.Index.exact_search/2)
+    paragraph_tagger = Keyword.get(opts, :paragraph_tagger, &BlockTags.attach/2)
     include_notes? = Keyword.get(opts, :include_notes?, true)
     spreadsheet_session = Keyword.get(opts, :spreadsheet_session)
     query_result_context = Keyword.get(opts, :query_result_context, [])
@@ -104,6 +105,30 @@ defmodule Sheaf.Assistant.CorpusTools do
           limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits per category"]
         ],
         callback: instrument(notify, "search_text", &search_text_tool(&1, search, exact_search))
+      ),
+      Tool.new!(
+        name: "tag_paragraphs",
+        description:
+          "Attach writing-attention tags directly to one or more thesis paragraph blocks. " <>
+            "Use this for draft paragraphs that are placeholders, fragments, need evidence, " <>
+            "or need revision. Only paragraph blocks are accepted.",
+        parameter_schema: [
+          blocks: [
+            type: {:list, :string},
+            required: true,
+            doc: "Paragraph block ids to tag, without leading #."
+          ],
+          tags: [
+            type: {:list, {:in, BlockTags.tag_names()}},
+            required: true,
+            doc:
+              "Writing tags to attach. Allowed values: " <> Enum.join(BlockTags.tag_names(), ", ")
+          ]
+        ],
+        callback:
+          instrument(notify, "tag_paragraphs", fn args ->
+            tag_paragraphs_tool(args, paragraph_tagger)
+          end)
       )
     ]
 
@@ -439,6 +464,16 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   def humanize("write_note", _args, _titles), do: "Saving a research note"
 
+  def humanize("tag_paragraphs", args, _titles) do
+    block_ids = requested_blocks(args)
+
+    case block_ids do
+      [block_id] -> "Tagging ##{block_id}"
+      ids when is_list(ids) and ids != [] -> "Tagging #{length(ids)} paragraphs"
+      _ids -> "Tagging paragraphs"
+    end
+  end
+
   def humanize(name, _args, _titles), do: name
 
   @doc """
@@ -519,6 +554,11 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   def result_summary("write_note", {:ok, %ToolResults.Note{}}), do: "note saved"
+
+  def result_summary("tag_paragraphs", {:ok, %ToolResults.ParagraphTags{} = result}) do
+    "#{pluralize(length(result.tags), "tag", "tags")} on " <>
+      pluralize(length(result.block_ids), "paragraph", "paragraphs")
+  end
 
   def result_summary(_name, {:error, reason}) when is_binary(reason) do
     "error: " <> ellipsize(reason, 80)
@@ -811,6 +851,32 @@ defmodule Sheaf.Assistant.CorpusTools do
 
       other ->
         {:error, "could not write note: unexpected result #{inspect(other)}"}
+    end
+  end
+
+  defp tag_paragraphs_tool(args, paragraph_tagger) do
+    block_ids = requested_blocks(args)
+    tags = args |> arg(:tags) |> List.wrap()
+
+    case paragraph_tagger.(block_ids, tags) do
+      {:ok, %{block_ids: block_ids, tags: tags} = result} ->
+        %ToolResults.ParagraphTags{
+          block_ids: block_ids,
+          tags: tags,
+          tag_iris: Map.get(result, :tag_iris, []),
+          statement_count: Map.get(result, :statement_count, length(block_ids) * length(tags))
+        }
+        |> rendered_result()
+        |> then(&{:ok, &1})
+
+      {:error, reason} when is_binary(reason) ->
+        {:error, "could not tag paragraphs: #{reason}"}
+
+      {:error, reason} ->
+        {:error, "could not tag paragraphs: #{inspect(reason)}"}
+
+      other ->
+        {:error, "could not tag paragraphs: unexpected result #{inspect(other)}"}
     end
   end
 

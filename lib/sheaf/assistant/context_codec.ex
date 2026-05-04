@@ -30,7 +30,8 @@ defmodule Sheaf.Assistant.ContextCodec do
     Sheaf.Assistant.ToolResults.SpreadsheetQueryResultPage,
     Sheaf.Assistant.ToolResults.SpreadsheetSearch,
     Sheaf.Assistant.ToolResults.SearchHit,
-    Sheaf.Assistant.ToolResults.Note
+    Sheaf.Assistant.ToolResults.Note,
+    Sheaf.Assistant.ToolResults.ParagraphTags
   ]
 
   @known_structs Map.new(@tool_result_modules, fn module -> {Atom.to_string(module), module} end)

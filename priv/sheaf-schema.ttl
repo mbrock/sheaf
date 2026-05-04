@@ -138,6 +138,26 @@ sheaf:ResearchNote a rdfs:Class ;
     prov:Entity ;
   rdfs:comment "A durable assistant-authored note written during an assistant conversation, distinct from ordinary chat messages." .
 
+sheaf:WritingTag a rdfs:Class ;
+  rdfs:label "writing tag"@en ;
+  rdfs:comment "A lightweight tag used to mark draft prose blocks that need writing attention." .
+
+sheaf:PlaceholderTag a sheaf:WritingTag ;
+  rdfs:label "placeholder"@en ;
+  rdfs:comment "Marks draft prose that stands in for missing content." .
+
+sheaf:NeedsEvidenceTag a sheaf:WritingTag ;
+  rdfs:label "needs evidence"@en ;
+  rdfs:comment "Marks draft prose that needs supporting evidence, statistics, examples, or citation." .
+
+sheaf:NeedsRevisionTag a sheaf:WritingTag ;
+  rdfs:label "needs revision"@en ;
+  rdfs:comment "Marks draft prose that needs rewriting, clarification, or structural attention." .
+
+sheaf:FragmentTag a sheaf:WritingTag ;
+  rdfs:label "fragment"@en ;
+  rdfs:comment "Marks draft prose that is a fragment rather than a finished paragraph." .
+
 sheaf:ToolCall a rdfs:Class ;
   rdfs:label "tool call"@en ;
   rdfs:subClassOf prov:Activity ;

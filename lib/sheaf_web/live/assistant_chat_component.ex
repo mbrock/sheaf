@@ -426,7 +426,10 @@ defmodule SheafWeb.AssistantChatComponent do
     assigns = assign(assigns, :tool_view, tool_view(assigns.message, assigns.titles))
 
     ~H"""
-    <li class={["flex flex-col items-start border-l-4 border-stone-200 dark:border-stone-800 pl-2", @tool_view.status_class]}>
+    <li class={[
+      "flex flex-col items-start border-l-4 border-stone-200 dark:border-stone-800 pl-2",
+      @tool_view.status_class
+    ]}>
       <span
         :if={@tool_view.phrase != ""}
         class={["text-sm flex gap-2 font-mono", @tool_view.phrase_class]}
@@ -544,10 +547,14 @@ defmodule SheafWeb.AssistantChatComponent do
     target =
       case block_ids do
         [block_id] ->
-          if expanded?, do: "Reading expanded block #{block_id}", else: "Reading block #{block_id}"
+          if expanded?,
+            do: "Reading expanded block #{block_id}",
+            else: "Reading block #{block_id}"
 
         ids when ids != [] ->
-          if expanded?, do: "Reading #{length(ids)} expanded blocks", else: "Reading #{length(ids)} blocks"
+          if expanded?,
+            do: "Reading #{length(ids)} expanded blocks",
+            else: "Reading #{length(ids)} blocks"
 
         _ids ->
           "Reading a block"
@@ -596,6 +603,22 @@ defmodule SheafWeb.AssistantChatComponent do
         else: "research note"
 
     tool_phrase("save #{note}", message)
+  end
+
+  defp tool_view(%{tool: "tag_paragraphs", input: input} = message, _titles) do
+    block_count = input |> tool_blocks() |> length()
+    tags = input |> tool_arg(:tags) |> List.wrap() |> Enum.filter(&is_binary/1)
+
+    target =
+      case {block_count, tags} do
+        {1, []} -> "Tagging a paragraph"
+        {1, tags} -> "Tagging a paragraph as #{Enum.join(tags, ", ")}"
+        {count, []} when count > 1 -> "Tagging #{count} paragraphs"
+        {count, tags} when count > 1 -> "Tagging #{count} paragraphs as #{Enum.join(tags, ", ")}"
+        _ -> "Tagging paragraphs"
+      end
+
+    tool_phrase(target, message)
   end
 
   defp tool_view(%{tool: "query_spreadsheets", input: input} = message, _titles) do

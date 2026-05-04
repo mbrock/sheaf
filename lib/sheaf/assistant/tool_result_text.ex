@@ -16,6 +16,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     ListDocuments,
     Note,
     OutlineEntry,
+    ParagraphTags,
     SearchHit,
     SearchResults,
     Spreadsheet,
@@ -189,6 +190,16 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
+  def to_text(%ParagraphTags{} = result) do
+    """
+    PARAGRAPH TAGS ATTACHED
+    Blocks: #{tagged_blocks(result.block_ids)}
+    Tags: #{Enum.join(result.tags, ", ")}
+    Statements: #{result.statement_count}
+    """
+    |> String.trim()
+  end
+
   def selected_block_text(%Block{} = block) do
     [
       selected_block_heading(block),
@@ -248,6 +259,12 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp query_result_line(%SpreadsheetQuery{} = result) do
     "##{result.result_id} #{result.result_iri} file=#{result.result_file_iri}"
+  end
+
+  defp tagged_blocks(block_ids) do
+    block_ids
+    |> List.wrap()
+    |> Enum.map_join(", ", &"##{&1}")
   end
 
   defp spreadsheet_list_summary(%ListSpreadsheets{} = result) do

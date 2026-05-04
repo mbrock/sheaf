@@ -900,6 +900,10 @@ defmodule Sheaf.Assistant.Chat.Server do
         including imported coded rows; pass document_id to scope to one
         document or document_kind to scope to a document type such as thesis,
         literature, or spreadsheet.
+      * Use tag_paragraphs to attach writing-attention tags to thesis paragraph
+        blocks that are placeholders, fragments, need evidence, or need
+        revision. Pass all relevant paragraph ids in blocks and choose from
+        placeholder, needs_evidence, needs_revision, and fragment.
     #{note_tool_prompt(allow_notes?)}
 
     How to help:

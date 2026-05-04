@@ -333,6 +333,55 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert tool_text(result) =~ "NOTE SAVED #NOTE03"
   end
 
+  test "tag_paragraphs tool attaches writing tags to multiple paragraphs" do
+    test_pid = self()
+
+    paragraph_tagger = fn block_ids, tags ->
+      send(test_pid, {:tag_args, block_ids, tags})
+
+      {:ok,
+       %{
+         block_ids: block_ids,
+         tags: tags,
+         tag_iris: Enum.map(tags, &"https://less.rest/sheaf/#{&1}"),
+         statement_count: length(block_ids) * length(tags)
+       }}
+    end
+
+    tools =
+      CorpusTools.tools(
+        include_notes?: false,
+        paragraph_tagger: paragraph_tagger
+      )
+
+    tool = Enum.find(tools, &(&1.name == "tag_paragraphs"))
+
+    assert [
+             type:
+               {:list, {:in, ["placeholder", "needs_evidence", "needs_revision", "fragment"]}},
+             required: true,
+             doc: _doc
+           ] = tool.parameter_schema[:tags]
+
+    assert {:ok, result} =
+             Tool.execute(tool, %{
+               "blocks" => ["PAR111", "PAR222"],
+               "tags" => ["needs_evidence", "fragment"]
+             })
+
+    assert_receive {:tag_args, ["PAR111", "PAR222"], ["needs_evidence", "fragment"]}
+
+    assert %ToolResults.ParagraphTags{
+             block_ids: ["PAR111", "PAR222"],
+             tags: ["needs_evidence", "fragment"],
+             statement_count: 4
+           } = sheaf_result(result)
+
+    assert tool_text(result) =~ "PARAGRAPH TAGS ATTACHED"
+    assert tool_text(result) =~ "Blocks: #PAR111, #PAR222"
+    assert tool_text(result) =~ "Tags: needs_evidence, fragment"
+  end
+
   test "write_note tool can be omitted" do
     tools = CorpusTools.tools(include_notes?: false)
 

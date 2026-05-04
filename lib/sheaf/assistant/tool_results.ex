@@ -200,4 +200,11 @@ defmodule Sheaf.Assistant.ToolResults do
       :iri
     ]
   end
+
+  defmodule ParagraphTags do
+    defstruct block_ids: [],
+              tags: [],
+              tag_iris: [],
+              statement_count: 0
+  end
 end
