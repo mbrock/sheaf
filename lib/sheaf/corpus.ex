@@ -27,28 +27,65 @@ defmodule Sheaf.Corpus do
   """
   @spec find_document(String.t()) :: String.t() | nil
   def find_document(block_id) when is_binary(block_id) do
-    block = Id.iri(block_id)
+    block_id
+    |> List.wrap()
+    |> find_documents()
+    |> Map.get(block_id)
+  end
 
-    with :ok <- Sheaf.Repo.load_once({block, nil, nil, nil}) do
+  @spec find_documents([String.t()]) :: %{String.t() => String.t()}
+  def find_documents([]), do: %{}
+
+  def find_documents(block_ids) when is_list(block_ids) do
+    blocks =
+      block_ids
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq()
+      |> Map.new(&{Id.iri(&1), &1})
+
+    with false <- map_size(blocks) == 0,
+         :ok <- load_block_descriptions(Map.keys(blocks)) do
       Sheaf.Repo.ask(fn dataset ->
         dataset
         |> RDF.Dataset.graphs()
-        |> document_graphs_describing(block)
-        |> List.first()
-        |> case do
-          nil -> nil
-          graph -> Id.id_from_iri(graph.name)
-        end
+        |> document_graph_block_index(blocks)
       end)
     else
-      _ -> nil
+      true -> %{}
+      _ -> %{}
     end
   end
 
-  defp document_graphs_describing(graphs, block) do
-    Enum.filter(graphs, fn graph ->
-      Graph.describes?(graph, block) and document_graph?(graph)
+  defp load_block_descriptions(blocks) do
+    Enum.reduce_while(blocks, :ok, fn block, :ok ->
+      case Sheaf.Repo.load_once({block, nil, nil, nil}) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
     end)
+  end
+
+  defp document_graph_block_index(graphs, blocks) do
+    graphs
+    |> Enum.filter(&document_graph?/1)
+    |> Enum.reduce({%{}, blocks}, fn
+      _graph, {index, remaining} when map_size(remaining) == 0 ->
+        {index, remaining}
+
+      graph, {index, remaining} ->
+        doc_id = Id.id_from_iri(graph.name)
+
+        {found, remaining} =
+          Enum.split_with(remaining, fn {block, _id} -> Graph.describes?(graph, block) end)
+
+        index =
+          Enum.reduce(found, index, fn {_block, id}, index ->
+            Map.put_new(index, id, doc_id)
+          end)
+
+        {index, Map.new(remaining)}
+    end)
+    |> elem(0)
   end
 
   defp document_graph?(%Graph{name: nil}), do: false

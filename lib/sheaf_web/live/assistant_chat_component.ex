@@ -190,6 +190,8 @@ defmodule SheafWeb.AssistantChatComponent do
 
   @impl true
   def render(%{variant: :full_page} = assigns) do
+    assigns = assign(assigns, :block_previews, chat_block_previews(assigns.chat.messages))
+
     ~H"""
     <section class="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
       <div
@@ -203,6 +205,7 @@ defmodule SheafWeb.AssistantChatComponent do
             :for={item <- message_groups(@chat.messages)}
             item={item}
             titles={Map.get(@chat, :titles, %{})}
+            block_previews={@block_previews}
           />
 
           <div
@@ -240,6 +243,8 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   def render(assigns) do
+    assigns = assign(assigns, :block_previews, chat_block_previews(assigns.chat.messages))
+
     ~H"""
     <section class={assistant_section_class(@variant, @selected_chat_id)}>
       <div :if={not inline?(@variant)} class="mb-3 space-y-2">
@@ -306,6 +311,7 @@ defmodule SheafWeb.AssistantChatComponent do
           :for={item <- message_groups(@chat.messages)}
           item={item}
           titles={Map.get(@chat, :titles, %{})}
+          block_previews={@block_previews}
         />
 
         <div
@@ -441,7 +447,7 @@ defmodule SheafWeb.AssistantChatComponent do
     assigns = assign(assigns, :message, message)
 
     ~H"""
-    <.chat_message message={@message} titles={@titles} />
+    <.chat_message message={@message} titles={@titles} block_previews={@block_previews} />
     """
   end
 
@@ -486,6 +492,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   attr :message, :map, required: true
   attr :titles, :map, default: %{}
+  attr :block_previews, :map, default: %{}
 
   defp chat_message(%{message: %{role: :user}} = assigns) do
     ~H"""
@@ -498,7 +505,10 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_message(%{message: %{role: :assistant}} = assigns) do
     ~H"""
     <div class="assistant-prose font-serif break-words px-1 text-stone-900 dark:text-stone-100">
-      <AssistantMarkdownComponents.markdown text={@message.text} />
+      <AssistantMarkdownComponents.markdown
+        text={@message.text}
+        block_previews={@block_previews}
+      />
     </div>
     """
   end
@@ -533,7 +543,10 @@ defmodule SheafWeb.AssistantChatComponent do
           :if={@note_view.text != ""}
           class="assistant-prose max-h-80 overflow-y-auto break-words pr-1 text-stone-800 dark:text-stone-100"
         >
-          <AssistantMarkdownComponents.markdown text={@note_view.text} />
+          <AssistantMarkdownComponents.markdown
+            text={@note_view.text}
+            block_previews={@block_previews}
+          />
         </div>
         <p :if={@note_view.text == ""} class="text-stone-500 dark:text-stone-400">
           The assistant is preparing a note.
@@ -560,6 +573,24 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp chat_message(assigns), do: ~H""
+
+  defp chat_block_previews(messages) do
+    messages
+    |> Enum.flat_map(&message_preview_texts/1)
+    |> Enum.flat_map(&Sheaf.BlockRefs.ids_from_text/1)
+    |> Sheaf.BlockPreviews.for_ids()
+  end
+
+  defp message_preview_texts(%{text: text}) when is_binary(text), do: [text]
+
+  defp message_preview_texts(%{tool: "write_note", input: input}) do
+    case tool_arg(input, :text) |> note_text_value() do
+      "" -> []
+      text -> [text]
+    end
+  end
+
+  defp message_preview_texts(_message), do: []
 
   defp tool_view(%{tool: "list_documents"} = message, _titles) do
     tool_phrase("Listing documents", message)

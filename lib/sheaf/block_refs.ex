@@ -3,9 +3,9 @@ defmodule Sheaf.BlockRefs do
   Helpers for recognizing Sheaf block ids in user-visible text.
   """
 
-  @hash_block_id ~r/(?<![\[\/#A-Z0-9])#([ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6})(?![A-Z0-9])/
-  @block_id_extract ~r/(?<![\/#A-Z0-9])#?([A-Z0-9]{6})(?![A-Z0-9])/
-  @block_href ~r/\/b\/([A-Z0-9]{6})\b/
+  @hash_block_id ~r/(?<![\[\/#A-Z0-9])#((?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6})(?![A-Z0-9])/
+  @block_id_extract ~r/(?<![\/#A-Z0-9])#?((?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6})(?![A-Z0-9])/
+  @block_href ~r/\/b\/((?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6})\b/
   @bracketed_bare_block_id ~r/\[([ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6})\](?!\()/
   @existing_block_link ~r/(\[#[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}\]\(\/b\/[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}\))/
 

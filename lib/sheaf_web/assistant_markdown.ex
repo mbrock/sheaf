@@ -27,5 +27,7 @@ defmodule SheafWeb.AssistantMarkdown do
       {:ok, %{kind: _kind}} -> "/#{id}"
       {:error, _reason} -> nil
     end
+  catch
+    :exit, _reason -> nil
   end
 end

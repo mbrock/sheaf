@@ -64,7 +64,8 @@ defmodule Sheaf.BlockRefsTest do
   end
 
   test "does not link SQL keywords or numeric values as bare block ids" do
-    text = "SELECT COUNT(*) FILTER (WHERE try_cast(total_bids AS DOUBLE)=1), tender 152877."
+    text =
+      "SELECT COUNT(*) FILTER (WHERE try_cast(total_bids AS DOUBLE)=1), tender 152877 and MIKAEL."
 
     assert BlockRefs.linkify_markdown(text) == text
   end

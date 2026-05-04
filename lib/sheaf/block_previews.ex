@@ -15,9 +15,15 @@ defmodule Sheaf.BlockPreviews do
       ids = ids |> Enum.map(&to_string/1) |> Enum.uniq()
       Tracer.set_attribute("sheaf.block_count", length(ids))
 
+      documents_by_id = Corpus.find_documents(ids)
+
       ids
-      |> Enum.map(fn id -> {id, safe_find_document(id)} end)
-      |> Enum.reject(fn {_id, doc_id} -> is_nil(doc_id) end)
+      |> Enum.flat_map(fn id ->
+        case Map.fetch(documents_by_id, id) do
+          {:ok, doc_id} -> [{id, doc_id}]
+          :error -> []
+        end
+      end)
       |> Enum.group_by(fn {_id, doc_id} -> doc_id end, fn {id, _doc_id} -> id end)
       |> previews_for_documents()
       |> Map.new()
@@ -58,12 +64,6 @@ defmodule Sheaf.BlockPreviews do
       {:error, _reason} ->
         []
     end
-  end
-
-  defp safe_find_document(id) do
-    Corpus.find_document(id)
-  catch
-    :exit, _reason -> nil
   end
 
   defp preview_from_graph(graph, doc_id, id, document_metadata) do
