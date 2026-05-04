@@ -29,6 +29,20 @@ defmodule Sheaf.BlockRefsTest do
            ) == "Read result [#PK9ACK](/PK9ACK) and block [#DEF456](/b/DEF456)."
   end
 
+  test "accepts looser hash refs and normalizes spaces before punctuation" do
+    text = "Compare #foo , #BAR and #LONGER12345 !"
+
+    assert BlockRefs.linkify_markdown(text,
+             url_for: fn
+               "FOO" -> "/b/FOO"
+               "BAR" -> "/b/BAR"
+               "LONGER12345" -> "/b/LONGER12345"
+               _id -> nil
+             end
+           ) ==
+             "Compare [#FOO](/b/FOO), [#BAR](/b/BAR) and [#LONGER12345](/b/LONGER12345)!"
+  end
+
   test "turns resource-only inline code spans into normal links" do
     text = "Read result `#PK9ACK`, but keep `SELECT #PK9ACK` as code."
 
@@ -38,6 +52,17 @@ defmodule Sheaf.BlockRefsTest do
                _id -> nil
              end
            ) == "Read result [#PK9ACK](/PK9ACK), but keep `SELECT #PK9ACK` as code."
+  end
+
+  test "does not normalize spaces before punctuation inside inline code" do
+    text = "Read #ABC123 , but keep `#ABC123 , #DEF456` as code."
+
+    assert BlockRefs.linkify_markdown(text,
+             url_for: fn
+               "ABC123" -> "/b/ABC123"
+               _id -> nil
+             end
+           ) == "Read [#ABC123](/b/ABC123), but keep `#ABC123 , #DEF456` as code."
   end
 
   test "does not link inside fenced code blocks" do

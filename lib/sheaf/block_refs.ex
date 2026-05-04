@@ -3,11 +3,12 @@ defmodule Sheaf.BlockRefs do
   Helpers for recognizing Sheaf block ids in user-visible text.
   """
 
-  @hash_block_id ~r/(?<![\[\/#A-Z0-9])#((?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6})(?![A-Z0-9])/
-  @block_id_extract ~r/(?<![\/#A-Z0-9])#?((?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6})(?![A-Z0-9])/
-  @block_href ~r/\/b\/((?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6})\b/
-  @bracketed_bare_block_id ~r/\[([ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6})\](?!\()/
-  @existing_block_link ~r/(\[#[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}\]\(\/b\/[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}\))/
+  @hash_block_id ~r/(?<![\[\/#A-Z0-9])#([A-Z0-9]{3,12})(?![A-Z0-9])/i
+  @block_id_extract ~r/(?<![\/#A-Z0-9])#?((?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*\d)[A-Z0-9]{6})(?![A-Z0-9])/i
+  @block_href ~r/\/b\/([A-Z0-9]{3,12})\b/i
+  @bracketed_bare_block_id ~r/\[([A-Z0-9]{3,12})\](?!\()/i
+  @existing_block_link ~r/(\[#[A-Z0-9]{3,12}\]\(\/b\/[A-Z0-9]{3,12}\))/i
+  @space_before_punctuation ~r/[ \t]+([,.;:!?])/
 
   @doc """
   Extracts block ids from bare ids, `#ID`, and `/b/ID` links.
@@ -54,7 +55,7 @@ defmodule Sheaf.BlockRefs do
     |> split_inline_code()
     |> Enum.map_join(fn
       {:code, segment} -> linkify_code_span(segment, url_for)
-      {:text, segment} -> linkify_plain_markdown(segment, url_for)
+      {:text, segment} -> segment |> normalize_spacing() |> linkify_plain_markdown(url_for)
     end)
   end
 
@@ -70,13 +71,19 @@ defmodule Sheaf.BlockRefs do
     else
       text =
         Regex.replace(@bracketed_bare_block_id, text, fn _match, id ->
+          id = String.upcase(id)
           if url = url_for.(id), do: "[##{id}](#{url})", else: "[#{id}]"
         end)
 
       Regex.replace(@hash_block_id, text, fn _match, id ->
+        id = String.upcase(id)
         if url = url_for.(id), do: "[##{id}](#{url})", else: "##{id}"
       end)
     end
+  end
+
+  defp normalize_spacing(text) do
+    Regex.replace(@space_before_punctuation, text, "\\1")
   end
 
   defp split_fenced_code(text) do
@@ -119,6 +126,6 @@ defmodule Sheaf.BlockRefs do
   defp code_span_resource_id(id), do: valid_resource_id(id)
 
   defp valid_resource_id(id) do
-    if Regex.match?(~r/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/, id), do: id
+    if Regex.match?(~r/^[A-Z0-9]{3,12}$/i, id), do: String.upcase(id)
   end
 end
