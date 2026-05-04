@@ -410,6 +410,18 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              statement_count: 6
            }}
         end,
+        block_deleter: fn block ->
+          send(test_pid, {:delete, block})
+
+          {:ok,
+           %{
+             action: :delete_block,
+             document_id: "DOC111",
+             block_id: block,
+             affected_blocks: [block],
+             statement_count: 8
+           }}
+        end,
         search_index_updater: fn blocks ->
           send(test_pid, {:index, blocks})
 
@@ -428,6 +440,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert "update_block_text" in tool_names
     assert "move_block" in tool_names
     assert "insert_paragraph" in tool_names
+    assert "delete_block" in tool_names
     assert "update_search_index" in tool_names
     refute "write_note" in tool_names
     refute "query_spreadsheets" in tool_names
@@ -443,6 +456,18 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              sheaf_result(update_result)
 
     assert tool_text(update_result) =~ "BLOCK EDIT APPLIED"
+
+    delete_tool = Enum.find(tools, &(&1.name == "delete_block"))
+
+    assert {:ok, delete_result} = Tool.execute(delete_tool, %{"block" => "PAR111"})
+    assert_receive {:delete, "PAR111"}
+
+    assert %ToolResults.BlockEdit{
+             action: :delete_block,
+             block_id: "PAR111",
+             affected_blocks: ["PAR111"],
+             statement_count: 8
+           } = sheaf_result(delete_result)
 
     index_tool = Enum.find(tools, &(&1.name == "update_search_index"))
     assert {:ok, index_result} = Tool.execute(index_tool, %{"blocks" => ["PAR111"]})

@@ -139,6 +139,7 @@ defmodule Sheaf.Assistant.ChatTest do
       assert "update_block_text" in tool_names
       assert "move_block" in tool_names
       assert "insert_paragraph" in tool_names
+      assert "delete_block" in tool_names
       assert "update_search_index" in tool_names
       refute "write_note" in tool_names
 
@@ -168,6 +169,7 @@ defmodule Sheaf.Assistant.ChatTest do
 
     assert_receive {:edit_inference_started, task_pid, context, _opts}
     assert system_text(context) =~ "Edit mode:"
+    assert system_text(context) =~ "delete_block"
     assert system_text(context) =~ "update_search_index"
     assert system_text(context) =~ "mikael-tagged"
 

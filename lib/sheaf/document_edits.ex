@@ -131,6 +131,45 @@ defmodule Sheaf.DocumentEdits do
   end
 
   @doc """
+  Deletes a block and its descendant document blocks.
+  """
+  def delete_block(block_id, opts \\ []) do
+    block_id = normalize_id(block_id)
+
+    Tracer.with_span "sheaf.document_edits.delete_block", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "quadlog"},
+        {"db.operation", "transact"},
+        {"sheaf.block_id", block_id}
+      ]
+    } do
+      with :ok <- require_id(block_id, "block is required"),
+           {:ok, document_id, graph} <- graph_for_block(block_id, opts),
+           block = Id.iri(block_id),
+           :ok <- require_document_block(graph, block_id, block),
+           :ok <- reject_root_delete(document_id, block_id),
+           {:ok, parent} <- parent_of(graph, block),
+           affected_blocks = text_block_ids_in_subtree(graph, block),
+           {:ok, changes} <- delete_block_changes(graph, parent, block),
+           {:ok, statement_count} <- transact(changes, opts, "delete document block") do
+        Tracer.set_attribute("sheaf.document", document_id)
+        Tracer.set_attribute("sheaf.affected_blocks", Enum.join(affected_blocks, ","))
+        Tracer.set_attribute("sheaf.statement_count", statement_count)
+
+        {:ok,
+         %{
+           action: :delete_block,
+           document_id: document_id,
+           block_id: block_id,
+           affected_blocks: affected_blocks,
+           statement_count: statement_count
+         }}
+      end
+    end
+  end
+
+  @doc """
   Expands block ids to text-bearing blocks affected by search index updates.
   """
   def text_block_ids(block_ids, opts \\ []) do
@@ -296,6 +335,76 @@ defmodule Sheaf.DocumentEdits do
         |> compact_changes()
 
       {:ok, changes, Id.id_from_iri(block)}
+    end
+  end
+
+  defp delete_block_changes(graph, parent, block) do
+    children = Document.children(graph, parent)
+
+    if block in children do
+      changes =
+        graph
+        |> replace_children_changes(parent, Enum.reject(children, &(&1 == block)))
+        |> Kernel.++([{:retract, deleted_subtree_graph(graph, block)}])
+        |> compact_changes()
+
+      {:ok, changes}
+    else
+      {:error, "block #{Id.id_from_iri(block)} is not a child of its parent"}
+    end
+  end
+
+  defp deleted_subtree_graph(graph, block) do
+    subjects =
+      graph
+      |> deleted_subtree_subjects(block)
+      |> MapSet.new()
+
+    graph
+    |> Graph.triples()
+    |> Enum.filter(fn {subject, _predicate, _object} -> MapSet.member?(subjects, subject) end)
+    |> Graph.new(name: Graph.name(graph))
+  end
+
+  defp deleted_subtree_subjects(graph, block) do
+    blocks = [block | descendant_blocks(graph, block)]
+
+    list_subjects =
+      blocks
+      |> Enum.flat_map(fn block ->
+        case object(graph, block, DOC.children()) do
+          nil -> []
+          list -> [list | list_node_subjects(graph, list)]
+        end
+      end)
+
+    paragraph_revisions =
+      Enum.flat_map(blocks, &objects(graph, &1, DOC.paragraph()))
+
+    provenance_activities =
+      paragraph_revisions
+      |> Enum.flat_map(fn revision ->
+        objects(graph, revision, PROV.wasGeneratedBy()) ++
+          objects(graph, revision, PROV.wasInvalidatedBy())
+      end)
+
+    blocks ++ list_subjects ++ paragraph_revisions ++ provenance_activities
+  end
+
+  defp list_node_subjects(graph, list), do: list_node_subjects(graph, list, MapSet.new())
+  defp list_node_subjects(_graph, nil, _visited), do: []
+
+  defp list_node_subjects(graph, list, visited) do
+    cond do
+      list == RDF.nil() ->
+        []
+
+      MapSet.member?(visited, list) ->
+        []
+
+      true ->
+        rest = object(graph, list, RDF.rest())
+        [list | list_node_subjects(graph, rest, MapSet.put(visited, list))]
     end
   end
 
@@ -475,6 +584,14 @@ defmodule Sheaf.DocumentEdits do
   defp reject_root_move(document_id, block_id) do
     if document_id == block_id do
       {:error, "cannot move a document root"}
+    else
+      :ok
+    end
+  end
+
+  defp reject_root_delete(document_id, block_id) do
+    if document_id == block_id do
+      {:error, "cannot delete a document root"}
     else
       :ok
     end

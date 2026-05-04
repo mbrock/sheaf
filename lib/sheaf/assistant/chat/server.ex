@@ -977,9 +977,12 @@ defmodule Sheaf.Assistant.Chat.Server do
       * Use move_block to move or reparent an existing block. For example, use
         position=after to make one block the next sibling of another.
       * Use insert_paragraph to add a new paragraph block at a specified place.
-      * After update_block_text, move_block, or insert_paragraph, call
-        update_search_index with the edited, moved, or inserted block ids so
-        embeddings and full-text search reflect the changed draft.
+      * Use delete_block to remove an existing block. Deleting a section also
+        deletes all descendant blocks.
+      * After update_block_text, move_block, insert_paragraph, or delete_block,
+        call update_search_index with the edited, moved, inserted, or deleted
+        affected block ids so embeddings and full-text search reflect the
+        changed draft.
     """
   end
 

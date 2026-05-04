@@ -131,5 +131,19 @@ defmodule Sheaf.DocumentEditsTest do
     assert {:ok, inserted_graph} = Sheaf.fetch_graph(doc)
     assert Document.children(inserted_graph, first_section) == [inserted]
     assert Document.paragraph_text(inserted_graph, inserted) == "Inserted paragraph."
+
+    assert {:ok, delete} = DocumentEdits.delete_block("SEC002")
+    assert delete.action == :delete_block
+    assert delete.block_id == "SEC002"
+    assert Enum.sort(delete.affected_blocks) == ["PAR001", "PAR002"]
+
+    assert {:ok, deleted_graph} = Sheaf.fetch_graph(doc)
+    assert Document.children(deleted_graph, doc) == [first_section]
+    assert Document.block_type(deleted_graph, second_section) == nil
+    assert Document.block_type(deleted_graph, first_paragraph) == nil
+    assert Document.block_type(deleted_graph, second_paragraph) == nil
+    refute RDF.Data.include?(deleted_graph, {first_paragraph, DOC.paragraph(), first_revision})
+    refute RDF.Data.include?(deleted_graph, {first_revision, RDF.type(), DOC.Paragraph})
+    refute RDF.Data.include?(deleted_graph, {second_revision, RDF.type(), DOC.Paragraph})
   end
 end

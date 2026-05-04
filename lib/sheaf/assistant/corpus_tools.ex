@@ -44,6 +44,7 @@ defmodule Sheaf.Assistant.CorpusTools do
 
     block_mover = Keyword.get(opts, :block_mover, &DocumentEdits.move_block/3)
     paragraph_inserter = Keyword.get(opts, :paragraph_inserter, &DocumentEdits.insert_paragraph/3)
+    block_deleter = Keyword.get(opts, :block_deleter, &DocumentEdits.delete_block/1)
 
     search_index_updater =
       Keyword.get(opts, :search_index_updater, &update_search_index_for_blocks/1)
@@ -152,6 +153,7 @@ defmodule Sheaf.Assistant.CorpusTools do
             block_text_replacer,
             block_mover,
             paragraph_inserter,
+            block_deleter,
             search_index_updater
           )
       else
@@ -184,6 +186,7 @@ defmodule Sheaf.Assistant.CorpusTools do
          block_text_replacer,
          block_mover,
          paragraph_inserter,
+         block_deleter,
          search_index_updater
        ) do
     [
@@ -254,6 +257,20 @@ defmodule Sheaf.Assistant.CorpusTools do
           end)
       ),
       Tool.new!(
+        name: "delete_block",
+        description:
+          "Delete one existing thesis block from the document. " <>
+            "Deleting a section also deletes all of its descendant blocks. " <>
+            "Document roots cannot be deleted.",
+        parameter_schema: [
+          block: [type: :string, required: true, doc: "Block id to delete."]
+        ],
+        callback:
+          instrument(notify, "delete_block", fn args ->
+            delete_block_tool(args, block_deleter)
+          end)
+      ),
+      Tool.new!(
         name: "update_search_index",
         description:
           "Refresh derived search indexes after document edits. " <>
@@ -264,7 +281,7 @@ defmodule Sheaf.Assistant.CorpusTools do
             type: {:list, :string},
             required: true,
             doc:
-              "Edited, inserted, or moved block ids. Section/document ids are expanded to text-bearing descendants."
+              "Edited, inserted, moved, or deleted block ids. Section/document ids are expanded to text-bearing descendants."
           ]
         ],
         callback:
@@ -720,7 +737,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   def result_summary(name, {:ok, %ToolResults.BlockEdit{} = result})
-      when name in ["update_block_text", "move_block", "insert_paragraph"] do
+      when name in ["update_block_text", "move_block", "insert_paragraph", "delete_block"] do
     "changed " <> pluralize(result.statement_count, "statement", "statements")
   end
 
@@ -1150,6 +1167,33 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
+  defp delete_block_tool(args, block_deleter) do
+    block = arg(args, :block)
+
+    cond do
+      not is_binary(block) or String.trim(block) == "" ->
+        {:error, "block is required"}
+
+      true ->
+        case block_deleter.(block) do
+          {:ok, result} ->
+            result
+            |> block_edit_result()
+            |> rendered_result()
+            |> then(&{:ok, &1})
+
+          {:error, reason} when is_binary(reason) ->
+            {:error, "could not delete block: #{reason}"}
+
+          {:error, reason} ->
+            {:error, "could not delete block: #{inspect(reason)}"}
+
+          other ->
+            {:error, "could not delete block: unexpected result #{inspect(other)}"}
+        end
+    end
+  end
+
   defp update_search_index_tool(args, search_index_updater) do
     block_ids = requested_blocks(args)
 
@@ -1208,7 +1252,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp update_search_index_for_blocks(block_ids) do
-    with {:ok, affected_blocks} <- DocumentEdits.text_block_ids(block_ids),
+    with {:ok, affected_blocks} <- affected_text_block_ids(block_ids),
          {:ok, rows} <- Sheaf.TextUnits.fetch_rows(),
          affected_iris = MapSet.new(Enum.map(affected_blocks, &(Id.iri(&1) |> to_string()))),
          embedding_units =
@@ -1227,6 +1271,34 @@ defmodule Sheaf.Assistant.CorpusTools do
          embedding: embedding,
          search: search
        }}
+    end
+  end
+
+  defp affected_text_block_ids(block_ids) do
+    block_ids
+    |> List.wrap()
+    |> Enum.reduce_while({:ok, MapSet.new()}, fn block_id, {:ok, affected} ->
+      case DocumentEdits.text_block_ids([block_id]) do
+        {:ok, []} ->
+          {:cont, {:ok, MapSet.put(affected, block_id)}}
+
+        {:ok, ids} ->
+          {:cont, {:ok, Enum.reduce(ids, affected, &MapSet.put(&2, &1))}}
+
+        {:error, reason} when is_binary(reason) ->
+          if String.ends_with?(reason, " not found") do
+            {:cont, {:ok, MapSet.put(affected, block_id)}}
+          else
+            {:halt, {:error, reason}}
+          end
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:ok, affected} -> {:ok, MapSet.to_list(affected)}
+      error -> error
     end
   end
 
