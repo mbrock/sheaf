@@ -688,59 +688,46 @@
   }
 
   .assistant-prose .block-preview-trigger {
-    display: inline-flex;
-    align-items: baseline;
-    max-width: 100%;
-    border: 1px solid rgb(214 211 209);
-    border-radius: 0.125rem;
-    background: rgb(245 245 244);
-    color: rgb(68 64 60);
-    font-family: "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.72em;
-    font-weight: 600;
-    letter-spacing: 0;
-    line-height: 1;
-    padding: 0.12rem 0.28rem 0.1rem;
-    vertical-align: 0.08em;
+    display: inline;
+    border: 0;
+    background: transparent;
+    color: rgb(87 83 78);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.68em;
+    font-weight: 500;
+    letter-spacing: 0.015em;
+    line-height: inherit;
+    padding: 0;
+    vertical-align: 0.06em;
     transition:
-      background-color 120ms ease,
-      border-color 120ms ease,
       color 120ms ease,
       box-shadow 120ms ease;
   }
 
   .assistant-prose .block-preview-trigger:hover,
   .assistant-prose .block-preview-trigger:focus-visible {
-    border-color: rgb(120 113 108);
-    background: rgb(231 229 228);
     color: rgb(28 25 23);
-    text-decoration: none;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.16em;
   }
 
   .assistant-prose .block-preview-trigger:focus-visible {
     outline: none;
-    box-shadow:
-      0 0 0 1px rgb(250 250 249),
-      0 0 0 3px rgb(120 113 108 / 0.45);
+    box-shadow: 0 0 0 2px rgb(120 113 108 / 0.35);
   }
 
   .dark .assistant-prose .block-preview-trigger {
-    border-color: rgb(68 64 60);
-    background: rgb(41 37 36);
-    color: rgb(214 211 209);
+    color: rgb(168 162 158);
   }
 
   .dark .assistant-prose .block-preview-trigger:hover,
   .dark .assistant-prose .block-preview-trigger:focus-visible {
-    border-color: rgb(168 162 158);
-    background: rgb(68 64 60);
     color: rgb(250 250 249);
   }
 
   .dark .assistant-prose .block-preview-trigger:focus-visible {
-    box-shadow:
-      0 0 0 1px rgb(28 25 23),
-      0 0 0 3px rgb(168 162 158 / 0.4);
+    box-shadow: 0 0 0 2px rgb(168 162 158 / 0.35);
   }
 
   .assistant-prose strong {

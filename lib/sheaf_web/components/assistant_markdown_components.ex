@@ -282,12 +282,13 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       <button
         type="button"
         title={@title}
+        aria-label={"##{@block_id}"}
         class="block-preview-trigger cursor-pointer"
         phx-click="show_block_preview"
         phx-value-id={@block_id}
         phx-target={@block_ref_target}
       >
-        <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+        {@block_id}
       </button>
     </span>
     """
