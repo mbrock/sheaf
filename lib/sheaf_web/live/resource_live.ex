@@ -130,18 +130,17 @@ defmodule SheafWeb.ResourceLive do
 
             <div class="overflow-x-auto">
               <table class="w-full min-w-[56rem] border-separate border-spacing-0 text-left text-[11px]">
-                <thead class="text-stone-600 dark:text-stone-300">
-                  <tr>
+                <thead class="bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300">
+                  <tr class="bg-stone-100 dark:bg-stone-800">
                     <th
                       :for={column <- @query_result_columns}
                       class={[
-                        "sticky top-0 z-10 h-18 border-b border-stone-300 bg-stone-100 p-0 align-bottom dark:border-stone-700 dark:bg-stone-800",
-                        "relative",
+                        "relative h-24 overflow-visible border-b border-stone-300 p-0 align-bottom dark:border-stone-700",
                         "first:pl-4 last:pr-4 lg:first:pl-6 lg:last:pr-6"
                       ]}
                       title={column}
                     >
-                      <span class="absolute bottom-2 left-5 origin-bottom-left -rotate-45 whitespace-nowrap font-mono text-[10px] font-semibold uppercase tracking-wide">
+                      <span class="absolute bottom-3 left-1/2 z-20 origin-bottom-left -translate-x-1/2 -rotate-45 whitespace-nowrap font-mono text-[10px] font-semibold uppercase tracking-wide">
                         {column}
                       </span>
                     </th>
