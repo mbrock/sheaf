@@ -14,8 +14,18 @@ defmodule Sheaf.BlockRefs do
   Extracts block ids from bare ids, `#ID`, and `/b/ID` links.
   """
   def ids_from_text(text) when is_binary(text) do
-    refs =
+    bare_refs =
       @block_id_extract
+      |> Regex.scan(text)
+      |> Enum.map(fn [_match, id] -> id end)
+
+    hash_refs =
+      @hash_block_id
+      |> Regex.scan(text)
+      |> Enum.map(fn [_match, id] -> id end)
+
+    bracketed_refs =
+      @bracketed_bare_block_id
       |> Regex.scan(text)
       |> Enum.map(fn [_match, id] -> id end)
 
@@ -24,7 +34,21 @@ defmodule Sheaf.BlockRefs do
       |> Regex.scan(text)
       |> Enum.map(fn [_match, id] -> id end)
 
-    Enum.uniq(refs ++ hrefs)
+    code_refs =
+      text
+      |> split_fenced_code()
+      |> Enum.flat_map(fn
+        {:code, _segment} -> []
+        {:text, segment} -> code_span_ids(segment)
+      end)
+
+    bare_refs
+    |> Kernel.++(hash_refs)
+    |> Kernel.++(bracketed_refs)
+    |> Kernel.++(hrefs)
+    |> Kernel.++(code_refs)
+    |> Enum.map(&String.upcase/1)
+    |> Enum.uniq()
   end
 
   def ids_from_text(_other), do: []
@@ -109,6 +133,27 @@ defmodule Sheaf.BlockRefs do
     |> Enum.map(fn
       "`" <> _rest = segment -> {:code, segment}
       segment -> {:text, segment}
+    end)
+  end
+
+  defp code_span_ids(text) do
+    text
+    |> split_inline_code()
+    |> Enum.flat_map(fn
+      {:code, segment} ->
+        case Regex.run(~r/^(`+)(.*)\1$/, segment) do
+          [_, _ticks, content] ->
+            case code_span_resource_id(content) do
+              nil -> []
+              id -> [id]
+            end
+
+          _other ->
+            []
+        end
+
+      {:text, _segment} ->
+        []
     end)
   end
 

@@ -30,10 +30,10 @@ defmodule SheafWeb.AssistantHistoryLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="grid min-h-dvh grid-rows-[auto_1fr] bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
+    <main class="min-h-dvh bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
       <AppChrome.toolbar section={:history} />
 
-      <div class="min-h-0 overflow-y-auto px-2 py-2 sm:px-3">
+      <div class="px-2 py-2 sm:px-3">
         <div class="mx-auto grid w-full max-w-7xl gap-3 lg:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
           <section class="min-w-0 rounded-sm border border-stone-200/80 bg-white px-3 py-3 dark:border-stone-800/80 dark:bg-stone-900/70">
             <.live_component

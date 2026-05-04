@@ -191,13 +191,15 @@ defmodule SheafWeb.AssistantChatComponent do
   @impl true
   def render(%{variant: :full_page} = assigns) do
     ~H"""
-    <section class="grid min-h-[calc(100dvh-3.5rem)] min-w-0 grid-rows-[1fr_auto] sm:h-full sm:min-h-0 sm:grid-rows-[minmax(0,1fr)_auto]">
+    <section class="min-w-0">
       <.live_component module={BlockPreviewComponent} id={block_preview_id(@id)} />
       <div
         id={"assistant-timeline-#{@id}"}
-        class="min-w-0 overflow-x-hidden px-3 py-4 sm:min-h-0 sm:overflow-y-auto sm:px-4 sm:py-6"
+        class="min-w-0 px-3 py-4 sm:px-4 sm:py-6"
         phx-hook="ScrollContainer"
+        data-scroll-initial="bottom"
         data-scroll-stick-bottom="true"
+        data-scroll-target="window"
       >
         <div class="mx-auto flex min-h-full w-full max-w-3xl min-w-0 flex-col justify-end gap-4 sm:gap-5">
           <.chat_item
@@ -222,21 +224,30 @@ defmodule SheafWeb.AssistantChatComponent do
           >
             This conversation is not active in the current app process.
           </div>
+
+          <div class="min-w-0 pt-2">
+            <.composer_form
+              form={@form}
+              mode={@mode}
+              model_provider={@model_provider}
+              selected_chat_id={@selected_chat_id}
+              pending={@chat.pending}
+              myself={@myself}
+            />
+          </div>
         </div>
       </div>
 
-      <div class="sticky bottom-0 z-30 min-w-0 border-t border-stone-200/80 bg-stone-50/95 px-3 py-1 dark:border-stone-800/80 dark:bg-stone-950/95 sm:static sm:px-4 sm:py-2">
-        <div class="mx-auto w-full max-w-3xl min-w-0">
-          <.composer_form
-            form={@form}
-            mode={@mode}
-            model_provider={@model_provider}
-            selected_chat_id={@selected_chat_id}
-            pending={@chat.pending}
-            myself={@myself}
-          />
-        </div>
-      </div>
+      <button
+        type="button"
+        data-scroll-bottom-button={"assistant-timeline-#{@id}"}
+        class="fixed bottom-6 left-1/2 z-20 grid size-11 -translate-x-1/2 place-items-center rounded-full border border-stone-200/80 bg-white/90 text-stone-900 shadow-lg shadow-stone-950/10 backdrop-blur transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-stone-400 dark:border-stone-700/80 dark:bg-stone-900/90 dark:text-stone-100 dark:shadow-black/30 dark:hover:bg-stone-850"
+        title="Scroll to bottom"
+        aria-label="Scroll to bottom"
+        hidden
+      >
+        <.icon name="hero-arrow-down" class="size-5" />
+      </button>
     </section>
     """
   end
@@ -270,7 +281,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
         <div
           :if={@chats != []}
-          class="flex gap-1 overflow-x-auto pb-1 font-sans"
+          class="flex max-w-full gap-1 overflow-x-auto pb-1 font-sans"
           aria-label="Assistant conversations"
         >
           <button
@@ -343,18 +354,21 @@ defmodule SheafWeb.AssistantChatComponent do
       phx-target={@myself}
       class="space-y-2"
     >
-      <div :if={@options_locked?} class="flex min-w-0 items-end gap-2">
+      <div
+        :if={@options_locked?}
+        class="flex min-w-0 items-end gap-2 rounded-lg border border-stone-200 bg-white p-2 shadow-sm shadow-stone-950/5 transition-colors focus-within:border-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20 dark:focus-within:border-stone-600"
+      >
         <textarea
           name="chat[message]"
           rows="1"
           value={@form[:message].value}
-          class="block max-h-24 min-h-8 min-w-0 flex-1 resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-2.5 py-1 text-base leading-5 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:max-h-28 sm:min-h-9 sm:px-3 sm:py-1.5 sm:text-sm dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
+          class="block max-h-28 min-h-10 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1 py-2 text-base leading-6 text-stone-950 outline-none [field-sizing:content] placeholder:text-stone-400 sm:text-sm sm:leading-5 dark:text-stone-50 dark:placeholder:text-stone-500"
           placeholder={input_placeholder(@mode, @selected_chat_id)}
           disabled={@pending}
         ></textarea>
         <button
           type="submit"
-          class="grid size-8 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 sm:size-9 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
+          class="grid size-9 shrink-0 place-items-center rounded-md bg-stone-950 text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400 dark:bg-stone-50 dark:text-stone-950 dark:hover:bg-stone-200 dark:disabled:bg-stone-800 dark:disabled:text-stone-600"
           title="Send"
           aria-label="Send"
           disabled={@pending}
@@ -368,7 +382,7 @@ defmodule SheafWeb.AssistantChatComponent do
         name="chat[message]"
         rows="1"
         value={@form[:message].value}
-        class="block max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-sm border border-stone-300 bg-white px-3 py-2 text-base leading-6 text-stone-950 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-500 sm:text-sm sm:leading-5 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:focus:border-stone-500"
+        class="block max-h-40 min-h-24 w-full resize-none overflow-y-auto rounded-lg border border-stone-200 bg-white px-3 py-3 text-base leading-6 text-stone-950 shadow-sm shadow-stone-950/5 outline-none transition-colors [field-sizing:content] placeholder:text-stone-400 focus:border-stone-400 sm:text-sm sm:leading-5 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-50 dark:placeholder:text-stone-500 dark:shadow-black/20 dark:focus:border-stone-600"
         placeholder={input_placeholder(@mode, @selected_chat_id)}
         disabled={@pending}
       ></textarea>

@@ -15,7 +15,7 @@ defmodule SheafWeb.AppChrome do
     ~H"""
     <div
       id={@id}
-      class="relative z-50 col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-2 py-1 backdrop-blur sm:px-4 dark:border-stone-800/80 dark:bg-stone-950/90"
+      class="sticky top-0 z-50 col-span-full min-w-0 border-b border-stone-200/80 bg-stone-50/90 px-2 py-1 backdrop-blur sm:px-4 dark:border-stone-800/80 dark:bg-stone-950/90"
     >
       <div class="flex w-full items-center gap-2 overflow-visible sm:gap-3">
         <.link
@@ -88,7 +88,7 @@ defmodule SheafWeb.AppChrome do
   def right_sidebar(assigns) do
     ~H"""
     <aside class={[
-      "min-h-0 overflow-y-auto border-stone-200/80 px-5 py-4 dark:border-stone-800/80",
+      "min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-stone-200/80 px-5 py-4 dark:border-stone-800/80",
       @class
     ]}>
       <.live_component

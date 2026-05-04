@@ -179,6 +179,58 @@ defmodule QuadlogTest do
   end
 
   @tag :tmp_dir
+  test "returns raw rows from list-valued quad patterns", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "quadlog.sqlite3")
+    doc = ~I<https://example.com/doc>
+    other_graph = ~I<https://example.com/other-graph>
+    block = ~I<https://example.com/block>
+    other_block = ~I<https://example.com/other-block>
+    document_class = ~I<https://example.com/Document>
+    block_class = ~I<https://example.com/Block>
+    other_class = ~I<https://example.com/Other>
+
+    {:ok, log} = Quadlog.start_link(path)
+
+    assert :ok =
+             Quadlog.assert(
+               log,
+               "tx-1",
+               RDF.Graph.new(
+                 [
+                   {doc, RDF.type(), document_class},
+                   {block, RDF.type(), block_class},
+                   {other_block, RDF.type(), other_class}
+                 ],
+                 name: doc
+               )
+             )
+
+    assert :ok =
+             Quadlog.assert(
+               log,
+               "tx-2",
+               RDF.Graph.new(
+                 [
+                   {block, RDF.type(), block_class},
+                   {other_block, RDF.type(), block_class}
+                 ],
+                 name: other_graph
+               )
+             )
+
+    assert {:ok, rows} =
+             Quadlog.match_rows(
+               log,
+               {[block, other_block], RDF.type(), [block_class], [doc, other_graph]}
+             )
+
+    assert {doc, block, RDF.type(), block_class} in rows
+    assert {other_graph, block, RDF.type(), block_class} in rows
+    assert {other_graph, other_block, RDF.type(), block_class} in rows
+    refute Enum.any?(rows, fn {_graph, _subject, _predicate, object} -> object == other_class end)
+  end
+
+  @tag :tmp_dir
   test "retractions remove statements when replayed", %{tmp_dir: tmp_dir} do
     path = Path.join(tmp_dir, "quadlog.sqlite3")
     triple = {~I<https://example.com/s>, ~I<https://example.com/p>, "first"}

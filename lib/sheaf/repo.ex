@@ -70,6 +70,22 @@ defmodule Sheaf.Repo do
     end
   end
 
+  def match_rows(pattern) do
+    Tracer.with_span "sheaf.repo.match_rows", %{
+      kind: :internal,
+      attributes: pattern_attributes("match_rows", pattern)
+    } do
+      case Quadlog.match_rows(__MODULE__, pattern) do
+        {:ok, rows} = ok ->
+          Tracer.set_attribute("sheaf.row_count", length(rows))
+          ok
+
+        error ->
+          error
+      end
+    end
+  end
+
   def load(pattern) do
     Tracer.with_span "sheaf.repo.load", %{
       kind: :internal,
@@ -176,5 +192,6 @@ defmodule Sheaf.Repo do
   end
 
   defp value(nil), do: nil
+  defp value(list) when is_list(list), do: Enum.map(list, &value/1)
   defp value(term), do: RDF.Term.value(term) |> to_string()
 end

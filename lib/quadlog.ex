@@ -12,6 +12,10 @@ defmodule Quadlog do
   def dataset(pid), do: GenServer.call(pid, :dataset)
   def ask(pid, fun), do: GenServer.call(pid, {:ask, :otel_ctx.get_current(), fun})
   def match(pid, pattern), do: GenServer.call(pid, {:match, :otel_ctx.get_current(), pattern})
+
+  def match_rows(pid, pattern),
+    do: GenServer.call(pid, {:match_rows, :otel_ctx.get_current(), pattern})
+
   def load(pid, pattern), do: GenServer.call(pid, {:load, :otel_ctx.get_current(), pattern})
 
   def load_once(pid, pattern),
@@ -50,6 +54,12 @@ defmodule Quadlog do
         {:ok, dataset} -> {:reply, {:ok, dataset}, state}
         error -> {:reply, error, state}
       end
+    end)
+  end
+
+  def handle_call({:match_rows, ctx, pattern}, _from, state) do
+    with_context(ctx, fn ->
+      {:reply, select_rows(state.conn, pattern), state}
     end)
   end
 
@@ -217,6 +227,19 @@ defmodule Quadlog do
            ]),
          {:ok, result} <- select(conn, quad_select_sql(where), params) do
       {:ok, add_quad_result(dataset, result.rows)}
+    end
+  end
+
+  defp select_rows(conn, {subject, predicate, object, graph}) do
+    with {:ok, {where, params}} <-
+           quad_filters(conn, [
+             {"q.subject_id", subject},
+             {"q.predicate_id", predicate},
+             {"q.object_id", object},
+             {"q.graph_id", graph}
+           ]),
+         {:ok, result} <- select(conn, quad_select_sql(where), params) do
+      {:ok, Enum.map(result.rows, &select_row_quad/1)}
     end
   end
 
@@ -437,11 +460,53 @@ defmodule Quadlog do
     {polarity, if(graph_iri, do: RDF.iri(graph_iri)), subject, RDF.iri(predicate_iri), object}
   end
 
+  defp select_row_quad([
+         graph_kind,
+         graph_value,
+         graph_datatype,
+         graph_lang,
+         subject_kind,
+         subject_value,
+         subject_datatype,
+         subject_lang,
+         predicate_kind,
+         predicate_value,
+         predicate_datatype,
+         predicate_lang,
+         object_kind,
+         object_value,
+         object_datatype,
+         object_lang
+       ]) do
+    {
+      term(graph_kind, graph_value, graph_datatype, graph_lang),
+      term(subject_kind, subject_value, subject_datatype, subject_lang),
+      term(predicate_kind, predicate_value, predicate_datatype, predicate_lang),
+      term(object_kind, object_value, object_datatype, object_lang)
+    }
+  end
+
   defp quad_filters(conn, slots) do
     slots
     |> Enum.reduce_while({:ok, [], []}, fn
       {_column, nil}, {:ok, where, params} ->
         {:cont, {:ok, where, params}}
+
+      {_column, []}, {:ok, _where, _params} ->
+        {:halt, {:ok, ["0 = 1"], []}}
+
+      {column, terms}, {:ok, where, params} when is_list(terms) ->
+        case find_term_ids(conn, terms) do
+          {:ok, []} ->
+            {:halt, {:ok, ["0 = 1"], []}}
+
+          {:ok, ids} ->
+            placeholders = ids |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
+            {:cont, {:ok, ["#{column} IN (#{placeholders})" | where], ids ++ params}}
+
+          error ->
+            {:halt, error}
+        end
 
       {column, term}, {:ok, where, params} ->
         case find_term_id(conn, term) do
@@ -453,6 +518,106 @@ defmodule Quadlog do
     |> case do
       {:ok, where, params} -> {:ok, {Enum.reverse(where), Enum.reverse(params)}}
       error -> error
+    end
+  end
+
+  defp find_term_ids(conn, terms) when is_list(terms) do
+    terms = Enum.uniq(terms)
+
+    case terms do
+      [] ->
+        {:ok, []}
+
+      terms ->
+        Enum.reduce_while(terms, {[], [], []}, fn
+          %RDF.IRI{} = term, {iris, bnodes, literals} ->
+            {:cont, {[value(term) | iris], bnodes, literals}}
+
+          %RDF.BlankNode{} = term, {iris, bnodes, literals} ->
+            {:cont, {iris, [value(term) | bnodes], literals}}
+
+          %RDF.Literal{} = term, {iris, bnodes, literals} ->
+            case literal_identity(conn, term) do
+              {:ok, identity} -> {:cont, {iris, bnodes, [identity | literals]}}
+              error -> {:halt, error}
+            end
+        end)
+        |> case do
+          {iris, bnodes, literals} -> select_term_ids(conn, iris, bnodes, literals)
+          error -> error
+        end
+    end
+  end
+
+  defp literal_identity(conn, %RDF.Literal{} = term) do
+    with {:ok, datatype_id} when is_integer(datatype_id) <-
+           find_term_id(conn, RDF.Literal.datatype_id(term)) do
+      {:ok, {RDF.Literal.lexical(term), datatype_id, RDF.Literal.language(term) || ""}}
+    else
+      {:ok, nil} -> {:ok, nil}
+      error -> error
+    end
+  end
+
+  defp select_term_ids(conn, iris, bnodes, literals) do
+    {where, params} =
+      {[], []}
+      |> term_id_filter("kind = 'iri' AND value", iris)
+      |> term_id_filter("kind = 'bnode' AND value", bnodes)
+      |> literal_term_id_filter(literals)
+
+    case where do
+      [] ->
+        {:ok, []}
+
+      where ->
+        with {:ok, result} <-
+               select(
+                 conn,
+                 """
+                 SELECT id
+                 FROM terms
+                 WHERE #{Enum.join(Enum.reverse(where), " OR ")}
+                 """,
+                 Enum.reverse(params)
+               ) do
+          {:ok, Enum.map(result.rows, fn [id] -> id end)}
+        end
+    end
+  end
+
+  defp term_id_filter({where, params}, _sql, []), do: {where, params}
+
+  defp term_id_filter({where, params}, sql, values) do
+    placeholders = values |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
+    {["(#{sql} IN (#{placeholders}))" | where], Enum.reverse(values) ++ params}
+  end
+
+  defp literal_term_id_filter({where, params}, []), do: {where, params}
+
+  defp literal_term_id_filter({where, params}, literals) do
+    values =
+      literals
+      |> Enum.reject(&is_nil/1)
+      |> Enum.flat_map(fn {value, datatype_id, lang} -> [value, datatype_id, lang] end)
+
+    case values do
+      [] ->
+        {where, params}
+
+      values ->
+        row_placeholders =
+          literals
+          |> Enum.reject(&is_nil/1)
+          |> Enum.map(fn _ -> "(?, ?, ?)" end)
+          |> Enum.join(", ")
+
+        where = [
+          "(kind = 'literal' AND (value, COALESCE(datatype_id, 0), COALESCE(lang, '')) IN (#{row_placeholders}))"
+          | where
+        ]
+
+        {where, Enum.reverse(values) ++ params}
     end
   end
 

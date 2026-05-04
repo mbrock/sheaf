@@ -8,6 +8,30 @@ defmodule Sheaf.Corpus do
   alias Sheaf.{Document, Documents, Id}
   alias Sheaf.NS.DOC
 
+  require OpenTelemetry.Tracer, as: Tracer
+
+  @block_classes [
+    DOC.Block,
+    DOC.Section,
+    DOC.ParagraphBlock,
+    DOC.ExtractedBlock,
+    DOC.Row,
+    DOC.Segment,
+    DOC.Utterance
+  ]
+
+  @document_classes [
+    DOC.Document,
+    DOC.Thesis,
+    DOC.Transcript,
+    DOC.Paper,
+    DOC.Spreadsheet,
+    DOC.Interview
+  ]
+
+  @contained_resource_classes @document_classes ++ @block_classes
+  @contained_resource_class_iris Enum.map(@contained_resource_classes, &RDF.iri/1)
+
   @doc """
   Full document list (delegates to `Sheaf.Documents.list/0`).
   """
@@ -37,62 +61,53 @@ defmodule Sheaf.Corpus do
   def find_documents([]), do: %{}
 
   def find_documents(block_ids) when is_list(block_ids) do
-    blocks =
+    ids =
       block_ids
       |> Enum.filter(&is_binary/1)
+      |> Enum.map(&String.upcase/1)
       |> Enum.uniq()
-      |> Map.new(&{Id.iri(&1), &1})
 
-    with false <- map_size(blocks) == 0,
-         :ok <- load_block_descriptions(Map.keys(blocks)) do
-      Sheaf.Repo.ask(fn dataset ->
-        dataset
-        |> RDF.Dataset.graphs()
-        |> document_graph_block_index(blocks)
-      end)
-    else
-      true -> %{}
-      _ -> %{}
+    Tracer.with_span "Sheaf.Corpus.find_documents", %{
+      kind: :internal,
+      attributes: [{"sheaf.block_id_count", length(ids)}]
+    } do
+      requested_ids = MapSet.new(ids)
+      requested_iris = Map.new(ids, &{Id.iri(&1), &1})
+
+      with false <- MapSet.size(requested_ids) == 0,
+           {:ok, rows} <- block_type_rows(Map.keys(requested_iris)) do
+        index = block_document_index(rows, requested_iris)
+        Tracer.set_attribute("sheaf.block_document_count", map_size(index))
+        index
+      else
+        true -> %{}
+        _ -> %{}
+      end
     end
   end
 
-  defp load_block_descriptions(blocks) do
-    Enum.reduce_while(blocks, :ok, fn block, :ok ->
-      case Sheaf.Repo.load_once({block, nil, nil, nil}) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
+  defp block_type_rows(iris) do
+    Sheaf.Repo.match_rows({
+      iris,
+      RDF.type(),
+      nil,
+      nil
+    })
+  end
+
+  defp block_document_index(rows, requested_iris) do
+    rows
+    |> Enum.reduce(%{}, fn {graph, subject, predicate, object}, index ->
+      if predicate == RDF.type() and Map.has_key?(requested_iris, subject) and
+           block_class?(object) do
+        Map.put_new(index, Map.fetch!(requested_iris, subject), Id.id_from_iri(graph))
+      else
+        index
       end
     end)
   end
 
-  defp document_graph_block_index(graphs, blocks) do
-    graphs
-    |> Enum.filter(&document_graph?/1)
-    |> Enum.reduce({%{}, blocks}, fn
-      _graph, {index, remaining} when map_size(remaining) == 0 ->
-        {index, remaining}
-
-      graph, {index, remaining} ->
-        doc_id = Id.id_from_iri(graph.name)
-
-        {found, remaining} =
-          Enum.split_with(remaining, fn {block, _id} -> Graph.describes?(graph, block) end)
-
-        index =
-          Enum.reduce(found, index, fn {_block, id}, index ->
-            Map.put_new(index, id, doc_id)
-          end)
-
-        {index, Map.new(remaining)}
-    end)
-    |> elem(0)
-  end
-
-  defp document_graph?(%Graph{name: nil}), do: false
-
-  defp document_graph?(%Graph{name: name} = graph) do
-    RDF.Data.include?(graph, {name, RDF.type(), DOC.Document})
-  end
+  defp block_class?(class), do: class in @contained_resource_class_iris
 
   @doc """
   Path from the document root to `block_iri` within an already-loaded graph.

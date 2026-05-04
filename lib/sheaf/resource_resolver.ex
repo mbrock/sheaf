@@ -7,6 +7,8 @@ defmodule Sheaf.ResourceResolver do
   alias Sheaf.{Corpus, Id}
   alias Sheaf.NS.DOC
 
+  require OpenTelemetry.Tracer, as: Tracer
+
   @type resolution ::
           {:ok, %{kind: :document, id: String.t()}}
           | {:ok, %{kind: :assistant_conversation, id: String.t()}}
@@ -15,31 +17,46 @@ defmodule Sheaf.ResourceResolver do
           | {:error, :not_found}
 
   @spec resolve(String.t()) :: resolution()
-  def resolve(id) when is_binary(id) do
-    id = String.trim(id)
+  def resolve(id, opts \\ [])
 
-    cond do
-      id == "" ->
-        {:error, :not_found}
+  def resolve(id, opts) when is_binary(id) do
+    Tracer.with_span "Sheaf.ResourceResolver.resolve", %{kind: :internal} do
+      id = String.trim(id)
+      skip_block? = Keyword.get(opts, :skip_block?, false)
 
-      document?(id) ->
-        {:ok, %{kind: :document, id: id}}
+      Tracer.set_attribute("sheaf.resource_id", id)
+      Tracer.set_attribute("sheaf.skip_block_lookup", skip_block?)
 
-      assistant_conversation?(id) ->
-        {:ok, %{kind: :assistant_conversation, id: id}}
+      resolution =
+        cond do
+          id == "" ->
+            {:error, :not_found}
 
-      spreadsheet_query_result?(id) ->
-        {:ok, %{kind: :spreadsheet_query_result, id: id}}
+          assistant_conversation?(id) ->
+            {:ok, %{kind: :assistant_conversation, id: id}}
 
-      document_id = Corpus.find_document(id) ->
-        {:ok, %{kind: :block, id: id, document_id: document_id}}
+          spreadsheet_query_result?(id) ->
+            {:ok, %{kind: :spreadsheet_query_result, id: id}}
 
-      true ->
-        {:error, :not_found}
+          document_id = block_document_id(id, skip_block?) ->
+            {:ok, %{kind: :block, id: id, document_id: document_id}}
+
+          document?(id) ->
+            {:ok, %{kind: :document, id: id}}
+
+          true ->
+            {:error, :not_found}
+        end
+
+      Tracer.set_attribute("sheaf.resource_kind", resolution_kind(resolution))
+      resolution
     end
   end
 
-  def resolve(_id), do: {:error, :not_found}
+  def resolve(_id, _opts), do: {:error, :not_found}
+
+  defp resolution_kind({:ok, %{kind: kind}}), do: to_string(kind)
+  defp resolution_kind({:error, reason}), do: "error:#{reason}"
 
   defp document?(id) do
     root = Id.iri(id)
@@ -49,6 +66,9 @@ defmodule Sheaf.ResourceResolver do
       _error -> false
     end
   end
+
+  defp block_document_id(_id, true), do: nil
+  defp block_document_id(id, false), do: Corpus.find_document(id)
 
   defp assistant_conversation?(id) do
     workspace_resource?(id, DOC.AssistantConversation)

@@ -76,10 +76,10 @@ defmodule SheafWeb.ResourceLive do
 
   def render(%{resource_kind: :assistant_conversation} = assigns) do
     ~H"""
-    <main class="grid min-h-dvh grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr] bg-stone-50 text-stone-950 sm:h-dvh sm:grid-rows-[auto_minmax(0,1fr)] sm:overflow-hidden dark:bg-stone-950 dark:text-stone-50">
+    <main class="min-h-dvh bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
       <AppChrome.toolbar section={:document} search?={false} />
 
-      <section class="min-w-0 sm:min-h-0 sm:overflow-hidden">
+      <section class="min-w-0">
         <.live_component
           module={AssistantChatComponent}
           id={"assistant-conversation-#{@chat_id}"}

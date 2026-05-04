@@ -11,11 +11,15 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   attr :text, :string, required: true
   attr :block_ref_target, :any, default: nil
   attr :resolve_block_previews, :boolean, default: false
+  attr :resource_paths, :any, default: nil
 
   def markdown(assigns) do
     assigns =
       assigns
-      |> assign(:document, AssistantMarkdown.document(assigns.text))
+      |> assign(
+        :document,
+        AssistantMarkdown.document(assigns.text, resource_paths: assigns.resource_paths)
+      )
 
     ~H"""
     <.nodes nodes={@document.nodes} block_ref_target={@block_ref_target} />
@@ -366,7 +370,11 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   end
 
   defp do_attach_ref_punctuation(
-         [%MDEx.Text{literal: literal} = text, %MDEx.Link{} = link, %MDEx.Text{literal: next_literal} = next_text | rest],
+         [
+           %MDEx.Text{literal: literal} = text,
+           %MDEx.Link{} = link,
+           %MDEx.Text{literal: next_literal} = next_text | rest
+         ],
          acc
        ) do
     with {before, leading_punctuation} <- trailing_punctuation_before_ref(link, literal) do
@@ -465,7 +473,8 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       |> assign(:trailing_punctuation, trailing_punctuation)
 
     ~H"""
-    <span class="whitespace-nowrap">{@leading_punctuation}<button
+    <span class="whitespace-nowrap">
+      {@leading_punctuation}<button
         type="button"
         title={@title}
         aria-label={"##{@resource_id}"}

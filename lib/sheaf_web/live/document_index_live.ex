@@ -1,30 +1,37 @@
 defmodule SheafWeb.DocumentIndexLive do
   @moduledoc """
-  Live landing page for stored documents and assistant research notes.
+  Live landing page for stored documents.
   """
 
   use SheafWeb, :live_view
 
+  require OpenTelemetry.Tracer, as: Tracer
+
   alias SheafWeb.AppChrome
-  alias SheafWeb.AssistantHistoryComponents
   import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
 
   @impl true
   def mount(_params, _session, socket) do
-    {documents, document_error} = fetch_documents()
-    {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes()
+    Tracer.with_span "SheafWeb.DocumentIndexLive.mount", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.live.connected", connected?(socket)}
+      ]
+    } do
+      {documents, document_error} = fetch_documents()
 
-    socket =
-      socket
-      |> assign(:page_title, "Sheaf")
-      |> assign(:documents, documents)
-      |> assign(:notes, notes)
-      |> assign(:notes_graph, notes_graph)
-      |> assign(:research_session_titles, AssistantHistoryComponents.research_session_titles())
-      |> assign(:document_error, document_error)
-      |> assign(:notes_error, notes_error)
+      Tracer.set_attributes([
+        {"sheaf.document_count", length(documents)}
+      ])
 
-    {:ok, socket}
+      socket =
+        socket
+        |> assign(:page_title, "Sheaf")
+        |> assign(:documents, documents)
+        |> assign(:document_error, document_error)
+
+      {:ok, socket}
+    end
   end
 
   @impl true
@@ -46,9 +53,22 @@ defmodule SheafWeb.DocumentIndexLive do
   end
 
   defp fetch_documents do
-    case Sheaf.Documents.list() do
-      {:ok, documents} -> {Enum.filter(documents, &index_document?/1), nil}
-      {:error, reason} -> {[], inspect(reason)}
+    Tracer.with_span "SheafWeb.DocumentIndexLive.fetch_documents", %{kind: :internal} do
+      case Sheaf.Documents.list() do
+        {:ok, documents} ->
+          index_documents = Enum.filter(documents, &index_document?/1)
+
+          Tracer.set_attributes([
+            {"sheaf.document_count.total", length(documents)},
+            {"sheaf.document_count.index", length(index_documents)}
+          ])
+
+          {index_documents, nil}
+
+        {:error, reason} ->
+          Tracer.set_attribute("sheaf.error", inspect(reason))
+          {[], inspect(reason)}
+      end
     end
   end
 
@@ -57,74 +77,79 @@ defmodule SheafWeb.DocumentIndexLive do
 
   @impl true
   def render(assigns) do
-    ~H"""
-    <main class="grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 xl:grid-cols-[minmax(0,1fr)_30rem] dark:bg-stone-950 dark:text-stone-50">
-      <AppChrome.toolbar section={:index} />
+    Tracer.with_span "SheafWeb.DocumentIndexLive.render", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.document_count", length(assigns.documents)}
+      ]
+    } do
+      assigns = assign(assigns, :document_groups, grouped_documents(assigns.documents))
+      Tracer.set_attribute("sheaf.document_group_count", length(assigns.document_groups))
 
-      <div class="min-h-0 overflow-y-auto px-6 py-6 xl:col-start-1 xl:row-start-2">
-        <p
-          :if={@document_error}
-          class="py-2 text-sm text-rose-700"
-        >
-          {@document_error}
-        </p>
+      ~H"""
+      <main class="min-h-dvh max-w-full overflow-x-hidden bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
+        <AppChrome.toolbar section={:index} />
 
-        <div :if={@documents != []} class="space-y-5">
-          <section :for={{kind, documents} <- grouped_documents(@documents)}>
-            <div :if={kind} class="mb-1 flex items-baseline justify-between gap-3">
-              <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-                {kind_label(kind)}
-              </h2>
-              <span class="shrink-0 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
-                {length(documents)}
-              </span>
-            </div>
+        <div class="min-w-0 px-6 py-6">
+          <p
+            :if={@document_error}
+            class="py-2 text-sm text-rose-700"
+          >
+            {@document_error}
+          </p>
 
-            <ul class="space-y-0.5">
-              <li :for={document <- documents}>
-                <.document_entry document={document} show_checkbox />
-              </li>
-            </ul>
-          </section>
+          <div :if={@documents != []} class="space-y-5">
+            <section :for={{kind, documents} <- @document_groups}>
+              <div :if={kind} class="mb-1 flex items-baseline justify-between gap-3">
+                <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                  {kind_label(kind)}
+                </h2>
+                <span class="shrink-0 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
+                  {length(documents)}
+                </span>
+              </div>
+
+              <ul class="space-y-0.5">
+                <li :for={document <- documents}>
+                  <.document_entry document={document} show_checkbox />
+                </li>
+              </ul>
+            </section>
+          </div>
         </div>
-      </div>
-
-      <AppChrome.right_sidebar
-        assistant_id="index-assistant"
-        class="hidden xl:col-start-2 xl:row-start-2 xl:block xl:border-l"
-      >
-        <AssistantHistoryComponents.note_history
-          notes={@notes}
-          notes_graph={@notes_graph}
-          notes_error={@notes_error}
-          research_session_titles={@research_session_titles}
-        />
-      </AppChrome.right_sidebar>
-    </main>
-    """
+      </main>
+      """
+    end
   end
 
   defp grouped_documents(documents) do
-    owner_documents = Enum.filter(documents, & &1.workspace_owner_authored?)
-    library_documents = Enum.reject(documents, & &1.workspace_owner_authored?)
+    Tracer.with_span "SheafWeb.DocumentIndexLive.grouped_documents", %{
+      kind: :internal,
+      attributes: [{"sheaf.document_count", length(documents)}]
+    } do
+      owner_documents = Enum.filter(documents, & &1.workspace_owner_authored?)
+      library_documents = Enum.reject(documents, & &1.workspace_owner_authored?)
 
-    owner_group =
-      case owner_documents do
-        [] -> []
-        documents -> [{nil, Enum.sort_by(documents, &document_sort_key/1)}]
-      end
+      owner_group =
+        case owner_documents do
+          [] -> []
+          documents -> [{nil, Enum.sort_by(documents, &document_sort_key/1)}]
+        end
 
-    library_groups =
-      library_documents
-      |> Enum.group_by(&document_group/1)
-      |> Enum.map(fn {kind, documents} ->
-        {kind, Enum.sort_by(documents, &document_sort_key/1)}
-      end)
-      |> Enum.sort_by(fn {kind, documents} ->
-        {kind_order(kind), kind_label(kind), first_title(documents)}
-      end)
+      library_groups =
+        library_documents
+        |> Enum.group_by(&document_group/1)
+        |> Enum.map(fn {kind, documents} ->
+          {kind, Enum.sort_by(documents, &document_sort_key/1)}
+        end)
+        |> Enum.sort_by(fn {kind, documents} ->
+          {kind_order(kind), kind_label(kind), first_title(documents)}
+        end)
 
-    owner_group ++ library_groups
+      groups = owner_group ++ library_groups
+      Tracer.set_attribute("sheaf.document_group_count", length(groups))
+      groups
+    end
   end
 
   defp document_sort_key(document) do

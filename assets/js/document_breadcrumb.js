@@ -13,6 +13,7 @@ const BAND_ROOT_MARGIN = `-${BAND_TOP_PCT}% 0% -${BAND_BOTTOM_PCT}% 0%`
 export const DocumentBreadcrumb = {
   mounted() {
     this.article = this.el.querySelector("#document-start")
+    this.scrollTarget = scrollTarget(this.article)
     this.document = this.article?.firstElementChild
     this.toc = this.el.querySelector("aside")
     this.output = this.el.querySelector("#document-breadcrumb")
@@ -39,6 +40,8 @@ export const DocumentBreadcrumb = {
     requestAnimationFrame(() => focusArticle(this))
   },
   updated() {
+    this.article = this.el.querySelector("#document-start")
+    this.scrollTarget = scrollTarget(this.article)
     refreshSections(this)
     refreshTocLinks(this)
   },
@@ -80,12 +83,14 @@ function scheduleScrollReaderToTop(hook) {
 
 function scrollReaderToTop(hook) {
   hook.article = hook.el.querySelector("#document-start")
-  hook.article?.scrollTo({top: 0, behavior: "smooth"})
+  hook.scrollTarget = scrollTarget(hook.article)
+  hook.scrollTarget?.scrollTo({top: 0, behavior: "smooth"})
   focusArticle(hook)
 }
 
 function scrollToBlock(hook, id) {
   hook.article = hook.el.querySelector("#document-start")
+  hook.scrollTarget = scrollTarget(hook.article)
   const block = hook.el.querySelector(`#block-${cssEscape(id)}`)
   if (!block) return
 
@@ -110,7 +115,9 @@ function scrollArticleFromKey(hook, event) {
   if (isInteractiveTarget(event.target)) return
 
   const line = 56
-  const page = Math.max(120, hook.article.clientHeight * 0.85)
+  const target = hook.scrollTarget || scrollTarget(hook.article)
+  const metrics = scrollMetrics(target)
+  const page = Math.max(120, metrics.clientHeight * 0.85)
   const key = event.key
   let top = 0
 
@@ -120,12 +127,12 @@ function scrollArticleFromKey(hook, event) {
   else if (key === "PageUp" || key === "u") top = -page
   else if (key === " " && !event.shiftKey) top = page
   else if (key === " " && event.shiftKey) top = -page
-  else if (key === "Home") top = -hook.article.scrollTop
-  else if (key === "End") top = hook.article.scrollHeight
+  else if (key === "Home") top = -metrics.scrollTop
+  else if (key === "End") top = metrics.scrollHeight
   else return
 
   event.preventDefault()
-  hook.article.scrollBy({top, behavior: "auto"})
+  target.scrollBy({top, behavior: "auto"})
   focusArticle(hook)
 }
 
@@ -142,13 +149,36 @@ function cssEscape(value) {
 function initObserver(hook) {
   if (!hook.article) return
 
+  const observerRoot = hook.article.dataset.scrollTarget === "window" ? null : hook.article
+
   hook.observer = new IntersectionObserver(
     entries => handleObserverEntries(hook, entries),
-    {root: hook.article, rootMargin: BAND_ROOT_MARGIN}
+    {root: observerRoot, rootMargin: BAND_ROOT_MARGIN}
   )
   refreshSections(hook)
   refreshTocLinks(hook)
   requestAnimationFrame(hook.update)
+}
+
+function scrollTarget(element) {
+  return element?.dataset.scrollTarget === "window" ? window : element
+}
+
+function scrollMetrics(target) {
+  if (target === window) {
+    const element = document.scrollingElement || document.documentElement
+    return {
+      scrollHeight: element.scrollHeight,
+      scrollTop: window.scrollY,
+      clientHeight: window.innerHeight,
+    }
+  }
+
+  return {
+    scrollHeight: target?.scrollHeight ?? 0,
+    scrollTop: target?.scrollTop ?? 0,
+    clientHeight: target?.clientHeight ?? window.innerHeight,
+  }
 }
 
 function handleObserverEntries(hook, entries) {

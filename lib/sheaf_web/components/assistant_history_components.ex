@@ -5,26 +5,54 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
   use SheafWeb, :html
 
+  require OpenTelemetry.Tracer, as: Tracer
+
   alias RDF.{Description, Graph}
   alias Sheaf.Assistant.Chats
   alias Sheaf.Id
-  alias SheafWeb.AssistantMarkdownComponents
+  alias SheafWeb.{AssistantMarkdown, AssistantMarkdownComponents}
 
   @default_history_limit 30
 
   def fetch_notes(opts \\ []) do
     limit = Keyword.get(opts, :limit, @default_history_limit)
 
-    case history_graph(limit: limit) do
-      {:ok, graph} -> {history_items(graph), graph, nil}
-      {:error, reason} -> {[], Graph.new(), inspect(reason)}
+    Tracer.with_span "SheafWeb.AssistantHistoryComponents.fetch_notes", %{
+      kind: :internal,
+      attributes: [{"sheaf.history.limit", limit}]
+    } do
+      case history_graph(limit: limit) do
+        {:ok, graph} ->
+          items = history_items(graph)
+
+          Tracer.set_attribute("sheaf.note_count", length(items))
+
+          Tracer.set_attribute(
+            "sheaf.history_graph.statement_count",
+            RDF.Data.statement_count(graph)
+          )
+
+          {items, graph, nil}
+
+        {:error, reason} ->
+          Tracer.set_attribute("sheaf.error", inspect(reason))
+          {[], Graph.new(), inspect(reason)}
+      end
     end
   end
 
   def research_session_titles do
-    Chats.list()
-    |> Enum.filter(&(chat_kind(&1) == :research))
-    |> Map.new(&{&1.id, &1.title})
+    Tracer.with_span "SheafWeb.AssistantHistoryComponents.research_session_titles", %{
+      kind: :internal
+    } do
+      titles =
+        Chats.list()
+        |> Enum.filter(&(chat_kind(&1) == :research))
+        |> Map.new(&{&1.id, &1.title})
+
+      Tracer.set_attribute("sheaf.research_session_title_count", map_size(titles))
+      titles
+    end
   end
 
   attr :notes, :list, required: true
@@ -34,52 +62,77 @@ defmodule SheafWeb.AssistantHistoryComponents do
   attr :variant, :atom, default: :compact
 
   def note_history(assigns) do
-    assigns =
-      assigns
-      |> assign(
-        :groups,
-        history_groups(assigns.notes, assigns.notes_graph, assigns.research_session_titles)
-      )
+    Tracer.with_span "SheafWeb.AssistantHistoryComponents.note_history", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.history.variant", assigns.variant},
+        {"sheaf.note_count", length(assigns.notes)},
+        {"sheaf.notes_graph.statement_count", RDF.Data.statement_count(assigns.notes_graph)},
+        {"sheaf.research_session_title_count", map_size(assigns.research_session_titles)}
+      ]
+    } do
+      assigns =
+        assigns
+        |> assign(
+          :groups,
+          history_groups(assigns.notes, assigns.notes_graph, assigns.research_session_titles)
+        )
 
-    ~H"""
-    <section class={history_section_class(@variant)}>
-      <div :if={@variant != :expansive} class={history_header_class(@variant)}>
-        <h2 class={history_heading_class(@variant)}>
-          History
-        </h2>
-        <.link
-          :if={@variant == :compact and @groups != []}
-          navigate={~p"/history"}
-          class="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 font-sans text-xs text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+      assigns =
+        assign(
+          assigns,
+          :resource_paths,
+          assigns.groups |> markdown_texts() |> AssistantMarkdown.resource_paths()
+        )
+
+      Tracer.set_attribute("sheaf.history_group_count", length(assigns.groups))
+
+      ~H"""
+      <section class={history_section_class(@variant)}>
+        <div :if={@variant != :expansive} class={history_header_class(@variant)}>
+          <h2 class={history_heading_class(@variant)}>
+            History
+          </h2>
+          <.link
+            :if={@variant == :compact and @groups != []}
+            navigate={~p"/history"}
+            class="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 font-sans text-xs text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          >
+            <span>Open</span>
+            <.icon name="hero-arrow-up-right" class="size-3" />
+          </.link>
+        </div>
+
+        <p
+          :if={@notes_error}
+          class="py-2 text-sm text-rose-700"
         >
-          <span>Open</span>
-          <.icon name="hero-arrow-up-right" class="size-3" />
-        </.link>
-      </div>
+          {@notes_error}
+        </p>
 
-      <p
-        :if={@notes_error}
-        class="py-2 text-sm text-rose-700"
-      >
-        {@notes_error}
-      </p>
+        <div :if={@groups != []} class={history_group_list_class(@variant)}>
+          <.history_group
+            :for={group <- @groups}
+            group={group}
+            variant={@variant}
+            resource_paths={@resource_paths}
+          />
+        </div>
 
-      <div :if={@groups != []} class={history_group_list_class(@variant)}>
-        <.history_group :for={group <- @groups} group={group} variant={@variant} />
-      </div>
-
-      <p
-        :if={@notes == [] and is_nil(@notes_error)}
-        class="py-3 text-sm text-stone-500 dark:text-stone-400"
-      >
-        No research notes yet.
-      </p>
-    </section>
-    """
+        <p
+          :if={@notes == [] and is_nil(@notes_error)}
+          class="py-3 text-sm text-stone-500 dark:text-stone-400"
+        >
+          No research notes yet.
+        </p>
+      </section>
+      """
+    end
   end
 
   attr :group, :map, required: true
   attr :variant, :atom, default: :compact
+  attr :resource_paths, :map, default: %{}
 
   defp history_group(%{variant: :expansive} = assigns) do
     ~H"""
@@ -113,7 +166,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
       <ol class={history_entries_class(@variant)}>
         <li :for={entry <- @group.entries}>
-          <.history_entry entry={entry} variant={@variant} />
+          <.history_entry entry={entry} variant={@variant} resource_paths={@resource_paths} />
         </li>
       </ol>
     </details>
@@ -150,7 +203,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
       <ol class={history_entries_class(@variant)}>
         <li :for={entry <- @group.entries}>
-          <.history_entry entry={entry} variant={@variant} />
+          <.history_entry entry={entry} variant={@variant} resource_paths={@resource_paths} />
         </li>
       </ol>
     </section>
@@ -159,6 +212,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
   attr :entry, :map, required: true
   attr :variant, :atom, default: :compact
+  attr :resource_paths, :map, default: %{}
 
   defp history_entry(%{entry: %{type: :note}} = assigns) do
     assigns =
@@ -211,6 +265,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
   attr :entry, :map, required: true
   attr :variant, :atom, default: :expansive
+  attr :resource_paths, :map, default: %{}
 
   defp timeline_entry(assigns) do
     ~H"""
@@ -232,7 +287,11 @@ defmodule SheafWeb.AssistantHistoryComponents do
         <%= if @entry.type == :message and @entry.role == :user do %>
           {@entry.text}
         <% else %>
-          <AssistantMarkdownComponents.markdown text={@entry.text} resolve_block_previews={false} />
+          <AssistantMarkdownComponents.markdown
+            text={@entry.text}
+            resolve_block_previews={false}
+            resource_paths={@resource_paths}
+          />
         <% end %>
       </div>
       <.entry_links entry={@entry} />
@@ -245,6 +304,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
   attr :title_class, :string, required: true
   attr :text, :string, required: true
   attr :variant, :atom, default: :compact
+  attr :resource_paths, :map, default: %{}
 
   defp markdown_history_entry(assigns) do
     ~H"""
@@ -263,7 +323,11 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
       <article class={history_article_class(@variant)}>
         <div class={history_text_class(@variant, :markdown)}>
-          <AssistantMarkdownComponents.markdown text={@text} resolve_block_previews={false} />
+          <AssistantMarkdownComponents.markdown
+            text={@text}
+            resolve_block_previews={false}
+            resource_paths={@resource_paths}
+          />
         </div>
         <.entry_links entry={@entry} />
       </article>
@@ -288,40 +352,87 @@ defmodule SheafWeb.AssistantHistoryComponents do
     """
   end
 
+  defp markdown_texts(groups) do
+    groups
+    |> Enum.flat_map(& &1.entries)
+    |> Enum.filter(fn
+      %{type: :note} -> true
+      %{type: :message, role: :user} -> false
+      %{type: :message} -> true
+      _entry -> false
+    end)
+    |> Enum.map(& &1.text)
+  end
+
   defp chat_kind(%{kind: kind}) when kind in [:research, "research"], do: :research
   defp chat_kind(_chat), do: :chat
 
   def history_groups(items, graph, session_titles \\ %{})
 
   def history_groups(items, %Graph{} = graph, session_titles) do
-    graph
-    |> session_descriptions()
-    |> Enum.map(fn session ->
-      session_iri = to_string(session.subject)
-      entries = entries_for_session(items, graph, session_iri)
+    Tracer.with_span "SheafWeb.AssistantHistoryComponents.history_groups", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.note_count", length(items)},
+        {"sheaf.notes_graph.statement_count", RDF.Data.statement_count(graph)},
+        {"sheaf.research_session_title_count", map_size(session_titles)}
+      ]
+    } do
+      entries_by_session = entries_by_session(items, graph)
 
-      %{
-        session_iri: session_iri,
-        entries: entries,
-        published_at: group_published_at(entries),
-        mode: session_mode(graph, session_iri)
-      }
-    end)
-    |> Enum.reject(&(&1.entries == []))
-    |> Enum.map(&put_history_group_title(&1, graph, session_titles))
-    |> Enum.sort_by(fn group -> group_sort_time(group.published_at) end, {:desc, DateTime})
+      groups =
+        graph
+        |> session_descriptions()
+        |> Enum.map(fn session ->
+          session_iri = to_string(session.subject)
+          entries = Map.get(entries_by_session, session_iri, [])
+
+          %{
+            session_iri: session_iri,
+            entries: entries,
+            published_at: group_published_at(entries),
+            mode: session_mode(graph, session_iri)
+          }
+        end)
+        |> Enum.reject(&(&1.entries == []))
+        |> Enum.map(&put_history_group_title(&1, graph, session_titles))
+        |> Enum.sort_by(fn group -> group_sort_time(group.published_at) end, {:desc, DateTime})
+
+      Tracer.set_attribute("sheaf.history_group_count", length(groups))
+      groups
+    end
   end
 
   def history_groups(_items, _graph, _session_titles), do: []
 
-  defp entries_for_session(items, %Graph{} = graph, session_iri) do
-    session = RDF.iri(session_iri)
+  defp entries_by_session(items, %Graph{} = graph) do
+    Tracer.with_span "SheafWeb.AssistantHistoryComponents.entries_by_session", %{
+      kind: :internal,
+      attributes: [{"sheaf.note_count", length(items)}]
+    } do
+      grouped =
+        items
+        |> Enum.reduce(%{}, fn item, acc ->
+          case Description.first(item, Sheaf.NS.AS.context()) do
+            nil ->
+              acc
 
-    items
-    |> Enum.filter(&Description.include?(&1, {Sheaf.NS.AS.context(), session}))
-    |> Enum.map(&entry_from_description(&1, graph))
-    |> Enum.reject(&is_nil/1)
-    |> Enum.sort_by(&entry_sort_key/1, {:asc, DateTime})
+            session ->
+              session_iri = to_string(session)
+
+              case entry_from_description(item, graph) do
+                nil -> acc
+                entry -> Map.update(acc, session_iri, [entry], &[entry | &1])
+              end
+          end
+        end)
+        |> Map.new(fn {session_iri, entries} ->
+          {session_iri, Enum.sort_by(entries, &entry_sort_key/1, {:asc, DateTime})}
+        end)
+
+      Tracer.set_attribute("sheaf.history_session_count", map_size(grouped))
+      grouped
+    end
   end
 
   defp put_history_group_title(%{session_iri: session_iri} = group, graph, session_titles) do
@@ -454,14 +565,38 @@ defmodule SheafWeb.AssistantHistoryComponents do
   defp history_graph(opts) do
     limit = opts |> Keyword.get(:limit, @default_history_limit) |> normalize_limit()
 
-    with :ok <- Sheaf.Repo.load_once({nil, nil, nil, RDF.iri(Sheaf.Workspace.graph())}) do
-      graph =
-        Sheaf.Repo.ask(fn dataset ->
-          workspace = RDF.Dataset.graph(dataset, Sheaf.Workspace.graph()) || Graph.new()
-          limit_history_graph(workspace, limit)
-        end)
+    Tracer.with_span "SheafWeb.AssistantHistoryComponents.history_graph", %{
+      kind: :internal,
+      attributes: [{"sheaf.history.limit", limit}]
+    } do
+      with :ok <- Sheaf.Repo.load_once({nil, nil, nil, RDF.iri(Sheaf.Workspace.graph())}) do
+        graph =
+          Sheaf.Repo.ask(fn dataset ->
+            workspace = RDF.Dataset.graph(dataset, Sheaf.Workspace.graph()) || Graph.new()
 
-      {:ok, graph}
+            Tracer.set_attribute(
+              "sheaf.workspace_graph.statement_count",
+              RDF.Data.statement_count(workspace)
+            )
+
+            limit_history_graph(workspace, limit)
+          end)
+
+        Tracer.set_attribute(
+          "sheaf.history_graph.statement_count",
+          RDF.Data.statement_count(graph)
+        )
+
+        {:ok, graph}
+      else
+        {:error, reason} = error ->
+          Tracer.set_attribute("sheaf.error", inspect(reason))
+          error
+
+        error ->
+          Tracer.set_attribute("sheaf.error", inspect(error))
+          error
+      end
     end
   end
 

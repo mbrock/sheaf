@@ -83,10 +83,10 @@ defmodule SheafWeb.SearchLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <main class="grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
+    <main class="min-h-dvh bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
       <AppChrome.toolbar section={:document} search?={false} />
 
-      <div class="min-h-0 overflow-x-hidden overflow-y-auto px-6 py-5">
+      <div class="overflow-x-hidden px-6 py-5">
         <div class="mx-auto min-w-0 max-w-5xl">
           <form phx-submit="search" class="mb-5">
             <div class="flex items-center gap-2 border-b border-stone-300 bg-white px-2 py-2 dark:border-stone-700 dark:bg-stone-900">

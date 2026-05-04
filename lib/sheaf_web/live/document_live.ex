@@ -95,7 +95,7 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <div
       id="document-reader"
-      class="grid h-dvh grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-stone-50 text-stone-950 lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_30rem] xl:grid-rows-[auto_minmax(0,1fr)] dark:bg-stone-950 dark:text-stone-50"
+      class="grid min-h-dvh bg-stone-50 text-stone-950 lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[auto_auto_auto] xl:grid-cols-[24rem_minmax(0,1fr)_30rem] xl:grid-rows-[auto_auto] dark:bg-stone-950 dark:text-stone-50"
       phx-hook="DocumentBreadcrumb"
     >
       <AppChrome.toolbar
@@ -104,15 +104,16 @@ defmodule SheafWeb.DocumentLive do
         copy_markdown?={true}
       />
 
-      <aside class="hidden min-h-0 overflow-y-auto p-4 lg:col-start-2 lg:row-start-2 lg:block xl:col-start-1 xl:row-start-2">
+      <aside class="hidden p-4 lg:sticky lg:top-12 lg:col-start-2 lg:row-start-2 lg:block lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto xl:col-start-1 xl:row-start-2">
         <h1 class="hidden font-bold text-lg xl:block">{document_title(@graph, @root)}</h1>
         <.block_outline entries={@toc} emit_active_data class="text-sm xl:mt-4" />
       </aside>
 
       <article
         id="document-start"
-        class="document-print-root min-h-0 min-w-0 overflow-y-auto px-4 pb-4 focus:outline-none lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-base lg:[&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
+        class="document-print-root min-w-0 px-4 pb-4 focus:outline-none lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:bg-stone-100 lg:px-6 lg:pb-6 xl:col-start-2 xl:row-span-1 lg:dark:bg-stone-950 [&_p]:text-base lg:[&_p]:text-lg [&_p]:text-justify [&_p]:hyphens-manual"
         tabindex="0"
+        data-scroll-target="window"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
         <div class="document-print-page mx-auto w-full max-w-[112ch] pt-4 lg:my-6 lg:rounded-sm lg:border lg:border-stone-200 lg:bg-white lg:px-12 lg:py-12 lg:dark:border-stone-800 lg:dark:bg-stone-900">
@@ -131,7 +132,7 @@ defmodule SheafWeb.DocumentLive do
         graph={@graph}
         root={@root}
         selected_id={@selected_block_id}
-        class="hidden lg:col-start-2 lg:row-start-3 lg:block lg:border-t xl:col-start-3 xl:row-start-2 xl:border-t-0 xl:border-l"
+        class="hidden lg:sticky lg:top-12 lg:col-start-2 lg:row-start-3 lg:block lg:max-h-[calc(100dvh-3rem)] lg:border-t xl:col-start-3 xl:row-start-2 xl:border-t-0 xl:border-l"
       >
         <AssistantHistoryComponents.note_history
           notes={@notes}
