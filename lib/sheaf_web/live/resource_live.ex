@@ -129,19 +129,27 @@ defmodule SheafWeb.ResourceLive do
             </div>
 
             <div class="overflow-x-auto">
-              <table class="w-full min-w-[64rem] border-separate border-spacing-0 text-left text-[11px]">
+              <table class="w-full min-w-[56rem] table-fixed border-separate border-spacing-0 text-left text-[11px]">
+                <colgroup>
+                  <col
+                    :for={column <- @query_result_columns}
+                    class={query_result_column_width_class(@query_result_column_kinds[column])}
+                  />
+                </colgroup>
                 <thead class="text-stone-600 dark:text-stone-300">
                   <tr>
                     <th
                       :for={column <- @query_result_columns}
                       class={[
-                        "sticky top-0 z-10 whitespace-nowrap border-b border-stone-300 bg-stone-100 px-2 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide dark:border-stone-700 dark:bg-stone-800",
-                        "first:pl-4 last:pr-4 lg:first:pl-6 lg:last:pr-6",
-                        query_result_heading_class(@query_result_column_kinds[column]),
-                        query_result_column_width_class(@query_result_column_kinds[column])
+                        "sticky top-0 z-10 h-18 border-b border-stone-300 bg-stone-100 p-0 align-bottom dark:border-stone-700 dark:bg-stone-800",
+                        "relative",
+                        "first:pl-4 last:pr-4 lg:first:pl-6 lg:last:pr-6"
                       ]}
+                      title={column}
                     >
-                      {column}
+                      <span class="absolute bottom-2 left-5 origin-bottom-left -rotate-45 whitespace-nowrap font-mono text-[10px] font-semibold uppercase tracking-wide">
+                        {column}
+                      </span>
                     </th>
                   </tr>
                 </thead>
@@ -155,8 +163,7 @@ defmodule SheafWeb.ResourceLive do
                       class={[
                         "border-b border-stone-200/80 px-2 py-1 align-middle text-stone-800 dark:border-stone-800 dark:text-stone-100",
                         "first:pl-4 last:pr-4 lg:first:pl-6 lg:last:pr-6",
-                        query_result_cell_class(@query_result_column_kinds[column]),
-                        query_result_column_width_class(@query_result_column_kinds[column])
+                        query_result_cell_class(@query_result_column_kinds[column])
                       ]}
                     >
                       <div
@@ -388,10 +395,6 @@ defmodule SheafWeb.ResourceLive do
   defp blank_query_result_value?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank_query_result_value?(_value), do: false
 
-  defp query_result_heading_class(:number), do: "text-right"
-  defp query_result_heading_class(:list), do: "text-right"
-  defp query_result_heading_class(_kind), do: "text-left"
-
   defp query_result_cell_class(:identifier),
     do: "font-mono text-xs text-stone-700 dark:text-stone-300"
 
@@ -399,10 +402,10 @@ defmodule SheafWeb.ResourceLive do
   defp query_result_cell_class(:list), do: "text-right"
   defp query_result_cell_class(_kind), do: "text-left"
 
-  defp query_result_column_width_class(:identifier), do: "min-w-24"
-  defp query_result_column_width_class(:number), do: "min-w-24"
-  defp query_result_column_width_class(:list), do: "min-w-[26rem] max-w-2xl"
-  defp query_result_column_width_class(_kind), do: "min-w-36 max-w-md"
+  defp query_result_column_width_class(:identifier), do: "w-20"
+  defp query_result_column_width_class(:number), do: "w-16"
+  defp query_result_column_width_class(:list), do: "w-76"
+  defp query_result_column_width_class(_kind), do: "w-32"
 
   defp query_result_list_values(row, column) do
     value = query_result_cell(row, column)
