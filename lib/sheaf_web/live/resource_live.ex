@@ -129,13 +129,7 @@ defmodule SheafWeb.ResourceLive do
             </div>
 
             <div class="overflow-x-auto">
-              <table class="w-full min-w-[56rem] table-fixed border-separate border-spacing-0 text-left text-[11px]">
-                <colgroup>
-                  <col
-                    :for={column <- @query_result_columns}
-                    class={query_result_column_width_class(@query_result_column_kinds[column])}
-                  />
-                </colgroup>
+              <table class="w-full min-w-[56rem] border-separate border-spacing-0 text-left text-[11px]">
                 <thead class="text-stone-600 dark:text-stone-300">
                   <tr>
                     <th
@@ -401,11 +395,6 @@ defmodule SheafWeb.ResourceLive do
   defp query_result_cell_class(:number), do: "text-right font-mono text-xs tabular-nums"
   defp query_result_cell_class(:list), do: "text-right"
   defp query_result_cell_class(_kind), do: "text-left"
-
-  defp query_result_column_width_class(:identifier), do: "w-20"
-  defp query_result_column_width_class(:number), do: "w-16"
-  defp query_result_column_width_class(:list), do: "w-76"
-  defp query_result_column_width_class(_kind), do: "w-32"
 
   defp query_result_list_values(row, column) do
     value = query_result_cell(row, column)
