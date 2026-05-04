@@ -87,29 +87,39 @@ defmodule SheafWeb.DocumentEntryComponents do
         </span>
       </div>
 
-      <div
-        :if={subline?(@document)}
-        class="flex min-w-0 items-baseline gap-3 text-[0.9375rem] text-stone-500 dark:text-stone-400"
-      >
-        <span :if={year_str(@document) != ""} class="shrink-0 tabular-nums">
-          {year_str(@document)}
-        </span>
+      <.document_metadata_lines document={@document} />
+    </div>
+    """
+  end
 
-        <span class="small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300">
-          {authors_str(@document) || ""}
-        </span>
+  attr :document, :map, required: true
 
-        <span class="shrink-0 tabular-nums">{page_count_str(@document)}</span>
-      </div>
+  attr :subline_class, :string,
+    default:
+      "flex min-w-0 items-baseline gap-3 text-[0.9375rem] text-stone-500 dark:text-stone-400"
 
-      <div
-        :if={chapter_metadata?(@document)}
-        class="flex min-w-0 items-baseline gap-2 truncate font-sans text-xs text-stone-500 dark:text-stone-400"
-      >
-        <span class="min-w-0 truncate italic">{chapter_venue(@document)}</span>
-        <span :if={publisher_str(@document)} class="shrink-0">{publisher_str(@document)}</span>
-        <span :if={pages_str(@document)} class="shrink-0">{pages_str(@document)}</span>
-      </div>
+  attr :detail_class, :string,
+    default:
+      "flex min-w-0 items-baseline gap-2 truncate font-sans text-xs text-stone-500 dark:text-stone-400"
+
+  def document_metadata_lines(assigns) do
+    ~H"""
+    <div :if={subline?(@document)} class={@subline_class}>
+      <span :if={year_str(@document) != ""} class="shrink-0 tabular-nums">
+        {year_str(@document)}
+      </span>
+
+      <span class="small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300">
+        {authors_str(@document) || ""}
+      </span>
+
+      <span class="shrink-0 tabular-nums">{page_count_str(@document)}</span>
+    </div>
+
+    <div :if={chapter_metadata?(@document)} class={@detail_class}>
+      <span class="min-w-0 truncate italic">{chapter_venue(@document)}</span>
+      <span :if={publisher_str(@document)} class="shrink-0">{publisher_str(@document)}</span>
+      <span :if={pages_str(@document)} class="shrink-0">{pages_str(@document)}</span>
     </div>
     """
   end

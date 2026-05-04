@@ -3,7 +3,7 @@ defmodule Sheaf.ResourcePreviewsTest do
   use RDF
 
   alias RDF.NS.RDFS
-  alias Sheaf.NS.{DCTERMS, DOC, FABIO, FOAF}
+  alias Sheaf.NS.{BIBO, DCTERMS, DOC, FABIO, FOAF}
   alias Sheaf.ResourcePreviews
 
   @tag :tmp_dir
@@ -23,7 +23,7 @@ defmodule Sheaf.ResourcePreviewsTest do
         [
           {document, RDF.type(), DOC.Document},
           {document, RDFS.label(), RDF.literal("Example document")},
-          {document, FABIO.isRepresentationOf(), expression},
+          {document, BIBO.numPages(), RDF.literal(12)},
           {document, DOC.children(), root_list},
           {section, RDF.type(), DOC.Section},
           {section, RDFS.label(), RDF.literal("Introduction")},
@@ -39,6 +39,7 @@ defmodule Sheaf.ResourcePreviewsTest do
     metadata =
       RDF.Graph.new(
         [
+          {document, FABIO.isRepresentationOf(), expression},
           {expression, DCTERMS.creator(), author},
           {author, FOAF.name(), RDF.literal("Ieva Lange")},
           {expression, FABIO.hasPublicationYear(), RDF.literal("2026")}
@@ -59,10 +60,10 @@ defmodule Sheaf.ResourcePreviewsTest do
              document_title: "Example document",
              document_authors: ["Ieva Lange"],
              document_year: "2026",
-             document_kind: "Document",
              path: "/DOC111",
              text: nil,
-             toc: [%{id: "SEC111", number: "1", title: "Introduction"}]
+             toc: [%{id: "SEC111", number: "1", title: "Introduction"}],
+             document: %{metadata: %{page_count: 12}}
            } = ResourcePreviews.get("DOC111")
   end
 end

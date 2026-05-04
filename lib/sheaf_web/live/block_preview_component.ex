@@ -5,6 +5,8 @@ defmodule SheafWeb.BlockPreviewComponent do
 
   use SheafWeb, :live_component
 
+  import SheafWeb.DocumentEntryComponents, only: [document_metadata_lines: 1]
+
   @impl true
   def mount(socket) do
     {:ok, assign(socket, :preview, nil)}
@@ -45,9 +47,17 @@ defmodule SheafWeb.BlockPreviewComponent do
               <div class="small-caps truncate text-[0.78rem] text-stone-700 dark:text-stone-200">
                 {preview_document_label(@preview)}
               </div>
+              <.document_metadata_lines
+                :if={preview_document(@preview)}
+                document={preview_document(@preview)}
+                subline_class="flex min-w-0 items-baseline gap-2 text-[0.72rem] text-stone-500 dark:text-stone-400"
+                detail_class="flex min-w-0 items-baseline gap-2 truncate font-sans text-[0.7rem] text-stone-500 dark:text-stone-400"
+              />
               <div
                 :if={
-                  preview_kind(@preview) || preview_year(@preview) || preview_authors(@preview) != []
+                  is_nil(preview_document(@preview)) &&
+                    (preview_kind(@preview) || preview_year(@preview) ||
+                       preview_authors(@preview) != [])
                 }
                 class="flex min-w-0 items-baseline gap-2 text-[0.72rem] text-stone-500 dark:text-stone-400"
               >
@@ -118,6 +128,13 @@ defmodule SheafWeb.BlockPreviewComponent do
   defp preview_section_label(preview) do
     title = Map.get(preview, :section_title)
     if present?(title), do: title
+  end
+
+  defp preview_document(preview) do
+    case Map.get(preview, :document) do
+      %{metadata: metadata} = document when is_map(metadata) -> document
+      _other -> nil
+    end
   end
 
   defp preview_kind(preview), do: Map.get(preview, :document_kind) |> blank_to_nil()
