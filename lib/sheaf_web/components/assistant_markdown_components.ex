@@ -293,7 +293,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       </button>
       <span
         role="tooltip"
-        class="block-preview-card absolute left-0 top-full z-50 mt-2 block w-[min(28rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-sm border border-stone-200 bg-white p-3 text-left shadow-lg ring-1 ring-stone-950/5 dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
+        class="block-preview-card fixed inset-x-3 bottom-[4.5rem] z-50 mt-2 block max-h-[min(22rem,calc(100dvh-8rem))] w-auto max-w-none overflow-y-auto rounded-sm border border-stone-200 bg-white p-3 text-left shadow-lg ring-1 ring-stone-950/5 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:max-h-none sm:w-[min(28rem,calc(100vw-2rem))] sm:max-w-[calc(100vw-2rem)] sm:overflow-visible dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
       >
         <span class="mb-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 font-sans text-[11px] leading-4 text-stone-500 dark:text-stone-400">
           <span class="truncate font-medium text-stone-700 dark:text-stone-200">

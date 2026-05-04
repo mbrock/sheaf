@@ -194,7 +194,7 @@ defmodule SheafWeb.AssistantChatComponent do
     <section class="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto]">
       <div
         id={"assistant-timeline-#{@id}"}
-        class="min-h-0 min-w-0 overflow-y-auto px-3 py-4 sm:px-4 sm:py-6"
+        class="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4 sm:py-6"
         phx-hook="ScrollContainer"
         data-scroll-stick-bottom="true"
       >
