@@ -51,13 +51,27 @@ defmodule SheafWeb.AssistantMarkdownTest do
 
     assert html =~ ~s(<button)
     assert html =~ ~s(type="button")
-    assert html =~ ~s(phx-click="show_block_preview")
+    assert html =~ ~s(phx-click="show_resource_preview")
     assert html =~ ~s(phx-value-id="PAR111")
     assert html =~ ~s(phx-target="1")
     refute html =~ ~s(role="tooltip")
     refute html =~ "block-preview-backdrop"
     refute html =~ "backdrop-blur"
     refute html =~ "block-preview-card"
+  end
+
+  test "renders document reference buttons for LiveView preview loading" do
+    html =
+      render_markdown("See [#DOC111](/DOC111).",
+        block_ref_target: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ ~s(<button)
+    assert html =~ ~s(aria-label="#DOC111")
+    assert html =~ ~s(phx-click="show_resource_preview")
+    assert html =~ ~s(phx-value-id="DOC111")
+    assert html =~ ">DOC111</button>"
+    refute html =~ ">#DOC111</button>"
   end
 
   test "keeps punctuation tight after block reference buttons" do

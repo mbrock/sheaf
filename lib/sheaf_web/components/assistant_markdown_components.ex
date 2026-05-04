@@ -131,24 +131,24 @@ defmodule SheafWeb.AssistantMarkdownComponents do
 
   defp render_node(%{node: %MDEx.Link{} = node} = assigns) do
     href = safe_href(node.url)
-    block_id = block_link_id(href)
+    resource_id = resource_link_id(href)
 
     assigns =
       assigns
       |> assign(:nodes, node.nodes)
       |> assign(:href, href)
       |> assign(:title, blank_to_nil(node.title))
-      |> assign(:block_id, block_id)
+      |> assign(:resource_id, resource_id)
 
     ~H"""
-    <.block_ref_link
-      :if={@href && @block_id && @block_ref_target}
+    <.resource_ref_link
+      :if={@href && @resource_id && @block_ref_target}
       title={@title}
-      block_id={@block_id}
+      resource_id={@resource_id}
       block_ref_target={@block_ref_target}
       trailing_punctuation={@trailing_punctuation}
     />
-    <a :if={@href && (!@block_id || !@block_ref_target)} href={@href} title={@title}>
+    <a :if={@href && (!@resource_id || !@block_ref_target)} href={@href} title={@title}>
       <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
     </a>
     <span :if={!@href}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></span>
@@ -307,7 +307,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   defp do_attach_ref_punctuation([], acc), do: acc
 
   defp leading_punctuation_after_ref(%MDEx.Link{} = link, literal) do
-    with block_id when is_binary(block_id) <- block_link_id(safe_href(link.url)),
+    with resource_id when is_binary(resource_id) <- resource_link_id(safe_href(link.url)),
          [_, punctuation, rest] <- Regex.run(~r/^[ \t]*([,.;:!?\)\]\}]+)(.*)$/s, literal) do
       {punctuation, rest}
     else
@@ -316,22 +316,22 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   end
 
   attr :title, :string, default: nil
-  attr :block_id, :string, required: true
+  attr :resource_id, :string, required: true
   attr :block_ref_target, :any, required: true
   attr :trailing_punctuation, :string, default: nil
 
-  defp block_ref_link(assigns) do
+  defp resource_ref_link(assigns) do
     ~H"""
     <span class="block-preview relative inline-block align-baseline">
       <button
         type="button"
         title={@title}
-        aria-label={"##{@block_id}"}
+        aria-label={"##{@resource_id}"}
         class="block-preview-trigger cursor-pointer"
-        phx-click="show_block_preview"
-        phx-value-id={@block_id}
+        phx-click="show_resource_preview"
+        phx-value-id={@resource_id}
         phx-target={@block_ref_target}
-      >{@block_id}</button>
+      >{@resource_id}</button>
     </span>{@trailing_punctuation}
     """
   end
@@ -423,6 +423,15 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     end
   end
 
-  defp block_link_id("/b/" <> id), do: id |> String.split(["?", "#"], parts: 2) |> hd()
-  defp block_link_id(_href), do: nil
+  defp resource_link_id("/b/" <> id), do: id |> String.split(["?", "#"], parts: 2) |> hd()
+
+  defp resource_link_id("/" <> id) do
+    case String.split(id, ["/", "?", "#"], parts: 2) do
+      [id] when id != "" -> id
+      [id, _rest] when id != "" -> id
+      _other -> nil
+    end
+  end
+
+  defp resource_link_id(_href), do: nil
 end

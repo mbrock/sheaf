@@ -11,8 +11,12 @@ defmodule SheafWeb.BlockPreviewComponent do
   end
 
   @impl true
+  def handle_event("show_resource_preview", %{"id" => id}, socket) do
+    {:noreply, assign(socket, :preview, Sheaf.ResourcePreviews.get(id))}
+  end
+
   def handle_event("show_block_preview", %{"id" => id}, socket) do
-    {:noreply, assign(socket, :preview, Sheaf.BlockPreviews.get(id))}
+    {:noreply, assign(socket, :preview, Sheaf.ResourcePreviews.get(id))}
   end
 
   def handle_event("hide_block_preview", _params, socket) do
