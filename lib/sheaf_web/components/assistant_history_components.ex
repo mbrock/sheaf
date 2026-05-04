@@ -232,7 +232,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
         <%= if @entry.type == :message and @entry.role == :user do %>
           {@entry.text}
         <% else %>
-          <AssistantMarkdownComponents.markdown text={@entry.text} />
+          <AssistantMarkdownComponents.markdown text={@entry.text} resolve_block_previews={false} />
         <% end %>
       </div>
       <.entry_links entry={@entry} />
@@ -263,7 +263,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
 
       <article class={history_article_class(@variant)}>
         <div class={history_text_class(@variant, :markdown)}>
-          <AssistantMarkdownComponents.markdown text={@text} />
+          <AssistantMarkdownComponents.markdown text={@text} resolve_block_previews={false} />
         </div>
         <.entry_links entry={@entry} />
       </article>

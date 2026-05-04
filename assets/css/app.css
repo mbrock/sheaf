@@ -351,6 +351,23 @@
     font-style: italic;
   }
 
+  .block-preview-card {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+    transition:
+      opacity 150ms ease,
+      visibility 0s linear 150ms;
+  }
+
+  .block-preview:hover > .block-preview-card,
+  .block-preview:focus-within > .block-preview-card {
+    opacity: 1;
+    pointer-events: auto;
+    visibility: visible;
+    transition-delay: 1400ms, 1400ms;
+  }
+
   .rdf-class-popover {
     border: 0;
     border-radius: 0;

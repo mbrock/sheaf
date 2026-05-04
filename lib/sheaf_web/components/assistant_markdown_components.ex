@@ -5,34 +5,42 @@ defmodule SheafWeb.AssistantMarkdownComponents do
 
   use SheafWeb, :html
 
+  alias Sheaf.{BlockPreviews, BlockRefs}
   alias SheafWeb.AssistantMarkdown
   alias SheafWeb.DataTableComponents
 
   attr :text, :string, required: true
+  attr :block_previews, :map, default: nil
+  attr :resolve_block_previews, :boolean, default: true
 
   def markdown(assigns) do
-    assigns = assign(assigns, :document, AssistantMarkdown.document(assigns.text))
+    assigns =
+      assigns
+      |> assign(:document, AssistantMarkdown.document(assigns.text))
+      |> assign(:block_previews, block_previews(assigns))
 
     ~H"""
-    <.nodes nodes={@document.nodes} />
+    <.nodes nodes={@document.nodes} block_previews={@block_previews} />
     """
   end
 
   attr :nodes, :list, required: true
+  attr :block_previews, :map, required: true
 
   defp nodes(assigns) do
     ~H"""
-    <.render_node :for={node <- @nodes} node={node} />
+    <.render_node :for={node <- @nodes} node={node} block_previews={@block_previews} />
     """
   end
 
   attr :node, :any, required: true
+  attr :block_previews, :map, required: true
 
   defp render_node(%{node: %MDEx.Paragraph{} = node} = assigns) do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <p><.nodes nodes={@nodes} /></p>
+    <p><.nodes nodes={@nodes} block_previews={@block_previews} /></p>
     """
   end
 
@@ -43,12 +51,12 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       |> assign(:level, node.level |> max(1) |> min(6))
 
     ~H"""
-    <h1 :if={@level == 1}><.nodes nodes={@nodes} /></h1>
-    <h2 :if={@level == 2}><.nodes nodes={@nodes} /></h2>
-    <h3 :if={@level == 3}><.nodes nodes={@nodes} /></h3>
-    <h4 :if={@level == 4}><.nodes nodes={@nodes} /></h4>
-    <h5 :if={@level == 5}><.nodes nodes={@nodes} /></h5>
-    <h6 :if={@level == 6}><.nodes nodes={@nodes} /></h6>
+    <h1 :if={@level == 1}><.nodes nodes={@nodes} block_previews={@block_previews} /></h1>
+    <h2 :if={@level == 2}><.nodes nodes={@nodes} block_previews={@block_previews} /></h2>
+    <h3 :if={@level == 3}><.nodes nodes={@nodes} block_previews={@block_previews} /></h3>
+    <h4 :if={@level == 4}><.nodes nodes={@nodes} block_previews={@block_previews} /></h4>
+    <h5 :if={@level == 5}><.nodes nodes={@nodes} block_previews={@block_previews} /></h5>
+    <h6 :if={@level == 6}><.nodes nodes={@nodes} block_previews={@block_previews} /></h6>
     """
   end
 
@@ -95,7 +103,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <strong><.nodes nodes={@nodes} /></strong>
+    <strong><.nodes nodes={@nodes} block_previews={@block_previews} /></strong>
     """
   end
 
@@ -103,7 +111,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <em><.nodes nodes={@nodes} /></em>
+    <em><.nodes nodes={@nodes} block_previews={@block_previews} /></em>
     """
   end
 
@@ -111,20 +119,35 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <del><.nodes nodes={@nodes} /></del>
+    <del><.nodes nodes={@nodes} block_previews={@block_previews} /></del>
     """
   end
 
   defp render_node(%{node: %MDEx.Link{} = node} = assigns) do
+    href = safe_href(node.url)
+    block_id = block_link_id(href)
+
     assigns =
       assigns
       |> assign(:nodes, node.nodes)
-      |> assign(:href, safe_href(node.url))
+      |> assign(:href, href)
       |> assign(:title, blank_to_nil(node.title))
+      |> assign(:block_id, block_id)
+      |> assign(:block_preview, block_id && Map.get(assigns.block_previews, block_id))
 
     ~H"""
-    <a :if={@href} href={@href} title={@title}><.nodes nodes={@nodes} /></a>
-    <span :if={!@href}><.nodes nodes={@nodes} /></span>
+    <.block_ref_link
+      :if={@href && @block_preview}
+      href={@href}
+      title={@title}
+      nodes={@nodes}
+      preview={@block_preview}
+      block_previews={@block_previews}
+    />
+    <a :if={@href && !@block_preview} href={@href} title={@title}>
+      <.nodes nodes={@nodes} block_previews={@block_previews} />
+    </a>
+    <span :if={!@href}><.nodes nodes={@nodes} block_previews={@block_previews} /></span>
     """
   end
 
@@ -150,10 +173,10 @@ defmodule SheafWeb.AssistantMarkdownComponents do
 
     ~H"""
     <ol :if={@ordered?} start={@start}>
-      <.nodes nodes={@items} />
+      <.nodes nodes={@items} block_previews={@block_previews} />
     </ol>
     <ul :if={!@ordered?}>
-      <.nodes nodes={@items} />
+      <.nodes nodes={@items} block_previews={@block_previews} />
     </ul>
     """
   end
@@ -162,7 +185,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <li><.nodes nodes={@nodes} /></li>
+    <li><.nodes nodes={@nodes} block_previews={@block_previews} /></li>
     """
   end
 
@@ -175,7 +198,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     ~H"""
     <li>
       <input type="checkbox" checked={@checked} disabled />
-      <.nodes nodes={@nodes} />
+      <.nodes nodes={@nodes} block_previews={@block_previews} />
     </li>
     """
   end
@@ -184,7 +207,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <blockquote><.nodes nodes={@nodes} /></blockquote>
+    <blockquote><.nodes nodes={@nodes} block_previews={@block_previews} /></blockquote>
     """
   end
 
@@ -192,7 +215,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <blockquote><.nodes nodes={@nodes} /></blockquote>
+    <blockquote><.nodes nodes={@nodes} block_previews={@block_previews} /></blockquote>
     """
   end
 
@@ -235,7 +258,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, nodes)
 
     ~H"""
-    <.nodes nodes={@nodes} />
+    <.nodes nodes={@nodes} block_previews={@block_previews} />
     """
   end
 
@@ -249,6 +272,44 @@ defmodule SheafWeb.AssistantMarkdownComponents do
 
   defp render_node(assigns) do
     ~H"""
+    """
+  end
+
+  attr :href, :string, required: true
+  attr :title, :string, default: nil
+  attr :nodes, :list, required: true
+  attr :preview, :map, required: true
+  attr :block_previews, :map, required: true
+
+  defp block_ref_link(assigns) do
+    ~H"""
+    <span class="block-preview relative inline-block align-baseline">
+      <a href={@href} title={@title}>
+        <.nodes nodes={@nodes} block_previews={@block_previews} />
+      </a>
+      <span
+        role="tooltip"
+        class="block-preview-card absolute left-0 top-full z-50 mt-2 block w-[min(28rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-sm border border-stone-200 bg-white p-3 text-left shadow-lg ring-1 ring-stone-950/5 dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
+      >
+        <span class="mb-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 font-sans text-[11px] leading-4 text-stone-500 dark:text-stone-400">
+          <span class="truncate font-medium text-stone-700 dark:text-stone-200">
+            {preview_document_label(@preview)}
+          </span>
+          <span :if={preview_section_label(@preview)} class="text-stone-300 dark:text-stone-600">
+            /
+          </span>
+          <span :if={preview_section_label(@preview)} class="truncate">
+            {preview_section_label(@preview)}
+          </span>
+          <span class="ml-auto shrink-0 font-mono text-[10px] text-stone-400 dark:text-stone-500">
+            #{Map.get(@preview, :id)}
+          </span>
+        </span>
+        <span class="block font-serif text-[0.92rem] leading-5 text-stone-800 dark:text-stone-100">
+          {Map.get(@preview, :text)}
+        </span>
+      </span>
+    </span>
     """
   end
 
@@ -338,4 +399,42 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       true -> nil
     end
   end
+
+  defp block_previews(%{block_previews: previews}) when is_map(previews), do: previews
+  defp block_previews(%{resolve_block_previews: false}), do: %{}
+
+  defp block_previews(assigns) do
+    assigns.text
+    |> BlockRefs.ids_from_text()
+    |> BlockPreviews.for_ids()
+  end
+
+  defp block_link_id("/b/" <> id), do: id |> String.split(["?", "#"], parts: 2) |> hd()
+  defp block_link_id(_href), do: nil
+
+  defp preview_document_label(preview) do
+    title = Map.get(preview, :document_title)
+    id = Map.get(preview, :document_id)
+
+    cond do
+      present?(title) and present?(id) -> "#{title} ##{id}"
+      present?(title) -> title
+      present?(id) -> "##{id}"
+      true -> "Document"
+    end
+  end
+
+  defp preview_section_label(preview) do
+    title = Map.get(preview, :section_title)
+    id = Map.get(preview, :section_id)
+
+    cond do
+      present?(title) and present?(id) -> "#{title} ##{id}"
+      present?(title) -> title
+      present?(id) -> "##{id}"
+      true -> nil
+    end
+  end
+
+  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 end
