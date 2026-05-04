@@ -61,6 +61,28 @@ defmodule Sheaf.Embedding.Index do
   end
 
   @doc """
+  Embeds missing or stale text units that were already read from RDF.
+
+  The units must have been built for the same model, dimensions, and source as
+  the options passed here.
+  """
+  @spec sync_units([text_unit()], keyword()) :: {:ok, map()} | {:error, term()}
+  def sync_units(units, opts \\ []) when is_list(units) do
+    model = Sheaf.Embedding.model(opts)
+    dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
+    source = source(opts)
+    run_iri = opts |> Keyword.get_lazy(:run_iri, fn -> Sheaf.mint() |> to_string() end)
+
+    with {:ok, conn} <- Store.open(opts) do
+      try do
+        sync_run(conn, run_iri, units, model, dimensions, source, opts)
+      after
+        Store.close(conn)
+      end
+    end
+  end
+
+  @doc """
   Reports what an embedding sync would embed without calling an embedding API.
   """
   @spec plan(keyword()) :: {:ok, map()} | {:error, term()}
@@ -105,18 +127,26 @@ defmodule Sheaf.Embedding.Index do
 
     with {:ok, rows} <- Sheaf.TextUnits.fetch_rows(kinds: kinds) do
       model = Keyword.get(opts, :model, Sheaf.Embedding.model())
-      dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
       source = source(opts)
 
-      units =
-        rows
-        |> Enum.map(&unit_from_row(&1, model, dimensions, source))
-        |> Enum.reject(&(&1.text == ""))
-        |> Enum.sort_by(& &1.iri)
-        |> maybe_limit_units(opts)
-
-      {:ok, units}
+      {:ok, units_from_rows(rows, Keyword.merge(opts, model: model, source: source))}
     end
+  end
+
+  @doc """
+  Builds embedding text units from already-fetched RDF text rows.
+  """
+  @spec units_from_rows([map()], keyword()) :: [text_unit()]
+  def units_from_rows(rows, opts \\ []) when is_list(rows) do
+    model = Keyword.get(opts, :model, Sheaf.Embedding.model())
+    dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
+    source = source(opts)
+
+    rows
+    |> Enum.map(&unit_from_row(&1, model, dimensions, source))
+    |> Enum.reject(&(&1.text == ""))
+    |> Enum.sort_by(& &1.iri)
+    |> maybe_limit_units(opts)
   end
 
   @doc false

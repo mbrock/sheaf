@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+APP_ROOT="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+
+cd "$APP_ROOT"
+
+ARGS_B64="$(
+  for arg in "$@"; do
+    printf '%s\0' "$arg"
+  done | base64 | tr -d '\n'
+)"
+
+"$SCRIPT_DIR/env" "$SCRIPT_DIR/rpc" <<EOF
+args =
+  "$ARGS_B64"
+  |> Base.decode64!()
+  |> String.split(<<0>>, trim: true)
+
+Sheaf.Admin.sync_search_indexes(args)
+""
+EOF

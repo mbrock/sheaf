@@ -52,14 +52,19 @@ defmodule Sheaf.Search.Index do
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
 
     with {:ok, rows} <- Sheaf.TextUnits.fetch_rows(kinds: kinds) do
-      units =
-        rows
-        |> Enum.map(&unit_from_row(&1))
-        |> Enum.reject(&reject_unit?/1)
-        |> maybe_limit_units(opts)
-
-      {:ok, units}
+      {:ok, units_from_rows(rows, opts)}
     end
+  end
+
+  @doc """
+  Builds searchable SQLite text units from already-fetched RDF text rows.
+  """
+  @spec units_from_rows([map()], keyword()) :: [map()]
+  def units_from_rows(rows, opts \\ []) when is_list(rows) do
+    rows
+    |> Enum.map(&unit_from_row(&1))
+    |> Enum.reject(&reject_unit?/1)
+    |> maybe_limit_units(opts)
   end
 
   @doc """

@@ -69,9 +69,16 @@ defmodule Sheaf.Admin do
 
     search_opts = search_opts(opts)
     embedding_opts = embedding_opts(opts)
+    row_opts = text_row_opts(opts)
 
-    with {:ok, search_summary} <- Sheaf.Search.Index.sync(search_opts),
-         {:ok, embedding_summary} <- Sheaf.Embedding.Index.sync(embedding_opts) do
+    info("Search sync: reading RDF text units from Quadlog")
+
+    with {:ok, rows} <- Sheaf.TextUnits.fetch_rows(row_opts),
+         search_units = Sheaf.Search.Index.units_from_rows(rows, search_opts),
+         embedding_units = Sheaf.Embedding.Index.units_from_rows(rows, embedding_opts),
+         {:ok, search_summary} <- sync_search_units(search_units, search_opts),
+         {:ok, embedding_summary} <-
+           Sheaf.Embedding.Index.sync_units(embedding_units, embedding_opts) do
       info(
         "Search sync complete: db=#{search_summary.db_path} rows=#{search_summary.count}#{kind_summary(search_summary.kinds)}"
       )
@@ -838,6 +845,31 @@ defmodule Sheaf.Admin do
     |> put_if_present(:db_path, Keyword.get(opts, :db))
     |> put_if_present(:limit, Keyword.get(opts, :limit))
     |> put_kinds(Keyword.get_values(opts, :kind))
+  end
+
+  defp text_row_opts(opts) do
+    []
+    |> put_kinds(Keyword.get_values(opts, :kind))
+  end
+
+  defp sync_search_units(units, opts) do
+    db_path = Sheaf.Search.Index.path(opts)
+
+    info(
+      "Search sync: loaded #{length(units)} text units#{kind_summary(Enum.frequencies_by(units, & &1.kind))}"
+    )
+
+    info("Search sync: rebuilding SQLite mirror at #{db_path}")
+
+    with {:ok, conn} <- Sheaf.Search.Index.open(opts) do
+      try do
+        with {:ok, summary} <- Sheaf.Search.Index.rebuild(conn, units) do
+          {:ok, Map.put(summary, :db_path, db_path)}
+        end
+      after
+        Sheaf.Search.Index.close(conn)
+      end
+    end
   end
 
   defp embedding_sync_options do
