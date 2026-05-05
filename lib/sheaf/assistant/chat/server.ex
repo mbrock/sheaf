@@ -379,11 +379,12 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp handle_assistant_event(state, {:tool_finished, name, result}) do
     status = if match?({:error, _}, result), do: :error, else: :ok
     summary = CorpusTools.result_summary(name, result)
+    visible_result = visible_tool_result(result)
 
     state
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, "Thinking")
-    |> update_last_pending_tool(name, status, summary)
+    |> update_last_pending_tool(name, status, summary, visible_result)
     |> broadcast_snapshot()
   end
 
@@ -455,13 +456,13 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
-  defp update_last_pending_tool(state, name, status, summary) do
+  defp update_last_pending_tool(state, name, status, summary, result) do
     {messages, _updated?} =
       state.messages
       |> Enum.reverse()
       |> Enum.map_reduce(false, fn msg, updated? ->
         if not updated? and tool_pending?(msg, name) do
-          {Map.merge(msg, %{status: status, summary: summary}), true}
+          {Map.merge(msg, %{status: status, summary: summary, result: result}), true}
         else
           {msg, updated?}
         end
@@ -469,6 +470,15 @@ defmodule Sheaf.Assistant.Chat.Server do
 
     %{state | messages: Enum.reverse(messages)}
   end
+
+  defp visible_tool_result({:ok, %ReqLLM.ToolResult{} = result}) do
+    result
+    |> Map.get(:metadata, %{})
+    |> sheaf_result_from_metadata()
+  end
+
+  defp visible_tool_result({:ok, result}), do: result
+  defp visible_tool_result(_result), do: nil
 
   defp tool_pending?(msg, name) do
     Map.get(msg, :role) == :tool and
@@ -942,13 +952,37 @@ defmodule Sheaf.Assistant.Chat.Server do
       kind: state.kind,
       model: state.model,
       llm_options: state.llm_options,
-      messages: state.messages,
+      messages: snapshot_messages(state),
       pending: not is_nil(state.pending_ref),
       active_tool: state.active_tool,
       status_line: state.status_line,
       titles: state.titles,
       error: state.error
     }
+  end
+
+  defp snapshot_messages(%{pending_ref: nil, messages: messages} = state) do
+    if missing_visible_tool_results?(messages) do
+      case Assistant.context(state.assistant) do
+        %Context{} = context -> visible_messages_from_context(context, state.titles)
+        _other -> messages
+      end
+    else
+      messages
+    end
+  rescue
+    _exception -> state.messages
+  catch
+    _kind, _reason -> state.messages
+  end
+
+  defp snapshot_messages(state), do: state.messages
+
+  defp missing_visible_tool_results?(messages) do
+    Enum.any?(messages, fn message ->
+      Map.get(message, :role) == :tool and Map.get(message, :status) == :ok and
+        not Map.has_key?(message, :result)
+    end)
   end
 
   defp server_ref(pid) when is_pid(pid), do: pid

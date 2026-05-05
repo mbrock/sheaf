@@ -221,7 +221,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
       assigns
       |> assign(:icon, "hero-document-text")
       |> assign(:title, assigns.entry.title || "Research note")
-      |> assign(:title_class, "font-medium text-stone-800 dark:text-stone-100")
+      |> assign(:title_class, " text-stone-800 dark:text-stone-100")
       |> assign(:text, assigns.entry.text)
 
     markdown_history_entry(assigns)
@@ -281,7 +281,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
       </div>
       <h3
         :if={@entry.type == :note and present?(@entry.title)}
-        class="mb-1 font-sans text-sm font-medium text-stone-900 dark:text-stone-50"
+        class="mb-1 font-sans text-sm  text-stone-900 dark:text-stone-50"
       >
         {@entry.title}
       </h3>
@@ -795,7 +795,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
   defp history_group_header_class(_variant), do: "flex items-center gap-2 py-1"
 
   defp history_group_title_class(:expansive),
-    do: "min-w-0 flex-1 truncate font-sans text-sm font-medium text-stone-900 dark:text-stone-50"
+    do: "min-w-0 flex-1 truncate font-sans text-sm  text-stone-900 dark:text-stone-50"
 
   defp history_group_title_class(_variant),
     do: "min-w-0 flex-1 truncate font-sans text-sm text-stone-800 dark:text-stone-100"

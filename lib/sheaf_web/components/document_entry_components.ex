@@ -113,6 +113,9 @@ defmodule SheafWeb.DocumentEntryComponents do
 
   attr :document, :map, required: true
   attr :show_publisher, :boolean, default: true
+  attr :show_id, :boolean, default: false
+  attr :show_kind, :boolean, default: false
+  attr :show_status, :boolean, default: false
 
   attr :subline_class, :string,
     default:
@@ -123,22 +126,40 @@ defmodule SheafWeb.DocumentEntryComponents do
       "flex min-w-0 items-baseline gap-2 truncate font-sans text-xs text-stone-500 dark:text-stone-400"
 
   attr :numeric_class, :string, default: "shrink-0 tabular-nums"
+  attr :id_class, :string, default: "shrink-0 font-micro tabular-nums"
+  attr :kind_class, :string, default: "shrink-0"
+  attr :status_class, :string, default: "shrink-0 font-micro"
+
+  attr :authors_class, :string,
+    default: "small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300"
 
   def document_metadata_lines(assigns) do
     ~H"""
-    <div :if={subline?(@document)} class={@subline_class}>
+    <div :if={subline?(@document, @show_id, @show_kind, @show_status)} class={@subline_class}>
+      <span :if={@show_id && id_str(@document) != ""} class={@id_class}>
+        #{id_str(@document)}
+      </span>
+
       <span :if={year_str(@document) != ""} class={@numeric_class}>
         {year_str(@document)}
       </span>
 
-      <span class="small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300">
+      <span class={@authors_class}>
         <span class="sm:hidden">
           {compact_authors_str(@document) || authors_str(@document) || ""}
         </span>
         <span class="hidden sm:inline">{authors_str(@document) || ""}</span>
       </span>
 
+      <span :if={@show_kind && kind_str(@document) != ""} class={@kind_class}>
+        {kind_str(@document)}
+      </span>
+
       <span class={@numeric_class}>{page_count_str(@document)}</span>
+
+      <span :if={@show_status && status_str(@document)} class={@status_class}>
+        {status_str(@document)}
+      </span>
     </div>
 
     <div :if={chapter_metadata?(@document)} class={@detail_class}>
@@ -202,9 +223,10 @@ defmodule SheafWeb.DocumentEntryComponents do
       </div>
       <.document_metadata_lines
         document={@document}
-        subline_class="flex min-w-0 items-baseline gap-2 text-[0.9rem] text-stone-500 dark:text-stone-400"
+        subline_class="flex min-w-0 items-baseline gap-2 font-sans text-xs leading-4 text-stone-500 dark:text-stone-400"
         detail_class="flex min-w-0 items-baseline gap-2 truncate font-sans text-stone-500 dark:text-stone-400"
-        numeric_class="small-caps shrink-0 tabular-nums"
+        numeric_class="shrink-0 tabular-nums"
+        authors_class="min-w-0 flex-1 truncate text-stone-500 dark:text-stone-400"
         show_publisher={false}
       />
     </div>
@@ -235,8 +257,17 @@ defmodule SheafWeb.DocumentEntryComponents do
   defp workspace_owner_authored?(document),
     do: Map.get(document, :workspace_owner_authored?, false)
 
-  defp subline?(document) do
-    authors_str(document) != nil or year_str(document) != "" or page_count_str(document) != ""
+  defp subline?(document, show_id, show_kind, show_status) do
+    authors_str(document) != nil or year_str(document) != "" or page_count_str(document) != "" or
+      (show_id && id_str(document) != "") or (show_kind && kind_str(document) != "") or
+      (show_status && status_str(document) != nil)
+  end
+
+  defp id_str(document) do
+    case Map.get(document, :id) do
+      nil -> ""
+      id -> to_string(id)
+    end
   end
 
   defp authors_str(document) do
@@ -273,6 +304,19 @@ defmodule SheafWeb.DocumentEntryComponents do
     case document |> Map.get(:metadata, %{}) |> Map.get(:page_count) do
       nil -> ""
       count -> "#{count} pp."
+    end
+  end
+
+  defp kind_str(document) do
+    case document |> Map.get(:metadata, %{}) |> Map.get(:kind) do
+      nil ->
+        case Map.get(document, :kind) do
+          nil -> ""
+          kind -> kind |> to_string() |> String.replace("_", " ")
+        end
+
+      kind ->
+        to_string(kind)
     end
   end
 
