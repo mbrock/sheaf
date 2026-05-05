@@ -18,6 +18,10 @@ defmodule SheafWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :export_api do
+    plug :export_basic_auth
+  end
+
   pipeline :dashboard do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -40,6 +44,13 @@ defmodule SheafWeb.Router do
     get "/documents/:id", DocumentController, :show
     get "/documents/:id/chunks", DocumentController, :chunks
     get "/documents/:id/blocks/:block_id", DocumentController, :block
+  end
+
+  scope "/api", SheafWeb.API do
+    pipe_through :export_api
+
+    get "/documents/:id/latex", DocumentController, :latex
+    get "/documents/:id/pdf", DocumentController, :pdf
   end
 
   scope "/rdf", SheafRDFBrowserWeb do
@@ -78,6 +89,18 @@ defmodule SheafWeb.Router do
   defp dashboard_basic_auth(conn, _opts) do
     username = System.get_env("SHEAF_DASHBOARD_USERNAME", "admin")
     password = System.get_env("SHEAF_DASHBOARD_PASSWORD", "sheaf")
+
+    Plug.BasicAuth.basic_auth(conn, username: username, password: password)
+  end
+
+  defp export_basic_auth(conn, _opts) do
+    username =
+      System.get_env("SHEAF_EXPORT_USERNAME") ||
+        System.get_env("SHEAF_DASHBOARD_USERNAME", "admin")
+
+    password =
+      System.get_env("SHEAF_EXPORT_PASSWORD") ||
+        System.get_env("SHEAF_DASHBOARD_PASSWORD", "sheaf")
 
     Plug.BasicAuth.basic_auth(conn, username: username, password: password)
   end

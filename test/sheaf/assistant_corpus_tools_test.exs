@@ -1,10 +1,11 @@
 defmodule Sheaf.Assistant.CorpusToolsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias ReqLLM.{Tool, ToolResult}
   alias ReqLLM.Message.ContentPart
   alias Sheaf.Assistant.{CorpusTools, ToolResultText, ToolResults}
   alias Sheaf.Id
+  alias Sheaf.NS.{AS, DOC}
 
   test "search_text tool uses embedding index search and preserves assistant hit shape" do
     test_pid = self()
@@ -557,7 +558,8 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
           %ToolResults.Block{
             id: "PAR001",
             type: :paragraph,
-            text: "A paragraph."
+            text: "A paragraph.",
+            tags: [%{name: "needs_revision", label: "needs revision"}]
           },
           %ToolResults.Block{
             id: "EXT001",
@@ -569,10 +571,58 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
       })
 
     assert text =~ "SECTION #SEC001 A section"
-    assert text =~ "PARAGRAPH #PAR001"
+    assert text =~ "PARAGRAPH #PAR001 [tags: needs_revision]"
     assert text =~ "EXCERPT #EXT001 p. 12"
     assert text =~ "A paragraph."
     assert text =~ "An excerpt."
+  end
+
+  test "read tool includes writing tags from the workspace graph" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-corpus-tools-read-tags-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    start_supervised!({Sheaf.Repo, path: path})
+
+    document = Id.iri("RCT001")
+    list = Id.iri("RCTL01")
+    paragraph = Id.iri("RCTP01")
+    revision = Id.iri("RCTR01")
+
+    graph =
+      RDF.Graph.new(
+        [
+          {document, RDF.type(), DOC.Document},
+          {document, DOC.children(), list},
+          {paragraph, RDF.type(), DOC.ParagraphBlock},
+          {paragraph, DOC.paragraph(), revision},
+          {revision, RDF.type(), DOC.Paragraph},
+          {revision, DOC.text(), RDF.literal("This needs another pass.")}
+        ],
+        name: document
+      )
+      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: list).graph end)
+
+    workspace =
+      RDF.Graph.new(
+        [
+          {paragraph, AS.tag(), RDF.iri(DOC.NeedsRevisionTag)}
+        ],
+        name: Sheaf.Workspace.graph()
+      )
+
+    assert :ok = Sheaf.Repo.assert(graph)
+    assert :ok = Sheaf.Repo.assert(workspace)
+
+    tool = CorpusTools.tools(include_notes?: false) |> Enum.find(&(&1.name == "read"))
+
+    assert {:ok, %ToolResult{} = result} =
+             Tool.execute(tool, %{"blocks" => ["RCT001"], "expand" => true})
+
+    assert tool_text(result) =~ "PARAGRAPH #RCTP01 [tags: needs_revision]"
+    assert tool_text(result) =~ "This needs another pass."
   end
 
   test "selected block turn context omits the repeated document title" do
@@ -582,6 +632,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
         id: "DEF456",
         type: :paragraph,
         text: "Selected paragraph text.",
+        tags: [%{name: "fragment", label: "fragment"}],
         ancestry: [
           %ToolResults.ContextEntry{id: "ABC123", type: :document, title: "Draft chapter"},
           %ToolResults.ContextEntry{id: "SEC001", type: :section, title: "A section"},
@@ -591,6 +642,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert text =~ "The user has selected paragraph #DEF456:"
     assert text =~ "#SEC001 A section"
+    assert text =~ "Tags: fragment"
     assert text =~ "Selected paragraph text."
     refute text =~ "Draft chapter"
   end

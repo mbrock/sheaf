@@ -8,11 +8,20 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   alias ReqLLM.{Tool, ToolResult}
   alias ReqLLM.Message.ContentPart
-  alias Sheaf.{BlockTags, Corpus, Document, DocumentEdits, Documents, Id, Spreadsheets}
+
+  alias Sheaf.{
+    BlockTags,
+    Corpus,
+    Document,
+    DocumentEdits,
+    Documents,
+    Id,
+    SearchMaintenance,
+    Spreadsheets
+  }
+
   alias Sheaf.Assistant.Notes
   alias Sheaf.Assistant.{QueryResults, SpreadsheetSession, ToolResultText, ToolResults}
-  alias Sheaf.Embedding.Index, as: EmbeddingIndex
-  alias Sheaf.Search.Index, as: SearchIndex
 
   @search_result_limit 10
   @spreadsheet_list_limit 50
@@ -1252,55 +1261,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp update_search_index_for_blocks(block_ids) do
-    with {:ok, affected_blocks} <- affected_text_block_ids(block_ids),
-         {:ok, rows} <- Sheaf.TextUnits.fetch_rows(),
-         affected_iris = MapSet.new(Enum.map(affected_blocks, &(Id.iri(&1) |> to_string()))),
-         all_embedding_units = EmbeddingIndex.units_from_rows(rows),
-         embedding_units =
-           Enum.filter(all_embedding_units, &MapSet.member?(affected_iris, &1.iri)),
-         current_hashes =
-           all_embedding_units
-           |> Enum.map(&{&1.iri, &1.text_hash})
-           |> MapSet.new(),
-         {:ok, embedding} <-
-           EmbeddingIndex.sync_units(embedding_units, current_hashes: current_hashes),
-         {:ok, search} <- SearchIndex.sync() do
-      {:ok,
-       %{
-         block_ids: block_ids,
-         affected_blocks: affected_blocks,
-         embedding: embedding,
-         search: search
-       }}
-    end
-  end
-
-  defp affected_text_block_ids(block_ids) do
-    block_ids
-    |> List.wrap()
-    |> Enum.reduce_while({:ok, MapSet.new()}, fn block_id, {:ok, affected} ->
-      case DocumentEdits.text_block_ids([block_id]) do
-        {:ok, []} ->
-          {:cont, {:ok, MapSet.put(affected, block_id)}}
-
-        {:ok, ids} ->
-          {:cont, {:ok, Enum.reduce(ids, affected, &MapSet.put(&2, &1))}}
-
-        {:error, reason} when is_binary(reason) ->
-          if String.ends_with?(reason, " not found") do
-            {:cont, {:ok, MapSet.put(affected, block_id)}}
-          else
-            {:halt, {:error, reason}}
-          end
-
-        {:error, reason} ->
-          {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, affected} -> {:ok, MapSet.to_list(affected)}
-      error -> error
-    end
+    SearchMaintenance.refresh_blocks(block_ids)
   end
 
   defp maybe_add_scope(opts, args) do
@@ -1562,13 +1523,14 @@ defmodule Sheaf.Assistant.CorpusTools do
     with {:ok, document_id} <- document_for_block(block_id),
          {:ok, graph} <- Corpus.graph(document_id) do
       root = Id.iri(document_id)
+      tags_by_block = tags_for_document(graph, root)
 
       if expanded? do
         graph
-        |> expanded_blocks_from_graph(document_id, root, Id.iri(block_id))
+        |> expanded_blocks_from_graph(document_id, root, Id.iri(block_id), tags_by_block)
         |> prepend_document_header(graph, document_id, root)
       else
-        block_from_graph(graph, document_id, root, block_id)
+        block_from_graph(graph, document_id, root, block_id, tags_by_block)
       end
     else
       {:error, :not_found} -> {:error, {:not_found, block_id}}
@@ -1580,6 +1542,13 @@ defmodule Sheaf.Assistant.CorpusTools do
     case Corpus.find_document(block_id) do
       nil -> {:error, :not_found}
       document_id -> {:ok, document_id}
+    end
+  end
+
+  defp tags_for_document(graph, root) do
+    case BlockTags.for_document(graph, root) do
+      {:ok, tags_by_block} -> tags_by_block
+      {:error, _reason} -> %{}
     end
   end
 
@@ -1596,22 +1565,22 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp prepend_document_header({:ok, blocks}, graph, document_id, root) do
-    case block_from_graph(graph, document_id, root, document_id) do
+    case block_from_graph(graph, document_id, root, document_id, %{}) do
       {:ok, document} -> {:ok, [document | blocks]}
       {:error, _reason} -> {:ok, blocks}
     end
   end
 
-  defp expanded_blocks_from_graph(graph, document_id, root, iri) do
+  defp expanded_blocks_from_graph(graph, document_id, root, iri, tags_by_block) do
     block_id = Id.id_from_iri(iri)
 
-    case block_from_graph(graph, document_id, root, block_id) do
+    case block_from_graph(graph, document_id, root, block_id, tags_by_block) do
       {:ok, block} ->
         descendants =
           graph
           |> Document.children(iri)
           |> Enum.flat_map(fn child ->
-            case expanded_blocks_from_graph(graph, document_id, root, child) do
+            case expanded_blocks_from_graph(graph, document_id, root, child, tags_by_block) do
               {:ok, blocks} -> blocks
               {:error, _reason} -> []
             end
@@ -1625,6 +1594,10 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp block_from_graph(graph, document_id, root, block_id) do
+    block_from_graph(graph, document_id, root, block_id, tags_for_document(graph, root))
+  end
+
+  defp block_from_graph(graph, document_id, root, block_id, tags_by_block) do
     iri = Id.iri(block_id)
 
     cond do
@@ -1649,7 +1622,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       type = Document.block_type(graph, iri) ->
         block =
           graph
-          |> render_block(document_id, iri, type)
+          |> render_block(document_id, iri, type, tags_by_block)
           |> Map.put(
             :ancestry,
             graph |> Corpus.ancestry(root, iri) |> Enum.map(&context_entry/1)
@@ -1662,13 +1635,14 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp render_block(graph, document_id, iri, type) do
+  defp render_block(graph, document_id, iri, type, tags_by_block) do
     base = %ToolResults.Block{
       document_id: document_id,
       id: Id.id_from_iri(iri),
       type: type,
       title: block_title(graph, iri, type),
-      source: block_source(graph, iri)
+      source: block_source(graph, iri),
+      tags: Map.get(tags_by_block, Id.id_from_iri(iri), [])
     }
 
     case type do

@@ -133,4 +133,30 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert html =~ ~s(data-typewriter-streaming)
     assert html =~ "A complete sentence."
   end
+
+  test "document sidebar composer shows selected block context without chat history chrome" do
+    html =
+      render_component(&AssistantChatComponent.render/1,
+        id: "document-block-assistant-DOC01",
+        variant: :document_sidebar,
+        chat: %{messages: [], pending: false, titles: %{}},
+        chats: [],
+        composer_only?: false,
+        selected_chat_id: nil,
+        selected_id: "PL9BXR",
+        form:
+          Phoenix.Component.to_form(
+            %{"message" => "", "mode" => "quick", "model_provider" => "claude"},
+            as: :chat
+          ),
+        mode: "quick",
+        model_provider: "claude",
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ "#PL9BXR"
+    assert html =~ ~s(placeholder="Ask a quick question")
+    refute html =~ "Current"
+    refute html =~ "New conversation"
+  end
 end

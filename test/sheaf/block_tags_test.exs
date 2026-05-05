@@ -78,6 +78,69 @@ defmodule Sheaf.BlockTagsTest do
             }} = BlockTags.for_document(graph, document, workspace_graph: workspace)
   end
 
+  test "toggles a writing tag on when it is absent" do
+    test_pid = self()
+    document = Id.iri("DOC111")
+    block = Id.iri("PAR111")
+
+    document_graph =
+      Graph.new([
+        {document, RDF.type(), DOC.Document},
+        {block, RDF.type(), DOC.ParagraphBlock}
+      ])
+
+    workspace = Graph.new(name: Sheaf.Workspace.graph())
+
+    transact = fn _tx, changes, metadata ->
+      send(test_pid, {:transact, changes, metadata})
+      :ok
+    end
+
+    assert {:ok, %{action: :add, block_id: "PAR111", tag: "fragment"}} =
+             BlockTags.toggle("PAR111", "fragment",
+               document_resolver: fn "PAR111" -> "DOC111" end,
+               graph_fetcher: fn "DOC111" -> {:ok, document_graph} end,
+               workspace_graph: workspace,
+               transact: transact
+             )
+
+    assert_receive {:transact, [{:assert, graph}], metadata}
+    assert {"sheaf.change", "toggle writing tag"} in metadata
+    assert RDF.Data.include?(graph, {block, AS.tag(), RDF.iri(DOC.FragmentTag)})
+  end
+
+  test "toggles a writing tag off when it is present" do
+    test_pid = self()
+    document = Id.iri("DOC111")
+    block = Id.iri("PAR111")
+
+    document_graph =
+      Graph.new([
+        {document, RDF.type(), DOC.Document},
+        {block, RDF.type(), DOC.ParagraphBlock}
+      ])
+
+    workspace =
+      Graph.new([{block, AS.tag(), RDF.iri(DOC.FragmentTag)}], name: Sheaf.Workspace.graph())
+
+    transact = fn _tx, changes, metadata ->
+      send(test_pid, {:transact, changes, metadata})
+      :ok
+    end
+
+    assert {:ok, %{action: :remove, block_id: "PAR111", tag: "fragment"}} =
+             BlockTags.toggle("PAR111", "fragment",
+               document_resolver: fn "PAR111" -> "DOC111" end,
+               graph_fetcher: fn "DOC111" -> {:ok, document_graph} end,
+               workspace_graph: workspace,
+               transact: transact
+             )
+
+    assert_receive {:transact, [{:retract, graph}], metadata}
+    assert {"sheaf.tag_action", "remove"} in metadata
+    assert RDF.Data.include?(graph, {block, AS.tag(), RDF.iri(DOC.FragmentTag)})
+  end
+
   test "rejects non-paragraph blocks" do
     document = Id.iri("DOC111")
     section = Id.iri("SEC111")

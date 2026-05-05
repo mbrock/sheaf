@@ -167,6 +167,86 @@ defmodule Sheaf.DocumentTest do
              Document.footnotes(graph, block)
   end
 
+  test "renders a structured document as LaTeX" do
+    thesis = RDF.IRI.new!("https://example.com/sheaf/DOC123")
+    root_list = RDF.IRI.new!("https://example.com/sheaf/LST123")
+    section = RDF.IRI.new!("https://example.com/sheaf/SEC111")
+    section_list = RDF.IRI.new!("https://example.com/sheaf/LST111")
+    paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR111")
+    paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV1111")
+    footnote = RDF.IRI.new!("https://example.com/sheaf/FN1111")
+
+    graph =
+      RDF.Graph.new([
+        {thesis, RDF.type(), DOC.Document},
+        {thesis, RDF.type(), DOC.Thesis},
+        {thesis, RDFS.label(), RDF.literal("Things & Practices")},
+        {thesis, DOC.children(), root_list},
+        {section, RDF.type(), DOC.Section},
+        {section, RDFS.label(), RDF.literal("Introduction")},
+        {section, DOC.children(), section_list},
+        {paragraph, RDF.type(), DOC.ParagraphBlock},
+        {paragraph, DOC.paragraph(), paragraph_revision},
+        {paragraph, DOC.markup(),
+         RDF.literal(~s(Things <em>move</em> &amp; matter <span data-footnote="1">[1]</span>.))},
+        {paragraph, DOC.hasFootnote(), footnote},
+        {paragraph_revision, RDF.type(), DOC.Paragraph},
+        {paragraph_revision, DOC.text(), RDF.literal("Things move and matter.")},
+        {footnote, DOC.sourceKey(), RDF.literal("word/footnotes.xml#1")},
+        {footnote, DOC.text(), RDF.literal("A grounded note & detail.")}
+      ])
+      |> then(fn graph -> RDF.list([section], graph: graph, head: root_list).graph end)
+      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: section_list).graph end)
+
+    expression = RDF.IRI.new!("https://example.com/sheaf/WORK123")
+    author = RDF.IRI.new!("https://example.com/sheaf/AUTHOR1")
+    university = RDF.IRI.new!("https://example.com/sheaf/ORG1")
+    school = RDF.IRI.new!("https://example.com/sheaf/ORG2")
+    supervisor = RDF.IRI.new!("https://example.com/sheaf/SUP1")
+
+    metadata_graph =
+      RDF.Graph.new([
+        {thesis, Sheaf.NS.FABIO.isRepresentationOf(), expression},
+        {expression, Sheaf.NS.DCTERMS.title(), RDF.literal("Metadata Title")},
+        {expression, Sheaf.NS.DCTERMS.creator(), author},
+        {author, Sheaf.NS.FOAF.name(), RDF.literal("Ieva Lange")},
+        {expression, DOC.awardingInstitution(), university},
+        {university, Sheaf.NS.FOAF.name(), RDF.literal("Tallinn University")},
+        {expression, DOC.academicUnit(), school},
+        {school, Sheaf.NS.FOAF.name(), RDF.literal("School of Humanities")},
+        {expression, DOC.thesisDegreeText(), RDF.literal("MA Thesis")},
+        {expression, DOC.academicSupervisor(), supervisor},
+        {supervisor, Sheaf.NS.FOAF.name(), RDF.literal("Maarja Kaaristo, PhD")},
+        {expression, DOC.submissionPlace(), RDF.literal("Tallinn")},
+        {expression, Sheaf.NS.FABIO.hasPublicationYear(), RDF.literal("2026")},
+        {expression, DOC.authorshipDeclaration(), RDF.literal("I hereby confirm authorship.")},
+        {expression, DOC.declarationDate(), RDF.literal("05.05.2026.")}
+      ])
+
+    latex = Sheaf.Document.LaTeX.render(graph, thesis, metadata_graph: metadata_graph)
+
+    assert latex =~ "\\documentclass[12pt,a4paper,oneside]{report}"
+    assert latex =~ "\\IfFileExists{"
+    assert latex =~ "/priv/static/fonts/Times New Roman.ttf"
+    assert latex =~ "UprightFont={Times New Roman.ttf}"
+    assert latex =~ "BoldFont={Times New Roman Bold.ttf}"
+    assert latex =~ "\\onehalfspacing"
+    assert latex =~ "\\setlength{\\parindent}{1.27cm}"
+    assert latex =~ "\\titleformat{\\chapter}"
+    assert latex =~ "\\begin{titlepage}"
+    assert latex =~ "\\title{Metadata Title}"
+    assert latex =~ "Tallinn University"
+    assert latex =~ "School of Humanities"
+    assert latex =~ "Ieva Lange"
+    assert latex =~ "MA Thesis"
+    assert latex =~ "Supervisor: Maarja Kaaristo, PhD"
+    assert latex =~ "Tallinn 2026"
+    assert latex =~ "I hereby confirm authorship."
+    assert latex =~ "Ieva Lange 05.05.2026."
+    assert latex =~ "\\chapter{Introduction}"
+    assert latex =~ "Things \\emph{move} \\& matter \\footnote{A grounded note \\& detail.}."
+  end
+
   test "returns ordered readable text chunks and DOI candidates for imported papers" do
     paper = RDF.IRI.new!("https://example.com/sheaf/PAPER1")
     root_list = RDF.IRI.new!("https://example.com/sheaf/LSTROOT")

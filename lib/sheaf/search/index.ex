@@ -153,6 +153,50 @@ defmodule Sheaf.Search.Index do
   end
 
   @doc """
+  Replaces the mirrored rows for a bounded set of text unit IRIs.
+
+  `stale_iris` are removed first, then any supplied current `units` are
+  inserted. This keeps FTS maintenance proportional to the edited blocks rather
+  than rebuilding the whole corpus mirror.
+  """
+  @spec replace_units([map()], [String.t()], keyword()) :: {:ok, map()} | {:error, term()}
+  def replace_units(units, stale_iris, opts \\ []) when is_list(units) and is_list(stale_iris) do
+    db_path = path(opts)
+
+    with {:ok, conn} <- open(opts) do
+      try do
+        replace_units_loaded(conn, units, stale_iris)
+        |> case do
+          {:ok, summary} -> {:ok, Map.put(summary, :db_path, db_path)}
+          error -> error
+        end
+      after
+        close(conn)
+      end
+    end
+  end
+
+  @doc false
+  def replace_units_loaded(conn, units, stale_iris)
+      when is_list(units) and is_list(stale_iris) do
+    synced_at = now_iso8601()
+    stale_iris = stale_iris |> Enum.filter(&is_binary/1) |> Enum.uniq()
+
+    transaction(conn, fn ->
+      with :ok <- delete_units(conn, stale_iris),
+           :ok <- insert_units(conn, units, synced_at) do
+        {:ok,
+         %{
+           count: length(units),
+           stale_count: length(stale_iris),
+           kinds: Enum.frequencies_by(units, & &1.kind),
+           synced_at: synced_at
+         }}
+      end
+    end)
+  end
+
+  @doc """
   Searches the sidecar FTS table.
   """
   @spec search(String.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
@@ -480,28 +524,68 @@ defmodule Sheaf.Search.Index do
   defp integer_value(_value), do: nil
 
   defp insert_unit(conn, unit, synced_at) do
-    execute(
-      conn,
-      """
-      INSERT INTO search_text_units
-        (iri, doc_iri, kind, text, text_hash, source_page, source_block_type,
-         spreadsheet_row, spreadsheet_source, code_category_title, synced_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      """,
-      [
-        Map.fetch!(unit, :iri),
-        Map.get(unit, :doc_iri),
-        Map.fetch!(unit, :kind),
-        Map.fetch!(unit, :text),
-        text_hash(Map.fetch!(unit, :text)),
-        Map.get(unit, :source_page),
-        Map.get(unit, :source_block_type),
-        Map.get(unit, :spreadsheet_row),
-        Map.get(unit, :spreadsheet_source),
-        Map.get(unit, :code_category_title),
-        synced_at
-      ]
-    )
+    with :ok <-
+           execute(
+             conn,
+             """
+             INSERT INTO search_text_units
+               (iri, doc_iri, kind, text, text_hash, source_page, source_block_type,
+                spreadsheet_row, spreadsheet_source, code_category_title, synced_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             """,
+             [
+               Map.fetch!(unit, :iri),
+               Map.get(unit, :doc_iri),
+               Map.fetch!(unit, :kind),
+               Map.fetch!(unit, :text),
+               text_hash(Map.fetch!(unit, :text)),
+               Map.get(unit, :source_page),
+               Map.get(unit, :source_block_type),
+               Map.get(unit, :spreadsheet_row),
+               Map.get(unit, :spreadsheet_source),
+               Map.get(unit, :code_category_title),
+               synced_at
+             ]
+           ),
+         {:ok, [[rowid]]} <-
+           query(conn, "SELECT rowid FROM search_text_units WHERE iri = ?", [
+             Map.fetch!(unit, :iri)
+           ]) do
+      execute(conn, "INSERT INTO search_text_units_fts(rowid, text) VALUES (?, ?)", [
+        rowid,
+        Map.fetch!(unit, :text)
+      ])
+    end
+  end
+
+  defp delete_units(conn, iris) do
+    Enum.reduce_while(iris, :ok, fn iri, :ok ->
+      case delete_unit(conn, iri) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp delete_unit(conn, iri) do
+    with {:ok, rows} <-
+           query(conn, "SELECT rowid, text FROM search_text_units WHERE iri = ?", [iri]),
+         :ok <- delete_fts_rows(conn, rows) do
+      execute(conn, "DELETE FROM search_text_units WHERE iri = ?", [iri])
+    end
+  end
+
+  defp delete_fts_rows(conn, rows) do
+    Enum.reduce_while(rows, :ok, fn [rowid, text], :ok ->
+      case execute(
+             conn,
+             "INSERT INTO search_text_units_fts(search_text_units_fts, rowid, text) VALUES ('delete', ?, ?)",
+             [rowid, text]
+           ) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp ensure_metadata_columns(conn) do

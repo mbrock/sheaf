@@ -17,9 +17,9 @@ defmodule Sheaf.DocumentEditsTest do
   end
 
   test "replaces paragraph text with a new active revision and clears stale markup" do
-    doc = Id.iri("DOC001")
-    block = Id.iri("PAR001")
-    old_revision = Id.iri("REV001")
+    doc = Id.iri("DOCT01")
+    block = Id.iri("PART01")
+    old_revision = Id.iri("REVT01")
 
     graph =
       RDF.Graph.new(
@@ -36,10 +36,10 @@ defmodule Sheaf.DocumentEditsTest do
 
     assert :ok = Sheaf.Repo.assert(graph)
 
-    assert {:ok, result} = DocumentEdits.replace_block_text("PAR001", "New paragraph.")
+    assert {:ok, result} = DocumentEdits.replace_block_text("PART01", "New paragraph.")
 
     assert result.action == :replace_paragraph_text
-    assert result.affected_blocks == ["PAR001"]
+    assert result.affected_blocks == ["PART01"]
     assert result.previous_text == "Old paragraph."
 
     assert {:ok, updated} = Sheaf.fetch_graph(doc)
@@ -48,9 +48,48 @@ defmodule Sheaf.DocumentEditsTest do
     assert RDF.Data.include?(updated, {old_revision, PROV.wasInvalidatedBy(), nil})
   end
 
+  test "replaces paragraph markup with sanitized markup and a matching text revision" do
+    doc = Id.iri("DOCM01")
+    block = Id.iri("PARM01")
+    old_revision = Id.iri("REVM01")
+
+    graph =
+      RDF.Graph.new(
+        [
+          {doc, RDF.type(), DOC.Document},
+          {block, RDF.type(), DOC.ParagraphBlock},
+          {block, DOC.paragraph(), old_revision},
+          {block, DOC.markup(), RDF.literal("<em>Old paragraph.</em>")},
+          {old_revision, RDF.type(), DOC.Paragraph},
+          {old_revision, DOC.text(), RDF.literal("Old paragraph.")}
+        ],
+        name: doc
+      )
+
+    assert :ok = Sheaf.Repo.assert(graph)
+
+    assert {:ok, result} =
+             DocumentEdits.replace_block_markup(
+               "PARM01",
+               ~S|<strong>New</strong> <u>paragraph</u><script>bad()</script>.|
+             )
+
+    assert result.action == :replace_paragraph_markup
+
+    assert result.markup ==
+             "<strong>New</strong> <u>paragraph</u>&lt;script&gt;bad()&lt;/script&gt;."
+
+    assert result.text == "New paragraph bad()."
+
+    assert {:ok, updated} = Sheaf.fetch_graph(doc)
+    assert Document.paragraph_markup(updated, block) == result.markup
+    assert Document.paragraph_text(updated, block) == "New paragraph bad()."
+    assert RDF.Data.include?(updated, {old_revision, PROV.wasInvalidatedBy(), nil})
+  end
+
   test "changes section headings" do
-    doc = Id.iri("DOC001")
-    section = Id.iri("SEC001")
+    doc = Id.iri("DOCS01")
+    section = Id.iri("SECS01")
 
     graph =
       RDF.Graph.new(
@@ -64,7 +103,7 @@ defmodule Sheaf.DocumentEditsTest do
 
     assert :ok = Sheaf.Repo.assert(graph)
 
-    assert {:ok, result} = DocumentEdits.replace_block_text("SEC001", "New heading")
+    assert {:ok, result} = DocumentEdits.replace_block_text("SECS01", "New heading")
 
     assert result.action == :change_section_heading
     assert result.previous_text == "Old heading"

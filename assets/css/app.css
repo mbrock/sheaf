@@ -453,6 +453,26 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* This file is for your main application CSS */
+.document-paragraph-editor .ProseMirror {
+  min-height: 6rem;
+  outline: none;
+  white-space: pre-wrap;
+}
+
+.document-paragraph-editor .ProseMirror p {
+  margin: 0 0 0.75rem;
+}
+
+.document-paragraph-editor .ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+
+.document-paragraph-editor button[disabled],
+.document-paragraph-editor button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.45;
+}
+
 @font-face {
   font-family: "Halyard Display";
   src: url("/fonts/fonnts.com-Halyard_Display.otf") format("opentype");

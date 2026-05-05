@@ -26,10 +26,12 @@ export const DocumentBreadcrumb = {
     this.update = () => updateCurrentHeading(this)
     this.copy = () => copyMarkdown(this)
     this.navigateAssistantBlock = event => navigateAssistantBlock(this, event)
+    this.clearSelectionFromOutsideClick = event => clearSelectionFromOutsideClick(this, event)
     this.focusArticle = () => focusArticle(this)
     this.scrollFromKey = event => scrollArticleFromKey(this, event)
 
     this.el.addEventListener("click", this.navigateAssistantBlock)
+    document.addEventListener("pointerdown", this.clearSelectionFromOutsideClick)
     this.article?.addEventListener("pointerdown", this.focusArticle)
     window.addEventListener("keydown", this.scrollFromKey)
     this.copyButton?.addEventListener("click", this.copy)
@@ -48,10 +50,25 @@ export const DocumentBreadcrumb = {
   destroyed() {
     this.observer?.disconnect()
     this.el.removeEventListener("click", this.navigateAssistantBlock)
+    document.removeEventListener("pointerdown", this.clearSelectionFromOutsideClick)
     this.article?.removeEventListener("pointerdown", this.focusArticle)
     window.removeEventListener("keydown", this.scrollFromKey)
     this.copyButton?.removeEventListener("click", this.copy)
   },
+}
+
+function clearSelectionFromOutsideClick(hook, event) {
+  const selectedId = hook.el.dataset.selectedBlockId
+  if (!selectedId) return
+
+  const target = event.target instanceof Element ? event.target : event.target?.parentElement
+  if (!target) return
+
+  if (target.closest(`#block-${cssEscape(selectedId)}`)) return
+  if (target.closest("[data-selected-block-context]")) return
+  if (target.closest("[id^='block-']")) return
+
+  hook.pushEvent("clear_block_selection", {})
 }
 
 function navigateAssistantBlock(hook, event) {
@@ -261,7 +278,12 @@ async function copyMarkdown(hook) {
 }
 
 function markdownFor(root) {
-  if (root instanceof HTMLElement && root.matches("section[id]")) return documentMarkdown(root)
+  if (root instanceof HTMLElement && root.matches("section.document-print-document[id]")) {
+    return documentMarkdown(root)
+  }
+  if (root instanceof HTMLElement && root.matches("section.document-print-section[id]")) {
+    return sectionMarkdown(root, 2)
+  }
   if (root instanceof HTMLDetailsElement) return sectionMarkdown(root, 2)
 
   return Array.from(root.children)
@@ -281,7 +303,7 @@ function documentMarkdown(section) {
 
 function sectionMarkdown(section, level) {
   return [
-    `${"#".repeat(level)} ${text(section.querySelector(":scope > summary h2"))}`,
+    `${"#".repeat(level)} ${text(sectionHeading(section))}`,
     ...Array.from(section.querySelector(":scope > div")?.children ?? []).flatMap(child =>
       blockMarkdown(child, level + 1)
     ),
@@ -289,6 +311,9 @@ function sectionMarkdown(section, level) {
 }
 
 function blockMarkdown(element, level) {
+  if (element instanceof HTMLElement && element.matches("section.document-print-section[id]")) {
+    return [sectionMarkdown(element, level)]
+  }
   if (element instanceof HTMLDetailsElement) return [sectionMarkdown(element, level)]
   if (element instanceof HTMLHeadingElement) return [`${"#".repeat(headingLevel(element))} ${text(element)}`]
   if (element instanceof HTMLParagraphElement) return [text(element.lastElementChild ?? element)]
@@ -304,7 +329,11 @@ function headingLevel(heading) {
 }
 
 function blockHeading(block) {
-  return block?.querySelector(":scope > h1, :scope > summary h2")?.textContent.trim() ?? ""
+  return block?.querySelector(":scope > h1, :scope > header h2, :scope > summary h2")?.textContent.trim() ?? ""
+}
+
+function sectionHeading(section) {
+  return section.querySelector(":scope > header h2, :scope > summary h2")
 }
 
 function tocLinks(hook) {

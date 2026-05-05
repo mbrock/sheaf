@@ -9,6 +9,7 @@ defmodule SheafWeb.AppChrome do
   attr :section, :atom, default: :index
   attr :breadcrumb_id, :string, default: nil
   attr :copy_markdown?, :boolean, default: false
+  attr :pdf_export_path, :string, default: nil
   attr :search?, :boolean, default: true
   slot :inner_block
 
@@ -69,6 +70,18 @@ defmodule SheafWeb.AppChrome do
           aria-label="Assistant"
         >
           <.icon name="hero-sparkles" class="size-4" />
+        </.link>
+
+        <.link
+          :if={@pdf_export_path}
+          href={@pdf_export_path}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
+          title="Open PDF export"
+          aria-label="Open PDF export"
+        >
+          <.icon name="hero-document-arrow-down" class="size-4" />
         </.link>
 
         <button

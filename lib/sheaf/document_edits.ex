@@ -13,6 +13,11 @@ defmodule Sheaf.DocumentEdits do
   @text_block_types [:paragraph, :extracted, :row]
 
   @doc """
+  PubSub topic used for document graph change notifications.
+  """
+  def topic(document_id), do: "document:#{normalize_id(document_id)}"
+
+  @doc """
   Replaces a paragraph block's text or a section block's heading.
   """
   def replace_block_text(block_id, text, opts \\ []) when is_binary(text) do
@@ -36,6 +41,35 @@ defmodule Sheaf.DocumentEdits do
         Tracer.set_attribute("sheaf.document", document_id)
         Tracer.set_attribute("sheaf.block_type", Atom.to_string(type))
         Tracer.set_attribute("sheaf.statement_count", Map.get(result, :statement_count, 0))
+        notify_document_changed(result)
+        {:ok, result}
+      end
+    end
+  end
+
+  @doc """
+  Replaces a paragraph block's inline markup and matching plain-text revision.
+  """
+  def replace_block_markup(block_id, markup, opts \\ []) when is_binary(markup) do
+    block_id = normalize_id(block_id)
+
+    Tracer.with_span "sheaf.document_edits.replace_block_markup", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "quadlog"},
+        {"db.operation", "transact"},
+        {"sheaf.block_id", block_id},
+        {"sheaf.markup_chars", String.length(markup)}
+      ]
+    } do
+      with :ok <- require_id(block_id, "block is required"),
+           {:ok, document_id, graph} <- graph_for_block(block_id, opts),
+           block = Id.iri(block_id),
+           {:ok, :paragraph} <- editable_markup_block_type(graph, block_id, block),
+           {:ok, result} <- replace_block_markup(graph, document_id, block, markup, opts) do
+        Tracer.set_attribute("sheaf.document", document_id)
+        Tracer.set_attribute("sheaf.statement_count", Map.get(result, :statement_count, 0))
+        notify_document_changed(result)
         {:ok, result}
       end
     end
@@ -75,16 +109,18 @@ defmodule Sheaf.DocumentEdits do
            {:ok, changes} <-
              move_children_changes(graph, old_parent, new_parent, block, target, position),
            {:ok, statement_count} <- transact(changes, opts, "move document block") do
-        {:ok,
-         %{
-           action: :move_block,
-           document_id: document_id,
-           block_id: block_id,
-           target_id: target_id,
-           position: position,
-           affected_blocks: text_block_ids_in_subtree(graph, block),
-           statement_count: statement_count
-         }}
+        result = %{
+          action: :move_block,
+          document_id: document_id,
+          block_id: block_id,
+          target_id: target_id,
+          position: position,
+          affected_blocks: text_block_ids_in_subtree(graph, block),
+          statement_count: statement_count
+        }
+
+        notify_document_changed(result)
+        {:ok, result}
       end
     end
   end
@@ -115,17 +151,19 @@ defmodule Sheaf.DocumentEdits do
            {:ok, changes, block_id} <-
              insert_paragraph_changes(graph, parent, target, position, text),
            {:ok, statement_count} <- transact(changes, opts, "insert paragraph block") do
-        {:ok,
-         %{
-           action: :insert_paragraph,
-           document_id: document_id,
-           block_id: block_id,
-           target_id: target_id,
-           position: position,
-           text: text,
-           affected_blocks: [block_id],
-           statement_count: statement_count
-         }}
+        result = %{
+          action: :insert_paragraph,
+          document_id: document_id,
+          block_id: block_id,
+          target_id: target_id,
+          position: position,
+          text: text,
+          affected_blocks: [block_id],
+          statement_count: statement_count
+        }
+
+        notify_document_changed(result)
+        {:ok, result}
       end
     end
   end
@@ -157,14 +195,16 @@ defmodule Sheaf.DocumentEdits do
         Tracer.set_attribute("sheaf.affected_blocks", Enum.join(affected_blocks, ","))
         Tracer.set_attribute("sheaf.statement_count", statement_count)
 
-        {:ok,
-         %{
-           action: :delete_block,
-           document_id: document_id,
-           block_id: block_id,
-           affected_blocks: affected_blocks,
-           statement_count: statement_count
-         }}
+        result = %{
+          action: :delete_block,
+          document_id: document_id,
+          block_id: block_id,
+          affected_blocks: affected_blocks,
+          statement_count: statement_count
+        }
+
+        notify_document_changed(result)
+        {:ok, result}
       end
     end
   end
@@ -251,6 +291,56 @@ defmodule Sheaf.DocumentEdits do
          affected_blocks: [],
          statement_count: statement_count
        }}
+    end
+  end
+
+  defp replace_block_markup(graph, document_id, block, markup, opts) do
+    text = Document.inline_markup_text(markup)
+    markup = Document.sanitize_inline_markup(markup)
+    active_revisions = active_paragraphs(graph, block)
+    revision = mint(opts)
+    activity = mint(opts)
+    generated_at = now()
+
+    assert =
+      Graph.new(name: Graph.name(graph))
+      |> Graph.add({block, DOC.markup(), RDF.literal(markup)})
+      |> Graph.add({block, DOC.paragraph(), revision})
+      |> Graph.add({revision, RDF.type(), DOC.Paragraph})
+      |> Graph.add({revision, DOC.text(), RDF.literal(text)})
+      |> Graph.add({revision, PROV.wasGeneratedBy(), activity})
+      |> Graph.add({revision, PROV.generatedAtTime(), RDF.literal(generated_at)})
+      |> Graph.add({activity, RDF.type(), PROV.Activity})
+      |> Graph.add({activity, RDFS.label(), RDF.literal("Paragraph markup edit")})
+      |> add_revision_links(revision, active_revisions)
+      |> add_invalidations(activity, active_revisions, generated_at)
+
+    retract = predication_graph(graph, block, DOC.markup())
+
+    changes = compact_changes([{:retract, retract}, {:assert, assert}])
+
+    with {:ok, statement_count} <- transact(changes, opts, "replace paragraph markup") do
+      {:ok,
+       %{
+         action: :replace_paragraph_markup,
+         document_id: document_id,
+         block_id: Id.id_from_iri(block),
+         block_type: :paragraph,
+         markup: markup,
+         text: text,
+         previous_markup: Document.paragraph_markup(graph, block),
+         previous_text: Document.paragraph_text(graph, block),
+         affected_blocks: [Id.id_from_iri(block)],
+         statement_count: statement_count
+       }}
+    end
+  end
+
+  defp editable_markup_block_type(graph, block_id, block) do
+    case Document.block_type(graph, block) do
+      :paragraph -> {:ok, :paragraph}
+      nil -> {:error, "block #{block_id} is not a document block"}
+      type -> {:error, "block #{block_id} is a #{type}, not a markup paragraph"}
     end
   end
 
@@ -548,6 +638,14 @@ defmodule Sheaf.DocumentEdits do
       {:error, reason} -> {:error, reason}
       other -> {:error, {:unexpected_transact_result, other}}
     end
+  end
+
+  defp notify_document_changed(%{document_id: document_id} = result) do
+    if Process.whereis(Sheaf.PubSub) do
+      Phoenix.PubSub.broadcast(Sheaf.PubSub, topic(document_id), {:document_changed, result})
+    end
+
+    :ok
   end
 
   defp graph_for_block(block_id, opts) do

@@ -479,8 +479,8 @@ defmodule SheafWeb.AssistantMarkdownComponents do
         title={@title}
         aria-label={"##{@resource_id}"}
         class="block-preview-trigger cursor-pointer"
+        data-preview-id={@resource_id}
         phx-click="show_resource_preview"
-        phx-mouseenter="show_resource_preview"
         phx-focus="show_resource_preview"
         phx-value-id={@resource_id}
         phx-target={@block_ref_target}

@@ -359,6 +359,37 @@ defmodule Sheaf.Embedding.Store do
   end
 
   @doc """
+  Replaces sqlite-vec rows for a bounded set of text unit IRIs.
+  """
+  @spec sync_vector_index_for_iris(
+          conn(),
+          String.t(),
+          pos_integer(),
+          String.t() | nil,
+          [String.t()],
+          keyword()
+        ) :: {:ok, non_neg_integer()} | {:error, term()}
+  def sync_vector_index_for_iris(conn, model, dimensions, source, iris, opts \\ [])
+      when is_binary(source) or is_nil(source) do
+    iris = iris |> List.wrap() |> Enum.filter(&is_binary/1) |> Enum.uniq()
+    current_hashes = Keyword.get(opts, :current_hashes)
+
+    with :ok <- ensure_vector_table(conn, dimensions),
+         {:ok, rows} <- latest_embedding_rows(conn, model, dimensions, source) do
+      rows =
+        rows
+        |> Enum.filter(fn [iri | _rest] -> iri in iris end)
+        |> filter_current_hashes(current_hashes)
+
+      transaction(conn, fn ->
+        with :ok <- delete_vector_index_for_iris(conn, model, dimensions, source, iris) do
+          insert_vector_rows(conn, model, dimensions, source, rows)
+        end
+      end)
+    end
+  end
+
+  @doc """
   Returns nearest embeddings using sqlite-vec cosine distance.
   """
   @spec search_vectors(
@@ -524,6 +555,42 @@ defmodule Sheaf.Embedding.Store do
         [model, dimensions, source, source]
       )
     end
+  end
+
+  defp delete_vector_index_for_iris(conn, model, dimensions, source, iris) do
+    table = vector_table_name(dimensions)
+
+    Enum.reduce_while(iris, :ok, fn iri, :ok ->
+      with {:ok, rowids} <-
+             query(
+               conn,
+               """
+               SELECT rowid FROM embedding_vector_items
+               WHERE model = ?
+                 AND dimensions = ?
+                 AND (? IS NULL OR source = ?)
+                 AND iri = ?
+               """,
+               [model, dimensions, source, source, iri]
+             ),
+           :ok <- delete_vector_rows(conn, table, rowids),
+           :ok <-
+             execute(
+               conn,
+               """
+               DELETE FROM embedding_vector_items
+               WHERE model = ?
+                 AND dimensions = ?
+                 AND (? IS NULL OR source = ?)
+                 AND iri = ?
+               """,
+               [model, dimensions, source, source, iri]
+             ) do
+        {:cont, :ok}
+      else
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp delete_vector_rows(conn, table, rowids) do

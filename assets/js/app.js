@@ -30,6 +30,7 @@ import {DataTable} from "./data_table"
 import {ScrollContainer} from "./scroll_container"
 import {SubmitShortcut} from "./submit_shortcut"
 import {AssistantTypeWriter} from "./assistant_typewriter"
+import {ParagraphEditor} from "./paragraph_editor"
 import {installBlockPreviewAnchors} from "./block_preview_anchor"
 import {installCopyNormalizer} from "./copy_normalize"
 
@@ -62,6 +63,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     ScrollContainer,
     SubmitShortcut,
     AssistantTypeWriter,
+    ParagraphEditor,
   },
 })
 
@@ -69,6 +71,10 @@ const liveSocket = new LiveSocket("/live", Socket, {
 topbar.config({barColors: {0: "#29d"}, shadowColor: "transparent"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+window.addEventListener("sheaf:copy-text", event => {
+  const text = event.detail?.text
+  if (typeof text === "string" && text !== "") navigator.clipboard?.writeText(text)
+})
 
 installCopyNormalizer()
 installBlockPreviewAnchors()

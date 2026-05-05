@@ -58,6 +58,7 @@ defmodule Sheaf.Assistant.ToolResults do
       :text,
       :source,
       :coding,
+      tags: [],
       ancestry: [],
       children: [],
       outline: []

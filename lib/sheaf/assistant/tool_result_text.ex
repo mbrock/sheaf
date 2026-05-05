@@ -78,6 +78,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     Document: #{document_line(block)}
     Context:
     #{context_lines(block.ancestry)}
+    #{tags_text(block)}
 
     #{block.text}
     """
@@ -230,6 +231,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     [
       selected_block_heading(block),
       selected_block_context(block),
+      selected_block_tags(block),
       selected_block_coding(block),
       selected_block_body(block)
     ]
@@ -525,7 +527,7 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp expanded_block_text(%Block{type: :paragraph} = block) do
     """
-    PARAGRAPH ##{block.id}
+    PARAGRAPH ##{block.id}#{tags_inline(block)}
     #{indent_text(block.text, 1)}
     """
     |> String.trim()
@@ -592,6 +594,13 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp selected_block_coding(_block), do: nil
 
+  defp selected_block_tags(%Block{} = block) do
+    case tags_line(block) do
+      nil -> nil
+      line -> "  " <> line
+    end
+  end
+
   defp selected_block_body(%Block{type: :section, children: children}) do
     "  Children:\n" <> indent_multiline(children_lines(children), 1)
   end
@@ -638,6 +647,38 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp code_label(%Coding{category: category, category_title: title}) do
     [category, title] |> Enum.reject(&blank?/1) |> Enum.join(" - ")
+  end
+
+  defp tags_text(%Block{} = block) do
+    case tags_line(block) do
+      nil -> ""
+      line -> "\n" <> line
+    end
+  end
+
+  defp tags_inline(%Block{} = block) do
+    case tag_names(block) do
+      [] -> ""
+      names -> " [tags: " <> Enum.join(names, ", ") <> "]"
+    end
+  end
+
+  defp tags_line(%Block{} = block) do
+    case tag_names(block) do
+      [] -> nil
+      names -> "Tags: " <> Enum.join(names, ", ")
+    end
+  end
+
+  defp tag_names(%Block{tags: tags}) do
+    tags
+    |> List.wrap()
+    |> Enum.flat_map(fn
+      %{name: name} when is_binary(name) -> [name]
+      %{"name" => name} when is_binary(name) -> [name]
+      name when is_binary(name) -> [name]
+      _tag -> []
+    end)
   end
 
   defp authors([]), do: nil

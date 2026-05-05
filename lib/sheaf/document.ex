@@ -187,6 +187,19 @@ defmodule Sheaf.Document do
     inline_markup(graph, iri)
   end
 
+  def sanitize_inline_markup(markup) when is_binary(markup) do
+    ~r/<[^>]*>/
+    |> Regex.split(markup, include_captures: true, trim: false)
+    |> Enum.map_join(&sanitize_markup_part/1)
+    |> render_footnote_markers()
+  end
+
+  def inline_markup_text(markup) when is_binary(markup) do
+    markup
+    |> plain_text()
+    |> String.replace(~r/\s+([.,;:!?])/, "\\1")
+  end
+
   def footnotes(%Graph{} = graph, iri) do
     graph
     |> objects(iri, DOC.hasFootnote())
@@ -429,13 +442,6 @@ defmodule Sheaf.Document do
     |> String.replace("&#39;", "'")
   end
 
-  defp sanitize_inline_markup(markup) do
-    ~r/<[^>]*>/
-    |> Regex.split(markup, include_captures: true, trim: false)
-    |> Enum.map_join(&sanitize_markup_part/1)
-    |> render_footnote_markers()
-  end
-
   defp render_footnote_markers(markup) do
     markup =
       Regex.replace(
@@ -458,8 +464,20 @@ defmodule Sheaf.Document do
     end
   end
 
-  defp sanitize_markup_part(text),
-    do: Phoenix.HTML.html_escape(text) |> Phoenix.HTML.safe_to_string()
+  defp sanitize_markup_part(text) do
+    text
+    |> Phoenix.HTML.html_escape()
+    |> Phoenix.HTML.safe_to_string()
+    |> preserve_html_entities()
+  end
+
+  defp preserve_html_entities(text) do
+    String.replace(
+      text,
+      ~r/&amp;(#[0-9]+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]+);/,
+      "&\\1;"
+    )
+  end
 
   defp sanitize_tag(tag) do
     with [_, closing, name, attrs] <- Regex.run(~r/^<\s*(\/?)\s*([a-zA-Z0-9]+)([^>]*)>$/, tag),

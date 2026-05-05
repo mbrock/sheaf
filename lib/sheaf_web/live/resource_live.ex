@@ -46,6 +46,10 @@ defmodule SheafWeb.ResourceLive do
     {:noreply, assign(socket, :selected_block_id, id)}
   end
 
+  def handle_event("clear_block_selection", _params, socket) do
+    {:noreply, DocumentLive.clear_block_selection(socket)}
+  end
+
   def handle_event("assistant_block_link", %{"id" => block_id}, socket)
       when is_binary(block_id) and block_id != "" do
     current_document_id = Map.get(socket.assigns, :document_id)
@@ -69,6 +73,50 @@ defmodule SheafWeb.ResourceLive do
   end
 
   def handle_event("assistant_block_link", _params, socket), do: {:noreply, socket}
+
+  def handle_event("edit_paragraph", %{"id" => id}, socket) do
+    {:noreply, DocumentLive.start_paragraph_edit(socket, id)}
+  end
+
+  def handle_event("toggle_block_tag", %{"id" => id, "tag" => tag}, socket) do
+    {:noreply, DocumentLive.toggle_block_tag(socket, id, tag)}
+  end
+
+  def handle_event("insert_block_after", %{"id" => id}, socket) do
+    {:noreply, DocumentLive.insert_document_block_after(socket, id)}
+  end
+
+  def handle_event("move_block", %{"id" => id, "direction" => direction}, socket) do
+    {:noreply, DocumentLive.move_document_block(socket, id, direction)}
+  end
+
+  def handle_event("delete_block", %{"id" => id}, socket) do
+    {:noreply, DocumentLive.delete_document_block(socket, id)}
+  end
+
+  def handle_event("cancel_paragraph_edit", _params, socket) do
+    {:noreply, DocumentLive.clear_paragraph_edit(socket)}
+  end
+
+  def handle_event("save_paragraph_edit", %{"id" => id, "text" => text}, socket) do
+    {:noreply, DocumentLive.save_paragraph_edit(socket, id, text)}
+  end
+
+  def handle_event("save_paragraph_edit", %{"id" => id, "markup" => markup}, socket) do
+    {:noreply, DocumentLive.save_paragraph_markup_edit(socket, id, markup)}
+  end
+
+  def handle_event("save_paragraph_edit", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_info(
+        {:document_changed, %{document_id: document_id}},
+        %{assigns: %{resource_kind: :document, document_id: document_id}} = socket
+      ) do
+    {:noreply, DocumentLive.reload_document_assigns(socket)}
+  end
+
+  def handle_info({:document_changed, _event}, socket), do: {:noreply, socket}
 
   @impl true
   def render(%{resource_kind: :document} = assigns), do: DocumentLive.render(assigns)
@@ -187,7 +235,10 @@ defmodule SheafWeb.ResourceLive do
         |> assign(:root, root)
         |> assign(:references_by_block, references_by_block)
         |> assign(:tags_by_block, tags_by_block)
+        |> DocumentLive.assign_document_view(graph, root, tags_by_block)
         |> assign(:selected_block_id, selected_block_id)
+        |> assign(:editing_block_id, nil)
+        |> DocumentLive.subscribe_document_changes(document_id)
 
       {:ok, socket}
     end

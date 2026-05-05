@@ -15,11 +15,11 @@ defmodule SheafWeb.BlockPreviewComponent do
 
   @impl true
   def handle_event("show_resource_preview", %{"id" => id}, socket) do
-    {:noreply, assign(socket, :preview, Sheaf.ResourcePreviews.get(id))}
+    {:noreply, show_preview(socket, id)}
   end
 
   def handle_event("show_block_preview", %{"id" => id}, socket) do
-    {:noreply, assign(socket, :preview, Sheaf.ResourcePreviews.get(id))}
+    {:noreply, show_preview(socket, id)}
   end
 
   def handle_event("hide_block_preview", _params, socket) do
@@ -193,4 +193,10 @@ defmodule SheafWeb.BlockPreviewComponent do
 
   defp blank_to_nil(value) when is_binary(value),
     do: if(String.trim(value) == "", do: nil, else: value)
+
+  defp show_preview(socket, id) do
+    socket
+    |> assign(:preview, Sheaf.ResourcePreviews.get(id))
+    |> push_event("sheaf:block-preview-rendered", %{id: id})
+  end
 end

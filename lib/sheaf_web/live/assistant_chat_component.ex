@@ -235,6 +235,7 @@ defmodule SheafWeb.AssistantChatComponent do
               mode={@mode}
               model_provider={@model_provider}
               selected_chat_id={@selected_chat_id}
+              selected_id={Map.get(assigns, :selected_id)}
               pending={@chat.pending}
               myself={@myself}
               id={@id}
@@ -261,7 +262,10 @@ defmodule SheafWeb.AssistantChatComponent do
     ~H"""
     <section class={assistant_section_class(@variant, @selected_chat_id)}>
       <.live_component module={BlockPreviewComponent} id={block_preview_id(@id)} />
-      <div :if={not inline?(@variant) and not @composer_only?} class="mb-3 space-y-2">
+      <div
+        :if={not inline?(@variant) and not sidebar?(@variant) and not @composer_only?}
+        class="mb-3 space-y-2"
+      >
         <div class="flex items-center gap-2">
           <div class="min-w-0 flex-1">
             <div class="font-sans uppercase text-stone-500 dark:text-stone-400">
@@ -309,6 +313,7 @@ defmodule SheafWeb.AssistantChatComponent do
         mode={@mode}
         model_provider={@model_provider}
         selected_chat_id={@selected_chat_id}
+        selected_id={Map.get(assigns, :selected_id)}
         pending={@chat.pending}
         myself={@myself}
         id={@id}
@@ -346,6 +351,7 @@ defmodule SheafWeb.AssistantChatComponent do
   attr :mode, :string, required: true
   attr :model_provider, :string, required: true
   attr :selected_chat_id, :string, default: nil
+  attr :selected_id, :string, default: nil
   attr :pending, :boolean, required: true
   attr :myself, :any, required: true
   attr :id, :string, required: true
@@ -378,6 +384,7 @@ defmodule SheafWeb.AssistantChatComponent do
           <span class="min-w-0 flex-1 truncate px-1.5 text-stone-500 dark:text-stone-400">
             Reply
           </span>
+          <.selected_context_badge selected_id={@selected_id} />
           <button
             type="submit"
             class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
@@ -445,6 +452,7 @@ defmodule SheafWeb.AssistantChatComponent do
           </div>
 
           <span class="min-w-0 flex-1"></span>
+          <.selected_context_badge selected_id={@selected_id} />
 
           <label class="sr-only" for={"#{@id}-model-provider"}>Model</label>
           <select
@@ -474,6 +482,20 @@ defmodule SheafWeb.AssistantChatComponent do
         </div>
       </div>
     </.form>
+    """
+  end
+
+  attr :selected_id, :string, default: nil
+
+  defp selected_context_badge(assigns) do
+    ~H"""
+    <span
+      :if={is_binary(@selected_id) and @selected_id != ""}
+      class="max-w-24 shrink-0 truncate border border-stone-300 bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium text-stone-600 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300"
+      title={"Context ##{@selected_id}"}
+    >
+      {"##{@selected_id}"}
+    </span>
     """
   end
 
@@ -1029,7 +1051,8 @@ defmodule SheafWeb.AssistantChatComponent do
     end
   end
 
-  defp history_enabled?(assigns), do: not inline?(assigns.variant)
+  defp history_enabled?(assigns),
+    do: not inline?(assigns.variant) and not sidebar?(assigns.variant)
 
   defp inline?(:inline), do: true
   defp inline?(:compact), do: true
@@ -1037,8 +1060,15 @@ defmodule SheafWeb.AssistantChatComponent do
   defp inline?("compact"), do: true
   defp inline?(_variant), do: false
 
+  defp sidebar?(:document_sidebar), do: true
+  defp sidebar?("document_sidebar"), do: true
+  defp sidebar?(_variant), do: false
+
   defp assistant_section_class(variant, selected_chat_id) do
     cond do
+      sidebar?(variant) ->
+        "flex flex-col pt-1"
+
       inline?(variant) and is_nil(selected_chat_id) ->
         "py-3"
 

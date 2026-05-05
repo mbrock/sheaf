@@ -276,8 +276,13 @@ defmodule Sheaf.Embedding.Index do
 
         with :ok <- Store.finish_run(conn, run_iri, finish_attrs),
              {:ok, vector_count} <-
-               Store.sync_vector_index(conn, model, dimensions, source,
-                 current_hashes: vector_current_hashes
+               sync_vectors_after_run(
+                 conn,
+                 model,
+                 dimensions,
+                 source,
+                 vector_current_hashes,
+                 opts
                ) do
           Logger.info(
             "Embedding sync #{run_iri}: refreshed sqlite-vec index with #{vector_count} vectors"
@@ -593,6 +598,18 @@ defmodule Sheaf.Embedding.Index do
       text_hash: unit.text_hash,
       text_chars: unit.text_chars
     }
+  end
+
+  defp sync_vectors_after_run(conn, model, dimensions, source, current_hashes, opts) do
+    case Keyword.get(opts, :vector_iris) do
+      iris when is_list(iris) ->
+        Store.sync_vector_index_for_iris(conn, model, dimensions, source, iris,
+          current_hashes: current_hashes
+        )
+
+      _all ->
+        Store.sync_vector_index(conn, model, dimensions, source, current_hashes: current_hashes)
+    end
   end
 
   defp require_run(nil, run_iri), do: {:error, {:unknown_embedding_run, run_iri}}

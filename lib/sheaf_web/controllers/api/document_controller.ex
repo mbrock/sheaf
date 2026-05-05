@@ -9,6 +9,8 @@ defmodule SheafWeb.API.DocumentController do
   use SheafWeb, :controller
 
   alias Sheaf.{Document, Documents, Id}
+  alias Sheaf.Document.LaTeX
+  alias Sheaf.Document.PDF
 
   def index(conn, _params) do
     case Documents.list() do
@@ -37,6 +39,40 @@ defmodule SheafWeb.API.DocumentController do
     chunks = Document.text_chunks(graph, root) |> Enum.map(&chunk_entry/1)
 
     json(conn, %{id: id, iri: to_string(root), chunks: chunks})
+  end
+
+  def latex(conn, %{"id" => id}) do
+    root = Id.iri(id)
+
+    case LaTeX.render(root) do
+      {:ok, source} ->
+        filename = "#{id}.tex"
+
+        conn
+        |> put_resp_content_type("application/x-tex", "utf-8")
+        |> put_resp_header("content-disposition", ~s(inline; filename="#{filename}"))
+        |> send_resp(200, source)
+
+      {:error, reason} ->
+        send_error(conn, 502, "failed to export document as LaTeX", reason)
+    end
+  end
+
+  def pdf(conn, %{"id" => id}) do
+    root = Id.iri(id)
+
+    case PDF.render(root) do
+      {:ok, pdf} ->
+        filename = "#{id}.pdf"
+
+        conn
+        |> put_resp_header("content-type", "application/pdf")
+        |> put_resp_header("content-disposition", ~s(inline; filename="#{filename}"))
+        |> send_resp(200, pdf)
+
+      {:error, reason} ->
+        send_error(conn, 502, "failed to export document as PDF", reason)
+    end
   end
 
   def block(conn, %{"id" => id, "block_id" => block_id}) do

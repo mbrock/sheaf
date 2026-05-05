@@ -61,6 +61,45 @@ defmodule Sheaf.BlockTags do
   end
 
   @doc """
+  Toggles a single writing tag on a paragraph block in the workspace graph.
+  """
+  def toggle(block_id, tag, opts \\ []) do
+    block_ids = normalize_block_ids(block_id)
+    tag_names = normalize_tag_names(tag)
+
+    Tracer.with_span "sheaf.block_tags.toggle", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "quadlog"},
+        {"db.operation", "transact"},
+        {"sheaf.block_ids", Enum.join(block_ids, ",")},
+        {"sheaf.tags", Enum.join(tag_names, ",")},
+        {"sheaf.graph", to_string(Sheaf.Workspace.graph())}
+      ]
+    } do
+      with :ok <- require_single(block_ids, "one block is required"),
+           :ok <- require_single(tag_names, "one tag is required"),
+           {:ok, [tag_iri]} <- tag_iris(tag_names),
+           {:ok, [block]} <- paragraph_blocks(block_ids, opts),
+           {:ok, workspace} <- workspace_graph(opts),
+           graph = tag_graph([block], [tag_iri]),
+           action = tag_toggle_action(workspace, block, tag_iri),
+           :ok <- persist_toggle(action, graph, opts) do
+        Tracer.set_attribute("sheaf.tag_action", to_string(action))
+
+        {:ok,
+         %{
+           action: action,
+           block_id: Id.id_from_iri(block),
+           tag: hd(tag_names),
+           tag_iri: to_string(tag_iri),
+           statement_count: RDF.Data.statement_count(graph)
+         }}
+      end
+    end
+  end
+
+  @doc """
   Attaches writing tags to one or more paragraph blocks in the workspace graph.
   """
   def attach(block_ids, tags, opts \\ []) do
@@ -146,6 +185,9 @@ defmodule Sheaf.BlockTags do
 
   defp require_nonempty([], message), do: {:error, message}
   defp require_nonempty(_values, _message), do: :ok
+
+  defp require_single([_value], _message), do: :ok
+  defp require_single(_values, message), do: {:error, message}
 
   defp tag_iris(tag_names) do
     invalid = Enum.reject(tag_names, &Map.has_key?(@tag_index, &1))
@@ -288,6 +330,45 @@ defmodule Sheaf.BlockTags do
         Graph.add(graph, {block, AS.tag(), tag})
       end)
     end)
+  end
+
+  defp tag_toggle_action(workspace, block, tag_iri) do
+    if RDF.Data.include?(workspace, {block, AS.tag(), tag_iri}) do
+      :remove
+    else
+      :add
+    end
+  end
+
+  defp persist_toggle(action, %Graph{} = graph, opts) do
+    change =
+      case action do
+        :add -> {:assert, graph}
+        :remove -> {:retract, graph}
+      end
+
+    transact = Keyword.get(opts, :transact, &Sheaf.Repo.transact/3)
+    tx = Sheaf.mint()
+
+    metadata = [
+      {"sheaf.change", "toggle writing tag"},
+      {"sheaf.tag_action", to_string(action)}
+    ]
+
+    case call_transact(transact, tx, [change], metadata) do
+      :ok -> :ok
+      {:ok, _result} -> :ok
+      {:error, reason} -> {:error, reason}
+      other -> {:error, {:unexpected_transact_result, other}}
+    end
+  end
+
+  defp call_transact(transact, tx, changes, metadata) when is_function(transact) do
+    case :erlang.fun_info(transact, :arity) do
+      {:arity, 3} -> transact.(tx, changes, metadata)
+      {:arity, 2} -> transact.(tx, changes)
+      {:arity, 1} -> transact.(changes)
+    end
   end
 
   defp persist(%Graph{} = graph, opts) do

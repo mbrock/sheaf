@@ -37,6 +37,41 @@ sheaf:Thesis a rdfs:Class ;
   rdfs:subClassOf sheaf:Document ;
   rdfs:comment "A thesis document imported from the XML source files." .
 
+sheaf:awardingInstitution a rdf:Property ;
+  rdfs:label "has awarding institution"@en ;
+  rdfs:range foaf:Organization ;
+  rdfs:comment "Relates a thesis expression to the institution awarding the academic degree." .
+
+sheaf:academicUnit a rdf:Property ;
+  rdfs:label "has academic unit"@en ;
+  rdfs:range foaf:Organization ;
+  rdfs:comment "Relates a thesis expression to the school, faculty, department, or other academic unit responsible for the thesis." .
+
+sheaf:academicSupervisor a rdf:Property ;
+  rdfs:label "has academic supervisor"@en ;
+  rdfs:range foaf:Person ;
+  rdfs:comment "Relates a thesis expression to a person who supervised the thesis." .
+
+sheaf:thesisDegreeText a rdf:Property ;
+  rdfs:label "has thesis degree text"@en ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Records the degree or thesis-kind text used in thesis front matter when a controlled degree term is not sufficient for display." .
+
+sheaf:submissionPlace a rdf:Property ;
+  rdfs:label "has submission place"@en ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Records the place named in a thesis submission or title page." .
+
+sheaf:authorshipDeclaration a rdf:Property ;
+  rdfs:label "has authorship declaration"@en ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Records a thesis author's declaration of sole authorship and source attribution." .
+
+sheaf:declarationDate a rdf:Property ;
+  rdfs:label "has declaration date"@en ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Records the displayed date associated with a thesis authorship declaration." .
+
 sheaf:Transcript a rdfs:Class ;
   rdfs:label "transcript"@en ;
   rdfs:subClassOf sheaf:Document ;

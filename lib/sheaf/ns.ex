@@ -58,6 +58,7 @@ defmodule Sheaf.NS do
     terms: ~w[
       Journal
       doi
+      degree
       isbn
       issn
       numPages
