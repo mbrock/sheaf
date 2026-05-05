@@ -12,9 +12,9 @@
 @plugin "../vendor/heroicons";
 
 @theme {
-  --font-sans: "Halyard Display", ui-sans-serif, system-ui, sans-serif;
-  --font-text: "Halyard Text", ui-sans-serif, system-ui, sans-serif;
-  --font-micro: "Halyard Micro", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Univers", ui-sans-serif, system-ui, sans-serif;
+  --font-text: "Univers", ui-sans-serif, system-ui, sans-serif;
+  --font-condensed: "Univers Condensed", "Univers", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Equity", "Iowan Old Style", Georgia, serif;
   --font-mono: "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -474,234 +474,42 @@
 }
 
 @font-face {
-  font-family: "Halyard Display";
-  src: url("/fonts/fonnts.com-Halyard_Display.otf") format("opentype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Display";
-  src: url("/fonts/fonnts.com-Halyard_Display_Bold.otf") format("opentype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Display";
-  src: url("/fonts/fonnts.com-Halyard_Display_Bold_Italic.otf") format("opentype");
-  font-weight: 700;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Display";
-  src: url("/fonts/fonnts.com-Halyard_Display_Black.otf") format("opentype");
-  font-weight: 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Display";
-  src: url("/fonts/fonnts.com-Halyard_Display_Black_Italic.otf") format("opentype");
-  font-weight: 900;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Text";
-  src: url("/fonts/fonnts.com-Halyard_Text_Light.otf") format("opentype");
+  font-family: "Univers";
+  src: url("/fonts/Univers-Light.woff2") format("woff2");
   font-weight: 300;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Halyard Text";
-  src: url("/fonts/fonnts.com-Halyard_Text_Light_Italic.otf") format("opentype");
-  font-weight: 300;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Text";
-  src: url("/fonts/fonnts.com-Halyard_Text_Regular.otf") format("opentype");
+  font-family: "Univers";
+  src: url("/fonts/Univers-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Halyard Text";
-  src: url("/fonts/fonnts.com-Halyard_Text_Italic.otf") format("opentype");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Text";
-  src: url("/fonts/fonnts.com-Halyard_Text_Medium.otf") format("opentype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Text";
-  src: url("/fonts/fonnts.com-Halyard_Text_Medium_Italic.otf") format("opentype");
-  font-weight: 500;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Text";
-  src: url("/fonts/fonnts.com-Halyard_Text_Bold.otf") format("opentype");
+  font-family: "Univers";
+  src: url("/fonts/Univers-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Halyard Text";
-  src: url("/fonts/fonnts.com-Halyard_Text_Bold_Italic.otf") format("opentype");
-  font-weight: 700;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_ExtraLight.otf") format("opentype");
-  font-weight: 200;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_ExtraLight_Italic.otf") format("opentype");
-  font-weight: 200;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Light.otf") format("opentype");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Light_Italic.otf") format("opentype");
-  font-weight: 300;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Book_Regular.otf") format("opentype");
-  font-weight: 350;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Book_Italic.otf") format("opentype");
-  font-weight: 350;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Regular.otf") format("opentype");
+  font-family: "Univers Condensed";
+  src: url("/fonts/UniversCondensed-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Italic.otf") format("opentype");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Medium.otf") format("opentype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Medium_Italic.otf") format("opentype");
-  font-weight: 500;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_SemiBold.otf") format("opentype");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_SemiBold_Italic.otf") format("opentype");
-  font-weight: 600;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Bold.otf") format("opentype");
+  font-family: "Univers Condensed";
+  src: url("/fonts/UniversCondensed-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Bold_Italic.otf") format("opentype");
-  font-weight: 700;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Black.otf") format("opentype");
-  font-weight: 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Halyard Micro";
-  src: url("/fonts/fonnts.com-Halyard_Micro_Black_Italic.otf") format("opentype");
-  font-weight: 900;
-  font-style: italic;
   font-display: swap;
 }
 
@@ -754,7 +562,7 @@
 }
 
 @utility small-caps {
-  font-family: "Halyard Display", "Equity Caps", "Equity", "Iowan Old Style", Georgia, serif;
+  font-family: "Univers Condensed", "Univers", ui-sans-serif, system-ui, sans-serif;
   font-variant-caps: small-caps;
   text-transform: uppercase;
   font-variant-numeric: oldstyle-nums;
@@ -787,7 +595,7 @@
   }
 
   body {
-    font-family: system-ui, sans-serif;
+    font-family: "Univers", ui-sans-serif, system-ui, sans-serif;
   }
 
   ::selection {
@@ -823,7 +631,7 @@
   }
 
   .sheaf-heading {
-    font-family: "Halyard Display", ui-sans-serif, system-ui, sans-serif;
+    font-family: "Univers Condensed", "Univers", ui-sans-serif, system-ui, sans-serif;
   }
 
   .sheaf-prose {
@@ -889,7 +697,7 @@
   .assistant-prose h2,
   .assistant-prose h3,
   .assistant-prose h4 {
-    font-family: "Halyard Text", ui-sans-serif, system-ui, sans-serif;
+    font-family: "Univers", ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;
     margin: 1.5rem 0 0.25rem;
   }
@@ -968,13 +776,13 @@
     border: 0;
     background: transparent;
     color: rgb(87 83 78);
-    font-family: "Halyard Micro", ui-sans-serif, system-ui, sans-serif;
-    font-size: 0.7em;
+    font-family: inherit;
+    font-size: 1em;
     font-weight: 600;
-    letter-spacing: 0.025em;
+    letter-spacing: 0;
     line-height: inherit;
     padding: 0;
-    vertical-align: 0.06em;
+    vertical-align: baseline;
     font-feature-settings: "tnum" 1;
     transition:
       color 120ms ease,
@@ -985,7 +793,7 @@
   .assistant-prose .block-preview-trigger:hover,
   .assistant-prose .block-preview-trigger:focus-visible {
     color: rgb(28 25 23);
-    text-decoration: underline;
+    text-decoration: none;
     text-decoration-thickness: 1px;
     text-underline-offset: 0.16em;
   }

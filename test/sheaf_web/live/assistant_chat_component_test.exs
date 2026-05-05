@@ -3,8 +3,9 @@ defmodule SheafWeb.AssistantChatComponentTest do
 
   import Phoenix.LiveViewTest
 
-  alias SheafWeb.AssistantChatComponent
+  alias Sheaf.Assistant.ToolResults
   alias Sheaf.Assistant.ToolResults.PresentedSpreadsheetQueryResult
+  alias SheafWeb.AssistantChatComponent
 
   test "option changes preserve the drafted message" do
     {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
@@ -133,6 +134,137 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert html =~ ~s(phx-hook="AssistantTypeWriter")
     assert html =~ ~s(data-typewriter-streaming)
     assert html =~ "A complete sentence."
+  end
+
+  test "tool call groups render as compact activity rows" do
+    html =
+      render_component(&AssistantChatComponent.render/1,
+        id: "assistant-conversation-CHAT01",
+        variant: :full_page,
+        chat: %{
+          messages: [
+            %{
+              role: :tool,
+              tool: "list_documents",
+              status: :ok,
+              summary: "8 documents",
+              input: %{}
+            },
+            %{
+              role: :tool,
+              tool: "search_text",
+              status: :pending,
+              input: %{"query" => "circular work"}
+            }
+          ],
+          pending: false,
+          titles: %{}
+        },
+        selected_chat_id: "CHAT01",
+        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        mode: "quick",
+        model_provider: "claude",
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ ~s(aria-label="Assistant tool activity")
+    assert html =~ "Listing documents"
+    assert html =~ "8 documents"
+    assert html =~ "Searching for"
+    assert html =~ "working"
+    assert html =~ "hero-document-duplicate"
+    assert html =~ "hero-magnifying-glass"
+    refute html =~ ~s(class="hidden text-sm)
+  end
+
+  test "search result tool panes tolerate hydrated legacy nil coding" do
+    result = %ToolResults.SearchResults{
+      exact_results: [
+        %ToolResults.SearchHit{
+          document_id: "DOC123",
+          document_title: "A paper",
+          document_status: "draft",
+          block_id: "BLK123",
+          kind: :paragraph,
+          text: "Plastic appears exactly here.",
+          match: :exact,
+          score: 0.95,
+          coding: "nil",
+          context: [%{"title" => "Literature review"}]
+        }
+      ]
+    }
+
+    html =
+      render_component(&AssistantChatComponent.render/1,
+        id: "assistant-conversation-CHAT01",
+        variant: :full_page,
+        chat: %{
+          messages: [
+            %{
+              role: :tool,
+              tool: "search_text",
+              status: :ok,
+              result: result,
+              input: %{"query" => "Plastic"}
+            }
+          ],
+          pending: false,
+          titles: %{}
+        },
+        selected_chat_id: "CHAT01",
+        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        mode: "quick",
+        model_provider: "claude",
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ "Exact matches"
+    assert html =~ "#BLK123"
+    assert html =~ "A paper"
+    assert html =~ "Literature review"
+    assert html =~ "<mark"
+  end
+
+  test "block result panes tolerate hydrated legacy nil source" do
+    result = %ToolResults.Blocks{
+      blocks: [
+        %ToolResults.Block{
+          document_id: "DOC123",
+          id: "BLK123",
+          type: :paragraph,
+          source: "nil",
+          text: "A paragraph returned from a legacy snapshot."
+        }
+      ]
+    }
+
+    html =
+      render_component(&AssistantChatComponent.render/1,
+        id: "assistant-conversation-CHAT01",
+        variant: :full_page,
+        chat: %{
+          messages: [
+            %{
+              role: :tool,
+              tool: "read",
+              status: :ok,
+              result: result,
+              input: %{"blocks" => ["BLK123"]}
+            }
+          ],
+          pending: false,
+          titles: %{}
+        },
+        selected_chat_id: "CHAT01",
+        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        mode: "quick",
+        model_provider: "claude",
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ "#BLK123"
+    assert html =~ "legacy snapshot"
   end
 
   test "presented spreadsheet query results render as data tables" do

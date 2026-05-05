@@ -62,4 +62,26 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
 
     assert html =~ ~r/>\s*MIKAEL\s*<\/span>/
   end
+
+  test "metadata heading uses plain compact metadata" do
+    html =
+      render_component(&document_metadata_heading/1,
+        document: %{
+          id: "DOC3",
+          kind: :paper,
+          path: "/DOC3",
+          title: "Circulation of Things",
+          metadata: %{year: 2026, authors: ["Lange"]},
+          excluded?: false,
+          cited?: false,
+          has_document?: true
+        },
+        show_open?: false
+      )
+
+    assert html =~ "2026"
+    assert html =~ "Lange"
+    refute html =~ "small-caps shrink-0 tabular-nums"
+    refute html =~ "small-caps min-w-0 flex-1 truncate"
+  end
 end

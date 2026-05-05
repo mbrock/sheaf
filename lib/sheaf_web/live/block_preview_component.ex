@@ -47,7 +47,7 @@ defmodule SheafWeb.BlockPreviewComponent do
               />
               <div
                 :if={is_nil(preview_document(@preview))}
-                class="small-caps text-stone-700 dark:text-stone-200"
+                class="font-sans text-[0.82rem] leading-4 text-stone-800 dark:text-stone-100"
               >
                 {preview_document_label(@preview)}
               </div>
@@ -57,15 +57,15 @@ defmodule SheafWeb.BlockPreviewComponent do
                     (preview_kind(@preview) || preview_year(@preview) ||
                        preview_authors(@preview) != [])
                 }
-                class="flex min-w-0 items-baseline gap-2 text-[0.9rem] text-stone-500 dark:text-stone-400"
+                class="flex min-w-0 items-baseline gap-2 font-sans text-xs leading-4 text-stone-500 dark:text-stone-400"
               >
-                <span :if={preview_kind(@preview)} class="small-caps shrink-0">
+                <span :if={preview_kind(@preview)} class="shrink-0">
                   {preview_kind(@preview)}
                 </span>
-                <span :if={preview_year(@preview)} class="small-caps shrink-0 tabular-nums">
+                <span :if={preview_year(@preview)} class="shrink-0 tabular-nums">
                   {preview_year(@preview)}
                 </span>
-                <span :if={preview_authors(@preview) != []} class="small-caps min-w-0 truncate">
+                <span :if={preview_authors(@preview) != []} class="min-w-0 truncate">
                   {Enum.join(preview_authors(@preview), ", ")}
                 </span>
                 <a
@@ -86,7 +86,7 @@ defmodule SheafWeb.BlockPreviewComponent do
           </div>
           <div
             id={"#{@id}-body"}
-            class="min-h-0 flex-1 overflow-y-auto bg-white px-2.5 py-2 dark:bg-stone-950/60"
+            class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-white px-2.5 py-2 dark:bg-stone-950/60"
             phx-hook="KnuthPlass"
           >
             <p
@@ -117,7 +117,7 @@ defmodule SheafWeb.BlockPreviewComponent do
             <span class="shrink-0 text-stone-400 dark:text-stone-500">from</span>
             <span
               :if={preview_section_number(@preview)}
-              class="small-caps shrink-0 tabular-nums text-stone-500 dark:text-stone-400"
+              class="shrink-0 tabular-nums text-stone-500 dark:text-stone-400"
             >
               {preview_section_number(@preview)}
             </span>
