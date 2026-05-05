@@ -15,7 +15,7 @@ defmodule SheafWeb.DocumentLive do
 
   # Knuth-Plass justification is useful for short documents, but large imported
   # books can make client-side paragraph rewriting feel sluggish.
-  @knuth_plass? true
+  @knuth_plass? false
   @knuth_plass_max_blocks 500
 
   @impl true
@@ -119,7 +119,7 @@ defmodule SheafWeb.DocumentLive do
         data-scroll-target="window"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
-        <div class="document-print-page mx-auto w-full max-w-[112ch] pt-4 lg:py-10">
+        <div class="document-print-page mx-auto w-full max-w-prose pt-4 lg:py-10">
           <.reader_blocks
             graph={@graph}
             blocks={@blocks}
@@ -233,7 +233,7 @@ defmodule SheafWeb.DocumentLive do
         <p
           id={"text-#{Document.id(@block.iri)}"}
           class={[
-            "document-print-text min-w-0 cursor-pointer rounded-sm font-serif leading-normal",
+            "document-print-text min-w-0 font-text leading-normal",
             paragraph_markup_classes(),
             selected_class(@block, @selected_id)
           ]}
@@ -297,7 +297,7 @@ defmodule SheafWeb.DocumentLive do
 
       <p
         id={"text-#{Document.id(@block.iri)}"}
-        class="document-print-text min-w-0 font-serif leading-normal"
+        class="document-print-text min-w-0 font-text leading-normal"
         phx-update="ignore"
       >
         {Document.text(@graph, @block.iri)}
@@ -312,7 +312,7 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       data-source-type={@block.source_type}
       class={[
-        "document-print-excerpt cursor-pointer rounded-sm font-serif leading-normal",
+        "document-print-excerpt cursor-pointer rounded-sm font-text leading-normal",
         selected_class(@block, @selected_id)
       ]}
       phx-click="inspect_block"
@@ -355,7 +355,7 @@ defmodule SheafWeb.DocumentLive do
     ~H"""
     <ol
       :if={@footnotes != []}
-      class="document-print-footnotes mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-serif text-sm leading-snug text-stone-700 dark:border-stone-800/80 dark:text-stone-300"
+      class="document-print-footnotes mt-2 space-y-1 border-t border-stone-200/70 pt-2 font-micro text-sm leading-snug text-stone-700 dark:border-stone-800/80 dark:text-stone-300"
     >
       <li
         :for={footnote <- @footnotes}
@@ -366,7 +366,7 @@ defmodule SheafWeb.DocumentLive do
         ]}
       >
         <div class="flex gap-2">
-          <span class="shrink-0 font-sans text-[0.72rem] leading-5 text-stone-500 dark:text-stone-400">
+          <span class="shrink-0 font-micro text-[0.72rem] leading-5 text-stone-500 dark:text-stone-400">
             {footnote.id}
           </span>
           <div class="min-w-0 flex-1">
@@ -389,7 +389,7 @@ defmodule SheafWeb.DocumentLive do
     <span
       title={@tag.label}
       class={[
-        "inline-flex h-5 max-w-full items-center rounded-sm border px-1.5 font-sans text-[0.68rem] font-medium leading-none",
+        "inline-flex h-5 max-w-full items-center rounded-sm border px-1.5 font-micro text-[0.68rem] font-medium leading-none",
         writing_tag_class(@tag.name)
       ]}
     >

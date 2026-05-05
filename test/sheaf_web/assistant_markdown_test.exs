@@ -6,7 +6,19 @@ defmodule SheafWeb.AssistantMarkdownTest do
   alias SheafWeb.AssistantMarkdownComponents
 
   defp render_markdown(markdown, opts \\ []) do
-    assigns = Keyword.merge([text: markdown], opts)
+    assigns =
+      Keyword.merge(
+        [
+          text: markdown,
+          resource_paths: %{
+            "DOC111" => "/DOC111",
+            "PAR111" => "/b/PAR111",
+            "PAR222" => "/b/PAR222",
+            "PAR333" => "/b/PAR333"
+          }
+        ],
+        opts
+      )
 
     render_component(&AssistantMarkdownComponents.markdown/1, assigns)
   end
@@ -14,13 +26,15 @@ defmodule SheafWeb.AssistantMarkdownTest do
   test "renders markdown tables with the data table component" do
     html =
       render_markdown("""
-      | Name | Count |
-      | - | -: |
-      | Apples | 12 |
+        | Name | Count |
+        | - | -: |
+        | Apples | 12 |
       """)
 
     assert html =~ ~s(<section class="flex justify-center">)
-    assert html =~ ~s(<table class="border-separate border-spacing-0 text-left">)
+    assert html =~ ~s(<table class="border-separate border-spacing-0 text-left" id="data-table-)
+    assert html =~ ~s(phx-hook="DataTable")
+    assert html =~ ~s(data-table-heading-label)
     assert html =~ ~s(title="Name")
     assert html =~ ~s(text-right font-mono text-sm tabular-nums)
     assert html =~ "Apples"
@@ -40,7 +54,8 @@ defmodule SheafWeb.AssistantMarkdownTest do
     refute html =~ "<script>alert(1)</script>"
     assert html =~ "&lt;b&gt;Bold&lt;/b&gt;"
     refute html =~ "<b>Bold</b>"
-    assert html =~ ~s(<table class="border-separate border-spacing-0 text-left">)
+    assert html =~ ~s(<table class="border-separate border-spacing-0 text-left" id="data-table-)
+    assert html =~ ~s(phx-hook="DataTable")
   end
 
   test "renders block reference buttons for LiveView preview loading" do
@@ -80,7 +95,9 @@ defmodule SheafWeb.AssistantMarkdownTest do
         block_ref_target: %Phoenix.LiveComponent.CID{cid: 1}
       )
 
-    assert html =~ ~r/>PAR111<\/button>\s*<\/span>\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR222<\/button>\.\s*<\/span>/
+    assert html =~
+             ~r/>PAR111<\/button>\s*<\/span>\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR222<\/button>\.\s*<\/span>/
+
     refute html =~ "(PAR111"
     refute html =~ "PAR111,"
     refute html =~ "PAR222)"
@@ -94,7 +111,9 @@ defmodule SheafWeb.AssistantMarkdownTest do
         block_ref_target: %Phoenix.LiveComponent.CID{cid: 1}
       )
 
-    assert html =~ ~r/See\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR111<\/button>\.\s*<\/span>/
+    assert html =~
+             ~r/See\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR111<\/button>\.\s*<\/span>/
+
     assert html =~ "More."
     refute html =~ "(PAR111"
     refute html =~ "PAR111)"
@@ -109,7 +128,10 @@ defmodule SheafWeb.AssistantMarkdownTest do
       )
 
     assert html =~ ~r/>PAR111<\/button>\.\s*<\/span>/
-    assert html =~ ~r/>PAR222<\/button>\s*<\/span>\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR333<\/button>\.\s*<\/span>/
+
+    assert html =~
+             ~r/>PAR222<\/button>\s*<\/span>\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR333<\/button>\.\s*<\/span>/
+
     refute html =~ "(PAR111"
     refute html =~ "(PAR222"
     refute html =~ "PAR222,"

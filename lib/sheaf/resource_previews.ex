@@ -3,8 +3,9 @@ defmodule Sheaf.ResourcePreviews do
   Small on-demand previews for assistant-rendered resource references.
   """
 
-  alias RDF.Graph
+  alias RDF.{Graph, Literal}
   alias Sheaf.{BlockPreviews, Document, Documents, Id, ResourceResolver}
+  alias Sheaf.NS.BIBO
 
   require OpenTelemetry.Tracer, as: Tracer
 
@@ -69,7 +70,7 @@ defmodule Sheaf.ResourcePreviews do
           cited?: false,
           excluded?: false,
           has_document?: true,
-          metadata: %{},
+          metadata: fallback_metadata(graph, iri),
           path: "/#{id}",
           workspace_owner_authored?: false,
           workspace_owner_name: nil,
@@ -77,6 +78,43 @@ defmodule Sheaf.ResourcePreviews do
         }
     end
   end
+
+  defp fallback_metadata(graph, iri) do
+    %{}
+    |> put_optional(:page_count, page_count(graph, iri))
+  end
+
+  defp page_count(graph, iri) do
+    graph
+    |> Graph.description(iri)
+    |> RDF.Description.get(BIBO.numPages(), [])
+    |> List.first()
+    |> literal_integer()
+  end
+
+  defp literal_integer(nil), do: nil
+
+  defp literal_integer(%Literal{} = literal) do
+    literal
+    |> RDF.Literal.value()
+    |> integer_value()
+  end
+
+  defp literal_integer(value), do: integer_value(value)
+
+  defp integer_value(value) when is_integer(value), do: value
+
+  defp integer_value(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> integer
+      _other -> nil
+    end
+  end
+
+  defp integer_value(_value), do: nil
+
+  defp put_optional(map, _key, nil), do: map
+  defp put_optional(map, key, value), do: Map.put(map, key, value)
 
   defp preview_document_entry(preview, id) do
     %{

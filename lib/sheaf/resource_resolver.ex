@@ -38,11 +38,11 @@ defmodule Sheaf.ResourceResolver do
           spreadsheet_query_result?(id) ->
             {:ok, %{kind: :spreadsheet_query_result, id: id}}
 
-          document_id = block_document_id(id, skip_block?) ->
-            {:ok, %{kind: :block, id: id, document_id: document_id}}
-
           document?(id) ->
             {:ok, %{kind: :document, id: id}}
+
+          document_id = block_document_id(id, skip_block?) ->
+            {:ok, %{kind: :block, id: id, document_id: document_id}}
 
           true ->
             {:error, :not_found}

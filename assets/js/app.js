@@ -26,7 +26,10 @@ import {hooks as colocatedHooks} from "phoenix-colocated/sheaf"
 import topbar from "../vendor/topbar"
 import {KnuthPlass} from "./knuth_plass"
 import {DocumentBreadcrumb} from "./document_breadcrumb"
+import {DataTable} from "./data_table"
 import {ScrollContainer} from "./scroll_container"
+import {SubmitShortcut} from "./submit_shortcut"
+import {installBlockPreviewAnchors} from "./block_preview_anchor"
 import {installCopyNormalizer} from "./copy_normalize"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
@@ -50,7 +53,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 6000,
   sessionStorage: devSessionStorage,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, KnuthPlass, DocumentBreadcrumb, ScrollContainer},
+  hooks: {...colocatedHooks, KnuthPlass, DocumentBreadcrumb, DataTable, ScrollContainer, SubmitShortcut},
 })
 
 // Show progress bar on live navigation and form submits
@@ -59,6 +62,7 @@ window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 installCopyNormalizer()
+installBlockPreviewAnchors()
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

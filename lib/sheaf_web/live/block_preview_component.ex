@@ -31,17 +31,11 @@ defmodule SheafWeb.BlockPreviewComponent do
     ~H"""
     <div id={@id} class="contents">
       <div :if={@preview} class="contents">
-        <button
-          type="button"
-          class="fixed inset-0 z-40 bg-stone-950/45 dark:bg-stone-950/60"
-          phx-click="hide_block_preview"
-          phx-target={@myself}
-          aria-label="Close block preview"
-        >
-        </button>
         <aside
           role="tooltip"
-          class="fixed inset-x-3 bottom-[4.5rem] z-50 flex max-h-[min(22rem,calc(100dvh-8rem))] flex-col overflow-hidden rounded-sm border border-stone-200 bg-stone-100 text-left shadow-lg ring-1 ring-stone-950/5 sm:left-4 sm:right-auto sm:top-16 sm:bottom-auto sm:w-[min(24rem,calc(100vw-2rem))] dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
+          class="block-preview-popover flex max-h-[min(22rem,calc(100dvh-5rem))] w-[min(24rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-sm border border-stone-200 bg-stone-100 text-left shadow-lg ring-1 ring-stone-950/5 dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
+          phx-click-away="hide_block_preview"
+          phx-target={@myself}
         >
           <div class="shrink-0 border-b border-stone-200 bg-stone-50 px-2.5 py-1.5 font-sans text-[0.82rem] leading-4 dark:border-stone-800 dark:bg-stone-900">
             <div class="min-w-0 flex-1">
@@ -97,7 +91,7 @@ defmodule SheafWeb.BlockPreviewComponent do
           >
             <p
               :for={text <- preview_text_blocks(@preview)}
-              class="m-0 text-justify font-serif text-[0.82rem] leading-[1.32] hyphens-manual text-stone-800 dark:text-stone-100"
+              class="m-0 text-justify font-text text-[0.82rem] leading-[1.32] hyphens-manual text-stone-800 dark:text-stone-100"
             >
               {text}
             </p>

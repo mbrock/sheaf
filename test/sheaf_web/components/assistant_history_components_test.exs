@@ -78,6 +78,7 @@ defmodule SheafWeb.AssistantHistoryComponentsTest do
         notes: items,
         notes_graph: graph,
         research_session_titles: %{},
+        resource_paths: %{"ABC123" => "/b/ABC123"},
         notes_error: nil
       )
 
@@ -97,6 +98,7 @@ defmodule SheafWeb.AssistantHistoryComponentsTest do
         notes: items,
         notes_graph: graph,
         research_session_titles: %{},
+        resource_paths: %{"ABC123" => "/b/ABC123"},
         notes_error: nil,
         variant: :expansive
       )

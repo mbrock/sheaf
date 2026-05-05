@@ -198,11 +198,13 @@ defmodule SheafWeb.AssistantChatComponent do
         id={"assistant-timeline-#{@id}"}
         class="min-w-0 px-3 py-4 sm:px-4 sm:py-6"
         phx-hook="ScrollContainer"
-        data-scroll-initial="bottom"
         data-scroll-stick-bottom="true"
         data-scroll-target="window"
       >
-        <div class="mx-auto flex min-h-full w-full max-w-3xl min-w-0 flex-col justify-end gap-4 sm:gap-5">
+        <div
+          id={"assistant-timeline-#{@id}-body"}
+          class="mx-auto flex min-h-full w-full max-w-prose min-w-0 flex-col justify-end gap-4 sm:gap-5"
+        >
           <.chat_item
             :for={item <- message_groups(@chat.messages)}
             item={item}
@@ -316,7 +318,6 @@ defmodule SheafWeb.AssistantChatComponent do
         id={"assistant-timeline-#{@id}"}
         class="mt-3 max-h-80 min-h-0 space-y-2 overflow-y-auto pr-1"
         phx-hook="ScrollContainer"
-        data-scroll-initial="bottom"
         data-scroll-stick-bottom="true"
       >
         <.chat_item
@@ -360,25 +361,31 @@ defmodule SheafWeb.AssistantChatComponent do
     >
       <div
         :if={@options_locked?}
-        class="flex min-w-0 items-end gap-2 rounded-lg border border-stone-200 bg-white p-2 shadow-sm shadow-stone-950/5 transition-colors focus-within:border-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20 dark:focus-within:border-stone-600"
+        class="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm shadow-stone-950/5 transition-colors focus-within:border-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20 dark:focus-within:border-stone-600"
       >
         <.input
           field={@form[:message]}
           type="textarea"
           rows="1"
-          class="block max-h-28 min-h-10 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1 py-2 text-base leading-6 text-stone-950 outline-none [field-sizing:content] placeholder:text-stone-400 sm:text-sm sm:leading-5 dark:text-stone-50 dark:placeholder:text-stone-500"
+          class="block max-h-32 min-h-12 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-base leading-6 text-stone-950 outline-none [field-sizing:content] placeholder:text-stone-400 focus:ring-0 sm:text-sm sm:leading-5 dark:text-stone-50 dark:placeholder:text-stone-500"
           placeholder={input_placeholder(@mode, @selected_chat_id)}
           disabled={@pending}
+          phx-hook="SubmitShortcut"
         />
-        <button
-          type="submit"
-          class="grid size-9 shrink-0 place-items-center rounded-md bg-stone-950 text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400 dark:bg-stone-50 dark:text-stone-950 dark:hover:bg-stone-200 dark:disabled:bg-stone-800 dark:disabled:text-stone-600"
-          title="Send"
-          aria-label="Send"
-          disabled={@pending}
-        >
-          <.icon name="hero-paper-airplane" class="size-4" />
-        </button>
+        <div class="flex min-w-0 items-center gap-1 border-t border-stone-200 bg-stone-50/80 px-1.5 py-1 font-sans text-xs dark:border-stone-800 dark:bg-stone-950/30">
+          <span class="min-w-0 flex-1 truncate px-1.5 text-stone-500 dark:text-stone-400">
+            Reply
+          </span>
+          <button
+            type="submit"
+            class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:cursor-not-allowed disabled:text-stone-300 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50 dark:disabled:text-stone-700"
+            title="Send"
+            aria-label="Send"
+            disabled={@pending}
+          >
+            <.icon name="hero-paper-airplane" class="size-4" />
+          </button>
+        </div>
       </div>
 
       <div
@@ -392,6 +399,7 @@ defmodule SheafWeb.AssistantChatComponent do
           class="block max-h-40 min-h-24 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-base leading-6 text-stone-950 outline-none [field-sizing:content] placeholder:text-stone-400 focus:ring-0 sm:text-sm sm:leading-5 dark:text-stone-50 dark:placeholder:text-stone-500"
           placeholder={input_placeholder(@mode, @selected_chat_id)}
           disabled={@pending}
+          phx-hook="SubmitShortcut"
         />
 
         <div class="flex min-w-0 items-center gap-1 border-t border-stone-200 bg-stone-50/80 px-1.5 py-1 font-sans text-xs dark:border-stone-800 dark:bg-stone-950/30">
@@ -524,15 +532,19 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :user}} = assigns) do
     ~H"""
-    <div class="text-lg px-3 py-1.5 font-mono bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800">
-      <div class="whitespace-pre-line break-words">{@message.text}</div>
+    <div class="px-3 py-1.5 font-text text-justify bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800">
+      <AssistantMarkdownComponents.markdown
+        text={@message.text}
+        block_ref_target={@block_ref_target}
+        resolve_block_previews={false}
+      />
     </div>
     """
   end
 
   defp chat_message(%{message: %{role: :assistant}} = assigns) do
     ~H"""
-    <div class="assistant-prose font-serif break-words px-1 text-stone-900 dark:text-stone-100">
+    <div class="assistant-prose text-justify font-text px-1 text-stone-900 dark:text-stone-100">
       <AssistantMarkdownComponents.markdown
         text={@message.text}
         block_ref_target={@block_ref_target}

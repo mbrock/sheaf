@@ -5,18 +5,20 @@ defmodule SheafWeb.DataTableComponents do
 
   use SheafWeb, :html
 
+  attr :id, :string, default: nil
   attr :columns, :list, required: true
   attr :rows, :list, required: true
 
   def data_table(assigns) do
     assigns =
       assigns
+      |> assign(:id, assigns[:id] || data_table_id(assigns.columns, assigns.rows))
       |> assign(:display_columns, display_columns(assigns.columns, assigns.rows))
       |> assign(:display_rows, display_rows(assigns.rows, assigns.columns))
 
     ~H"""
     <section class="flex justify-center">
-      <table class="border-separate border-spacing-0 text-left">
+      <table class="border-separate border-spacing-0 text-left" id={@id} phx-hook="DataTable">
         <.table_head columns={@display_columns} />
         <.table_body columns={@display_columns} rows={@display_rows} />
       </table>
@@ -40,8 +42,16 @@ defmodule SheafWeb.DataTableComponents do
 
   defp heading_cell(assigns) do
     ~H"""
-    <th class="relative h-16 overflow-visible align-bottom" title={@column.name}>
-      <span class="absolute bottom-0 left-0 z-20 origin-bottom-left whitespace-nowrap border-b border-stone-300 pl-2 font-normal text-xs tracking-tighter -rotate-[22deg] text-stone-700 dark:border-stone-700 dark:text-stone-300">
+    <th
+      class="relative h-16 overflow-visible align-bottom"
+      title={@column.name}
+      data-table-heading-cell
+    >
+      <span
+        class="sheaf-data-table-heading absolute bottom-0 left-0 z-20 origin-bottom-left whitespace-nowrap border-b border-stone-300 pl-2 font-normal text-xs text-stone-700 dark:border-stone-700 dark:text-stone-300"
+        data-table-heading-label
+        data-heading={@column.heading}
+      >
         {@column.heading}
       </span>
     </th>
@@ -129,6 +139,10 @@ defmodule SheafWeb.DataTableComponents do
           end)
       }
     end)
+  end
+
+  defp data_table_id(columns, rows) do
+    "data-table-#{:erlang.phash2({columns, rows})}"
   end
 
   defp display_cell(row, column) do

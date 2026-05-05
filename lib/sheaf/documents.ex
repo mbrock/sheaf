@@ -277,12 +277,23 @@ defmodule Sheaf.Documents do
           %Graph{name: graph_name} = graph, index ->
             graph
             |> Graph.description(graph_name)
-            |> document_index_description(index, graph_name, kinds, thesis, rdf_type, label, page_count, cites)
+            |> document_index_description(
+              index,
+              graph_name,
+              kinds,
+              thesis,
+              rdf_type,
+              label,
+              page_count,
+              cites
+            )
         end)
 
       documents =
         index.documents
-        |> add_legacy_page_ranges(page_ranges_from_dataset(dataset, documents_missing_page_counts(index.documents)))
+        |> add_legacy_page_ranges(
+          page_ranges_from_dataset(dataset, documents_missing_page_counts(index.documents))
+        )
         |> Enum.filter(fn {_doc, info} -> info.kinds != [] end)
         |> Map.new()
 
@@ -355,8 +366,18 @@ defmodule Sheaf.Documents do
     end)
   end
 
-  defp document_index_description(nil, index, _graph_name, _kinds, _thesis, _rdf_type, _label, _page_count, _cites),
-    do: index
+  defp document_index_description(
+         nil,
+         index,
+         _graph_name,
+         _kinds,
+         _thesis,
+         _rdf_type,
+         _label,
+         _page_count,
+         _cites
+       ),
+       do: index
 
   defp update_document_index(index, _doc, _key, nil), do: index
 
@@ -638,17 +659,17 @@ defmodule Sheaf.Documents do
     Enum.reduce(documents, %{}, fn {doc, _missing?}, ranges ->
       case RDF.Dataset.graph(dataset, doc) do
         %Graph{} = graph ->
-        pages =
-          graph
-          |> Graph.descriptions()
-          |> Enum.flat_map(&Description.get(&1, source_page, []))
-          |> Enum.map(&page_number/1)
-          |> Enum.reject(&is_nil/1)
+          pages =
+            graph
+            |> Graph.descriptions()
+            |> Enum.flat_map(&Description.get(&1, source_page, []))
+            |> Enum.map(&page_number/1)
+            |> Enum.reject(&is_nil/1)
 
-        case pages do
-          [] -> ranges
-          pages -> Map.put(ranges, graph.name, {Enum.min(pages), Enum.max(pages)})
-        end
+          case pages do
+            [] -> ranges
+            pages -> Map.put(ranges, graph.name, {Enum.min(pages), Enum.max(pages)})
+          end
 
         _other ->
           ranges

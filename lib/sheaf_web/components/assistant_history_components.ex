@@ -58,6 +58,7 @@ defmodule SheafWeb.AssistantHistoryComponents do
   attr :notes, :list, required: true
   attr :notes_graph, :any, required: true
   attr :research_session_titles, :map, default: %{}
+  attr :resource_paths, :map, default: nil
   attr :notes_error, :string, default: nil
   attr :variant, :atom, default: :compact
 
@@ -82,7 +83,8 @@ defmodule SheafWeb.AssistantHistoryComponents do
         assign(
           assigns,
           :resource_paths,
-          assigns.groups |> markdown_texts() |> AssistantMarkdown.resource_paths()
+          assigns.resource_paths ||
+            assigns.groups |> markdown_texts() |> AssistantMarkdown.resource_paths()
         )
 
       Tracer.set_attribute("sheaf.history_group_count", length(assigns.groups))

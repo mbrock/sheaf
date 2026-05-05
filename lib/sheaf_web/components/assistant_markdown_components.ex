@@ -480,6 +480,8 @@ defmodule SheafWeb.AssistantMarkdownComponents do
         aria-label={"##{@resource_id}"}
         class="block-preview-trigger cursor-pointer"
         phx-click="show_resource_preview"
+        phx-mouseenter="show_resource_preview"
+        phx-focus="show_resource_preview"
         phx-value-id={@resource_id}
         phx-target={@block_ref_target}
       >{@resource_id}</button>{@trailing_punctuation}
