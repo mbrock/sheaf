@@ -28,6 +28,7 @@ defmodule Sheaf.Assistant.ContextCodec do
     Sheaf.Assistant.ToolResults.SpreadsheetSheet,
     Sheaf.Assistant.ToolResults.SpreadsheetQuery,
     Sheaf.Assistant.ToolResults.SpreadsheetQueryResultPage,
+    Sheaf.Assistant.ToolResults.PresentedSpreadsheetQueryResult,
     Sheaf.Assistant.ToolResults.SpreadsheetSearch,
     Sheaf.Assistant.ToolResults.SearchHit,
     Sheaf.Assistant.ToolResults.Note,

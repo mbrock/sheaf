@@ -345,6 +345,7 @@ defmodule Sheaf.Assistant.CorpusTools do
           list_spreadsheets_tool_definition(notify, spreadsheet_lister, spreadsheet_dialect),
           query_spreadsheets_tool_definition(notify, spreadsheet_query, spreadsheet_dialect),
           read_spreadsheet_query_result_tool_definition(notify, spreadsheet_result_reader),
+          present_spreadsheet_query_result_tool_definition(notify, spreadsheet_result_reader),
           search_spreadsheets_tool_definition(notify, spreadsheet_search)
         ]
 
@@ -379,6 +380,73 @@ defmodule Sheaf.Assistant.CorpusTools do
       callback:
         instrument(notify, "read_spreadsheet_query_result", fn args ->
           read_spreadsheet_query_result_tool(args, query_result_reader)
+        end)
+    )
+  end
+
+  defp present_spreadsheet_query_result_tool_definition(notify, query_result_reader) do
+    Tool.new!(
+      name: "present_spreadsheet_query_result",
+      description:
+        "Present a saved spreadsheet query result to the user as a rendered data table. " <>
+          "Use this after query_spreadsheets has returned a result id or IRI and you have verified the preview is worth showing.",
+      parameter_schema: [
+        id: [
+          type: :string,
+          required: true,
+          doc: "Saved query result id or IRI returned by query_spreadsheets."
+        ],
+        title: [
+          type: :string,
+          required: true,
+          doc: "Short human-facing title for the presented table."
+        ],
+        description: [
+          type: :string,
+          doc: "Optional one-sentence note explaining what the table shows."
+        ],
+        offset: [
+          type: :integer,
+          default: 0,
+          doc: "Zero-based row offset into the saved result."
+        ],
+        limit: [
+          type: :integer,
+          default: 100,
+          doc: "Maximum rows to render in the chat table."
+        ],
+        columns: [
+          type:
+            {:list,
+             {:map,
+              [
+                name: [type: :string, required: true, doc: "Actual SQL result column name."],
+                label: [type: :string, doc: "Optional human-facing column label."],
+                type: [
+                  type:
+                    {:in,
+                     [
+                       "text",
+                       "integer",
+                       "number",
+                       "currency",
+                       "date",
+                       "datetime",
+                       "boolean",
+                       "identifier",
+                       "url"
+                     ]},
+                  doc: "Optional display type hint."
+                ],
+                unit: [type: :string, doc: "Optional unit, such as EUR or kg."]
+              ]}},
+          default: [],
+          doc: "Optional advisory column display hints. Unknown columns are ignored."
+        ]
+      ],
+      callback:
+        instrument(notify, "present_spreadsheet_query_result", fn args ->
+          present_spreadsheet_query_result_tool(args, query_result_reader)
         end)
     )
   end
@@ -603,6 +671,13 @@ defmodule Sheaf.Assistant.CorpusTools do
   def humanize("read_spreadsheet_query_result", _args, _titles),
     do: "Reading spreadsheet query result"
 
+  def humanize("present_spreadsheet_query_result", args, _titles) do
+    case args |> arg(:title) |> normalize_optional_text() do
+      nil -> "Presenting spreadsheet query result"
+      title -> "Presenting " <> smart_quote(title)
+    end
+  end
+
   def humanize("search_spreadsheets", args, _titles) do
     "Searching spreadsheet rows for " <> smart_quote(arg(args, :query) || "")
   end
@@ -732,6 +807,15 @@ defmodule Sheaf.Assistant.CorpusTools do
         {:ok, %ToolResults.SpreadsheetQueryResultPage{rows: rows}}
       ) do
     pluralize(length(rows), "row", "rows")
+  end
+
+  def result_summary(
+        "present_spreadsheet_query_result",
+        {:ok, %ToolResults.PresentedSpreadsheetQueryResult{rows: rows, title: title}}
+      ) do
+    [title, pluralize(length(rows), "row", "rows")]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("; ")
   end
 
   def result_summary("search_spreadsheets", {:ok, %ToolResults.SpreadsheetSearch{hits: hits}}) do
@@ -1004,6 +1088,45 @@ defmodule Sheaf.Assistant.CorpusTools do
       end
     else
       {:error, "id is required"}
+    end
+  end
+
+  defp present_spreadsheet_query_result_tool(args, query_result_reader) do
+    id = arg(args, :id)
+    title = args |> arg(:title) |> normalize_optional_text()
+
+    cond do
+      not is_binary(id) or String.trim(id) == "" ->
+        {:error, "id is required"}
+
+      is_nil(title) ->
+        {:error, "title is required"}
+
+      true ->
+        opts = [offset: arg(args, :offset) || 0, limit: arg(args, :limit) || 100]
+
+        case query_result_reader.(id, opts) do
+          {:ok, result} ->
+            %ToolResults.PresentedSpreadsheetQueryResult{
+              id: result.id,
+              iri: result.iri,
+              file_iri: result.file_iri,
+              sql: result.sql,
+              title: title,
+              description: args |> arg(:description) |> normalize_optional_text(),
+              columns: result.columns,
+              rows: result.rows,
+              row_count: result.row_count,
+              offset: result.offset,
+              limit: result.limit,
+              column_specs: presentation_column_specs(arg(args, :columns), result.columns)
+            }
+            |> rendered_result()
+            |> then(&{:ok, &1})
+
+          {:error, reason} ->
+            {:error, "could not present spreadsheet query result: #{inspect(reason)}"}
+        end
     end
   end
 
@@ -1740,6 +1863,34 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp normalize_optional_text(_value), do: nil
+
+  defp presentation_column_specs(specs, result_columns) when is_list(specs) do
+    result_columns = MapSet.new(result_columns)
+
+    specs
+    |> Enum.map(&presentation_column_spec/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.filter(&MapSet.member?(result_columns, &1.name))
+  end
+
+  defp presentation_column_specs(_specs, _result_columns), do: []
+
+  defp presentation_column_spec(spec) when is_map(spec) do
+    with name when is_binary(name) <- arg(spec, :name),
+         name = String.trim(name),
+         false <- name == "" do
+      %{
+        name: name,
+        label: spec |> arg(:label) |> normalize_optional_text(),
+        type: spec |> arg(:type) |> normalize_optional_text(),
+        unit: spec |> arg(:unit) |> normalize_optional_text()
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  defp presentation_column_spec(_spec), do: nil
 
   defp clamp_spreadsheet_list_limit(limit) when is_integer(limit),
     do: limit |> max(1) |> min(@spreadsheet_list_limit)

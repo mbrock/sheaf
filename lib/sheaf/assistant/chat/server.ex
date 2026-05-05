@@ -706,7 +706,7 @@ defmodule Sheaf.Assistant.Chat.Server do
             {msg, updated?}
 
           Map.get(msg, :role) == :tool and Map.get(msg, :tool_call_id) == id ->
-            {Map.merge(msg, %{status: :ok, summary: summary}), true}
+            {Map.merge(msg, %{status: :ok, summary: summary, result: result}), true}
 
           true ->
             {msg, updated?}
@@ -718,7 +718,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     if updated? do
       messages
     else
-      messages ++ [%{role: :tool, tool: name, input: %{}, status: :ok, summary: summary}]
+      messages ++
+        [%{role: :tool, tool: name, input: %{}, status: :ok, summary: summary, result: result}]
     end
   end
 

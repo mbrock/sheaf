@@ -10,8 +10,9 @@ defmodule SheafWeb.AssistantChatComponent do
   use SheafWeb, :live_component
 
   alias Sheaf.Assistant.{Chat, Chats, CorpusTools}
+  alias Sheaf.Assistant.ToolResults.PresentedSpreadsheetQueryResult
   alias Sheaf.{Document, Id}
-  alias SheafWeb.{AssistantMarkdownComponents, BlockPreviewComponent}
+  alias SheafWeb.{AssistantMarkdownComponents, BlockPreviewComponent, DataTableComponents}
 
   @impl true
   def mount(socket) do
@@ -590,6 +591,56 @@ defmodule SheafWeb.AssistantChatComponent do
     """
   end
 
+  defp chat_message(
+         %{message: %{role: :tool, tool: "present_spreadsheet_query_result", result: result}} =
+           assigns
+       ) do
+    assigns =
+      assigns
+      |> assign(:result, result)
+      |> assign(:table, presented_table(result))
+      |> assign(:tool_view, tool_view(assigns.message, assigns.titles))
+
+    ~H"""
+    <article class="overflow-hidden border border-stone-200 bg-white shadow-sm shadow-stone-950/5 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20">
+      <header class="flex min-w-0 items-start justify-between gap-3 border-b border-stone-200 bg-stone-50 px-3 py-2 dark:border-stone-800 dark:bg-stone-950/40">
+        <div class="min-w-0">
+          <p class="font-sans text-[11px] font-semibold uppercase text-stone-500 dark:text-stone-400">
+            Spreadsheet query result
+            <span class={["ml-1 font-normal normal-case", @tool_view.status_class]}>
+              {@tool_view.detail}
+            </span>
+          </p>
+          <h3 class="mt-0.5 text-sm font-semibold leading-snug text-stone-950 dark:text-stone-50">
+            {@table.title}
+          </h3>
+          <p
+            :if={@table.description != ""}
+            class="mt-1 text-sm leading-5 text-stone-600 dark:text-stone-300"
+          >
+            {@table.description}
+          </p>
+        </div>
+        <a
+          :if={@table.result_path}
+          href={@table.result_path}
+          class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
+          title="Open result"
+          aria-label="Open result"
+        >
+          <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+        </a>
+      </header>
+      <div class="overflow-x-auto px-3 py-3">
+        <DataTableComponents.data_table columns={@table.columns} rows={@table.rows} />
+      </div>
+      <footer class="border-t border-stone-200 px-3 py-1.5 font-sans text-xs text-stone-500 dark:border-stone-800 dark:text-stone-400">
+        Showing {@table.returned} {@table.row_label} from offset {@table.offset} of {@table.row_count}
+      </footer>
+    </article>
+    """
+  end
+
   defp chat_message(%{message: %{role: :tool, tool: "write_note", input: input}} = assigns) do
     assigns =
       assigns
@@ -862,10 +913,89 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp tool_arg(_, _), do: nil
 
+  defp presented_table(%PresentedSpreadsheetQueryResult{} = result) do
+    labels = presented_column_labels(result.columns, result.column_specs)
+
+    %{
+      title: result.title || "Spreadsheet query result",
+      description: result.description || "",
+      columns: Enum.map(result.columns, &Map.fetch!(labels, &1)),
+      rows: Enum.map(result.rows, &presented_row(&1, result.columns, labels)),
+      returned: length(result.rows),
+      row_label: if(length(result.rows) == 1, do: "row", else: "rows"),
+      offset: result.offset || 0,
+      row_count: result.row_count || length(result.rows),
+      result_path: result_path(result.id)
+    }
+  end
+
+  defp presented_table(_result) do
+    %{
+      title: "Spreadsheet query result",
+      description: "",
+      columns: [],
+      rows: [],
+      returned: 0,
+      row_label: "rows",
+      offset: 0,
+      row_count: 0,
+      result_path: nil
+    }
+  end
+
+  defp presented_column_labels(columns, specs) do
+    specs_by_name =
+      Map.new(specs || [], fn spec ->
+        {Map.get(spec, :name) || Map.get(spec, "name"), spec}
+      end)
+
+    columns
+    |> Enum.map(fn column ->
+      spec = Map.get(specs_by_name, column, %{})
+      label = Map.get(spec, :label) || Map.get(spec, "label") || column
+      {column, label}
+    end)
+    |> uniquify_labels()
+    |> Map.new()
+  end
+
+  defp uniquify_labels(column_labels) do
+    {labeled, _seen} =
+      Enum.map_reduce(column_labels, %{}, fn {column, label}, seen ->
+        count = Map.get(seen, label, 0) + 1
+        display_label = if count == 1, do: label, else: "#{label} #{count}"
+        {{column, display_label}, Map.put(seen, label, count)}
+      end)
+
+    labeled
+  end
+
+  defp presented_row(row, columns, labels) do
+    Map.new(columns, fn column ->
+      {Map.fetch!(labels, column), Map.get(row, column)}
+    end)
+  end
+
+  defp result_path(nil), do: nil
+  defp result_path(""), do: nil
+  defp result_path(id), do: ~p"/#{id}"
+
   defp message_groups(messages) do
     messages
     |> Enum.reduce([], &put_message_group/2)
     |> Enum.reverse()
+  end
+
+  defp put_message_group(
+         %{
+           role: :tool,
+           tool: "present_spreadsheet_query_result",
+           result: %PresentedSpreadsheetQueryResult{}
+         } =
+           message,
+         groups
+       ) do
+    [%{kind: :message, message: message} | groups]
   end
 
   defp put_message_group(%{role: :tool, tool: tool} = message, [

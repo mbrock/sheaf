@@ -4,6 +4,7 @@ defmodule SheafWeb.AssistantChatComponentTest do
   import Phoenix.LiveViewTest
 
   alias SheafWeb.AssistantChatComponent
+  alias Sheaf.Assistant.ToolResults.PresentedSpreadsheetQueryResult
 
   test "option changes preserve the drafted message" do
     {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
@@ -132,6 +133,54 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert html =~ ~s(phx-hook="AssistantTypeWriter")
     assert html =~ ~s(data-typewriter-streaming)
     assert html =~ "A complete sentence."
+  end
+
+  test "presented spreadsheet query results render as data tables" do
+    result = %PresentedSpreadsheetQueryResult{
+      id: "QRY123",
+      iri: "https://sheaf.less.rest/QRY123",
+      title: "Tender counts",
+      description: "Grouped by buyer type.",
+      columns: ["buyer_type", "tenders"],
+      rows: [%{"buyer_type" => "agency", "tenders" => 12}],
+      row_count: 42,
+      offset: 5,
+      limit: 25,
+      column_specs: [%{name: "buyer_type", label: "Buyer type", type: "text", unit: nil}]
+    }
+
+    html =
+      render_component(&AssistantChatComponent.render/1,
+        id: "assistant-conversation-CHAT01",
+        variant: :full_page,
+        chat: %{
+          messages: [
+            %{
+              role: :tool,
+              tool: "present_spreadsheet_query_result",
+              status: :ok,
+              summary: "Tender counts; 1 row",
+              result: result,
+              input: %{}
+            }
+          ],
+          pending: false,
+          titles: %{}
+        },
+        selected_chat_id: "CHAT01",
+        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        mode: "quick",
+        model_provider: "claude",
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ "Tender counts"
+    assert html =~ "Grouped by buyer type."
+    assert html =~ ~s(phx-hook="DataTable")
+    assert html =~ "Buyer type"
+    assert html =~ "agency"
+    assert html =~ "Showing 1 row from offset 5 of 42"
+    assert html =~ ~s(href="/QRY123")
   end
 
   test "document sidebar composer shows selected block context without chat history chrome" do

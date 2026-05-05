@@ -172,6 +172,23 @@ defmodule Sheaf.Assistant.ToolResults do
     ]
   end
 
+  defmodule PresentedSpreadsheetQueryResult do
+    defstruct [
+      :id,
+      :iri,
+      :file_iri,
+      :sql,
+      :title,
+      :description,
+      row_count: 0,
+      offset: 0,
+      limit: nil,
+      columns: [],
+      rows: [],
+      column_specs: []
+    ]
+  end
+
   defmodule SpreadsheetSearch do
     defstruct [
       :query,

@@ -249,6 +249,63 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert tool_text(result) =~ "{0, 6}"
   end
 
+  test "present_spreadsheet_query_result reads a saved result for table presentation" do
+    tools =
+      CorpusTools.tools(
+        include_notes?: false,
+        spreadsheet_lister: fn -> {:ok, [%{id: "xl_a", sheets: []}]} end,
+        query_result_reader: fn id, opts ->
+          assert id == "QRY123"
+          assert opts[:offset] == 5
+          assert opts[:limit] == 25
+
+          {:ok,
+           %{
+             id: "QRY123",
+             iri: "https://sheaf.less.rest/QRY123",
+             file_iri: "file:///tmp/query.parquet",
+             sql: "SELECT buyer_type, tenders FROM summary",
+             columns: ["buyer_type", "tenders"],
+             rows: [%{"buyer_type" => "agency", "tenders" => 12}],
+             row_count: 42,
+             offset: 5,
+             limit: 25
+           }}
+        end
+      )
+
+    tool = Enum.find(tools, &(&1.name == "present_spreadsheet_query_result"))
+    assert tool.parameter_schema[:title][:required]
+    assert {:list, {:map, _column_schema}} = tool.parameter_schema[:columns][:type]
+
+    assert {:ok, result} =
+             Tool.execute(tool, %{
+               "id" => "QRY123",
+               "title" => "Tender counts",
+               "description" => "Grouped by buyer type.",
+               "offset" => 5,
+               "limit" => 25,
+               "columns" => [
+                 %{"name" => "buyer_type", "label" => "Buyer type", "type" => "text"},
+                 %{"name" => "missing", "label" => "Ignored"}
+               ]
+             })
+
+    assert tool_text(result) =~ "PRESENTED SPREADSHEET QUERY RESULT"
+
+    assert %ToolResults.PresentedSpreadsheetQueryResult{} =
+             presented = result.metadata.sheaf_result
+
+    assert presented.title == "Tender counts"
+    assert presented.description == "Grouped by buyer type."
+
+    assert presented.column_specs == [
+             %{name: "buyer_type", label: "Buyer type", type: "text", unit: nil}
+           ]
+
+    assert presented.rows == [%{"buyer_type" => "agency", "tenders" => 12}]
+  end
+
   test "list_spreadsheets can filter and limit sheet metadata" do
     spreadsheets = [
       %{

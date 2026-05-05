@@ -24,6 +24,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     Spreadsheet,
     SpreadsheetQuery,
     SpreadsheetQueryResultPage,
+    PresentedSpreadsheetQueryResult,
     SpreadsheetSearch,
     SpreadsheetSheet,
     ListSpreadsheets
@@ -170,6 +171,17 @@ defmodule Sheaf.Assistant.ToolResultText do
     Format: TSV
 
     #{tsv_rows(result.columns, result.rows)}
+    """
+    |> String.trim()
+  end
+
+  def to_text(%PresentedSpreadsheetQueryResult{} = result) do
+    """
+    PRESENTED SPREADSHEET QUERY RESULT
+    Result: ##{result.id}
+    IRI: #{result.iri}
+    Title: #{result.title}
+    Rows: showing #{length(result.rows)} from offset #{result.offset} of #{result.row_count}
     """
     |> String.trim()
   end
