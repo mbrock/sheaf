@@ -140,7 +140,7 @@ defmodule SheafWeb.AssistantChatComponentTest do
       id: "QRY123",
       iri: "https://sheaf.less.rest/QRY123",
       title: "Tender counts",
-      description: "Grouped by buyer type.",
+      description: "Grouped by bid_level and buyer type.",
       columns: ["buyer_type", "tenders"],
       rows: [%{"buyer_type" => "agency", "tenders" => 12}],
       row_count: 42,
@@ -175,11 +175,14 @@ defmodule SheafWeb.AssistantChatComponentTest do
       )
 
     assert html =~ "Tender counts"
-    assert html =~ "Grouped by buyer type."
+    assert html =~ "Grouped by"
+    assert html =~ "bid level"
+    assert html =~ ~s(class="font-mono)
     assert html =~ ~s(phx-hook="DataTable")
     assert html =~ "Buyer type"
     assert html =~ "agency"
-    assert html =~ "Showing 1 row from offset 5 of 42"
+    refute html =~ "Showing 1 row from offset 5 of 42"
+    refute html =~ "Spreadsheet query result"
     assert html =~ ~s(href="/QRY123")
   end
 

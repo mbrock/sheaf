@@ -204,7 +204,7 @@ defmodule SheafWeb.AssistantChatComponent do
       >
         <div
           id={"assistant-timeline-#{@id}-body"}
-          class="mx-auto flex min-h-full w-full max-w-prose min-w-0 flex-col justify-end gap-4 sm:gap-5"
+          class="mx-auto flex min-h-full w-full min-w-0 flex-col justify-end gap-4 sm:gap-5"
         >
           <.chat_item
             :for={{item, index} <- @chat.messages |> message_groups() |> Enum.with_index()}
@@ -564,7 +564,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :user}} = assigns) do
     ~H"""
-    <div class="px-3 py-1.5 font-text text-justify bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800">
+    <div class="mx-auto w-full max-w-prose px-3 py-1.5 font-text text-justify bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800">
       <AssistantMarkdownComponents.markdown
         text={@message.text}
         block_ref_target={@block_ref_target}
@@ -578,7 +578,7 @@ defmodule SheafWeb.AssistantChatComponent do
     ~H"""
     <div
       id={@id}
-      class="assistant-prose text-justify font-text px-1 text-stone-900 dark:text-stone-100"
+      class="assistant-prose mx-auto w-full max-w-prose text-justify font-text px-1 text-stone-900 dark:text-stone-100"
       phx-hook="AssistantTypeWriter"
       data-typewriter-streaming={Map.get(@message, :streaming?, false)}
     >
@@ -599,44 +599,18 @@ defmodule SheafWeb.AssistantChatComponent do
       assigns
       |> assign(:result, result)
       |> assign(:table, presented_table(result))
-      |> assign(:tool_view, tool_view(assigns.message, assigns.titles))
 
     ~H"""
-    <article class="overflow-hidden border border-stone-200 bg-white shadow-sm shadow-stone-950/5 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20">
-      <header class="flex min-w-0 items-start justify-between gap-3 border-b border-stone-200 bg-stone-50 px-3 py-2 dark:border-stone-800 dark:bg-stone-950/40">
-        <div class="min-w-0">
-          <p class="font-sans text-[11px] font-semibold uppercase text-stone-500 dark:text-stone-400">
-            Spreadsheet query result
-            <span class={["ml-1 font-normal normal-case", @tool_view.status_class]}>
-              {@tool_view.detail}
-            </span>
-          </p>
-          <h3 class="mt-0.5 text-sm font-semibold leading-snug text-stone-950 dark:text-stone-50">
-            {@table.title}
-          </h3>
-          <p
-            :if={@table.description != ""}
-            class="mt-1 text-sm leading-5 text-stone-600 dark:text-stone-300"
-          >
-            {@table.description}
-          </p>
-        </div>
-        <a
-          :if={@table.result_path}
+    <article class="w-full py-2">
+      <div class="overflow-x-auto py-2">
+        <DataTableComponents.data_table
+          columns={@table.columns}
+          rows={@table.rows}
+          title={@table.title}
+          subtitle={@table.description}
           href={@table.result_path}
-          class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
-          title="Open result"
-          aria-label="Open result"
-        >
-          <.icon name="hero-arrow-top-right-on-square" class="size-4" />
-        </a>
-      </header>
-      <div class="overflow-x-auto px-3 py-3">
-        <DataTableComponents.data_table columns={@table.columns} rows={@table.rows} />
+        />
       </div>
-      <footer class="border-t border-stone-200 px-3 py-1.5 font-sans text-xs text-stone-500 dark:border-stone-800 dark:text-stone-400">
-        Showing {@table.returned} {@table.row_label} from offset {@table.offset} of {@table.row_count}
-      </footer>
     </article>
     """
   end

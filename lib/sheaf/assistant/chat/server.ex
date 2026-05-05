@@ -379,11 +379,12 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp handle_assistant_event(state, {:tool_finished, name, result}) do
     status = if match?({:error, _}, result), do: :error, else: :ok
     summary = CorpusTools.result_summary(name, result)
+    sheaf_result = sheaf_result_from_tool_result(result)
 
     state
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, "Thinking")
-    |> update_last_pending_tool(name, status, summary)
+    |> update_last_pending_tool(name, status, summary, sheaf_result)
     |> broadcast_snapshot()
   end
 
@@ -455,13 +456,13 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
-  defp update_last_pending_tool(state, name, status, summary) do
+  defp update_last_pending_tool(state, name, status, summary, result) do
     {messages, _updated?} =
       state.messages
       |> Enum.reverse()
       |> Enum.map_reduce(false, fn msg, updated? ->
         if not updated? and tool_pending?(msg, name) do
-          {Map.merge(msg, %{status: status, summary: summary}), true}
+          {Map.merge(msg, tool_result_message(status, summary, result)), true}
         else
           {msg, updated?}
         end
@@ -469,6 +470,11 @@ defmodule Sheaf.Assistant.Chat.Server do
 
     %{state | messages: Enum.reverse(messages)}
   end
+
+  defp tool_result_message(status, summary, nil), do: %{status: status, summary: summary}
+
+  defp tool_result_message(status, summary, result),
+    do: %{status: status, summary: summary, result: result}
 
   defp tool_pending?(msg, name) do
     Map.get(msg, :role) == :tool and
@@ -765,6 +771,11 @@ defmodule Sheaf.Assistant.Chat.Server do
   end
 
   defp sheaf_result_from_metadata(_metadata), do: nil
+
+  defp sheaf_result_from_tool_result({:ok, %{metadata: metadata}}),
+    do: sheaf_result_from_metadata(metadata)
+
+  defp sheaf_result_from_tool_result(_result), do: nil
 
   defp truncate(text, limit) do
     if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 3) <> "..."
