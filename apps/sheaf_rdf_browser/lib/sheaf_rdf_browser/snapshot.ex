@@ -137,11 +137,17 @@ defmodule SheafRDFBrowser.Snapshot do
   end
 
   defp publish_if_changed(%__MODULE__{} = state, old_fingerprint) do
-    if state.fingerprint != old_fingerprint do
+    if state.fingerprint != old_fingerprint and pubsub_running?() do
       Phoenix.PubSub.broadcast(pubsub(), topic(), {:snapshot_updated, state})
     end
 
     state
+  end
+
+  defp pubsub_running? do
+    pubsub()
+    |> Process.whereis()
+    |> is_pid()
   end
 
   defp fingerprint(index, quads, graphs) do
