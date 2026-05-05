@@ -206,8 +206,9 @@ defmodule SheafWeb.AssistantChatComponent do
           class="mx-auto flex min-h-full w-full max-w-prose min-w-0 flex-col justify-end gap-4 sm:gap-5"
         >
           <.chat_item
-            :for={item <- message_groups(@chat.messages)}
+            :for={{item, index} <- @chat.messages |> message_groups() |> Enum.with_index()}
             item={item}
+            message_id={"assistant-message-#{@id}-#{index}"}
             titles={Map.get(@chat, :titles, %{})}
             block_ref_target={block_preview_target(@id)}
           />
@@ -321,8 +322,9 @@ defmodule SheafWeb.AssistantChatComponent do
         data-scroll-stick-bottom="true"
       >
         <.chat_item
-          :for={item <- message_groups(@chat.messages)}
+          :for={{item, index} <- @chat.messages |> message_groups() |> Enum.with_index()}
           item={item}
+          message_id={"assistant-message-#{@id}-#{index}"}
           titles={Map.get(@chat, :titles, %{})}
           block_ref_target={block_preview_target(@id)}
         />
@@ -476,6 +478,7 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   attr :item, :map, required: true
+  attr :message_id, :string, required: true
   attr :titles, :map, default: %{}
   attr :block_ref_target, :any, default: nil
 
@@ -483,7 +486,12 @@ defmodule SheafWeb.AssistantChatComponent do
     assigns = assign(assigns, :message, message)
 
     ~H"""
-    <.chat_message message={@message} titles={@titles} block_ref_target={@block_ref_target} />
+    <.chat_message
+      id={@message_id}
+      message={@message}
+      titles={@titles}
+      block_ref_target={@block_ref_target}
+    />
     """
   end
 
@@ -527,6 +535,7 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   attr :message, :map, required: true
+  attr :id, :string, required: true
   attr :titles, :map, default: %{}
   attr :block_ref_target, :any, default: nil
 
@@ -544,7 +553,12 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :assistant}} = assigns) do
     ~H"""
-    <div class="assistant-prose text-justify font-text px-1 text-stone-900 dark:text-stone-100">
+    <div
+      id={@id}
+      class="assistant-prose text-justify font-text px-1 text-stone-900 dark:text-stone-100"
+      phx-hook="AssistantTypeWriter"
+      data-typewriter-streaming={Map.get(@message, :streaming?, false)}
+    >
       <AssistantMarkdownComponents.markdown
         text={@message.text}
         block_ref_target={@block_ref_target}
@@ -994,7 +1008,8 @@ defmodule SheafWeb.AssistantChatComponent do
     options = [
       kind: kind,
       model: socket.assigns.model,
-      llm_options: llm_options
+      llm_options: llm_options,
+      stream?: true
     ]
 
     case assistant_allow_notes(socket.assigns, kind) do

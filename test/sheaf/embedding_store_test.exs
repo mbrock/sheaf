@@ -123,4 +123,69 @@ defmodule Sheaf.Embedding.StoreTest do
     assert first.iri == "https://sheaf.less.rest/BLOCK3"
     assert first.score > second.score
   end
+
+  test "syncing vectors can exclude stale text hashes", %{conn: conn} do
+    block = "https://sheaf.less.rest/BLOCK5"
+
+    :ok =
+      Store.create_run(conn, %{
+        iri: "https://sheaf.less.rest/RUN-OLD",
+        model: "gemini-embedding-2",
+        dimensions: 3,
+        target_count: 1
+      })
+
+    :ok =
+      Store.insert_embedding(conn, %{
+        iri: block,
+        run_iri: "https://sheaf.less.rest/RUN-OLD",
+        text_hash: "old-hash",
+        text_chars: 3,
+        values: [1.0, 0.0, 0.0]
+      })
+
+    :ok =
+      Store.finish_run(conn, "https://sheaf.less.rest/RUN-OLD", %{
+        status: "completed",
+        embedded_count: 1,
+        skipped_count: 0,
+        error_count: 0
+      })
+
+    :ok =
+      Store.create_run(conn, %{
+        iri: "https://sheaf.less.rest/RUN-NEW",
+        model: "gemini-embedding-2",
+        dimensions: 3,
+        target_count: 1
+      })
+
+    :ok =
+      Store.insert_embedding(conn, %{
+        iri: block,
+        run_iri: "https://sheaf.less.rest/RUN-NEW",
+        text_hash: "new-hash",
+        text_chars: 3,
+        values: [0.0, 1.0, 0.0]
+      })
+
+    :ok =
+      Store.finish_run(conn, "https://sheaf.less.rest/RUN-NEW", %{
+        status: "completed",
+        embedded_count: 1,
+        skipped_count: 0,
+        error_count: 0
+      })
+
+    assert {:ok, 1} =
+             Store.sync_vector_index(conn, "gemini-embedding-2", 3, nil,
+               current_hashes: MapSet.new([{block, "new-hash"}])
+             )
+
+    assert {:ok, [hit]} =
+             Store.search_vectors(conn, [1.0, 0.0, 0.0], "gemini-embedding-2", 3, 1)
+
+    assert hit.iri == block
+    assert hit.run_iri == "https://sheaf.less.rest/RUN-NEW"
+  end
 end

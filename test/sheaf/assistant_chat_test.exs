@@ -1,8 +1,9 @@
 defmodule Sheaf.Assistant.ChatTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.{Context, Response, Tool}
+  alias ReqLLM.{Context, Response, StreamChunk, StreamResponse, Tool}
   alias ReqLLM.Message.ContentPart
+  alias ReqLLM.StreamResponse.MetadataHandle
   alias Sheaf.Assistant.{Chat, ContextStore}
   alias Sheaf.Spreadsheet.Metadata
   alias Sheaf.XLSXFixture
@@ -77,6 +78,83 @@ defmodule Sheaf.Assistant.ChatTest do
                %{role: :assistant, text: "Use this paragraph as the anchor."}
              ]
            } = wait_for_messages(id, 2)
+  end
+
+  test "streams assistant text into the visible chat snapshot" do
+    test_pid = self()
+
+    stream_text = fn _model, context, _opts ->
+      stream =
+        Stream.resource(
+          fn -> :first end,
+          fn
+            :first ->
+              {[StreamChunk.text("Hel")], :waiting}
+
+            :waiting ->
+              send(test_pid, {:stream_waiting, self()})
+
+              receive do
+                :finish_stream -> {[StreamChunk.text("lo. Next")], :before_done}
+              end
+
+            :before_done ->
+              send(test_pid, {:stream_after_sentence, self()})
+
+              receive do
+                :complete_stream -> {:halt, :done}
+              end
+
+            :done ->
+              {:halt, :done}
+          end,
+          fn _state -> :ok end
+        )
+
+      {:ok, stream_response(context, stream)}
+    end
+
+    id = Sheaf.Id.generate()
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       model: "openai:gpt-4",
+       stream?: true,
+       titles: %{},
+       workspace_instructions: "Testing streaming chat output.",
+       activity_writer: nil,
+       stream_text: stream_text,
+       generate_text: fn _model, _context, _opts -> flunk("unexpected non-streaming call") end,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    assert :ok = Chat.send_user_message(id, "Stream this.")
+    assert_receive {:stream_waiting, stream_pid}
+
+    assert %{messages: [%{role: :user, text: "Stream this."}]} = Chat.snapshot(id)
+
+    send(stream_pid, :finish_stream)
+    assert_receive {:stream_after_sentence, ^stream_pid}
+
+    assert %{
+             pending: true,
+             status_line: "Writing",
+             messages: [
+               %{role: :user, text: "Stream this."},
+               %{role: :assistant, text: "Hello. ", streaming?: true}
+             ]
+           } = wait_for_message_text(id, "Hello. ")
+
+    send(stream_pid, :complete_stream)
+
+    assert %{
+             pending: false,
+             messages: [
+               %{role: :user, text: "Stream this."},
+               %{role: :assistant, text: "Hello. Next"}
+             ]
+           } = wait_for_final_message_text(id, "Hello. Next")
   end
 
   test "research-mode conversations expose their kind and get research prompt guidance" do
@@ -439,6 +517,40 @@ defmodule Sheaf.Assistant.ChatTest do
     end) || flunk("timed out waiting for #{count} chat messages")
   end
 
+  defp wait_for_message_text(id, text) do
+    Enum.reduce_while(1..50, nil, fn _, _acc ->
+      snapshot = Chat.snapshot(id)
+
+      if Enum.any?(snapshot.messages, &(Map.get(&1, :text) == text)) do
+        {:halt, snapshot}
+      else
+        Process.sleep(20)
+        {:cont, nil}
+      end
+    end) || flunk("timed out waiting for chat message text #{inspect(text)}")
+  end
+
+  defp wait_for_final_message_text(id, text) do
+    Enum.reduce_while(1..50, nil, fn _, _acc ->
+      snapshot = Chat.snapshot(id)
+
+      final? =
+        snapshot.pending == false and
+          Enum.any?(snapshot.messages, fn message ->
+            Map.get(message, :role) == :assistant and
+              Map.get(message, :text) == text and
+              not Map.get(message, :streaming?, false)
+          end)
+
+      if final? do
+        {:halt, snapshot}
+      else
+        Process.sleep(20)
+        {:cont, nil}
+      end
+    end) || flunk("timed out waiting for final chat message text #{inspect(text)}")
+  end
+
   defp user_text(%Context{} = context) do
     message_text(context, :user)
   end
@@ -468,5 +580,24 @@ defmodule Sheaf.Assistant.ChatTest do
         opts
       )
     )
+  end
+
+  defp stream_response(context, stream, opts \\ []) do
+    {:ok, model} = ReqLLM.model("openai:gpt-4")
+
+    metadata = %{
+      finish_reason: Keyword.get(opts, :finish_reason, :stop),
+      usage: Keyword.get(opts, :usage, %{input_tokens: 1, output_tokens: 1})
+    }
+
+    {:ok, metadata_handle} = MetadataHandle.start_link(fn -> metadata end)
+
+    %StreamResponse{
+      stream: stream,
+      metadata_handle: metadata_handle,
+      cancel: fn -> :ok end,
+      model: model,
+      context: context
+    }
   end
 end

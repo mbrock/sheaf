@@ -328,11 +328,28 @@ defmodule Sheaf.Embedding.Store do
   @doc """
   Rebuilds the sqlite-vec search table for the latest embeddings of a model.
   """
+  @spec sync_vector_index(conn(), String.t(), pos_integer()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def sync_vector_index(conn, model, dimensions) do
+    sync_vector_index(conn, model, dimensions, nil, [])
+  end
+
   @spec sync_vector_index(conn(), String.t(), pos_integer(), String.t() | nil) ::
           {:ok, non_neg_integer()} | {:error, term()}
-  def sync_vector_index(conn, model, dimensions, source \\ nil) do
+  def sync_vector_index(conn, model, dimensions, source)
+      when is_binary(source) or is_nil(source) do
+    sync_vector_index(conn, model, dimensions, source, [])
+  end
+
+  @spec sync_vector_index(conn(), String.t(), pos_integer(), String.t() | nil, keyword()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def sync_vector_index(conn, model, dimensions, source, opts) do
+    current_hashes = Keyword.get(opts, :current_hashes)
+
     with :ok <- ensure_vector_table(conn, dimensions),
          {:ok, rows} <- latest_embedding_rows(conn, model, dimensions, source) do
+      rows = filter_current_hashes(rows, current_hashes)
+
       transaction(conn, fn ->
         with :ok <- delete_vector_index(conn, model, dimensions, source) do
           insert_vector_rows(conn, model, dimensions, source, rows)
@@ -416,6 +433,14 @@ defmodule Sheaf.Embedding.Store do
       """,
       [model, dimensions, source, source]
     )
+  end
+
+  defp filter_current_hashes(rows, nil), do: rows
+
+  defp filter_current_hashes(rows, current_hashes) do
+    Enum.filter(rows, fn [iri, _run_iri, text_hash, _text_chars, _blob] ->
+      MapSet.member?(current_hashes, {iri, text_hash})
+    end)
   end
 
   defp load_vector_extension(conn) do

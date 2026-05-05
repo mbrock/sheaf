@@ -11,7 +11,16 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   alias ReqLLM.{Context, Response}
   alias Sheaf.Assistant
-  alias Sheaf.Assistant.{Activity, Chats, ContextStore, CorpusTools, SpreadsheetSession}
+
+  alias Sheaf.Assistant.{
+    Activity,
+    Chats,
+    ContextStore,
+    CorpusTools,
+    SpreadsheetSession,
+    StreamBuffer
+  }
+
   alias Sheaf.Id
 
   @registry Sheaf.Assistant.ChatRegistry
@@ -31,6 +40,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     :last_user_message_iri,
     :activity_writer,
     :context_store,
+    :stream_buffer,
     title: @default_title,
     kind: @default_kind,
     messages: [],
@@ -41,6 +51,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     max_tool_rounds: @default_max_tool_rounds,
     task_supervisor: Sheaf.Assistant.TaskSupervisor,
     generate_text: nil,
+    stream_text: nil,
+    stream?: false,
     titles: %{}
   ]
 
@@ -113,6 +125,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     max_tool_rounds = Keyword.get(opts, :max_tool_rounds, @default_max_tool_rounds)
     task_supervisor = Keyword.get(opts, :task_supervisor, Sheaf.Assistant.TaskSupervisor)
     generate_text = Keyword.get(opts, :generate_text, &ReqLLM.generate_text/3)
+    stream_text = Keyword.get(opts, :stream_text, &ReqLLM.stream_text/3)
+    stream? = Keyword.get(opts, :stream?, false)
     titles = Keyword.get_lazy(opts, :titles, &CorpusTools.titles/0)
     session_iri = Keyword.get_lazy(opts, :session_iri, fn -> Id.iri(id) end)
     agent_iri = Keyword.get_lazy(opts, :agent_iri, &Sheaf.mint/0)
@@ -164,7 +178,8 @@ defmodule Sheaf.Assistant.Chat.Server do
            max_tool_rounds: max_tool_rounds,
            llm_options: llm_options,
            task_supervisor: task_supervisor,
-           generate_text: generate_text
+           generate_text: generate_text,
+           stream_text: stream_text
          ) do
       {:ok, assistant} ->
         {:ok,
@@ -183,6 +198,8 @@ defmodule Sheaf.Assistant.Chat.Server do
            max_tool_rounds: max_tool_rounds,
            task_supervisor: task_supervisor,
            generate_text: generate_text,
+           stream_text: stream_text,
+           stream?: stream?,
            titles: titles,
            messages: messages
          }}
@@ -285,18 +302,20 @@ defmodule Sheaf.Assistant.Chat.Server do
     chat = self()
     assistant = state.assistant
     input = user_input(text, turn_context)
+    run_options = assistant_run_options(state, chat, ref)
     state = maybe_title_from(state, text)
     state = persist_user_message(state, text)
     state = persist_context_with_input(state, input)
 
     case Task.Supervisor.start_child(state.task_supervisor, fn ->
-           result = safe_run(assistant, input)
+           result = safe_run(assistant, input, run_options)
            send(chat, {:assistant_result, ref, result})
          end) do
       {:ok, _pid} ->
         state
         |> Map.put(:pending_ref, ref)
         |> Map.put(:status_line, "Thinking")
+        |> Map.put(:stream_buffer, StreamBuffer.new())
         |> append_message(:user, text)
         |> touch_index()
         |> broadcast_snapshot()
@@ -308,8 +327,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
-  defp safe_run(assistant, input) do
-    Assistant.run(assistant, input)
+  defp safe_run(assistant, input, opts) do
+    Assistant.run(assistant, input, opts)
   catch
     kind, reason -> {:error, {kind, reason}}
   end
@@ -323,7 +342,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     |> Map.put(:pending_ref, nil)
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, nil)
-    |> append_message(:assistant, text)
+    |> Map.put(:stream_buffer, nil)
+    |> put_final_assistant_message(text)
     |> touch_index()
     |> broadcast_snapshot()
   end
@@ -334,6 +354,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     |> Map.put(:pending_ref, nil)
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, nil)
+    |> Map.put(:stream_buffer, nil)
     |> append_message(:error, "Assistant error: #{inspect(reason)}")
     |> touch_index()
     |> broadcast_snapshot()
@@ -366,7 +387,39 @@ defmodule Sheaf.Assistant.Chat.Server do
     |> broadcast_snapshot()
   end
 
+  defp handle_assistant_event(state, {:text_delta, ref, text})
+       when is_reference(ref) and is_binary(text) do
+    if state.pending_ref == ref do
+      {chunks, stream_buffer} = StreamBuffer.push(Map.get(state, :stream_buffer), text)
+      state = Map.put(state, :stream_buffer, stream_buffer)
+
+      case chunks do
+        [] ->
+          state
+
+        chunks ->
+          state
+          |> Map.put(:status_line, "Writing")
+          |> append_assistant_delta(IO.iodata_to_binary(chunks))
+          |> broadcast_snapshot()
+      end
+    else
+      state
+    end
+  end
+
   defp handle_assistant_event(state, _event), do: state
+
+  defp assistant_run_options(%{stream?: true}, chat, ref) do
+    [
+      stream: true,
+      on_text_delta: fn text ->
+        GenServer.cast(chat, {:assistant_event, {:text_delta, ref, text}})
+      end
+    ]
+  end
+
+  defp assistant_run_options(_state, _chat, _ref), do: []
 
   defp append_message(state, role, text) do
     %{state | messages: state.messages ++ [%{role: role, text: text}]}
@@ -374,6 +427,32 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp append_raw_message(state, message) do
     %{state | messages: state.messages ++ [message]}
+  end
+
+  defp append_assistant_delta(state, text) do
+    case List.pop_at(state.messages, -1) do
+      {%{role: :assistant, streaming?: true} = message, messages} ->
+        message = Map.update(message, :text, text, &(&1 <> text))
+        %{state | messages: messages ++ [message]}
+
+      {_other, _messages} ->
+        append_raw_message(state, %{role: :assistant, text: text, streaming?: true})
+    end
+  end
+
+  defp put_final_assistant_message(state, text) do
+    case List.pop_at(state.messages, -1) do
+      {%{role: :assistant, streaming?: true} = message, messages} ->
+        message =
+          message
+          |> Map.put(:text, text)
+          |> Map.delete(:streaming?)
+
+        %{state | messages: messages ++ [message]}
+
+      {_other, _messages} ->
+        append_message(state, :assistant, text)
+    end
   end
 
   defp update_last_pending_tool(state, name, status, summary) do

@@ -9,7 +9,9 @@ defmodule Sheaf.Assistant do
 
   use GenServer
 
-  alias ReqLLM.{Context, Response}
+  require OpenTelemetry.Tracer, as: Tracer
+
+  alias ReqLLM.{Context, Response, StreamResponse}
 
   @default_max_tool_rounds 8
   @default_timeout 300_000
@@ -22,8 +24,10 @@ defmodule Sheaf.Assistant do
     :task_ref,
     :task_context,
     :task_round,
+    :task_opts,
     :task_supervisor,
     :generate_text,
+    :stream_text,
     tools: [],
     llm_options: [],
     max_tool_rounds: @default_max_tool_rounds
@@ -43,6 +47,7 @@ defmodule Sheaf.Assistant do
     * `:max_tool_rounds` - maximum tool-call turns before returning an error.
     * `:task_supervisor` - task supervisor name or pid.
     * `:generate_text` - test seam, defaulting to `ReqLLM.generate_text/3`.
+    * `:stream_text` - test seam, defaulting to `ReqLLM.stream_text/3`.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -99,7 +104,8 @@ defmodule Sheaf.Assistant do
        llm_options: Keyword.get(opts, :llm_options, []),
        max_tool_rounds: Keyword.get(opts, :max_tool_rounds, @default_max_tool_rounds),
        task_supervisor: Keyword.get(opts, :task_supervisor, @default_task_supervisor),
-       generate_text: Keyword.get(opts, :generate_text, &ReqLLM.generate_text/3)
+       generate_text: Keyword.get(opts, :generate_text, &ReqLLM.generate_text/3),
+       stream_text: Keyword.get(opts, :stream_text, &ReqLLM.stream_text/3)
      }}
   end
 
@@ -168,10 +174,46 @@ defmodule Sheaf.Assistant do
 
     task =
       Task.Supervisor.async_nolink(state.task_supervisor, fn ->
-        state.generate_text.(state.model, context, llm_options)
+        Tracer.with_span "Sheaf.Assistant.inference", %{
+          kind: :internal,
+          attributes: [
+            {"sheaf.assistant.model", inspect(state.model)},
+            {"sheaf.assistant.tool_count", length(state.tools)},
+            {"sheaf.assistant.tool_round", round},
+            {"sheaf.assistant.stream", stream?(opts)}
+          ]
+        } do
+          generate_response(state, context, llm_options, opts)
+        end
       end)
 
-    %{state | task_ref: task.ref, task_context: context, task_round: round}
+    %{state | task_ref: task.ref, task_context: context, task_round: round, task_opts: opts}
+  end
+
+  defp generate_response(state, %Context{} = context, llm_options, opts) do
+    if stream?(opts) do
+      case state.stream_text.(state.model, context, llm_options) do
+        {:ok, %StreamResponse{} = stream_response} ->
+          StreamResponse.process_stream(stream_response, stream_callbacks(opts))
+
+        other ->
+          other
+      end
+    else
+      state.generate_text.(state.model, context, llm_options)
+    end
+  end
+
+  defp stream?(opts), do: Keyword.get(opts, :stream, false) == true
+
+  defp stream_callbacks(opts) do
+    [
+      on_chunk: Keyword.get(opts, :on_stream_chunk),
+      on_result: Keyword.get(opts, :on_text_delta) || Keyword.get(opts, :on_result),
+      on_thinking: Keyword.get(opts, :on_thinking_delta) || Keyword.get(opts, :on_thinking),
+      on_tool_call: Keyword.get(opts, :on_tool_call_delta) || Keyword.get(opts, :on_tool_call)
+    ]
+    |> Enum.reject(fn {_key, callback} -> is_nil(callback) end)
   end
 
   defp handle_inference_result({:ok, %Response{} = response}, state) do
@@ -200,7 +242,14 @@ defmodule Sheaf.Assistant do
     else
       case execute_tools(context, tool_calls, state.tools) do
         {:ok, context} ->
-          state = start_inference(%{state | context: context}, context, state.task_round + 1, [])
+          state =
+            start_inference(
+              %{state | context: context},
+              context,
+              state.task_round + 1,
+              state.task_opts || []
+            )
+
           {:noreply, state}
 
         {:error, reason} ->
@@ -225,7 +274,14 @@ defmodule Sheaf.Assistant do
   end
 
   defp clear_task(state) do
-    %{state | pending_from: nil, task_ref: nil, task_context: nil, task_round: nil}
+    %{
+      state
+      | pending_from: nil,
+        task_ref: nil,
+        task_context: nil,
+        task_round: nil,
+        task_opts: nil
+    }
   end
 
   defp append_user_input(context, %ReqLLM.Message{role: :user} = message) do

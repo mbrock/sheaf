@@ -1,8 +1,9 @@
 defmodule Sheaf.AssistantTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.{Context, Response, Tool, ToolCall}
+  alias ReqLLM.{Context, Response, StreamChunk, StreamResponse, Tool, ToolCall}
   alias ReqLLM.Message.ContentPart
+  alias ReqLLM.StreamResponse.MetadataHandle
   alias Sheaf.Assistant
 
   test "runs a final response without tools" do
@@ -30,6 +31,45 @@ defmodule Sheaf.AssistantTest do
       )
 
     assert {:ok, response} = Assistant.run(assistant, "hi", temperature: 0.9)
+    assert Response.text(response) == "hello"
+
+    assert %{messages: [%{role: :user}, %{role: :assistant}]} = Assistant.context(assistant)
+  end
+
+  test "streams response text through callbacks and returns the final response" do
+    test_pid = self()
+
+    stream_text = fn model, context, opts ->
+      assert model == "openai:gpt-4"
+      assert opts[:tools] == []
+      assert [%{role: :user}] = context.messages
+      send(test_pid, {:stream_started, self()})
+
+      {:ok,
+       stream_response(context, [
+         StreamChunk.text("hel"),
+         StreamChunk.text("lo")
+       ])}
+    end
+
+    assistant =
+      start_supervised!(
+        {Assistant,
+         model: "openai:gpt-4",
+         task_supervisor: Sheaf.Assistant.TaskSupervisor,
+         stream_text: stream_text,
+         generate_text: fn _model, _context, _opts -> flunk("unexpected non-streaming call") end}
+      )
+
+    assert {:ok, response} =
+             Assistant.run(assistant, "hi",
+               stream: true,
+               on_text_delta: fn delta -> send(test_pid, {:delta, delta}) end
+             )
+
+    assert_receive {:stream_started, _pid}
+    assert_receive {:delta, "hel"}
+    assert_receive {:delta, "lo"}
     assert Response.text(response) == "hello"
 
     assert %{messages: [%{role: :user}, %{role: :assistant}]} = Assistant.context(assistant)
@@ -90,6 +130,62 @@ defmodule Sheaf.AssistantTest do
 
     assert %{messages: messages} = Assistant.context(assistant)
     assert Enum.map(messages, & &1.role) == [:user, :assistant, :tool, :assistant]
+  end
+
+  test "keeps streaming callbacks active after tool calls" do
+    test_pid = self()
+
+    echo_tool =
+      Tool.new!(
+        name: "echo_value",
+        description: "Echo a value.",
+        parameter_schema: [value: [type: :string, required: true]],
+        callback: fn %{value: value} -> {:ok, value} end
+      )
+
+    stream_text = fn _model, context, _opts ->
+      case Enum.map(context.messages, & &1.role) do
+        [:user] ->
+          {:ok,
+           stream_response(
+             context,
+             [
+               StreamChunk.tool_call("echo_value", %{value: "kept"}, %{
+                 id: "call_1",
+                 index: 0
+               })
+             ],
+             finish_reason: :tool_calls
+           )}
+
+        [:user, :assistant, :tool] ->
+          {:ok,
+           stream_response(context, [
+             StreamChunk.text("callback "),
+             StreamChunk.text("kept")
+           ])}
+      end
+    end
+
+    assistant =
+      start_supervised!(
+        {Assistant,
+         model: "openai:gpt-4",
+         tools: [echo_tool],
+         stream_text: stream_text,
+         generate_text: fn _model, _context, _opts -> flunk("unexpected non-streaming call") end,
+         task_supervisor: Sheaf.Assistant.TaskSupervisor}
+      )
+
+    assert {:ok, response} =
+             Assistant.run(assistant, "echo",
+               stream: true,
+               on_text_delta: fn delta -> send(test_pid, {:delta, delta}) end
+             )
+
+    assert_receive {:delta, "callback "}
+    assert_receive {:delta, "kept"}
+    assert Response.text(response) == "callback kept"
   end
 
   test "returns busy while an inference task is running" do
@@ -171,5 +267,24 @@ defmodule Sheaf.AssistantTest do
         opts
       )
     )
+  end
+
+  defp stream_response(context, chunks, opts \\ []) do
+    {:ok, model} = ReqLLM.model("openai:gpt-4")
+
+    metadata = %{
+      finish_reason: Keyword.get(opts, :finish_reason, :stop),
+      usage: Keyword.get(opts, :usage, %{input_tokens: 1, output_tokens: 1})
+    }
+
+    {:ok, metadata_handle} = MetadataHandle.start_link(fn -> metadata end)
+
+    %StreamResponse{
+      stream: chunks,
+      metadata_handle: metadata_handle,
+      cancel: fn -> :ok end,
+      model: model,
+      context: context
+    }
   end
 end

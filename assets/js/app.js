@@ -29,6 +29,7 @@ import {DocumentBreadcrumb} from "./document_breadcrumb"
 import {DataTable} from "./data_table"
 import {ScrollContainer} from "./scroll_container"
 import {SubmitShortcut} from "./submit_shortcut"
+import {AssistantTypeWriter} from "./assistant_typewriter"
 import {installBlockPreviewAnchors} from "./block_preview_anchor"
 import {installCopyNormalizer} from "./copy_normalize"
 
@@ -53,7 +54,15 @@ const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 6000,
   sessionStorage: devSessionStorage,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, KnuthPlass, DocumentBreadcrumb, DataTable, ScrollContainer, SubmitShortcut},
+  hooks: {
+    ...colocatedHooks,
+    KnuthPlass,
+    DocumentBreadcrumb,
+    DataTable,
+    ScrollContainer,
+    SubmitShortcut,
+    AssistantTypeWriter,
+  },
 })
 
 // Show progress bar on live navigation and form submits

@@ -271,8 +271,14 @@ defmodule Sheaf.Embedding.Index do
           metadata: Map.put(metadata, :errors, stats.error_details)
         }
 
+        vector_current_hashes =
+          Keyword.get_lazy(opts, :current_hashes, fn -> current_hashes(units) end)
+
         with :ok <- Store.finish_run(conn, run_iri, finish_attrs),
-             {:ok, vector_count} <- Store.sync_vector_index(conn, model, dimensions, source) do
+             {:ok, vector_count} <-
+               Store.sync_vector_index(conn, model, dimensions, source,
+                 current_hashes: vector_current_hashes
+               ) do
           Logger.info(
             "Embedding sync #{run_iri}: refreshed sqlite-vec index with #{vector_count} vectors"
           )
@@ -414,7 +420,9 @@ defmodule Sheaf.Embedding.Index do
                metadata: metadata
              }),
            {:ok, vector_count} <-
-             Store.sync_vector_index(conn, run.model, run.dimensions, run.source) do
+             Store.sync_vector_index(conn, run.model, run.dimensions, run.source,
+               current_hashes: current_hashes(units)
+             ) do
         Logger.info(
           "Embedding sync #{run_iri}: imported #{embedded}/#{length(units)} from #{batch_name} and refreshed sqlite-vec index with #{vector_count} vectors"
         )
@@ -657,6 +665,12 @@ defmodule Sheaf.Embedding.Index do
       limit when is_integer(limit) and limit > 0 -> Enum.take(units, limit)
       _limit -> units
     end
+  end
+
+  defp current_hashes(units) do
+    units
+    |> Enum.map(&{&1.iri, &1.text_hash})
+    |> MapSet.new()
   end
 
   defp unit_from_row(row, model, dimensions, source) do

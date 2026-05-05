@@ -110,4 +110,27 @@ defmodule SheafWeb.AssistantChatComponentTest do
     refute html =~ ~s(name="chat[mode]")
     refute html =~ ~s(name="chat[model_provider]")
   end
+
+  test "streaming assistant messages opt into typewriter reveal" do
+    html =
+      render_component(&AssistantChatComponent.render/1,
+        id: "assistant-conversation-CHAT01",
+        variant: :full_page,
+        chat: %{
+          messages: [%{role: :assistant, text: "A complete sentence. ", streaming?: true}],
+          pending: true,
+          status_line: "Writing",
+          titles: %{}
+        },
+        selected_chat_id: "CHAT01",
+        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        mode: "quick",
+        model_provider: "claude",
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+
+    assert html =~ ~s(phx-hook="AssistantTypeWriter")
+    assert html =~ ~s(data-typewriter-streaming)
+    assert html =~ "A complete sentence."
+  end
 end

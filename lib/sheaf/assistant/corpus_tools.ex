@@ -1255,14 +1255,15 @@ defmodule Sheaf.Assistant.CorpusTools do
     with {:ok, affected_blocks} <- affected_text_block_ids(block_ids),
          {:ok, rows} <- Sheaf.TextUnits.fetch_rows(),
          affected_iris = MapSet.new(Enum.map(affected_blocks, &(Id.iri(&1) |> to_string()))),
+         all_embedding_units = EmbeddingIndex.units_from_rows(rows),
          embedding_units =
-           rows
-           |> Enum.filter(fn row ->
-             iri = row |> Map.fetch!("iri") |> RDF.Term.value() |> to_string()
-             MapSet.member?(affected_iris, iri)
-           end)
-           |> EmbeddingIndex.units_from_rows(),
-         {:ok, embedding} <- EmbeddingIndex.sync_units(embedding_units),
+           Enum.filter(all_embedding_units, &MapSet.member?(affected_iris, &1.iri)),
+         current_hashes =
+           all_embedding_units
+           |> Enum.map(&{&1.iri, &1.text_hash})
+           |> MapSet.new(),
+         {:ok, embedding} <-
+           EmbeddingIndex.sync_units(embedding_units, current_hashes: current_hashes),
          {:ok, search} <- SearchIndex.sync() do
       {:ok,
        %{
