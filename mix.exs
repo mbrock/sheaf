@@ -81,6 +81,11 @@ defmodule Sheaf.MixProject do
       {:sqlite_vec, "~> 0.1.0"},
       {:mdex, "~> 0.12"},
       {:rdf, "~> 2.1"},
+      {:kino, "~> 0.19.0"},
+      {:kino_vega_lite, "~> 0.1.13"},
+      {:explorer, "~> 0.11.1"},
+      {:dux, "~> 0.3.0"},
+      {:kino_dux, "~> 0.2.0"},
       {:sheaf_rdf_browser, path: "apps/sheaf_rdf_browser"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"}
