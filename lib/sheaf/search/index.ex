@@ -13,7 +13,7 @@ defmodule Sheaf.Search.Index do
 
   @default_path "var/sheaf-embeddings.sqlite3"
   @log_every 5_000
-  @valid_kinds ~w(paragraph sourceHtml row)
+  @valid_kinds ~w(paragraph sourceHtml row note)
 
   @type conn :: Sqlite3.db()
 
@@ -229,7 +229,7 @@ defmodule Sheaf.Search.Index do
       |> add_document_filter(document_id)
 
     sql = """
-    SELECT u.iri, u.doc_iri, u.kind, u.text, u.text_hash, u.source_page,
+    SELECT u.iri, u.doc_iri, u.kind, u.text, u.text_hash, u.doc_title, u.source_page,
            u.source_block_type, u.spreadsheet_row, u.spreadsheet_source,
            u.code_category_title,
            bm25(search_text_units_fts) AS rank,
@@ -276,7 +276,7 @@ defmodule Sheaf.Search.Index do
     placeholders = iris |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
 
     sql = """
-    SELECT iri, doc_iri, kind, text, text_hash, source_page, source_block_type,
+    SELECT iri, doc_iri, kind, text, text_hash, doc_title, source_page, source_block_type,
            spreadsheet_row, spreadsheet_source, code_category_title
     FROM search_text_units
     WHERE iri IN (#{placeholders})
@@ -332,19 +332,19 @@ defmodule Sheaf.Search.Index do
   defp rows_to_results(rows, terms, phrase) do
     max_rank =
       rows
-      |> Enum.map(fn row -> row |> Enum.at(10) |> rank_weight() end)
+      |> Enum.map(fn row -> row |> Enum.at(11) |> rank_weight() end)
       |> Enum.max(fn -> 0.0 end)
 
     Enum.map(rows, &row_to_result(&1, terms, phrase, max_rank))
   end
 
   defp row_to_result(row, terms, phrase, max_rank) do
-    [rank, exact_match] = Enum.slice(row, 10, 2)
+    [rank, exact_match] = Enum.slice(row, 11, 2)
     text = Enum.at(row, 3)
     lexical_score = lexical_score(text, terms, phrase, rank, exact_match, max_rank)
 
     row
-    |> Enum.take(10)
+    |> Enum.take(11)
     |> unit_row()
     |> Map.merge(%{
       score: lexical_score,
@@ -361,6 +361,7 @@ defmodule Sheaf.Search.Index do
          kind,
          text,
          text_hash,
+         doc_title,
          source_page,
          source_block_type,
          spreadsheet_row,
@@ -373,6 +374,7 @@ defmodule Sheaf.Search.Index do
       kind: kind,
       text: text,
       text_hash: text_hash,
+      doc_title: doc_title,
       source_page: source_page,
       source_block_type: source_block_type,
       spreadsheet_row: spreadsheet_row,
@@ -475,6 +477,7 @@ defmodule Sheaf.Search.Index do
     %{
       iri: row |> Map.fetch!("iri") |> term_value(),
       doc_iri: row |> Map.get("doc") |> term_value(),
+      doc_title: row |> Map.get("docTitle") |> term_value(),
       kind: row |> Map.fetch!("kind") |> term_value(),
       text: row |> Map.fetch!("text") |> term_value(),
       source_page: row |> Map.get("sourcePage") |> integer_value(),
@@ -529,9 +532,9 @@ defmodule Sheaf.Search.Index do
              conn,
              """
              INSERT INTO search_text_units
-               (iri, doc_iri, kind, text, text_hash, source_page, source_block_type,
+               (iri, doc_iri, kind, text, text_hash, doc_title, source_page, source_block_type,
                 spreadsheet_row, spreadsheet_source, code_category_title, synced_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              """,
              [
                Map.fetch!(unit, :iri),
@@ -539,6 +542,7 @@ defmodule Sheaf.Search.Index do
                Map.fetch!(unit, :kind),
                Map.fetch!(unit, :text),
                text_hash(Map.fetch!(unit, :text)),
+               Map.get(unit, :doc_title),
                Map.get(unit, :source_page),
                Map.get(unit, :source_block_type),
                Map.get(unit, :spreadsheet_row),
@@ -591,6 +595,7 @@ defmodule Sheaf.Search.Index do
   defp ensure_metadata_columns(conn) do
     with {:ok, columns} <- table_columns(conn, "search_text_units") do
       [
+        {"doc_title", "TEXT"},
         {"source_page", "INTEGER"},
         {"source_block_type", "TEXT"},
         {"spreadsheet_row", "INTEGER"},
@@ -704,6 +709,7 @@ defmodule Sheaf.Search.Index do
       kind TEXT NOT NULL,
       text TEXT NOT NULL,
       text_hash TEXT NOT NULL,
+      doc_title TEXT,
       source_page INTEGER,
       source_block_type TEXT,
       spreadsheet_row INTEGER,

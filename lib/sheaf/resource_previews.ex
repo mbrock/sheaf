@@ -5,6 +5,7 @@ defmodule Sheaf.ResourcePreviews do
 
   alias RDF.{Graph, Literal}
   alias Sheaf.{BlockPreviews, Document, Documents, Id, ResourceResolver}
+  alias Sheaf.Assistant.Notes
   alias Sheaf.NS.BIBO
 
   require OpenTelemetry.Tracer, as: Tracer
@@ -18,6 +19,7 @@ defmodule Sheaf.ResourcePreviews do
       case ResourceResolver.resolve(id) do
         {:ok, %{kind: :block}} -> block_preview(id)
         {:ok, %{kind: :document}} -> document_preview(id)
+        {:ok, %{kind: :research_note}} -> note_preview(id)
         _other -> nil
       end
     end
@@ -50,6 +52,39 @@ defmodule Sheaf.ResourcePreviews do
         document_authors: Map.get(document.metadata, :authors, []),
         document_year: Map.get(document.metadata, :year),
         toc: graph |> Document.toc(iri) |> toc_preview(2),
+        path: "/#{id}"
+      }
+    else
+      _other -> nil
+    end
+  end
+
+  defp note_preview(id) do
+    with {:ok, note, _graph} <- Notes.get(id) do
+      title = note_value(note, RDF.NS.RDFS.label()) || "Research note"
+
+      %{
+        id: id,
+        type: :research_note,
+        text: note_value(note, Sheaf.NS.AS.content()),
+        document: %{
+          id: id,
+          iri: to_string(note.subject),
+          kind: :research_note,
+          cited?: false,
+          excluded?: false,
+          has_document?: true,
+          metadata: %{},
+          path: "/#{id}",
+          workspace_owner_authored?: false,
+          workspace_owner_name: nil,
+          title: title
+        },
+        document_id: id,
+        document_title: title,
+        document_authors: [],
+        document_year: nil,
+        toc: [],
         path: "/#{id}"
       }
     else
@@ -115,6 +150,15 @@ defmodule Sheaf.ResourcePreviews do
 
   defp put_optional(map, _key, nil), do: map
   defp put_optional(map, key, value), do: Map.put(map, key, value)
+
+  defp note_value(description, predicate) do
+    description
+    |> RDF.Description.first(predicate)
+    |> case do
+      nil -> nil
+      term -> term |> RDF.Term.value() |> to_string()
+    end
+  end
 
   defp preview_document_entry(preview, id) do
     %{

@@ -17,6 +17,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     Chats,
     ContextStore,
     CorpusTools,
+    Notes,
     SpreadsheetSession,
     StreamBuffer
   }
@@ -243,6 +244,16 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
+  def handle_call({:promote_assistant_message, index}, _from, state) do
+    case promote_assistant_message(state, index) do
+      {:ok, note, state} ->
+        {:reply, {:ok, note}, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
   def handle_call({:put_model, _model}, _from, %{pending_ref: ref} = state)
       when not is_nil(ref) do
     {:reply, {:error, :busy}, state}
@@ -453,6 +464,91 @@ defmodule Sheaf.Assistant.Chat.Server do
 
       {_other, _messages} ->
         append_message(state, :assistant, text)
+    end
+  end
+
+  defp promote_assistant_message(state, index) when is_integer(index) and index >= 0 do
+    case Enum.at(state.messages, index) do
+      %{role: :assistant, text: text} = message when is_binary(text) ->
+        text = String.trim(text)
+
+        if text == "" do
+          {:error, :empty_message}
+        else
+          attrs = %{
+            text: text,
+            title: promoted_note_title(text),
+            block_ids: Sheaf.BlockRefs.ids_from_text(text),
+            agent_iri: state.agent_iri,
+            agent_label: agent_label(state.kind),
+            session_iri: state.session_iri,
+            session_label: session_label(state.kind, state.id),
+            conversation_mode: conversation_mode(state.kind, state.allow_notes?)
+          }
+
+          case Notes.write(attrs) do
+            {:ok, note} ->
+              _ = refresh_note_indexes_async(state, note)
+
+              note_result = %{
+                id: Id.id_from_iri(note),
+                iri: to_string(note)
+              }
+
+              state =
+                state
+                |> update_message(index, Map.put(message, :promoted_note, note_result))
+                |> broadcast_snapshot()
+
+              {:ok, note_result, state}
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+        end
+
+      %{role: :assistant} ->
+        {:error, :empty_message}
+
+      _other ->
+        {:error, :not_found}
+    end
+  end
+
+  defp promote_assistant_message(_state, _index), do: {:error, :invalid_message_index}
+
+  defp refresh_note_indexes_async(state, note) do
+    if Process.whereis(state.task_supervisor) do
+      Task.Supervisor.start_child(state.task_supervisor, fn ->
+        safe_refresh_note_indexes(note)
+      end)
+    else
+      :ok
+    end
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp safe_refresh_note_indexes(note) do
+    Sheaf.SearchMaintenance.refresh_notes([note])
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp update_message(state, index, message) do
+    messages = List.replace_at(state.messages, index, message)
+    %{state | messages: messages}
+  end
+
+  defp promoted_note_title(text) do
+    text
+    |> String.split("\n", parts: 2)
+    |> hd()
+    |> String.replace(~r/^[#*\s]+/, "")
+    |> String.trim()
+    |> case do
+      "" -> "Promoted assistant response"
+      title -> if String.length(title) > 90, do: String.slice(title, 0, 87) <> "...", else: title
     end
   end
 

@@ -131,6 +131,17 @@ defmodule SheafWeb.AssistantChatComponent do
     {:noreply, start_blank_chat(socket, mode)}
   end
 
+  def handle_event("promote_note", %{"index" => index}, socket) do
+    with {message_index, ""} <- Integer.parse(index),
+         chat_id when is_binary(chat_id) <- socket.assigns.selected_chat_id,
+         {:ok, _note} <- Chat.promote_assistant_message(chat_id, message_index) do
+      {:noreply, socket}
+    else
+      _error ->
+        {:noreply, put_local_error(socket, "Could not promote that response to a note.")}
+    end
+  end
+
   def handle_event("send", %{"chat" => %{"message" => message} = chat_params}, socket) do
     mode = Map.get(chat_params, "mode", socket.assigns.mode)
     model_provider = Map.get(chat_params, "model_provider", socket.assigns.model_provider)
@@ -218,6 +229,7 @@ defmodule SheafWeb.AssistantChatComponent do
             message_id={"assistant-message-#{@id}-#{index}"}
             titles={Map.get(@chat, :titles, %{})}
             block_ref_target={block_preview_target(@id)}
+            myself={@myself}
           />
 
           <div
@@ -339,6 +351,7 @@ defmodule SheafWeb.AssistantChatComponent do
           message_id={"assistant-message-#{@id}-#{index}"}
           titles={Map.get(@chat, :titles, %{})}
           block_ref_target={block_preview_target(@id)}
+          myself={@myself}
         />
 
         <div
@@ -510,16 +523,22 @@ defmodule SheafWeb.AssistantChatComponent do
   attr :message_id, :string, required: true
   attr :titles, :map, default: %{}
   attr :block_ref_target, :any, default: nil
+  attr :myself, :any, default: nil
 
   defp chat_item(%{item: %{kind: :message, message: message}} = assigns) do
-    assigns = assign(assigns, :message, message)
+    assigns =
+      assigns
+      |> assign(:message, message)
+      |> assign(:message_index, Map.get(assigns.item, :message_index))
 
     ~H"""
     <.chat_message
       id={@message_id}
       message={@message}
+      message_index={@message_index}
       titles={@titles}
       block_ref_target={@block_ref_target}
+      myself={@myself}
     />
     """
   end
@@ -1085,8 +1104,10 @@ defmodule SheafWeb.AssistantChatComponent do
 
   attr :message, :map, required: true
   attr :id, :string, required: true
+  attr :message_index, :integer, default: nil
   attr :titles, :map, default: %{}
   attr :block_ref_target, :any, default: nil
+  attr :myself, :any, default: nil
 
   defp chat_message(%{message: %{role: :user}} = assigns) do
     ~H"""
@@ -1104,15 +1125,43 @@ defmodule SheafWeb.AssistantChatComponent do
     ~H"""
     <div
       id={@id}
-      class="assistant-prose rounded-lg bg-white px-3 py-2 text-stone-900 dark:bg-stone-900 dark:text-stone-100"
+      class="group relative rounded-lg bg-white px-3 py-2 text-stone-900 dark:bg-stone-900 dark:text-stone-100"
       phx-hook="AssistantTypeWriter"
       data-typewriter-streaming={Map.get(@message, :streaming?, false)}
     >
-      <AssistantMarkdownComponents.markdown
-        text={@message.text}
-        block_ref_target={@block_ref_target}
-        resolve_block_previews={false}
-      />
+      <div class="assistant-prose">
+        <AssistantMarkdownComponents.markdown
+          text={@message.text}
+          block_ref_target={@block_ref_target}
+          resolve_block_previews={false}
+        />
+      </div>
+      <div class="mt-2 flex items-center justify-end gap-1 font-sans text-xs">
+        <.link
+          :if={promoted_note_id(@message)}
+          navigate={~p"/#{promoted_note_id(@message)}"}
+          class="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 text-stone-500 hover:bg-stone-100 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
+        >
+          <.icon name="hero-document-text" class="size-3.5" />
+          <span>Note</span>
+        </.link>
+        <button
+          :if={
+            !Map.get(@message, :streaming?, false) and is_integer(@message_index) and
+              is_nil(promoted_note_id(@message))
+          }
+          type="button"
+          phx-click="promote_note"
+          phx-value-index={@message_index}
+          phx-target={@myself}
+          class="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 text-stone-400 opacity-0 transition hover:bg-stone-100 hover:text-stone-950 group-hover:opacity-100 focus:opacity-100 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-50"
+          title="Promote response to note"
+          aria-label="Promote response to note"
+        >
+          <.icon name="hero-document-plus" class="size-3.5" />
+          <span>Note</span>
+        </button>
+      </div>
     </div>
     """
   end
@@ -1876,7 +1925,10 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp message_groups(messages) do
     messages
-    |> Enum.reduce([], &put_message_group/2)
+    |> Enum.with_index()
+    |> Enum.reduce([], fn {message, index}, groups ->
+      put_message_group(message, index, groups)
+    end)
     |> Enum.reverse()
   end
 
@@ -1887,25 +1939,26 @@ defmodule SheafWeb.AssistantChatComponent do
            result: %PresentedSpreadsheetQueryResult{}
          } =
            message,
+         _index,
          groups
        ) do
     [%{kind: :message, message: message} | groups]
   end
 
-  defp put_message_group(%{role: :tool, tool: tool} = message, [
+  defp put_message_group(%{role: :tool, tool: tool} = message, _index, [
          %{kind: :tools, messages: messages} = group | rest
        ])
        when tool != "write_note" do
     [%{group | messages: messages ++ [message]} | rest]
   end
 
-  defp put_message_group(%{role: :tool, tool: tool} = message, groups)
+  defp put_message_group(%{role: :tool, tool: tool} = message, _index, groups)
        when tool != "write_note" do
     [%{kind: :tools, messages: [message]} | groups]
   end
 
-  defp put_message_group(message, groups) do
-    [%{kind: :message, message: message} | groups]
+  defp put_message_group(message, index, groups) do
+    [%{kind: :message, message: message, message_index: index} | groups]
   end
 
   defp note_view(input) do
@@ -1917,6 +1970,10 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp note_text_value(value) when is_binary(value), do: String.trim(value)
   defp note_text_value(_value), do: ""
+
+  defp promoted_note_id(%{promoted_note: %{id: id}}) when is_binary(id), do: id
+  defp promoted_note_id(%{"promoted_note" => %{"id" => id}}) when is_binary(id), do: id
+  defp promoted_note_id(_message), do: nil
 
   defp tool_blocks(input) do
     input

@@ -16,16 +16,18 @@ defmodule Sheaf.Assistant.CorpusTools do
     DocumentEdits,
     Documents,
     Id,
+    ResourceResolver,
     SearchMaintenance,
     Spreadsheets
   }
 
   alias Sheaf.Assistant.Notes
   alias Sheaf.Assistant.{QueryResults, SpreadsheetSession, ToolResultText, ToolResults}
+  alias Sheaf.NS.AS
 
   @search_result_limit 10
   @spreadsheet_list_limit 50
-  @default_search_kinds ~w(paragraph sourceHtml row)
+  @default_search_kinds ~w(paragraph sourceHtml row note)
 
   @doc """
   Builds the tool list used by corpus assistant conversations.
@@ -83,8 +85,8 @@ defmodule Sheaf.Assistant.CorpusTools do
       Tool.new!(
         name: "read",
         description:
-          "Read one or more blocks by id. Pass blocks as a list of 6-character ids. " <>
-            "Blocks may come from different documents; their documents are resolved automatically. " <>
+          "Read one or more Sheaf resources by id. Pass blocks as a list of 6-character ids. " <>
+            "IDs may be document roots, document blocks, or research notes. Blocks may come from different documents; their documents are resolved automatically. " <>
             "By default sections and documents are returned collapsed with child handles. " <>
             "Set expand=true to read the full descendant contents of sections or whole documents. " <>
             "Expanded output still tags every section, paragraph, excerpt, and row with its block id.",
@@ -92,7 +94,8 @@ defmodule Sheaf.Assistant.CorpusTools do
           blocks: [
             type: {:list, :string},
             required: true,
-            doc: "Block ids to read, without leading #. Blocks may belong to different documents."
+            doc:
+              "Sheaf resource ids to read, without leading #. Supports document roots, document blocks, and research notes."
           ],
           expand: [
             type: :boolean,
@@ -781,8 +784,12 @@ defmodule Sheaf.Assistant.CorpusTools do
     "document" <> if(title in [nil, ""], do: "", else: ": " <> ellipsize(title, 60))
   end
 
+  def result_summary("read", {:ok, %ToolResults.Block{type: :note, title: title}}) do
+    "note" <> if(title in [nil, ""], do: "", else: ": " <> ellipsize(title, 60))
+  end
+
   def result_summary("read", {:ok, %ToolResults.Blocks{blocks: blocks, expanded?: expanded?}}) do
-    summary = pluralize(length(blocks), "block", "blocks")
+    summary = pluralize(length(blocks), "resource", "resources")
     if expanded?, do: summary <> " expanded", else: summary
   end
 
@@ -942,10 +949,10 @@ defmodule Sheaf.Assistant.CorpusTools do
           |> then(&{:ok, &1})
 
         {:error, {:not_found, block_id}} ->
-          {:error, "block #{block_id} not found"}
+          {:error, "resource #{block_id} not found"}
 
         {:error, {reason, block_id}} ->
-          {:error, "could not read block #{block_id}: #{inspect(reason)}"}
+          {:error, "could not read resource #{block_id}: #{inspect(reason)}"}
       end
     end
   end
@@ -1160,6 +1167,8 @@ defmodule Sheaf.Assistant.CorpusTools do
 
     case note_writer.(attrs) do
       {:ok, %RDF.IRI{} = note} ->
+        _ = refresh_note_indexes_async(note)
+
         %ToolResults.Note{id: Id.id_from_iri(note), iri: to_string(note)}
         |> rendered_result()
         |> then(&{:ok, &1})
@@ -1170,6 +1179,24 @@ defmodule Sheaf.Assistant.CorpusTools do
       other ->
         {:error, "could not write note: unexpected result #{inspect(other)}"}
     end
+  end
+
+  defp refresh_note_indexes_async(note) do
+    if Process.whereis(Sheaf.Assistant.TaskSupervisor) do
+      Task.Supervisor.start_child(Sheaf.Assistant.TaskSupervisor, fn ->
+        safe_refresh_note_indexes(note)
+      end)
+    else
+      :ok
+    end
+  catch
+    :exit, _reason -> :ok
+  end
+
+  defp safe_refresh_note_indexes(note) do
+    Sheaf.SearchMaintenance.refresh_notes([note])
+  catch
+    :exit, _reason -> :ok
   end
 
   defp tag_paragraphs_tool(args, paragraph_tagger) do
@@ -1643,6 +1670,16 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp read_block(block_id, expanded?) do
+    case ResourceResolver.resolve(block_id) do
+      {:ok, %{kind: :research_note, id: note_id}} ->
+        read_note(note_id)
+
+      _other ->
+        read_document_block(block_id, expanded?)
+    end
+  end
+
+  defp read_document_block(block_id, expanded?) do
     with {:ok, document_id} <- document_for_block(block_id),
          {:ok, graph} <- Corpus.graph(document_id) do
       root = Id.iri(document_id)
@@ -1658,6 +1695,47 @@ defmodule Sheaf.Assistant.CorpusTools do
     else
       {:error, :not_found} -> {:error, {:not_found, block_id}}
       {:error, reason} -> {:error, {reason, block_id}}
+    end
+  end
+
+  defp read_note(note_id) do
+    with {:ok, note, _graph} <- Notes.get(note_id) do
+      {:ok,
+       %ToolResults.Block{
+         document_id: note_id,
+         id: note_id,
+         type: :note,
+         title: note_title(note),
+         text: note_text(note)
+       }}
+    else
+      {:error, :not_found} -> {:error, {:not_found, note_id}}
+      {:error, reason} -> {:error, {reason, note_id}}
+    end
+  end
+
+  defp note_title(note) do
+    note
+    |> RDF.Description.first(RDF.NS.RDFS.label())
+    |> rdf_value()
+  end
+
+  defp note_text(note) do
+    note
+    |> RDF.Description.first(AS.content())
+    |> rdf_value()
+    |> case do
+      nil -> ""
+      text -> text
+    end
+  end
+
+  defp rdf_value(nil), do: nil
+
+  defp rdf_value(term) do
+    case RDF.Term.value(term) do
+      %DateTime{} = value -> DateTime.to_iso8601(value)
+      value -> to_string(value)
     end
   end
 

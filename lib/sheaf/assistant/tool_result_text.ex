@@ -60,6 +60,16 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
+  def to_text(%Block{type: :note} = block) do
+    """
+    RESEARCH NOTE ##{block.id}
+    Title: #{block.title}
+
+    #{block.text}
+    """
+    |> String.trim()
+  end
+
   def to_text(%Block{type: :section} = block) do
     """
     SECTION ##{block.id}
@@ -535,6 +545,14 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp expanded_block_text(%Block{type: :section} = block) do
     "SECTION ##{block.id} #{block.title}"
+  end
+
+  defp expanded_block_text(%Block{type: :note} = block) do
+    """
+    NOTE ##{block.id} #{block.title}
+    #{indent_text(block.text, 1)}
+    """
+    |> String.trim()
   end
 
   defp expanded_block_text(%Block{type: :paragraph} = block) do

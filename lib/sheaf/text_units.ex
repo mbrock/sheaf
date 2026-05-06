@@ -8,9 +8,9 @@ defmodule Sheaf.TextUnits do
 
   alias RDF.{BlankNode, Graph, IRI}
   alias RDF.NS.RDFS
-  alias Sheaf.NS.{DOC, PROV}
+  alias Sheaf.NS.{AS, DOC, PROV}
 
-  @valid_kinds ~w(paragraph sourceHtml row)
+  @valid_kinds ~w(paragraph sourceHtml row note)
 
   def fetch_rows(opts \\ []) do
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
@@ -46,6 +46,18 @@ defmodule Sheaf.TextUnits do
             {nil, DOC.paragraph(), nil, nil},
             {nil, DOC.text(), nil, nil},
             {nil, PROV.wasInvalidatedBy(), nil, nil}
+          ]
+        else
+          []
+        end ++
+        if MapSet.member?(kinds, "note") do
+          [
+            {nil, RDF.type(), RDF.iri(AS.Note), RDF.iri(Sheaf.Workspace.graph())},
+            {nil, RDF.type(), RDF.iri(DOC.ResearchNote), RDF.iri(Sheaf.Workspace.graph())},
+            {nil, AS.content(), nil, RDF.iri(Sheaf.Workspace.graph())},
+            {nil, AS.context(), nil, RDF.iri(Sheaf.Workspace.graph())},
+            {nil, AS.published(), nil, RDF.iri(Sheaf.Workspace.graph())},
+            {nil, RDFS.label(), nil, RDF.iri(Sheaf.Workspace.graph())}
           ]
         else
           []
@@ -87,10 +99,33 @@ defmodule Sheaf.TextUnits do
     paragraph_predicate = DOC.paragraph()
     source_html_predicate = DOC.sourceHtml()
     text_predicate = DOC.text()
+    type_predicate = RDF.type()
+    note_type = RDF.iri(AS.Note)
     active_subjects = active_subjects(graph, index)
 
     triples
     |> Enum.flat_map(fn
+      {iri, ^type_predicate, ^note_type} ->
+        if MapSet.member?(kinds, "note") do
+          case first(index, iri, AS.content()) do
+            nil ->
+              []
+
+            text ->
+              [
+                %{
+                  "iri" => iri,
+                  "kind" => RDF.literal("note"),
+                  "text" => text,
+                  "doc" => iri,
+                  "docTitle" => first(index, iri, RDFS.label()) || RDF.literal("Research note")
+                }
+              ]
+          end
+        else
+          []
+        end
+
       {iri, ^paragraph_predicate, paragraph} ->
         if MapSet.member?(kinds, "paragraph") and
              active?(active_subjects, iri) and

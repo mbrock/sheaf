@@ -78,6 +78,34 @@ defmodule Sheaf.Search.IndexTest do
     assert %{spreadsheet_row: 7, text: "Coded row about giving things away."} = units[row_hit.iri]
   end
 
+  test "sync mirrors research notes into SQLite FTS", %{db_path: db_path} do
+    note = Sheaf.Id.iri("NOTE01")
+    session = Sheaf.Id.iri("SESS01")
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {note, RDF.type(), Sheaf.NS.AS.Note},
+                   {note, RDF.type(), Sheaf.NS.DOC.ResearchNote},
+                   {note, RDF.NS.RDFS.label(), "Repair note"},
+                   {note, Sheaf.NS.AS.context(), session},
+                   {note, Sheaf.NS.AS.content(), "Research note about maintenance cultures."},
+                   {session, RDF.type(), Sheaf.NS.DOC.AssistantConversation}
+                 ],
+                 name: Sheaf.Repo.workspace_graph()
+               )
+             )
+
+    assert {:ok, %{kinds: %{"note" => 1}}} = Index.sync(db_path: db_path)
+
+    assert {:ok, hits} = Index.search("maintenance cultures", db_path: db_path)
+    assert hit = Enum.find(hits, &(&1.iri == to_string(note)))
+    assert hit.iri == to_string(note)
+    assert hit.kind == "note"
+    assert hit.doc_title == "Repair note"
+  end
+
   test "sync ignores unlinked document blocks when a graph has children", %{db_path: db_path} do
     doc = RDF.iri("https://sheaf.less.rest/DOC1")
     root_list = RDF.iri("https://sheaf.less.rest/LIST1")

@@ -369,13 +369,13 @@ defmodule SheafWeb.EmbeddingSearchComponent do
         ]}>
           <div class="flex min-w-0 items-baseline gap-2">
             <.link
-              href={block_path(result.iri)}
+              href={result_path(result)}
               class={[
                 "min-w-0 flex-1 truncate font-sans text-stone-950 hover:underline dark:text-stone-50",
                 if(@compact?, do: "text-[11px] font-normal", else: "text-xs font-medium")
               ]}
             >
-              {result.doc_title || "Untitled document"}
+              {result_title(result)}
             </.link>
             <span class="shrink-0 font-sans text-[10px] tabular-nums text-stone-500 dark:text-stone-400">
               {score_percent(result.score)}
@@ -418,7 +418,12 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   defp visible_results(results, _limit), do: results
 
   defp block_id(iri), do: Id.id_from_iri(iri)
-  defp block_path(iri), do: "/b/#{block_id(iri)}"
+  defp result_path(%{kind: "note", iri: iri}), do: "/#{block_id(iri)}"
+  defp result_path(%{iri: iri}), do: "/b/#{block_id(iri)}"
+
+  defp result_title(%{kind: "note", doc_title: title}) when is_binary(title), do: title
+  defp result_title(%{kind: "note"}), do: "Research note"
+  defp result_title(result), do: result.doc_title || "Untitled document"
 
   defp context_label(%{kind: "sourceHtml", source_page: page}) when is_integer(page),
     do: "p. #{page}"
@@ -430,6 +435,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
     |> blank_to_nil()
   end
 
+  defp context_label(%{kind: "note"}), do: "note"
   defp context_label(_result), do: nil
 
   defp row_label(nil), do: nil

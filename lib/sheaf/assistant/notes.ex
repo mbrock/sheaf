@@ -41,6 +41,25 @@ defmodule Sheaf.Assistant.Notes do
   end
 
   @doc """
+  Fetches one persisted note description from the workspace graph.
+  """
+  def get(id) when is_binary(id) do
+    iri = Id.iri(id)
+
+    with {:ok, graph} <- list_graph() do
+      description = RDF.Data.description(graph, iri)
+
+      if note?(description) do
+        {:ok, description, graph}
+      else
+        {:error, :not_found}
+      end
+    end
+  end
+
+  def get(%RDF.IRI{} = iri), do: iri |> Id.id_from_iri() |> get()
+
+  @doc """
   Returns note descriptions from RDF data, newest first.
   """
   def descriptions(data) do

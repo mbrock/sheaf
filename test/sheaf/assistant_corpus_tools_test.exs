@@ -3,7 +3,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
   alias ReqLLM.{Tool, ToolResult}
   alias ReqLLM.Message.ContentPart
-  alias Sheaf.Assistant.{CorpusTools, ToolResultText, ToolResults}
+  alias Sheaf.Assistant.{CorpusTools, Notes, ToolResultText, ToolResults}
   alias Sheaf.Id
   alias Sheaf.NS.{AS, DOC}
 
@@ -75,14 +75,14 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert Keyword.get(opts, :limit) == 5
     assert Keyword.get(opts, :document_id) == "DOC123"
     assert Keyword.get(opts, :document_kind) == "literature"
-    assert Keyword.get(opts, :kinds) == ["paragraph", "sourceHtml", "row"]
+    assert Keyword.get(opts, :kinds) == ["paragraph", "sourceHtml", "row", "note"]
     assert Keyword.get(opts, :exact_limit) == 0
 
     assert_received {:exact_search_args, "plastic", exact_opts}
     assert Keyword.get(exact_opts, :limit) == 5
     assert Keyword.get(exact_opts, :document_id) == "DOC123"
     assert Keyword.get(exact_opts, :document_kind) == "literature"
-    assert Keyword.get(exact_opts, :kinds) == ["paragraph", "sourceHtml", "row"]
+    assert Keyword.get(exact_opts, :kinds) == ["paragraph", "sourceHtml", "row", "note"]
 
     assert exact_hit == %ToolResults.SearchHit{
              document_id: "DOC123",
@@ -585,7 +585,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              type: {:list, :string},
              required: true,
              doc:
-               "Block ids to read, without leading #. Blocks may belong to different documents."
+               "Sheaf resource ids to read, without leading #. Supports document roots, document blocks, and research notes."
            ] = tool.parameter_schema[:blocks]
 
     assert [
@@ -600,6 +600,43 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     refute Keyword.has_key?(tool.parameter_schema, :block_ids)
 
     assert {:error, %{tag: :parameter_validation}} = Tool.execute(tool, %{})
+  end
+
+  test "read tool can read a research note resource" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-corpus-tools-read-note-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    start_supervised!({Sheaf.Repo, path: path})
+
+    assert {:ok, _note} =
+             Notes.write(
+               %{
+                 text: "String figures ask Sheaf to carry citation with care.",
+                 title: "String figures and citation care",
+                 agent_id: "AGT999",
+                 session_id: "SES999"
+               },
+               note_iri: Id.iri("NOTE99"),
+               published_at: ~U[2026-05-06 12:00:00Z]
+             )
+
+    tool = CorpusTools.tools(include_notes?: false) |> Enum.find(&(&1.name == "read"))
+
+    assert {:ok, %ToolResult{} = result} = Tool.execute(tool, %{"blocks" => ["NOTE99"]})
+
+    assert %ToolResults.Block{
+             document_id: "NOTE99",
+             id: "NOTE99",
+             type: :note,
+             title: "String figures and citation care",
+             text: "String figures ask Sheaf to carry citation with care."
+           } = sheaf_result(result)
+
+    assert tool_text(result) =~ "RESEARCH NOTE #NOTE99"
+    assert tool_text(result) =~ "String figures ask Sheaf to carry citation with care."
   end
 
   test "expanded read text keeps block tags on every rendered block" do

@@ -45,6 +45,10 @@ defmodule Sheaf.Assistant.Chat do
     GenServer.call(server_ref(server), :persist_context)
   end
 
+  def promote_assistant_message(server, message_index) when is_integer(message_index) do
+    GenServer.call(server_ref(server), {:promote_assistant_message, message_index})
+  end
+
   def put_model(server, model) do
     GenServer.call(server_ref(server), {:put_model, model})
   end

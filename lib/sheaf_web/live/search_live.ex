@@ -165,10 +165,10 @@ defmodule SheafWeb.SearchLive do
           <article class="min-w-0 border-t border-stone-200 pt-2 dark:border-stone-800">
             <div class="flex min-w-0 items-baseline gap-2">
               <.link
-                href={block_path(result.iri)}
+                href={result_path(result)}
                 class="min-w-0 flex-1 truncate font-sans text-sm font-medium text-stone-950 hover:underline dark:text-stone-50"
               >
-                {result.doc_title || "Untitled document"}
+                {result_title(result)}
               </.link>
               <span class="shrink-0 text-[11px] tabular-nums text-stone-500 dark:text-stone-400">
                 {score_percent(result.score)}
@@ -195,7 +195,12 @@ defmodule SheafWeb.SearchLive do
     """
   end
 
-  defp block_path(iri), do: "/b/#{Id.id_from_iri(iri)}"
+  defp result_path(%{kind: "note", iri: iri}), do: "/#{Id.id_from_iri(iri)}"
+  defp result_path(%{iri: iri}), do: "/b/#{Id.id_from_iri(iri)}"
+
+  defp result_title(%{kind: "note", doc_title: title}) when is_binary(title), do: title
+  defp result_title(%{kind: "note"}), do: "Research note"
+  defp result_title(result), do: result.doc_title || "Untitled document"
 
   defp context_label(%{kind: "sourceHtml", source_page: page}) when is_integer(page),
     do: "p. #{page}"
@@ -207,6 +212,7 @@ defmodule SheafWeb.SearchLive do
     |> blank_to_nil()
   end
 
+  defp context_label(%{kind: "note"}), do: "note"
   defp context_label(_result), do: nil
 
   defp row_label(nil), do: nil

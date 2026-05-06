@@ -77,40 +77,60 @@ defmodule SheafWeb.AssistantHistoryLive do
           class="divide-y divide-stone-200/80 border-y border-stone-200/80 bg-white dark:divide-stone-800 dark:border-stone-800 dark:bg-stone-900/70"
         >
           <li :for={row <- @rows}>
-            <.link
-              navigate={~p"/#{row.id}"}
-              class="block min-w-0 px-2 py-2.5 transition-colors hover:bg-stone-100/80 sm:px-3 dark:hover:bg-stone-800/70"
-            >
-              <span class="flex min-w-0 items-center gap-2 font-sans text-[11px] text-stone-500 dark:text-stone-400">
-                <span class="flex size-5 shrink-0 items-center justify-center" title={row.mode_label}>
-                  <.icon name={row.icon} class={row.icon_class} />
+            <article class="min-w-0 px-2 py-2.5 transition-colors hover:bg-stone-100/80 sm:px-3 dark:hover:bg-stone-800/70">
+              <.link
+                navigate={~p"/#{row.id}"}
+                class="block min-w-0 transition-colors hover:text-stone-950 dark:hover:text-stone-50"
+              >
+                <span class="flex min-w-0 items-center gap-2 font-sans text-[11px] text-stone-500 dark:text-stone-400">
+                  <span
+                    class="flex size-5 shrink-0 items-center justify-center"
+                    title={row.mode_label}
+                  >
+                    <.icon name={row.icon} class={row.icon_class} />
+                  </span>
+
+                  <span :if={row.provider_label} class="shrink-0">
+                    {row.provider_label}
+                  </span>
+
+                  <time
+                    :if={row.published_at}
+                    datetime={DateTime.to_iso8601(row.published_at)}
+                    class="shrink-0 tabular-nums"
+                  >
+                    {time_label(row.published_at)}
+                  </time>
+
+                  <span class="min-w-0 flex-1"></span>
+
+                  <span :if={row.assistant_count > 0} class="shrink-0 tabular-nums">
+                    {row.assistant_count}
+                  </span>
                 </span>
 
-                <span :if={row.provider_label} class="shrink-0">
-                  {row.provider_label}
+                <span class="mt-1 block min-w-0">
+                  <span class="line-clamp-5 text-[13px] font-normal leading-5 text-stone-800 sm:line-clamp-4 dark:text-stone-100">
+                    {row.initial_message}
+                  </span>
                 </span>
+              </.link>
 
-                <time
-                  :if={row.published_at}
-                  datetime={DateTime.to_iso8601(row.published_at)}
-                  class="shrink-0 tabular-nums"
+              <div :if={row.notes != []} class="mt-2 flex flex-wrap gap-1.5 pl-7">
+                <.link
+                  :for={note <- row.notes}
+                  navigate={~p"/#{note.id}"}
+                  class="inline-flex max-w-full items-center gap-1 rounded-sm border border-stone-200 bg-stone-50 px-1.5 py-1 font-sans text-[11px] leading-4 text-stone-600 transition-colors hover:border-stone-300 hover:bg-white hover:text-stone-950 dark:border-stone-700 dark:bg-stone-950/50 dark:text-stone-300 dark:hover:border-stone-600 dark:hover:bg-stone-900 dark:hover:text-stone-50"
+                  title={note.title}
                 >
-                  {time_label(row.published_at)}
-                </time>
-
-                <span class="min-w-0 flex-1"></span>
-
-                <span :if={row.assistant_count > 0} class="shrink-0 tabular-nums">
-                  {row.assistant_count}
-                </span>
-              </span>
-
-              <span class="mt-1 block min-w-0">
-                <span class="line-clamp-5 text-[13px] font-normal leading-5 text-stone-800 sm:line-clamp-4 dark:text-stone-100">
-                  {row.initial_message}
-                </span>
-              </span>
-            </.link>
+                  <.icon
+                    name="hero-document-text"
+                    class="size-3 shrink-0 text-stone-400 dark:text-stone-500"
+                  />
+                  <span class="truncate">{note.title}</span>
+                </.link>
+              </div>
+            </article>
           </li>
         </ol>
 
@@ -139,10 +159,26 @@ defmodule SheafWeb.AssistantHistoryLive do
           &(Map.get(&1, :type) == :message and Map.get(&1, :role) == :assistant)
         ),
       provider_label: provider_label(entries),
+      notes: note_links(entries),
       mode_label: mode_label(group.mode),
       icon: row_icon(group.mode),
       icon_class: row_icon_class(group.mode)
     }
+  end
+
+  defp note_links(entries) do
+    entries
+    |> Enum.filter(&(Map.get(&1, :type) == :note))
+    |> Enum.map(fn note ->
+      id = note.iri |> to_string() |> Sheaf.Id.id_from_iri()
+
+      %{
+        id: id,
+        title:
+          blank_to_nil(Map.get(note, :title)) || blank_to_nil(Map.get(note, :preview)) ||
+            "Research note #{id}"
+      }
+    end)
   end
 
   defp initial_user_message(entries) do

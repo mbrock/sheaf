@@ -14,7 +14,7 @@ defmodule Sheaf.Embedding.Index do
   @default_max_concurrency 8
   @default_batch_size 32
   @default_source "openai-text-embedding-3-large-v1"
-  @valid_kinds ~w(paragraph sourceHtml row)
+  @valid_kinds ~w(paragraph sourceHtml row note)
 
   @type text_unit :: %{
           required(:iri) => String.t(),
@@ -741,6 +741,7 @@ defmodule Sheaf.Embedding.Index do
          {:ok, documents} <-
            units
            |> Map.values()
+           |> Enum.reject(&(&1.kind == "note"))
            |> Enum.map(& &1.doc_iri)
            |> document_metadata_for_doc_iris(opts) do
       {:ok,
@@ -1028,7 +1029,7 @@ defmodule Sheaf.Embedding.Index do
         doc = Map.get(documents, unit.doc_iri, %{})
 
         Map.merge(unit, %{
-          doc_title: Map.get(doc, :title),
+          doc_title: Map.get(unit, :doc_title) || Map.get(doc, :title),
           doc_kind: Map.get(doc, :kind),
           doc_authors: Map.get(doc, :authors, []),
           doc_status: Map.get(doc, :status),

@@ -6,9 +6,10 @@ defmodule SheafWeb.ResourceLive do
   use SheafWeb, :live_view
 
   alias Sheaf.{BlockTags, Corpus, Document, Documents, Id, ResourceResolver}
-  alias Sheaf.Assistant.QueryResults
+  alias Sheaf.Assistant.{Notes, QueryResults}
   alias SheafWeb.AppChrome
   alias SheafWeb.AssistantChatComponent
+  alias SheafWeb.AssistantMarkdownComponents
   alias SheafWeb.DataTableComponents
   alias SheafWeb.DocumentLive
 
@@ -152,6 +153,47 @@ defmodule SheafWeb.ResourceLive do
     """
   end
 
+  def render(%{resource_kind: :research_note} = assigns) do
+    ~H"""
+    <main class="min-h-dvh bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
+      <AppChrome.toolbar section={:history} />
+
+      <article class="mx-auto w-full max-w-prose px-4 py-8">
+        <header class="mb-5 border-b border-stone-200 pb-3 dark:border-stone-800">
+          <p class="font-sans text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
+            Research note
+          </p>
+          <h1 class="mt-1 font-sans text-2xl font-semibold leading-tight text-stone-950 dark:text-stone-50">
+            {@note_title}
+          </h1>
+          <time
+            :if={@note_published_at}
+            datetime={DateTime.to_iso8601(@note_published_at)}
+            class="mt-2 block font-sans text-xs text-stone-500 dark:text-stone-400"
+          >
+            {Calendar.strftime(@note_published_at, "%b %-d, %Y %H:%M")}
+          </time>
+        </header>
+
+        <div class="assistant-prose text-stone-900 dark:text-stone-100">
+          <AssistantMarkdownComponents.markdown text={@note_text} resolve_block_previews={false} />
+        </div>
+
+        <footer :if={@note_mentions != []} class="mt-6 flex flex-wrap gap-1.5">
+          <.link
+            :for={mention <- @note_mentions}
+            navigate={mention.path}
+            class="inline-flex items-center gap-1 rounded-sm bg-stone-200/70 px-1.5 py-1 font-sans text-xs text-stone-600 hover:bg-stone-300/80 hover:text-stone-950 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700 dark:hover:text-stone-50"
+          >
+            <.icon name="hero-numbered-list" class="size-3" />
+            <span>{mention.label}</span>
+          </.link>
+        </footer>
+      </article>
+    </main>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <main class="grid min-h-dvh grid-rows-[auto_1fr] bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
@@ -188,8 +230,34 @@ defmodule SheafWeb.ResourceLive do
       {:ok, %{kind: :spreadsheet_query_result, id: result_id}} ->
         load_spreadsheet_query_result(socket, id, result_id)
 
+      {:ok, %{kind: :research_note, id: note_id}} ->
+        load_research_note(socket, id, note_id)
+
       {:error, reason} ->
         {:ok, assign_not_found(socket, id, reason)}
+    end
+  end
+
+  defp load_research_note(socket, resource_id, note_id) do
+    case Notes.get(note_id) do
+      {:ok, note, graph} ->
+        title = note_title(note) || "Research note #{note_id}"
+
+        {:ok,
+         socket
+         |> assign(:page_title, title)
+         |> assign(:resource_id, resource_id)
+         |> assign(:resource_kind, :research_note)
+         |> assign(:note_id, note_id)
+         |> assign(:note_iri, to_string(note.subject))
+         |> assign(:note_title, title)
+         |> assign(:note_text, note_text(note))
+         |> assign(:note_published_at, note_published_at(note))
+         |> assign(:note_mentions, note_mentions(note, graph))
+         |> assign(:selected_block_id, nil)}
+
+      {:error, reason} ->
+        {:ok, assign_not_found(socket, resource_id, reason)}
     end
   end
 
@@ -278,6 +346,67 @@ defmodule SheafWeb.ResourceLive do
   end
 
   defp selected_block_id(_params), do: nil
+
+  defp note_title(note) do
+    note
+    |> RDF.Description.first(RDF.NS.RDFS.label())
+    |> rdf_value()
+  end
+
+  defp note_text(note) do
+    note
+    |> RDF.Description.first(Sheaf.NS.AS.content())
+    |> rdf_value()
+    |> case do
+      nil -> ""
+      text -> text
+    end
+  end
+
+  defp note_published_at(note) do
+    note
+    |> RDF.Description.first(Sheaf.NS.AS.published())
+    |> rdf_value()
+    |> case do
+      %DateTime{} = timestamp -> timestamp
+      _other -> nil
+    end
+  end
+
+  defp note_mentions(note, graph) do
+    note
+    |> RDF.Description.get(Sheaf.NS.DOC.mentions())
+    |> List.wrap()
+    |> Enum.map(fn iri ->
+      id = Id.id_from_iri(iri)
+      label = resource_label(graph, iri) || "##{id}"
+      %{path: mention_path(id), label: label}
+    end)
+  end
+
+  defp mention_path(id) do
+    case ResourceResolver.resolve(id) do
+      {:ok, %{kind: :block}} -> ~p"/b/#{id}"
+      {:ok, %{kind: _kind}} -> ~p"/#{id}"
+      {:error, _reason} -> ~p"/b/#{id}"
+    end
+  end
+
+  defp resource_label(graph, iri) do
+    graph
+    |> RDF.Data.description(iri)
+    |> RDF.Description.first(RDF.NS.RDFS.label())
+    |> rdf_value()
+  end
+
+  defp rdf_value(nil), do: nil
+
+  defp rdf_value(term) do
+    case RDF.Term.value(term) do
+      %DateTime{} = value -> value
+      value -> to_string(value)
+    end
+  end
 
   defp maybe_scroll_reader(
          %{assigns: %{resource_kind: :document, selected_block_id: block_id}} = socket,

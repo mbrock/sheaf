@@ -45,6 +45,44 @@ defmodule Sheaf.SearchMaintenance do
     end
   end
 
+  @doc """
+  Refreshes embedding and FTS search indexes for persisted research notes.
+  """
+  def refresh_notes(note_ids) do
+    note_ids = note_ids |> List.wrap() |> Enum.map(&Id.id_from_iri/1) |> Enum.uniq()
+    note_iris = note_ids |> Enum.map(&(Id.iri(&1) |> to_string()))
+    affected_iris = MapSet.new(note_iris)
+
+    with {:ok, rows} <- Sheaf.TextUnits.fetch_rows(kinds: ["note"]) do
+      rows =
+        Enum.filter(rows, fn row ->
+          row
+          |> Map.fetch!("iri")
+          |> RDF.Term.value()
+          |> to_string()
+          |> then(&MapSet.member?(affected_iris, &1))
+        end)
+
+      search_units = SearchIndex.units_from_rows(rows)
+      embedding_units = EmbeddingIndex.units_from_rows(rows)
+      current_hashes = embedding_units |> Enum.map(&{&1.iri, &1.text_hash}) |> MapSet.new()
+
+      with {:ok, embedding} <-
+             EmbeddingIndex.sync_units(embedding_units,
+               current_hashes: current_hashes,
+               vector_iris: note_iris
+             ),
+           {:ok, search} <- SearchIndex.replace_units(search_units, note_iris) do
+        {:ok,
+         %{
+           note_ids: note_ids,
+           embedding: embedding,
+           search: search
+         }}
+      end
+    end
+  end
+
   defp affected_text_block_ids(block_ids) do
     block_ids
     |> List.wrap()
