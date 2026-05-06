@@ -5,44 +5,64 @@ defmodule Quadlog do
 
   def start_link(path, opts \\ []) do
     opts = Keyword.put_new_lazy(opts, :otel_ctx, &:otel_ctx.get_current/0)
-    GenServer.start_link(__MODULE__, {path, opts}, Keyword.take(opts, [:name]))
+
+    GenServer.start_link(
+      __MODULE__,
+      {path, opts},
+      Keyword.take(opts, [:name])
+    )
   end
 
   def path(pid), do: GenServer.call(pid, :path)
   def dataset(pid), do: GenServer.call(pid, :dataset)
-  def ask(pid, fun), do: GenServer.call(pid, {:ask, :otel_ctx.get_current(), fun})
-  def match(pid, pattern), do: GenServer.call(pid, {:match, :otel_ctx.get_current(), pattern})
+
+  def ask(pid, fun),
+    do: GenServer.call(pid, {:ask, :otel_ctx.get_current(), fun})
+
+  def match(pid, pattern),
+    do: GenServer.call(pid, {:match, :otel_ctx.get_current(), pattern})
 
   def match_rows(pid, pattern),
     do: GenServer.call(pid, {:match_rows, :otel_ctx.get_current(), pattern})
 
-  def load(pid, pattern), do: GenServer.call(pid, {:load, :otel_ctx.get_current(), pattern})
+  def load(pid, pattern),
+    do: GenServer.call(pid, {:load, :otel_ctx.get_current(), pattern})
 
   def load_once(pid, pattern),
     do: GenServer.call(pid, {:load_once, :otel_ctx.get_current(), pattern})
 
-  def clear_cache(pid), do: GenServer.call(pid, {:clear_cache, :otel_ctx.get_current()})
+  def clear_cache(pid),
+    do: GenServer.call(pid, {:clear_cache, :otel_ctx.get_current()})
+
   def assert(pid, tx, graph), do: transact(pid, tx, [{:assert, graph}])
   def retract(pid, tx, graph), do: transact(pid, tx, [{:retract, graph}])
 
   def transact(pid, tx, changes),
     do: GenServer.call(pid, {:transact, :otel_ctx.get_current(), tx, changes})
 
-  def stream_nquads(path, pattern, emit, opts \\ []) when is_function(emit, 1) do
-    stream_nquads(path, pattern, :ok, fn :ok, row ->
-      case emit.(row) do
-        :ok -> {:ok, :ok}
-        {:ok, _conn} -> {:ok, :ok}
-        {:error, _reason} = error -> error
-      end
-    end, opts)
+  def stream_nquads(path, pattern, emit, opts \\ [])
+      when is_function(emit, 1) do
+    stream_nquads(
+      path,
+      pattern,
+      :ok,
+      fn :ok, row ->
+        case emit.(row) do
+          :ok -> {:ok, :ok}
+          {:ok, _conn} -> {:ok, :ok}
+          {:error, _reason} = error -> error
+        end
+      end,
+      opts
+    )
     |> case do
       {:ok, count, :ok} -> {:ok, count}
       error -> error
     end
   end
 
-  def stream_nquads(path, pattern, acc, emit, opts) when is_function(emit, 2) do
+  def stream_nquads(path, pattern, acc, emit, opts)
+      when is_function(emit, 2) do
     chunk_size = Keyword.get(opts, :chunk_size, 500)
 
     Tracer.with_span "quadlog.sqlite.stream_nquads", %{
@@ -70,7 +90,13 @@ defmodule Quadlog do
            :ok <- migrate(conn),
            pattern = load_pattern(opts),
            {:ok, dataset} <- load(conn, pattern, RDF.dataset()) do
-        {:ok, %{conn: conn, path: path, dataset: dataset, loaded_patterns: MapSet.new([pattern])}}
+        {:ok,
+         %{
+           conn: conn,
+           path: path,
+           dataset: dataset,
+           loaded_patterns: MapSet.new([pattern])
+         }}
       end
     end)
   end
@@ -100,7 +126,8 @@ defmodule Quadlog do
 
   def handle_call({:clear_cache, ctx}, _from, state) do
     with_context(ctx, fn ->
-      {:reply, :ok, %{state | dataset: RDF.dataset(), loaded_patterns: MapSet.new()}}
+      {:reply, :ok,
+       %{state | dataset: RDF.dataset(), loaded_patterns: MapSet.new()}}
     end)
   end
 
@@ -129,7 +156,11 @@ defmodule Quadlog do
   defp load_reply(pattern, state) do
     with {:ok, dataset} <- load(state.conn, pattern, state.dataset) do
       {:reply, :ok,
-       %{state | dataset: dataset, loaded_patterns: MapSet.put(state.loaded_patterns, pattern)}}
+       %{
+         state
+         | dataset: dataset,
+           loaded_patterns: MapSet.put(state.loaded_patterns, pattern)
+       }}
     else
       error -> {:reply, error, state}
     end
@@ -148,7 +179,8 @@ defmodule Quadlog do
     case Exqlite.transaction(
            state.conn,
            fn conn ->
-             with :ok <- insert_rows(conn, rows), do: apply_quad_rows(conn, rows)
+             with :ok <- insert_rows(conn, rows),
+                  do: apply_quad_rows(conn, rows)
            end,
            timeout: :infinity
          ) do
@@ -294,7 +326,14 @@ defmodule Quadlog do
     case Exqlite.Sqlite3.multi_step(conn, statement, chunk_size) do
       {:rows, rows} ->
         with {:ok, acc} <- emit_nquad_rows(rows, acc, emit) do
-          stream_nquads_rows(conn, statement, acc, emit, chunk_size, count + length(rows))
+          stream_nquads_rows(
+            conn,
+            statement,
+            acc,
+            emit,
+            chunk_size,
+            count + length(rows)
+          )
         end
 
       {:done, rows} ->
@@ -368,18 +407,24 @@ defmodule Quadlog do
       {_alias, _datatype_alias, []}, {:ok, _where, _params} ->
         {:halt, {:ok, ["0 = 1"], []}}
 
-      {table_alias, datatype_alias, terms}, {:ok, where, params} when is_list(terms) ->
+      {table_alias, datatype_alias, terms}, {:ok, where, params}
+      when is_list(terms) ->
         {clauses, params} =
           terms
           |> Enum.map(&nquad_filter(table_alias, datatype_alias, &1))
-          |> Enum.reduce({[], params}, fn {clause, term_params}, {clauses, params} ->
+          |> Enum.reduce({[], params}, fn {clause, term_params},
+                                          {clauses, params} ->
             {[clause | clauses], params ++ term_params}
           end)
 
-        {:cont, {:ok, ["(#{Enum.join(Enum.reverse(clauses), " OR ")})" | where], params}}
+        {:cont,
+         {:ok, ["(#{Enum.join(Enum.reverse(clauses), " OR ")})" | where],
+          params}}
 
       {table_alias, datatype_alias, term}, {:ok, where, params} ->
-        {clause, term_params} = nquad_filter(table_alias, datatype_alias, term)
+        {clause, term_params} =
+          nquad_filter(table_alias, datatype_alias, term)
+
         {:cont, {:ok, [clause | where], params ++ term_params}}
     end)
     |> case do
@@ -389,10 +434,14 @@ defmodule Quadlog do
   end
 
   defp nquad_filter(table_alias, _datatype_alias, %RDF.IRI{} = term),
-    do: {"#{table_alias}.kind = ? AND #{table_alias}.value = ?", ["iri", value(term)]}
+    do:
+      {"#{table_alias}.kind = ? AND #{table_alias}.value = ?",
+       ["iri", value(term)]}
 
   defp nquad_filter(table_alias, _datatype_alias, %RDF.BlankNode{} = term),
-    do: {"#{table_alias}.kind = ? AND #{table_alias}.value = ?", ["bnode", value(term)]}
+    do:
+      {"#{table_alias}.kind = ? AND #{table_alias}.value = ?",
+       ["bnode", value(term)]}
 
   defp nquad_filter(table_alias, datatype_alias, %RDF.Literal{} = term) do
     {
@@ -432,7 +481,12 @@ defmodule Quadlog do
     [
       nquad_term(subject_kind, subject_value, subject_datatype, subject_lang),
       ?\s,
-      nquad_term(predicate_kind, predicate_value, predicate_datatype, predicate_lang),
+      nquad_term(
+        predicate_kind,
+        predicate_value,
+        predicate_datatype,
+        predicate_lang
+      ),
       ?\s,
       nquad_term(object_kind, object_value, object_datatype, object_lang),
       ?\s,
@@ -441,7 +495,12 @@ defmodule Quadlog do
     ]
   end
 
-  defp nquad_term("iri", value, _datatype, _lang), do: [?<, escape_iri(value), ?>]
+  defp nquad_term("iri", value, _datatype, _lang),
+    do: [?<, escape_iri(value), ?>]
+
+  defp nquad_term("bnode", "_:" <> value, _datatype, _lang),
+    do: ["_:", value]
+
   defp nquad_term("bnode", value, _datatype, _lang), do: ["_:", value]
 
   defp nquad_term("literal", value, _datatype, lang) when is_binary(lang),
@@ -535,7 +594,12 @@ defmodule Quadlog do
         RDF.Graph.new(
           {
             term(subject_kind, subject_value, subject_datatype, subject_lang),
-            term(predicate_kind, predicate_value, predicate_datatype, predicate_lang),
+            term(
+              predicate_kind,
+              predicate_value,
+              predicate_datatype,
+              predicate_lang
+            ),
             term(object_kind, object_value, object_datatype, object_lang)
           },
           name: term(graph_kind, graph_value, graph_datatype, graph_lang)
@@ -568,7 +632,8 @@ defmodule Quadlog do
             {nil, value(object), nil, nil, nil}
 
           %RDF.Literal{} ->
-            {nil, nil, RDF.Literal.lexical(object), value(RDF.Literal.datatype_id(object)),
+            {nil, nil, RDF.Literal.lexical(object),
+             value(RDF.Literal.datatype_id(object)),
              RDF.Literal.language(object)}
         end
 
@@ -672,13 +737,21 @@ defmodule Quadlog do
 
     object =
       cond do
-        object_iri -> RDF.iri(object_iri)
-        object_bnode -> RDF.bnode(object_bnode)
-        object_lang -> RDF.literal(object_text, language: object_lang)
-        object_text -> RDF.literal(object_text, datatype: RDF.iri(object_datatype))
+        object_iri ->
+          RDF.iri(object_iri)
+
+        object_bnode ->
+          RDF.bnode(object_bnode)
+
+        object_lang ->
+          RDF.literal(object_text, language: object_lang)
+
+        object_text ->
+          RDF.literal(object_text, datatype: RDF.iri(object_datatype))
       end
 
-    {polarity, if(graph_iri, do: RDF.iri(graph_iri)), subject, RDF.iri(predicate_iri), object}
+    {polarity, if(graph_iri, do: RDF.iri(graph_iri)), subject,
+     RDF.iri(predicate_iri), object}
   end
 
   defp select_row_quad([
@@ -702,7 +775,12 @@ defmodule Quadlog do
     {
       term(graph_kind, graph_value, graph_datatype, graph_lang),
       term(subject_kind, subject_value, subject_datatype, subject_lang),
-      term(predicate_kind, predicate_value, predicate_datatype, predicate_lang),
+      term(
+        predicate_kind,
+        predicate_value,
+        predicate_datatype,
+        predicate_lang
+      ),
       term(object_kind, object_value, object_datatype, object_lang)
     }
   end
@@ -723,7 +801,9 @@ defmodule Quadlog do
 
           {:ok, ids} ->
             placeholders = ids |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
-            {:cont, {:ok, ["#{column} IN (#{placeholders})" | where], ids ++ params}}
+
+            {:cont,
+             {:ok, ["#{column} IN (#{placeholders})" | where], ids ++ params}}
 
           error ->
             {:halt, error}
@@ -731,14 +811,22 @@ defmodule Quadlog do
 
       {column, term}, {:ok, where, params} ->
         case find_term_id(conn, term) do
-          {:ok, nil} -> {:halt, {:ok, ["0 = 1"], []}}
-          {:ok, id} -> {:cont, {:ok, ["#{column} = ?" | where], [id | params]}}
-          error -> {:halt, error}
+          {:ok, nil} ->
+            {:halt, {:ok, ["0 = 1"], []}}
+
+          {:ok, id} ->
+            {:cont, {:ok, ["#{column} = ?" | where], [id | params]}}
+
+          error ->
+            {:halt, error}
         end
     end)
     |> case do
-      {:ok, where, params} -> {:ok, {Enum.reverse(where), Enum.reverse(params)}}
-      error -> error
+      {:ok, where, params} ->
+        {:ok, {Enum.reverse(where), Enum.reverse(params)}}
+
+      error ->
+        error
     end
   end
 
@@ -759,13 +847,19 @@ defmodule Quadlog do
 
           %RDF.Literal{} = term, {iris, bnodes, literals} ->
             case literal_identity(conn, term) do
-              {:ok, identity} -> {:cont, {iris, bnodes, [identity | literals]}}
-              error -> {:halt, error}
+              {:ok, identity} ->
+                {:cont, {iris, bnodes, [identity | literals]}}
+
+              error ->
+                {:halt, error}
             end
         end)
         |> case do
-          {iris, bnodes, literals} -> select_term_ids(conn, iris, bnodes, literals)
-          error -> error
+          {iris, bnodes, literals} ->
+            select_term_ids(conn, iris, bnodes, literals)
+
+          error ->
+            error
         end
     end
   end
@@ -773,7 +867,9 @@ defmodule Quadlog do
   defp literal_identity(conn, %RDF.Literal{} = term) do
     with {:ok, datatype_id} when is_integer(datatype_id) <-
            find_term_id(conn, RDF.Literal.datatype_id(term)) do
-      {:ok, {RDF.Literal.lexical(term), datatype_id, RDF.Literal.language(term) || ""}}
+      {:ok,
+       {RDF.Literal.lexical(term), datatype_id,
+        RDF.Literal.language(term) || ""}}
     else
       {:ok, nil} -> {:ok, nil}
       error -> error
@@ -811,7 +907,9 @@ defmodule Quadlog do
 
   defp term_id_filter({where, params}, sql, values) do
     placeholders = values |> Enum.map(fn _ -> "?" end) |> Enum.join(", ")
-    {["(#{sql} IN (#{placeholders}))" | where], Enum.reverse(values) ++ params}
+
+    {["(#{sql} IN (#{placeholders}))" | where],
+     Enum.reverse(values) ++ params}
   end
 
   defp literal_term_id_filter({where, params}, []), do: {where, params}
@@ -820,7 +918,9 @@ defmodule Quadlog do
     values =
       literals
       |> Enum.reject(&is_nil/1)
-      |> Enum.flat_map(fn {value, datatype_id, lang} -> [value, datatype_id, lang] end)
+      |> Enum.flat_map(fn {value, datatype_id, lang} ->
+        [value, datatype_id, lang]
+      end)
 
     case values do
       [] ->
@@ -844,7 +944,8 @@ defmodule Quadlog do
 
   defp term_id(_conn, nil), do: {:ok, 0}
 
-  defp term_id(conn, %RDF.IRI{} = term), do: intern_term(conn, "iri", value(term), nil, nil)
+  defp term_id(conn, %RDF.IRI{} = term),
+    do: intern_term(conn, "iri", value(term), nil, nil)
 
   defp term_id(conn, %RDF.BlankNode{} = term),
     do: intern_term(conn, "bnode", value(term), nil, nil)
@@ -861,7 +962,8 @@ defmodule Quadlog do
     end
   end
 
-  defp find_term_id(conn, %RDF.IRI{} = term), do: find_term_id(conn, "iri", value(term), nil, nil)
+  defp find_term_id(conn, %RDF.IRI{} = term),
+    do: find_term_id(conn, "iri", value(term), nil, nil)
 
   defp find_term_id(conn, %RDF.BlankNode{} = term),
     do: find_term_id(conn, "bnode", value(term), nil, nil)
@@ -931,7 +1033,8 @@ defmodule Quadlog do
   defp value(nil), do: nil
   defp value(term), do: RDF.Term.value(term) |> to_string()
 
-  defp load_pattern(opts), do: Keyword.get(opts, :pattern, {nil, nil, nil, nil})
+  defp load_pattern(opts),
+    do: Keyword.get(opts, :pattern, {nil, nil, nil, nil})
 
   defp execute(conn, sql, params \\ []) do
     case Exqlite.query(conn, sql, params) do

@@ -11,13 +11,15 @@ defmodule SheafWeb.RDFQuadControllerTest do
 
     graph = Id.iri("DOC123")
     subject = Id.iri("BLOCK123")
+    list = RDF.bnode("children")
 
     assert :ok =
              Sheaf.Repo.assert(
                RDF.Graph.new(
                  [
                    {subject, RDF.type(), DOC.ParagraphBlock},
-                   {subject, DOC.text(), RDF.literal("hello\nworld")}
+                   {subject, DOC.text(), RDF.literal("hello\nworld")},
+                   {list, RDF.first(), subject}
                  ],
                  name: graph
                )
@@ -31,11 +33,18 @@ defmodule SheafWeb.RDFQuadControllerTest do
     assert response(conn, 200) =~
              "<https://sheaf.less.rest/BLOCK123> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://less.rest/sheaf/ParagraphBlock> <https://sheaf.less.rest/DOC123> .\n"
 
-    assert ["application/n-quads; charset=utf-8"] = get_resp_header(conn, "content-type")
+    assert response(conn, 200) =~
+             "_:children <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <https://sheaf.less.rest/BLOCK123> <https://sheaf.less.rest/DOC123> .\n"
+
+    assert ["application/n-quads; charset=utf-8"] =
+             get_resp_header(conn, "content-type")
   end
 
   @tag :tmp_dir
-  test "filters by subject predicate object and graph", %{conn: conn, tmp_dir: tmp_dir} do
+  test "filters by subject predicate object and graph", %{
+    conn: conn,
+    tmp_dir: tmp_dir
+  } do
     start_supervised!({Sheaf.Repo, path: Path.join(tmp_dir, "repo.sqlite3")})
 
     graph = Id.iri("DOC123")

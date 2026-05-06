@@ -1,0 +1,15 @@
+{
+  "@context": "sheaf.context.jsonld",
+  "@type": ["Document", "Thesis", "Paper", "Transcript", "Spreadsheet"],
+  "label": {},
+  "children": {
+    "@embed": "@always",
+    "label": {},
+    "children": {
+      "@embed": "@always"
+    }
+  },
+  "representationOf": {
+    "@embed": "@always"
+  }
+}

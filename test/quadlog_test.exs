@@ -14,7 +14,8 @@ defmodule QuadlogTest do
       RDF.Graph.new(
         [
           {alice, ~I<https://example.com/knows>, bob},
-          {alice, ~I<https://example.com/name>, RDF.literal("Alice", language: "en")},
+          {alice, ~I<https://example.com/name>,
+           RDF.literal("Alice", language: "en")},
           {blank, ~I<https://example.com/age>, RDF.literal(42)}
         ],
         name: graph_name
@@ -26,8 +27,8 @@ defmodule QuadlogTest do
 
     assert RDF.Data.include?(
              Quadlog.dataset(log),
-             {alice, ~I<https://example.com/name>, RDF.literal("Alice", language: "en"),
-              graph_name}
+             {alice, ~I<https://example.com/name>,
+              RDF.literal("Alice", language: "en"), graph_name}
            )
 
     GenServer.stop(log)
@@ -82,14 +83,33 @@ defmodule QuadlogTest do
     triple_b = {~I<https://example.com/b>, ~I<https://example.com/p>, "b"}
 
     {:ok, log} = Quadlog.start_link(path)
-    assert :ok = Quadlog.assert(log, "tx-1", RDF.Graph.new(triple_a, name: graph_a))
-    assert :ok = Quadlog.assert(log, "tx-2", RDF.Graph.new(triple_b, name: graph_b))
+
+    assert :ok =
+             Quadlog.assert(
+               log,
+               "tx-1",
+               RDF.Graph.new(triple_a, name: graph_a)
+             )
+
+    assert :ok =
+             Quadlog.assert(
+               log,
+               "tx-2",
+               RDF.Graph.new(triple_b, name: graph_b)
+             )
 
     GenServer.stop(log)
     {:ok, log} = Quadlog.start_link(path, pattern: {nil, nil, nil, graph_a})
 
-    assert RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple_a, graph_a))
-    refute RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple_b, graph_b))
+    assert RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple_a, graph_a)
+           )
+
+    refute RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple_b, graph_b)
+           )
   end
 
   @tag :tmp_dir
@@ -99,50 +119,107 @@ defmodule QuadlogTest do
     graph_b = ~I<https://example.com/graph-b>
     triple_a = {~I<https://example.com/a>, ~I<https://example.com/p>, "a"}
     triple_b = {~I<https://example.com/b>, ~I<https://example.com/p>, "b"}
-    deleted = {~I<https://example.com/deleted>, ~I<https://example.com/p>, "deleted"}
+
+    deleted =
+      {~I<https://example.com/deleted>, ~I<https://example.com/p>, "deleted"}
 
     {:ok, log} = Quadlog.start_link(path)
-    assert :ok = Quadlog.assert(log, "tx-1", RDF.Graph.new(triple_a, name: graph_a))
-    assert :ok = Quadlog.assert(log, "tx-2", RDF.Graph.new([triple_b, deleted], name: graph_b))
-    assert :ok = Quadlog.retract(log, "tx-3", RDF.Graph.new(deleted, name: graph_b))
+
+    assert :ok =
+             Quadlog.assert(
+               log,
+               "tx-1",
+               RDF.Graph.new(triple_a, name: graph_a)
+             )
+
+    assert :ok =
+             Quadlog.assert(
+               log,
+               "tx-2",
+               RDF.Graph.new([triple_b, deleted], name: graph_b)
+             )
+
+    assert :ok =
+             Quadlog.retract(
+               log,
+               "tx-3",
+               RDF.Graph.new(deleted, name: graph_b)
+             )
 
     GenServer.stop(log)
     {:ok, log} = Quadlog.start_link(path, pattern: {nil, nil, nil, graph_a})
 
-    assert RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple_a, graph_a))
-    refute RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple_b, graph_b))
+    assert RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple_a, graph_a)
+           )
+
+    refute RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple_b, graph_b)
+           )
 
     assert :ok = Quadlog.load(log, {nil, nil, nil, graph_b})
 
-    assert RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple_a, graph_a))
-    assert RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple_b, graph_b))
-    refute RDF.Data.include?(Quadlog.dataset(log), Tuple.append(deleted, graph_b))
+    assert RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple_a, graph_a)
+           )
+
+    assert RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple_b, graph_b)
+           )
+
+    refute RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(deleted, graph_b)
+           )
   end
 
   @tag :tmp_dir
-  test "load_once memoizes loaded patterns until the cache is cleared", %{tmp_dir: tmp_dir} do
+  test "load_once memoizes loaded patterns until the cache is cleared", %{
+    tmp_dir: tmp_dir
+  } do
     path = Path.join(tmp_dir, "quadlog.sqlite3")
     graph = ~I<https://example.com/graph>
     triple = {~I<https://example.com/a>, ~I<https://example.com/p>, "a"}
     pattern = {nil, nil, nil, graph}
 
     {:ok, log} = Quadlog.start_link(path)
-    assert :ok = Quadlog.assert(log, "tx-1", RDF.Graph.new(triple, name: graph))
+
+    assert :ok =
+             Quadlog.assert(log, "tx-1", RDF.Graph.new(triple, name: graph))
 
     GenServer.stop(log)
     {:ok, log} = Quadlog.start_link(path, pattern: {nil, nil, nil, nil})
     assert :ok = Quadlog.clear_cache(log)
 
-    refute RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple, graph))
+    refute RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple, graph)
+           )
 
     assert :ok = Quadlog.load_once(log, pattern)
-    assert RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple, graph))
+
+    assert RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple, graph)
+           )
 
     assert :ok = Quadlog.clear_cache(log)
-    refute RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple, graph))
+
+    refute RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple, graph)
+           )
 
     assert :ok = Quadlog.load_once(log, pattern)
-    assert RDF.Data.include?(Quadlog.dataset(log), Tuple.append(triple, graph))
+
+    assert RDF.Data.include?(
+             Quadlog.dataset(log),
+             Tuple.append(triple, graph)
+           )
   end
 
   @tag :tmp_dir
@@ -171,11 +248,24 @@ defmodule QuadlogTest do
              )
 
     GenServer.stop(log)
-    {:ok, log} = Quadlog.start_link(path, pattern: {subject, predicate, object, nil})
 
-    assert RDF.Data.include?(Quadlog.dataset(log), {subject, predicate, object, graph})
-    refute RDF.Data.include?(Quadlog.dataset(log), {subject, predicate, other, graph})
-    refute RDF.Data.include?(Quadlog.dataset(log), {other, predicate, object, graph})
+    {:ok, log} =
+      Quadlog.start_link(path, pattern: {subject, predicate, object, nil})
+
+    assert RDF.Data.include?(
+             Quadlog.dataset(log),
+             {subject, predicate, object, graph}
+           )
+
+    refute RDF.Data.include?(
+             Quadlog.dataset(log),
+             {subject, predicate, other, graph}
+           )
+
+    refute RDF.Data.include?(
+             Quadlog.dataset(log),
+             {other, predicate, object, graph}
+           )
   end
 
   @tag :tmp_dir
@@ -221,21 +311,27 @@ defmodule QuadlogTest do
     assert {:ok, rows} =
              Quadlog.match_rows(
                log,
-               {[block, other_block], RDF.type(), [block_class], [doc, other_graph]}
+               {[block, other_block], RDF.type(), [block_class],
+                [doc, other_graph]}
              )
 
     assert {doc, block, RDF.type(), block_class} in rows
     assert {other_graph, block, RDF.type(), block_class} in rows
     assert {other_graph, other_block, RDF.type(), block_class} in rows
-    refute Enum.any?(rows, fn {_graph, _subject, _predicate, object} -> object == other_class end)
+
+    refute Enum.any?(rows, fn {_graph, _subject, _predicate, object} ->
+             object == other_class
+           end)
   end
 
   @tag :tmp_dir
-  test "streams named graph rows as n-quads without materializing a dataset", %{tmp_dir: tmp_dir} do
+  test "streams named graph rows as n-quads without materializing a dataset",
+       %{tmp_dir: tmp_dir} do
     path = Path.join(tmp_dir, "quadlog.sqlite3")
     graph = ~I<https://example.com/graph>
     subject = ~I<https://example.com/s>
     predicate = ~I<https://example.com/p>
+    list = RDF.bnode("list")
 
     {:ok, log} = Quadlog.start_link(path)
 
@@ -246,7 +342,8 @@ defmodule QuadlogTest do
                RDF.Graph.new(
                  [
                    {subject, predicate, RDF.literal("hello\nworld")},
-                   {subject, RDF.type(), ~I<https://example.com/Thing>}
+                   {subject, RDF.type(), ~I<https://example.com/Thing>},
+                   {list, RDF.first(), subject}
                  ],
                  name: graph
                )
@@ -263,6 +360,20 @@ defmodule QuadlogTest do
 
     assert body ==
              "<https://example.com/s> <https://example.com/p> \"hello\\nworld\"^^<http://www.w3.org/2001/XMLSchema#string> <https://example.com/graph> .\n"
+
+    assert {:ok, 1, body} =
+             Quadlog.stream_nquads(
+               path,
+               {list, RDF.first(), subject, graph},
+               "",
+               fn body, row -> {:ok, body <> IO.iodata_to_binary(row)} end,
+               chunk_size: 1
+             )
+
+    assert body ==
+             "_:list <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <https://example.com/s> <https://example.com/graph> .\n"
+
+    assert {:ok, _dataset} = RDF.NQuads.read_string(body)
   end
 
   @tag :tmp_dir
@@ -284,7 +395,8 @@ defmodule QuadlogTest do
   end
 
   @tag :tmp_dir
-  test "current quads are idempotent and retracted independently of history", %{tmp_dir: tmp_dir} do
+  test "current quads are idempotent and retracted independently of history",
+       %{tmp_dir: tmp_dir} do
     path = Path.join(tmp_dir, "quadlog.sqlite3")
     triple = {~I<https://example.com/s>, ~I<https://example.com/p>, "first"}
 

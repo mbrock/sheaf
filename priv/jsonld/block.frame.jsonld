@@ -1,0 +1,18 @@
+{
+  "@context": "sheaf.context.jsonld",
+  "@type": ["Section", "ParagraphBlock", "ExtractedBlock", "Row"],
+  "label": {},
+  "children": {
+    "@embed": "@always"
+  },
+  "paragraph": {
+    "@embed": "@always",
+    "text": {}
+  },
+  "text": {},
+  "markup": {},
+  "sourceHtml": {},
+  "sourceKey": {},
+  "sourcePage": {},
+  "sourceBlockType": {}
+}

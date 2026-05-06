@@ -1,0 +1,20 @@
+{
+  "@context": "sheaf.context.jsonld",
+  "@type": ["Document", "Thesis", "Paper"],
+  "label": {},
+  "pageCount": {},
+  "representationOf": {
+    "@embed": "@always",
+    "title": {},
+    "creator": {
+      "@embed": "@always",
+      "name": {}
+    },
+    "publicationYear": {},
+    "pages": {},
+    "status": {
+      "@embed": "@always",
+      "label": {}
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "@context": {
+    "as": "https://www.w3.org/ns/activitystreams#",
+    "bibo": "http://purl.org/ontology/bibo/",
+    "biro": "http://purl.org/spar/biro/",
+    "cito": "http://purl.org/spar/cito/",
+    "dcterms": "http://purl.org/dc/terms/",
+    "fabio": "http://purl.org/spar/fabio/",
+    "foaf": "http://xmlns.com/foaf/0.1/",
+    "prov": "http://www.w3.org/ns/prov#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "sheaf": "https://less.rest/sheaf/",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "id": "@id",
+    "type": "@type",
+
+    "label": "rdfs:label",
+    "first": {
+      "@id": "rdf:first",
+      "@type": "@id"
+    },
+    "rest": {
+      "@id": "rdf:rest",
+      "@type": "@id"
+    },
+    "name": "foaf:name",
+    "title": "dcterms:title",
+    "creator": {
+      "@id": "dcterms:creator",
+      "@type": "@id"
+    },
+    "publicationYear": "fabio:hasPublicationYear",
+    "pageCount": {
+      "@id": "bibo:numPages",
+      "@type": "xsd:integer"
+    },
+    "pages": "fabio:hasPageRange",
+    "status": {
+      "@id": "bibo:status",
+      "@type": "@id"
+    },
+    "representationOf": {
+      "@id": "fabio:isRepresentationOf",
+      "@type": "@id"
+    },
+    "cites": {
+      "@id": "cito:cites",
+      "@type": "@id"
+    },
+    "references": {
+      "@id": "biro:references",
+      "@type": "@id"
+    },
+
+    "children": {
+      "@id": "sheaf:children",
+      "@type": "@id"
+    },
+    "paragraph": {
+      "@id": "sheaf:paragraph",
+      "@type": "@id"
+    },
+    "text": "sheaf:text",
+    "markup": "sheaf:markup",
+    "sourceHtml": "sheaf:sourceHtml",
+    "sourceKey": "sheaf:sourceKey",
+    "sourcePage": "sheaf:sourcePage",
+    "sourceBlockType": "sheaf:sourceBlockType",
+    "spreadsheetRow": "sheaf:spreadsheetRow",
+    "spreadsheetSource": "sheaf:spreadsheetSource",
+    "codeCategory": {
+      "@id": "sheaf:codeCategory",
+      "@type": "@id"
+    },
+    "codeCategoryTitle": "sheaf:codeCategoryTitle",
+
+    "Document": "sheaf:Document",
+    "Thesis": "sheaf:Thesis",
+    "Paper": "sheaf:Paper",
+    "Transcript": "sheaf:Transcript",
+    "Spreadsheet": "sheaf:Spreadsheet",
+    "Section": "sheaf:Section",
+    "ParagraphBlock": "sheaf:ParagraphBlock",
+    "ExtractedBlock": "sheaf:ExtractedBlock",
+    "Row": "sheaf:Row",
+    "Paragraph": "sheaf:Paragraph"
+  }
+}

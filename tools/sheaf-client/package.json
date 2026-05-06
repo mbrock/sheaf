@@ -1,0 +1,22 @@
+{
+  "name": "sheaf-client",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "cli": "bun src/cli.ts"
+  },
+  "devDependencies": {
+    "@rdfjs/types": "^2.0.1",
+    "@types/bun": "latest",
+    "@types/jsonld": "^1.5.15",
+    "@types/n3": "^1.26.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "jsonld": "^9.0.0",
+    "n3": "^2.0.3"
+  }
+}
