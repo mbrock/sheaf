@@ -35,7 +35,7 @@ defmodule SheafWeb.Endpoint do
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
-    plug Phoenix.LiveReloader
+    #    plug Phoenix.LiveReloader
     plug Phoenix.CodeReloader
   end
 
@@ -54,5 +54,7 @@ defmodule SheafWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
+  plug SheafWeb.ResourceRDFPlug
+  plug SheafWeb.ResourceJSONPlug
   plug SheafWeb.Router
 end

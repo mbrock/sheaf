@@ -231,6 +231,41 @@ defmodule QuadlogTest do
   end
 
   @tag :tmp_dir
+  test "streams named graph rows as n-quads without materializing a dataset", %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "quadlog.sqlite3")
+    graph = ~I<https://example.com/graph>
+    subject = ~I<https://example.com/s>
+    predicate = ~I<https://example.com/p>
+
+    {:ok, log} = Quadlog.start_link(path)
+
+    assert :ok =
+             Quadlog.assert(
+               log,
+               "tx-1",
+               RDF.Graph.new(
+                 [
+                   {subject, predicate, RDF.literal("hello\nworld")},
+                   {subject, RDF.type(), ~I<https://example.com/Thing>}
+                 ],
+                 name: graph
+               )
+             )
+
+    assert {:ok, 1, body} =
+             Quadlog.stream_nquads(
+               path,
+               {subject, predicate, RDF.literal("hello\nworld"), graph},
+               "",
+               fn body, row -> {:ok, body <> IO.iodata_to_binary(row)} end,
+               chunk_size: 1
+             )
+
+    assert body ==
+             "<https://example.com/s> <https://example.com/p> \"hello\\nworld\"^^<http://www.w3.org/2001/XMLSchema#string> <https://example.com/graph> .\n"
+  end
+
+  @tag :tmp_dir
   test "retractions remove statements when replayed", %{tmp_dir: tmp_dir} do
     path = Path.join(tmp_dir, "quadlog.sqlite3")
     triple = {~I<https://example.com/s>, ~I<https://example.com/p>, "first"}

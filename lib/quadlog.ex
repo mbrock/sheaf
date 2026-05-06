@@ -28,6 +28,41 @@ defmodule Quadlog do
   def transact(pid, tx, changes),
     do: GenServer.call(pid, {:transact, :otel_ctx.get_current(), tx, changes})
 
+  def stream_nquads(path, pattern, emit, opts \\ []) when is_function(emit, 1) do
+    stream_nquads(path, pattern, :ok, fn :ok, row ->
+      case emit.(row) do
+        :ok -> {:ok, :ok}
+        {:ok, _conn} -> {:ok, :ok}
+        {:error, _reason} = error -> error
+      end
+    end, opts)
+    |> case do
+      {:ok, count, :ok} -> {:ok, count}
+      error -> error
+    end
+  end
+
+  def stream_nquads(path, pattern, acc, emit, opts) when is_function(emit, 2) do
+    chunk_size = Keyword.get(opts, :chunk_size, 500)
+
+    Tracer.with_span "quadlog.sqlite.stream_nquads", %{
+      kind: :client,
+      attributes: [
+        {"db.system", "sqlite"},
+        {"db.operation", "SELECT"},
+        {"db.name", path}
+      ]
+    } do
+      with {:ok, conn} <- Exqlite.Sqlite3.open(path, mode: :readonly) do
+        try do
+          stream_nquads_from_conn(conn, pattern, acc, emit, chunk_size)
+        after
+          Exqlite.Sqlite3.close(conn)
+        end
+      end
+    end
+  end
+
   @impl true
   def init({path, opts}) do
     with_context(Keyword.fetch!(opts, :otel_ctx), fn ->
@@ -241,6 +276,192 @@ defmodule Quadlog do
          {:ok, result} <- select(conn, quad_select_sql(where), params) do
       {:ok, Enum.map(result.rows, &select_row_quad/1)}
     end
+  end
+
+  defp stream_nquads_from_conn(conn, pattern, acc, emit, chunk_size) do
+    with {:ok, {sql, params}} <- nquads_select(pattern),
+         {:ok, statement} <- Exqlite.Sqlite3.prepare(conn, sql),
+         :ok <- Exqlite.Sqlite3.bind(statement, params) do
+      try do
+        stream_nquads_rows(conn, statement, acc, emit, chunk_size, 0)
+      after
+        Exqlite.Sqlite3.release(conn, statement)
+      end
+    end
+  end
+
+  defp stream_nquads_rows(conn, statement, acc, emit, chunk_size, count) do
+    case Exqlite.Sqlite3.multi_step(conn, statement, chunk_size) do
+      {:rows, rows} ->
+        with {:ok, acc} <- emit_nquad_rows(rows, acc, emit) do
+          stream_nquads_rows(conn, statement, acc, emit, chunk_size, count + length(rows))
+        end
+
+      {:done, rows} ->
+        with {:ok, acc} <- emit_nquad_rows(rows, acc, emit) do
+          total = count + length(rows)
+          Tracer.set_attribute("db.response.returned_rows", total)
+          {:ok, total, acc}
+        end
+
+      :busy ->
+        {:error, :busy}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp emit_nquad_rows(rows, acc, emit) do
+    Enum.reduce_while(rows, {:ok, acc}, fn row, {:ok, acc} ->
+      case emit.(acc, nquad_row(row)) do
+        {:ok, acc} -> {:cont, {:ok, acc}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp nquads_select({subject, predicate, object, graph}) do
+    with {:ok, filters} <-
+           nquad_filters([
+             {"s", "sdt", subject},
+             {"p", "pdt", predicate},
+             {"o", "odt", object},
+             {"g", "gdt", graph}
+           ]) do
+      {where, params} = filters
+
+      suffix =
+        case where do
+          [] -> ""
+          where -> "WHERE #{Enum.join(where, " AND ")}"
+        end
+
+      {:ok,
+       {"""
+        SELECT
+          g.kind, g.value, gdt.value, g.lang,
+          s.kind, s.value, sdt.value, s.lang,
+          p.kind, p.value, pdt.value, p.lang,
+          o.kind, o.value, odt.value, o.lang
+        FROM quads q
+        JOIN terms g ON q.graph_id = g.id
+        LEFT JOIN terms gdt ON g.datatype_id = gdt.id
+        JOIN terms s ON q.subject_id = s.id
+        LEFT JOIN terms sdt ON s.datatype_id = sdt.id
+        JOIN terms p ON q.predicate_id = p.id
+        LEFT JOIN terms pdt ON p.datatype_id = pdt.id
+        JOIN terms o ON q.object_id = o.id
+        LEFT JOIN terms odt ON o.datatype_id = odt.id
+        #{suffix}
+        ORDER BY q.graph_id, q.subject_id, q.predicate_id, q.object_id
+        """, params}}
+    end
+  end
+
+  defp nquad_filters(slots) do
+    slots
+    |> Enum.reduce_while({:ok, [], []}, fn
+      {_alias, _datatype_alias, nil}, {:ok, where, params} ->
+        {:cont, {:ok, where, params}}
+
+      {_alias, _datatype_alias, []}, {:ok, _where, _params} ->
+        {:halt, {:ok, ["0 = 1"], []}}
+
+      {table_alias, datatype_alias, terms}, {:ok, where, params} when is_list(terms) ->
+        {clauses, params} =
+          terms
+          |> Enum.map(&nquad_filter(table_alias, datatype_alias, &1))
+          |> Enum.reduce({[], params}, fn {clause, term_params}, {clauses, params} ->
+            {[clause | clauses], params ++ term_params}
+          end)
+
+        {:cont, {:ok, ["(#{Enum.join(Enum.reverse(clauses), " OR ")})" | where], params}}
+
+      {table_alias, datatype_alias, term}, {:ok, where, params} ->
+        {clause, term_params} = nquad_filter(table_alias, datatype_alias, term)
+        {:cont, {:ok, [clause | where], params ++ term_params}}
+    end)
+    |> case do
+      {:ok, where, params} -> {:ok, {Enum.reverse(where), params}}
+      error -> error
+    end
+  end
+
+  defp nquad_filter(table_alias, _datatype_alias, %RDF.IRI{} = term),
+    do: {"#{table_alias}.kind = ? AND #{table_alias}.value = ?", ["iri", value(term)]}
+
+  defp nquad_filter(table_alias, _datatype_alias, %RDF.BlankNode{} = term),
+    do: {"#{table_alias}.kind = ? AND #{table_alias}.value = ?", ["bnode", value(term)]}
+
+  defp nquad_filter(table_alias, datatype_alias, %RDF.Literal{} = term) do
+    {
+      """
+      #{table_alias}.kind = ?
+      AND #{table_alias}.value = ?
+      AND COALESCE(#{datatype_alias}.value, '') = ?
+      AND COALESCE(#{table_alias}.lang, '') = ?
+      """,
+      [
+        "literal",
+        RDF.Literal.lexical(term),
+        value(RDF.Literal.datatype_id(term)) || "",
+        RDF.Literal.language(term) || ""
+      ]
+    }
+  end
+
+  defp nquad_row([
+         graph_kind,
+         graph_value,
+         graph_datatype,
+         graph_lang,
+         subject_kind,
+         subject_value,
+         subject_datatype,
+         subject_lang,
+         predicate_kind,
+         predicate_value,
+         predicate_datatype,
+         predicate_lang,
+         object_kind,
+         object_value,
+         object_datatype,
+         object_lang
+       ]) do
+    [
+      nquad_term(subject_kind, subject_value, subject_datatype, subject_lang),
+      ?\s,
+      nquad_term(predicate_kind, predicate_value, predicate_datatype, predicate_lang),
+      ?\s,
+      nquad_term(object_kind, object_value, object_datatype, object_lang),
+      ?\s,
+      nquad_term(graph_kind, graph_value, graph_datatype, graph_lang),
+      " .\n"
+    ]
+  end
+
+  defp nquad_term("iri", value, _datatype, _lang), do: [?<, escape_iri(value), ?>]
+  defp nquad_term("bnode", value, _datatype, _lang), do: ["_:", value]
+
+  defp nquad_term("literal", value, _datatype, lang) when is_binary(lang),
+    do: [?\", escape_literal(value), ?\", ?@, lang]
+
+  defp nquad_term("literal", value, datatype, _lang),
+    do: [?\", escape_literal(value), ?\", "^^<", escape_iri(datatype), ?>]
+
+  defp escape_iri(value) do
+    value
+    |> String.replace("\\", "\\\\")
+    |> String.replace(">", "\\>")
+  end
+
+  defp escape_literal(value) do
+    value
+    |> String.replace("\\", "\\\\")
+    |> String.replace("\"", "\\\"")
+    |> String.replace("\n", "\\n")
+    |> String.replace("\r", "\\r")
   end
 
   defp quad_select_sql(where) do
