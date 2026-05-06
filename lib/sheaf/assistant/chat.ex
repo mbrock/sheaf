@@ -38,15 +38,22 @@ defmodule Sheaf.Assistant.Chat do
   end
 
   def send_user_message(server, text, turn_context \\ %{}) do
-    GenServer.call(server_ref(server), {:send_user_message, text, turn_context})
+    GenServer.call(
+      server_ref(server),
+      {:send_user_message, text, turn_context}
+    )
   end
 
   def persist_context(server) do
     GenServer.call(server_ref(server), :persist_context)
   end
 
-  def promote_assistant_message(server, message_index) when is_integer(message_index) do
-    GenServer.call(server_ref(server), {:promote_assistant_message, message_index})
+  def promote_assistant_message(server, message_index)
+      when is_integer(message_index) do
+    GenServer.call(
+      server_ref(server),
+      {:promote_assistant_message, message_index}
+    )
   end
 
   def put_model(server, model) do
@@ -58,11 +65,17 @@ defmodule Sheaf.Assistant.Chat do
   end
 
   def subscribe(server, live_view, component, component_id) do
-    GenServer.call(server_ref(server), {:subscribe, live_view, component, component_id})
+    GenServer.call(
+      server_ref(server),
+      {:subscribe, live_view, component, component_id}
+    )
   end
 
   def unsubscribe(server, live_view, component, component_id) do
-    GenServer.cast(server_ref(server), {:unsubscribe, live_view, component, component_id})
+    GenServer.cast(
+      server_ref(server),
+      {:unsubscribe, live_view, component, component_id}
+    )
   end
 
   defp server_ref(id) when is_binary(id), do: via(id)

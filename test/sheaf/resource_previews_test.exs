@@ -7,7 +7,9 @@ defmodule Sheaf.ResourcePreviewsTest do
   alias Sheaf.ResourcePreviews
 
   @tag :tmp_dir
-  test "builds document previews from the document graph and metadata", %{tmp_dir: tmp_dir} do
+  test "builds document previews from the document graph and metadata", %{
+    tmp_dir: tmp_dir
+  } do
     path = Path.join(tmp_dir, "repo.sqlite3")
     document = Sheaf.Id.iri("DOC111")
     root_list = Sheaf.Id.iri("LST111")
@@ -30,11 +32,14 @@ defmodule Sheaf.ResourcePreviewsTest do
           {paragraph, RDF.type(), DOC.ParagraphBlock},
           {paragraph, DOC.paragraph(), paragraph_revision},
           {paragraph_revision, RDF.type(), DOC.Paragraph},
-          {paragraph_revision, DOC.text(), RDF.literal("Opening paragraph for the preview.")}
+          {paragraph_revision, DOC.text(),
+           RDF.literal("Opening paragraph for the preview.")}
         ],
         name: document
       )
-      |> then(fn graph -> RDF.list([section, paragraph], graph: graph, head: root_list).graph end)
+      |> then(fn graph ->
+        RDF.list([section, paragraph], graph: graph, head: root_list).graph
+      end)
 
     metadata =
       RDF.Graph.new(

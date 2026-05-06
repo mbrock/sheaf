@@ -32,7 +32,11 @@ defmodule SheafWeb.ResourceJSONPlug do
       {:error, reason} ->
         conn
         |> put_status(:not_found)
-        |> json(%{error: "resource not found", id: id, reason: inspect(reason)})
+        |> json(%{
+          error: "resource not found",
+          id: id,
+          reason: inspect(reason)
+        })
         |> halt()
     end
   end

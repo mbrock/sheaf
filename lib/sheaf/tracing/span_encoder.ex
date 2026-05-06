@@ -12,7 +12,10 @@ defmodule Sheaf.Tracing.SpanEncoder do
 
   require Record
 
-  Record.defrecord(:span, Record.extract(:span, from_lib: "opentelemetry/include/otel_span.hrl"))
+  Record.defrecord(
+    :span,
+    Record.extract(:span, from_lib: "opentelemetry/include/otel_span.hrl")
+  )
 
   Record.defrecord(
     :event,
@@ -45,7 +48,10 @@ defmodule Sheaf.Tracing.SpanEncoder do
   defp hex_id(:undefined, _), do: nil
 
   defp hex_id(int, width) when is_integer(int) do
-    int |> Integer.to_string(16) |> String.pad_leading(width, "0") |> String.downcase()
+    int
+    |> Integer.to_string(16)
+    |> String.pad_leading(width, "0")
+    |> String.downcase()
   end
 
   defp hex_id(_, _), do: nil
@@ -63,7 +69,11 @@ defmodule Sheaf.Tracing.SpanEncoder do
   defp duration_us(_, :undefined), do: nil
 
   defp duration_us(start, finish) do
-    div(:opentelemetry.timestamp_to_nano(finish) - :opentelemetry.timestamp_to_nano(start), 1000)
+    div(
+      :opentelemetry.timestamp_to_nano(finish) -
+        :opentelemetry.timestamp_to_nano(start),
+      1000
+    )
   end
 
   defp encode_status(nil), do: nil
@@ -90,9 +100,15 @@ defmodule Sheaf.Tracing.SpanEncoder do
 
   defp encode_attributes(_), do: %{}
 
-  defp encode_value(v) when is_atom(v) and not is_boolean(v) and v not in [nil], do: to_string(v)
+  defp encode_value(v)
+       when is_atom(v) and not is_boolean(v) and v not in [nil],
+       do: to_string(v)
+
   defp encode_value(v) when is_list(v), do: Enum.map(v, &encode_value/1)
-  defp encode_value(v) when is_tuple(v), do: v |> Tuple.to_list() |> Enum.map(&encode_value/1)
+
+  defp encode_value(v) when is_tuple(v),
+    do: v |> Tuple.to_list() |> Enum.map(&encode_value/1)
+
   defp encode_value(v), do: v
 
   defp encode_events(nil), do: []
@@ -106,7 +122,8 @@ defmodule Sheaf.Tracing.SpanEncoder do
 
       %{
         "name" => to_string(fields[:name]),
-        "time_unix_nano" => fields[:system_time_native] && fields[:system_time_native],
+        "time_unix_nano" =>
+          fields[:system_time_native] && fields[:system_time_native],
         "attributes" => encode_attributes(fields[:attributes])
       }
     end)

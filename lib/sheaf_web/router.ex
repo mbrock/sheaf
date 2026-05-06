@@ -45,6 +45,7 @@ defmodule SheafWeb.Router do
     get "/documents/:id/chunks", DocumentController, :chunks
     get "/documents/:id/blocks/:block_id", DocumentController, :block
     get "/notes", NoteController, :index
+    get "/docs", DocsController, :index
   end
 
   scope "/api", SheafWeb.API do
@@ -56,13 +57,6 @@ defmodule SheafWeb.Router do
 
   scope "/rdf", SheafWeb do
     get "/quads", RDFQuadController, :index
-  end
-
-  scope "/rdf", SheafRDFBrowserWeb do
-    pipe_through :browser
-
-    live "/", BrowserLive
-    live "/ontologies", OntologiesLive
   end
 
   scope "/", SheafWeb do

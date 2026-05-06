@@ -61,7 +61,12 @@ defmodule Sheaf.Assistant do
           {:ok, Response.t()} | {:error, term()}
   def run(server, input, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
-    GenServer.call(server, {:run, input, Keyword.delete(opts, :timeout)}, timeout)
+
+    GenServer.call(
+      server,
+      {:run, input, Keyword.delete(opts, :timeout)},
+      timeout
+    )
   end
 
   @doc """
@@ -89,7 +94,8 @@ defmodule Sheaf.Assistant do
   @doc """
   Replaces the default LLM options used for subsequent assistant turns.
   """
-  @spec put_llm_options(GenServer.server(), keyword()) :: :ok | {:error, :busy}
+  @spec put_llm_options(GenServer.server(), keyword()) ::
+          :ok | {:error, :busy}
   def put_llm_options(server, opts) when is_list(opts) do
     GenServer.call(server, {:put_llm_options, opts})
   end
@@ -102,15 +108,19 @@ defmodule Sheaf.Assistant do
        context: Keyword.get(opts, :context, Context.new()),
        tools: Keyword.get(opts, :tools, []),
        llm_options: Keyword.get(opts, :llm_options, []),
-       max_tool_rounds: Keyword.get(opts, :max_tool_rounds, @default_max_tool_rounds),
-       task_supervisor: Keyword.get(opts, :task_supervisor, @default_task_supervisor),
-       generate_text: Keyword.get(opts, :generate_text, &ReqLLM.generate_text/3),
+       max_tool_rounds:
+         Keyword.get(opts, :max_tool_rounds, @default_max_tool_rounds),
+       task_supervisor:
+         Keyword.get(opts, :task_supervisor, @default_task_supervisor),
+       generate_text:
+         Keyword.get(opts, :generate_text, &ReqLLM.generate_text/3),
        stream_text: Keyword.get(opts, :stream_text, &ReqLLM.stream_text/3)
      }}
   end
 
   @impl true
-  def handle_call({:run, _input, _opts}, _from, %{task_ref: ref} = state) when not is_nil(ref) do
+  def handle_call({:run, _input, _opts}, _from, %{task_ref: ref} = state)
+      when not is_nil(ref) do
     {:reply, {:error, :busy}, state}
   end
 
@@ -152,7 +162,8 @@ defmodule Sheaf.Assistant do
     handle_inference_result(result, %{state | task_ref: nil})
   end
 
-  def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
+  def handle_info({ref, _result}, state) when is_reference(ref),
+    do: {:noreply, state}
 
   def handle_info(
         {:DOWN, ref, :process, _pid, reason},
@@ -162,7 +173,8 @@ defmodule Sheaf.Assistant do
     {:noreply, clear_task(state)}
   end
 
-  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state), do: {:noreply, state}
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state),
+    do: {:noreply, state}
 
   defp start_inference(state, %Context{} = context, round, opts) do
     llm_options =
@@ -187,14 +199,23 @@ defmodule Sheaf.Assistant do
         end
       end)
 
-    %{state | task_ref: task.ref, task_context: context, task_round: round, task_opts: opts}
+    %{
+      state
+      | task_ref: task.ref,
+        task_context: context,
+        task_round: round,
+        task_opts: opts
+    }
   end
 
   defp generate_response(state, %Context{} = context, llm_options, opts) do
     if stream?(opts) do
       case state.stream_text.(state.model, context, llm_options) do
         {:ok, %StreamResponse{} = stream_response} ->
-          StreamResponse.process_stream(stream_response, stream_callbacks(opts))
+          StreamResponse.process_stream(
+            stream_response,
+            stream_callbacks(opts)
+          )
 
         other ->
           other
@@ -209,9 +230,14 @@ defmodule Sheaf.Assistant do
   defp stream_callbacks(opts) do
     [
       on_chunk: Keyword.get(opts, :on_stream_chunk),
-      on_result: Keyword.get(opts, :on_text_delta) || Keyword.get(opts, :on_result),
-      on_thinking: Keyword.get(opts, :on_thinking_delta) || Keyword.get(opts, :on_thinking),
-      on_tool_call: Keyword.get(opts, :on_tool_call_delta) || Keyword.get(opts, :on_tool_call)
+      on_result:
+        Keyword.get(opts, :on_text_delta) || Keyword.get(opts, :on_result),
+      on_thinking:
+        Keyword.get(opts, :on_thinking_delta) ||
+          Keyword.get(opts, :on_thinking),
+      on_tool_call:
+        Keyword.get(opts, :on_tool_call_delta) ||
+          Keyword.get(opts, :on_tool_call)
     ]
     |> Enum.reject(fn {_key, callback} -> is_nil(callback) end)
   end
@@ -219,7 +245,9 @@ defmodule Sheaf.Assistant do
   defp handle_inference_result({:ok, %Response{} = response}, state) do
     classification = Response.classify(response)
     tool_calls = Response.tool_calls(response)
-    context = Context.merge_response(state.task_context, response, tools: state.tools).context
+
+    context =
+      Context.merge_response(state.task_context, response, tools: state.tools).context
 
     if classification.type == :tool_calls and tool_calls != [] do
       continue_tool_loop(response, context, tool_calls, state)
@@ -238,7 +266,10 @@ defmodule Sheaf.Assistant do
 
   defp continue_tool_loop(response, context, tool_calls, state) do
     if state.task_round >= state.max_tool_rounds do
-      finish_run({:error, {:max_tool_rounds, response}}, %{state | context: context})
+      finish_run({:error, {:max_tool_rounds, response}}, %{
+        state
+        | context: context
+      })
     else
       case execute_tools(context, tool_calls, state.tools) do
         {:ok, context} ->
@@ -253,7 +284,10 @@ defmodule Sheaf.Assistant do
           {:noreply, state}
 
         {:error, reason} ->
-          finish_run({:error, {:tool_execution_failed, reason}}, %{state | context: context})
+          finish_run({:error, {:tool_execution_failed, reason}}, %{
+            state
+            | context: context
+          })
       end
     end
   end

@@ -6,7 +6,9 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
   alias Sheaf.XLSXFixture
 
   @tag :tmp_dir
-  test "loads xlsx files into an in-memory DuckDB session", %{tmp_dir: tmp_dir} do
+  test "loads xlsx files into an in-memory DuckDB session", %{
+    tmp_dir: tmp_dir
+  } do
     xlsx_path = Path.join(tmp_dir, "inventory.xlsx")
 
     XLSXFixture.write_xlsx!(xlsx_path, [
@@ -18,7 +20,8 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     {session, _graph, _result} =
       start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-test")
 
-    assert {:ok, [%{sheets: [%{table_name: table, row_count: 2, col_count: 2}]}]} =
+    assert {:ok,
+            [%{sheets: [%{table_name: table, row_count: 2, col_count: 2}]}]} =
              SpreadsheetSession.list(session)
 
     assert {:ok, %{rows: [%{"buyer_type" => "agency", "amount" => "3"}]}} =
@@ -46,7 +49,8 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
   end
 
   @tag :tmp_dir
-  test "loads content after blank spacer rows without retaining empty rows", %{tmp_dir: tmp_dir} do
+  test "loads content after blank spacer rows without retaining empty rows",
+       %{tmp_dir: tmp_dir} do
     xlsx_path = Path.join(tmp_dir, "spacer.xlsx")
 
     XLSXFixture.write_xlsx!(xlsx_path, [
@@ -57,9 +61,14 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     ])
 
     {session, _graph, _result} =
-      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-spacer-test")
+      start_materialized_session(
+        tmp_dir,
+        xlsx_path,
+        "spreadsheet-spacer-test"
+      )
 
-    assert {:ok, [%{sheets: [%{table_name: table, row_count: 2, col_count: 2}]}]} =
+    assert {:ok,
+            [%{sheets: [%{table_name: table, row_count: 2, col_count: 2}]}]} =
              SpreadsheetSession.list(session)
 
     assert {:ok,
@@ -95,9 +104,14 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     test_pid = self()
 
     {session, _graph, _result} =
-      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-query-result-test")
+      start_materialized_session(
+        tmp_dir,
+        xlsx_path,
+        "spreadsheet-query-result-test"
+      )
 
-    assert {:ok, [%{sheets: [%{table_name: table}]}]} = SpreadsheetSession.list(session)
+    assert {:ok, [%{sheets: [%{table_name: table}]}]} =
+             SpreadsheetSession.list(session)
 
     assert {:ok,
             %{
@@ -133,7 +147,8 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
                 %{"buyer_type" => "state", "amount" => "11"}
               ]
             }} =
-             Sheaf.Assistant.QueryResults.read("https://example.com/sheaf/RES111",
+             Sheaf.Assistant.QueryResults.read(
+               "https://example.com/sheaf/RES111",
                blob_root: Path.join(tmp_dir, "blobs"),
                workspace_graph: workspace_graph,
                offset: 1,
@@ -142,7 +157,9 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
   end
 
   @tag :tmp_dir
-  test "normalizes DuckDB HUGEINT values to Elixir integers", %{tmp_dir: tmp_dir} do
+  test "normalizes DuckDB HUGEINT values to Elixir integers", %{
+    tmp_dir: tmp_dir
+  } do
     xlsx_path = Path.join(tmp_dir, "inventory.xlsx")
 
     XLSXFixture.write_xlsx!(xlsx_path, [
@@ -151,14 +168,19 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     ])
 
     {session, _graph, _result} =
-      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-hugeint-test")
+      start_materialized_session(
+        tmp_dir,
+        xlsx_path,
+        "spreadsheet-hugeint-test"
+      )
 
     assert {:ok,
             %{
               rows: [
                 %{
                   "sum_value" => 6,
-                  "max_value" => 170_141_183_460_469_231_731_687_303_715_884_105_727
+                  "max_value" =>
+                    170_141_183_460_469_231_731_687_303_715_884_105_727
                 }
               ]
             }} =
@@ -174,7 +196,9 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
   end
 
   @tag :tmp_dir
-  test "skips unreadable empty sheets without dropping the workbook", %{tmp_dir: tmp_dir} do
+  test "skips unreadable empty sheets without dropping the workbook", %{
+    tmp_dir: tmp_dir
+  } do
     xlsx_path = Path.join(tmp_dir, "multi.xlsx")
 
     XLSXFixture.write_workbook!(xlsx_path, [
@@ -183,17 +207,24 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     ])
 
     {session, _graph, import_result} =
-      start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-empty-sheet-test")
+      start_materialized_session(
+        tmp_dir,
+        xlsx_path,
+        "spreadsheet-empty-sheet-test"
+      )
 
     assert [%{sheet: "Empty", error: error}] = import_result.sheet_errors
     assert error =~ "No rows found"
 
-    assert {:ok, [%{sheets: [%{name: "Data", row_count: 1}], sheet_errors: []}]} =
+    assert {:ok,
+            [%{sheets: [%{name: "Data", row_count: 1}], sheet_errors: []}]} =
              SpreadsheetSession.list(session)
   end
 
   @tag :tmp_dir
-  test "locks filesystem and extension access after preload", %{tmp_dir: tmp_dir} do
+  test "locks filesystem and extension access after preload", %{
+    tmp_dir: tmp_dir
+  } do
     xlsx_path = Path.join(tmp_dir, "inventory.xlsx")
     XLSXFixture.write_xlsx!(xlsx_path, [["name"], ["visible"]])
 
@@ -201,15 +232,23 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
       start_materialized_session(tmp_dir, xlsx_path, "spreadsheet-lock-test")
 
     assert {:error, read_reason} =
-             SpreadsheetSession.query(session, "SELECT * FROM read_csv('/etc/passwd') LIMIT 1")
+             SpreadsheetSession.query(
+               session,
+               "SELECT * FROM read_csv('/etc/passwd') LIMIT 1"
+             )
 
     assert read_reason =~ "file system operations are disabled"
 
-    assert {:error, load_reason} = SpreadsheetSession.query(session, "LOAD httpfs")
+    assert {:error, load_reason} =
+             SpreadsheetSession.query(session, "LOAD httpfs")
+
     assert load_reason =~ "Loading external extensions is disabled"
 
     assert {:error, config_reason} =
-             SpreadsheetSession.query(session, "SET enable_external_access = true")
+             SpreadsheetSession.query(
+               session,
+               "SET enable_external_access = true"
+             )
 
     assert config_reason =~ "configuration has been locked"
   end
@@ -235,7 +274,10 @@ defmodule Sheaf.Assistant.SpreadsheetSessionTest do
     session =
       start_supervised!(
         {SpreadsheetSession,
-         id: id, directory: tmp_dir, workspace_graph: graph, blob_root: blob_root}
+         id: id,
+         directory: tmp_dir,
+         workspace_graph: graph,
+         blob_root: blob_root}
       )
 
     {session, graph, result}

@@ -57,7 +57,12 @@ defmodule Sheaf.DatalabJobs do
         end)
 
       with :ok <- put_graph(graph) do
-        {:ok, %{iri: job_iri, graph: graph, file_jobs: list_file_jobs(graph, job_iri)}}
+        {:ok,
+         %{
+           iri: job_iri,
+           graph: graph,
+           file_jobs: list_file_jobs(graph, job_iri)
+         }}
       end
     end
   end
@@ -79,14 +84,24 @@ defmodule Sheaf.DatalabJobs do
         end)
 
       with :ok <- put_graph(graph) do
-        {:ok, %{iri: RDF.iri(job_iri), graph: graph, file_jobs: list_file_jobs(graph, job_iri)}}
+        {:ok,
+         %{
+           iri: RDF.iri(job_iri),
+           graph: graph,
+           file_jobs: list_file_jobs(graph, job_iri)
+         }}
       end
     end
   end
 
   def get_job(job_iri) do
     with {:ok, graph} <- fetch_graph() do
-      {:ok, %{iri: RDF.iri(job_iri), graph: graph, file_jobs: list_file_jobs(graph, job_iri)}}
+      {:ok,
+       %{
+         iri: RDF.iri(job_iri),
+         graph: graph,
+         file_jobs: list_file_jobs(graph, job_iri)
+       }}
     end
   end
 
@@ -95,7 +110,9 @@ defmodule Sheaf.DatalabJobs do
       jobs =
         graph
         |> RDF.Data.descriptions()
-        |> Enum.filter(&Description.include?(&1, {RDF.type(), term("BatchJob")}))
+        |> Enum.filter(
+          &Description.include?(&1, {RDF.type(), term("BatchJob")})
+        )
         |> Enum.map(fn description ->
           %{
             iri: description.subject,
@@ -112,7 +129,12 @@ defmodule Sheaf.DatalabJobs do
 
   def update_file_job(job_iri, source_file, attrs) do
     with {:ok, graph} <- fetch_graph() do
-      graph = upsert_file_job_graph(graph, job_iri, Keyword.put(attrs, :source_file, source_file))
+      graph =
+        upsert_file_job_graph(
+          graph,
+          job_iri,
+          Keyword.put(attrs, :source_file, source_file)
+        )
 
       with :ok <- put_graph(graph) do
         {:ok, file_job_for_source(graph, job_iri, source_file)}
@@ -125,7 +147,9 @@ defmodule Sheaf.DatalabJobs do
       source_files =
         graph
         |> RDF.Data.descriptions()
-        |> Enum.filter(&Description.include?(&1, {RDF.type(), term("FileProcessingJob")}))
+        |> Enum.filter(
+          &Description.include?(&1, {RDF.type(), term("FileProcessingJob")})
+        )
         |> Enum.flat_map(&Description.get(&1, PROV.used(), []))
         |> MapSet.new()
 
@@ -190,10 +214,17 @@ defmodule Sheaf.DatalabJobs do
 
   defp file_job_for_source(%Graph{} = graph, job_iri, source_file) do
     source_file = RDF.iri(source_file)
-    Enum.find(list_file_jobs(graph, job_iri), &(&1.source_file == source_file))
+
+    Enum.find(
+      list_file_jobs(graph, job_iri),
+      &(&1.source_file == source_file)
+    )
   end
 
-  defp file_job_from_description(%Description{} = description, %Graph{} = graph) do
+  defp file_job_from_description(
+         %Description{} = description,
+         %Graph{} = graph
+       ) do
     output = output_description(description, graph)
 
     %{
@@ -255,7 +286,11 @@ defmodule Sheaf.DatalabJobs do
     if present?(attrs[:error]) do
       graph
       |> add_literal(file_job_iri, term("errorMessage"), attrs[:error])
-      |> add_literal(file_job_iri, PROV.endedAtTime(), attrs[:failed_at] || attrs[:completed_at])
+      |> add_literal(
+        file_job_iri,
+        PROV.endedAtTime(),
+        attrs[:failed_at] || attrs[:completed_at]
+      )
     else
       graph
     end
@@ -276,7 +311,8 @@ defmodule Sheaf.DatalabJobs do
     end
   end
 
-  defp add_literal(graph, _subject, _predicate, value) when value in [nil, ""], do: graph
+  defp add_literal(graph, _subject, _predicate, value)
+       when value in [nil, ""], do: graph
 
   defp add_literal(%Graph{} = graph, subject, predicate, value) do
     Graph.add(graph, {subject, predicate, RDF.literal(value)})

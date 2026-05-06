@@ -15,7 +15,8 @@ defmodule SheafWeb.Telemetry do
     children = [
       # Telemetry poller will execute the given period measurements
       # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
-      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
+      {:telemetry_poller,
+       measurements: periodic_measurements(), period: 10_000}
       # Add reporters as children of your supervision tree.
       # {Telemetry.Metrics.ConsoleReporter, metrics: metrics()}
     ]
@@ -155,7 +156,10 @@ defmodule SheafWeb.Telemetry do
   defp sheaf_module?(module) when is_atom(module) do
     module
     |> Atom.to_string()
-    |> String.starts_with?(["Elixir.Sheaf", "Elixir.SheafWeb", "Elixir.SheafRDFBrowser"])
+    |> String.starts_with?([
+      "Elixir.Sheaf",
+      "Elixir.SheafWeb"
+    ])
   end
 
   defp sheaf_module?(_module), do: false

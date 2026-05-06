@@ -16,7 +16,8 @@ defmodule Sheaf.BlobStore do
           storage_key: String.t()
         }
 
-  @spec put_file(Path.t(), keyword()) :: {:ok, stored_file()} | {:error, term()}
+  @spec put_file(Path.t(), keyword()) ::
+          {:ok, stored_file()} | {:error, term()}
   def put_file(source_path, opts \\ []) when is_binary(source_path) do
     with {:ok, stat} <- File.stat(source_path),
          {:ok, hash} <- sha256(source_path),
@@ -51,7 +52,8 @@ defmodule Sheaf.BlobStore do
   end
 
   @spec path_for(String.t(), Path.t(), keyword()) :: Path.t()
-  def path_for(hash, source_path, opts \\ []) when is_binary(hash) and is_binary(source_path) do
+  def path_for(hash, source_path, opts \\ [])
+      when is_binary(hash) and is_binary(source_path) do
     extension =
       source_path
       |> original_filename(opts)

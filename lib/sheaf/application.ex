@@ -11,22 +11,26 @@ defmodule Sheaf.Application do
     if tracing_enabled?(), do: setup_opentelemetry()
 
     children =
-      tracing_children() ++
-        [
-          SheafWeb.Telemetry,
-          {DNSCluster, query: Application.get_env(:sheaf, :dns_cluster_query) || :ignore},
-          {Phoenix.PubSub, name: Sheaf.PubSub},
-          {Finch, name: Sheaf.Finch}
-        ] ++
-        repo_children() ++
-        [
-          {Task.Supervisor, name: Sheaf.Assistant.TaskSupervisor},
-          {Registry, keys: :unique, name: Sheaf.Assistant.ChatRegistry},
-          {DynamicSupervisor, strategy: :one_for_one, name: Sheaf.Assistant.ChatSupervisor},
-          Sheaf.Assistant.Chats,
-          SheafWeb.Endpoint,
-          Sheaf.Readiness
-        ]
+      (tracing_children() ++
+         [
+           SheafWeb.Telemetry,
+           {DNSCluster,
+            query: Application.get_env(:sheaf, :dns_cluster_query) || :ignore},
+           {Phoenix.PubSub, name: Sheaf.PubSub},
+           {Finch, name: Sheaf.Finch}
+         ] ++
+         repo_children() ++
+         [
+           {Task.Supervisor, name: Sheaf.Assistant.TaskSupervisor},
+           {Registry, keys: :unique, name: Sheaf.Assistant.ChatRegistry},
+           {DynamicSupervisor,
+            strategy: :one_for_one, name: Sheaf.Assistant.ChatSupervisor},
+           Sheaf.Assistant.Chats,
+           expert_child(),
+           SheafWeb.Endpoint,
+           Sheaf.Readiness
+         ])
+      |> Enum.reject(&is_nil/1)
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -56,17 +60,29 @@ defmodule Sheaf.Application do
 
   defp tracing_children do
     if tracing_enabled?() do
-      [{Sheaf.Tracing.RedisSink, Application.get_env(:sheaf, Sheaf.Tracing.RedisSink, [])}]
+      [
+        {Sheaf.Tracing.RedisSink,
+         Application.get_env(:sheaf, Sheaf.Tracing.RedisSink, [])}
+      ]
     else
       []
     end
   end
 
   defp repo_children do
-    if Application.get_env(:sheaf, Sheaf.Repo, []) |> Keyword.get(:start?, true) do
+    if Application.get_env(:sheaf, Sheaf.Repo, [])
+       |> Keyword.get(:start?, true) do
       [Sheaf.Repo]
     else
       []
+    end
+  end
+
+  defp expert_child do
+    opts = Application.get_env(:sheaf, Sheaf.Expert, [])
+
+    if Keyword.get(opts, :enabled, false) do
+      {Sheaf.Expert, Keyword.delete(opts, :enabled)}
     end
   end
 
@@ -90,7 +106,11 @@ defmodule Sheaf.Application do
     # want the whole node to refuse to boot. Log and carry on without traces.
     error ->
       require Logger
-      Logger.warning("OpenTelemetry setup failed: #{Exception.message(error)}")
+
+      Logger.warning(
+        "OpenTelemetry setup failed: #{Exception.message(error)}"
+      )
+
       :ok
   end
 end

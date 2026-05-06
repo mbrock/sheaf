@@ -12,13 +12,23 @@ defmodule SheafWeb.DataTableComponents do
   def data_table(assigns) do
     assigns =
       assigns
-      |> assign(:id, assigns[:id] || data_table_id(assigns.columns, assigns.rows))
-      |> assign(:display_columns, display_columns(assigns.columns, assigns.rows))
+      |> assign(
+        :id,
+        assigns[:id] || data_table_id(assigns.columns, assigns.rows)
+      )
+      |> assign(
+        :display_columns,
+        display_columns(assigns.columns, assigns.rows)
+      )
       |> assign(:display_rows, display_rows(assigns.rows, assigns.columns))
 
     ~H"""
     <section class="flex justify-center">
-      <table class="border-separate border-spacing-0 text-left" id={@id} phx-hook="DataTable">
+      <table
+        class="border-separate border-spacing-0 text-left"
+        id={@id}
+        phx-hook="DataTable"
+      >
         <.table_head columns={@display_columns} />
         <.table_body columns={@display_columns} rows={@display_rows} />
       </table>
@@ -75,7 +85,11 @@ defmodule SheafWeb.DataTableComponents do
   defp table_row(assigns) do
     ~H"""
     <tr class="group odd:bg-white even:bg-stone-50/70 hover:bg-amber-50/80 dark:odd:bg-stone-900 dark:even:bg-stone-900/60 dark:hover:bg-stone-800/70">
-      <.table_cell :for={column <- @columns} cell={@row.cells[column.name]} column={column} />
+      <.table_cell
+        :for={column <- @columns}
+        cell={@row.cells[column.name]}
+        column={column}
+      />
     </tr>
     """
   end
@@ -111,7 +125,11 @@ defmodule SheafWeb.DataTableComponents do
   defp list_cell(assigns) do
     ~H"""
     <div class={["flex flex-wrap gap-2", list_justify_class(@column.kind)]}>
-      <span :for={value <- @cell.list_values} class="shrink-0 text-sm" title={value}>
+      <span
+        :for={value <- @cell.list_values}
+        class="shrink-0 text-sm"
+        title={value}
+      >
         {value}
       </span>
     </div>
@@ -189,7 +207,8 @@ defmodule SheafWeb.DataTableComponents do
   end
 
   defp identifier_column?(column) do
-    column == "id" or String.ends_with?(column, "_id") or String.ends_with?(column, "_iri")
+    column == "id" or String.ends_with?(column, "_id") or
+      String.ends_with?(column, "_iri")
   end
 
   defp list_column?(column) do
@@ -211,7 +230,9 @@ defmodule SheafWeb.DataTableComponents do
   defp blank_value?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank_value?(_value), do: false
 
-  defp cell_class(:identifier), do: "font-mono text-sm text-stone-700 dark:text-stone-300"
+  defp cell_class(:identifier),
+    do: "font-mono text-sm text-stone-700 dark:text-stone-300"
+
   defp cell_class(:number), do: "text-right font-mono text-sm tabular-nums"
   defp cell_class(:list), do: "text-left text-sm"
   defp cell_class(_kind), do: "text-left text-sm"

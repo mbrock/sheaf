@@ -7,7 +7,10 @@ defmodule SheafWeb.ResourceRDFPlugTest do
   alias Sheaf.NS.DOC
 
   @tag :tmp_dir
-  test "serves subject quads from /:id when n-quads are accepted", %{conn: conn, tmp_dir: tmp_dir} do
+  test "serves subject quads from /:id when n-quads are accepted", %{
+    conn: conn,
+    tmp_dir: tmp_dir
+  } do
     start_supervised!({Sheaf.Repo, path: Path.join(tmp_dir, "repo.sqlite3")})
 
     document = Id.iri("DOC123")
@@ -32,7 +35,9 @@ defmodule SheafWeb.ResourceRDFPlugTest do
 
     body = response(conn, 200)
 
-    assert ["application/n-quads; charset=utf-8"] = get_resp_header(conn, "content-type")
+    assert ["application/n-quads; charset=utf-8"] =
+             get_resp_header(conn, "content-type")
+
     assert body =~ "<https://sheaf.less.rest/DOC123> "
     assert body =~ "<http://www.w3.org/2000/01/rdf-schema#label>"
     assert body =~ "<https://sheaf.less.rest/DOC123> .\n"

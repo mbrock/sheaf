@@ -41,7 +41,8 @@ defmodule Sheaf.Search.IndexTest do
                  [
                    {doc1, RDF.type(), Sheaf.NS.DOC.Document},
                    {block1, Sheaf.NS.DOC.paragraph(), para},
-                   {para, Sheaf.NS.DOC.text(), "Circular economy practices matter."}
+                   {para, Sheaf.NS.DOC.text(),
+                    "Circular economy practices matter."}
                  ],
                  name: doc1
                )
@@ -52,15 +53,21 @@ defmodule Sheaf.Search.IndexTest do
                RDF.Graph.new(
                  [
                    {doc2, RDF.type(), Sheaf.NS.DOC.Document},
-                   {block2, Sheaf.NS.DOC.sourceHtml(), "<p>Repair and maintenance work.</p>"},
-                   {row, Sheaf.NS.DOC.text(), "Coded row about giving things away."},
+                   {block2, Sheaf.NS.DOC.sourceHtml(),
+                    "<p>Repair and maintenance work.</p>"},
+                   {row, Sheaf.NS.DOC.text(),
+                    "Coded row about giving things away."},
                    {row, Sheaf.NS.DOC.spreadsheetRow(), 7}
                  ],
                  name: doc2
                )
              )
 
-    assert {:ok, %{count: 3, kinds: %{"paragraph" => 1, "sourceHtml" => 1, "row" => 1}}} =
+    assert {:ok,
+            %{
+              count: 3,
+              kinds: %{"paragraph" => 1, "sourceHtml" => 1, "row" => 1}
+            }} =
              Index.sync(db_path: db_path)
 
     assert {:ok, [hit]} = Index.search("circular economy", db_path: db_path)
@@ -75,7 +82,9 @@ defmodule Sheaf.Search.IndexTest do
     assert row_hit.spreadsheet_row == 7
 
     assert {:ok, units} = Index.units_by_iris([row_hit.iri], db_path: db_path)
-    assert %{spreadsheet_row: 7, text: "Coded row about giving things away."} = units[row_hit.iri]
+
+    assert %{spreadsheet_row: 7, text: "Coded row about giving things away."} =
+             units[row_hit.iri]
   end
 
   test "sync mirrors research notes into SQLite FTS", %{db_path: db_path} do
@@ -90,7 +99,8 @@ defmodule Sheaf.Search.IndexTest do
                    {note, RDF.type(), Sheaf.NS.DOC.ResearchNote},
                    {note, RDF.NS.RDFS.label(), "Repair note"},
                    {note, Sheaf.NS.AS.context(), session},
-                   {note, Sheaf.NS.AS.content(), "Research note about maintenance cultures."},
+                   {note, Sheaf.NS.AS.content(),
+                    "Research note about maintenance cultures."},
                    {session, RDF.type(), Sheaf.NS.DOC.AssistantConversation}
                  ],
                  name: Sheaf.Repo.workspace_graph()
@@ -99,14 +109,18 @@ defmodule Sheaf.Search.IndexTest do
 
     assert {:ok, %{kinds: %{"note" => 1}}} = Index.sync(db_path: db_path)
 
-    assert {:ok, hits} = Index.search("maintenance cultures", db_path: db_path)
+    assert {:ok, hits} =
+             Index.search("maintenance cultures", db_path: db_path)
+
     assert hit = Enum.find(hits, &(&1.iri == to_string(note)))
     assert hit.iri == to_string(note)
     assert hit.kind == "note"
     assert hit.doc_title == "Repair note"
   end
 
-  test "sync ignores unlinked document blocks when a graph has children", %{db_path: db_path} do
+  test "sync ignores unlinked document blocks when a graph has children", %{
+    db_path: db_path
+  } do
     doc = RDF.iri("https://sheaf.less.rest/DOC1")
     root_list = RDF.iri("https://sheaf.less.rest/LIST1")
     linked_block = RDF.iri("https://sheaf.less.rest/LINKED")
@@ -120,13 +134,17 @@ defmodule Sheaf.Search.IndexTest do
           {doc, RDF.type(), Sheaf.NS.DOC.Document},
           {doc, Sheaf.NS.DOC.children(), root_list},
           {linked_block, Sheaf.NS.DOC.paragraph(), linked_paragraph},
-          {linked_paragraph, Sheaf.NS.DOC.text(), "Current reachable chapter text."},
+          {linked_paragraph, Sheaf.NS.DOC.text(),
+           "Current reachable chapter text."},
           {orphan_block, Sheaf.NS.DOC.paragraph(), orphan_paragraph},
-          {orphan_paragraph, Sheaf.NS.DOC.text(), "Stale zephyrword chapter text."}
+          {orphan_paragraph, Sheaf.NS.DOC.text(),
+           "Stale zephyrword chapter text."}
         ],
         name: doc
       )
-      |> then(fn graph -> RDF.list([linked_block], graph: graph, head: root_list).graph end)
+      |> then(fn graph ->
+        RDF.list([linked_block], graph: graph, head: root_list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 
@@ -179,7 +197,9 @@ defmodule Sheaf.Search.IndexTest do
     end
   end
 
-  test "scores multi-term exact matches by coverage instead of flattening", %{db_path: db_path} do
+  test "scores multi-term exact matches by coverage instead of flattening", %{
+    db_path: db_path
+  } do
     {:ok, conn} = Index.open(db_path: db_path)
     doc = Sheaf.Id.iri("DOC1") |> to_string()
 
@@ -190,13 +210,15 @@ defmodule Sheaf.Search.IndexTest do
                    iri: "https://sheaf.less.rest/BLOCK1",
                    doc_iri: doc,
                    kind: "paragraph",
-                   text: "Meaning sustaining participation depends on shared routines."
+                   text:
+                     "Meaning sustaining participation depends on shared routines."
                  },
                  %{
                    iri: "https://sheaf.less.rest/BLOCK2",
                    doc_iri: doc,
                    kind: "paragraph",
-                   text: "Meaning and participation are discussed without the middle term."
+                   text:
+                     "Meaning and participation are discussed without the middle term."
                  },
                  %{
                    iri: "https://sheaf.less.rest/BLOCK3",
@@ -208,7 +230,8 @@ defmodule Sheaf.Search.IndexTest do
                    iri: "https://sheaf.less.rest/BLOCK4",
                    doc_iri: doc,
                    kind: "paragraph",
-                   text: "Sustaining sustaining participation through participation."
+                   text:
+                     "Sustaining sustaining participation through participation."
                  }
                ])
 

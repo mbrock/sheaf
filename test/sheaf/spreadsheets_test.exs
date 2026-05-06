@@ -95,7 +95,9 @@ defmodule Sheaf.SpreadsheetsTest do
     assert to_string(reason) =~ "readonly"
   end
 
-  test "query allows SQLite read statements without brittle pre-parsing", %{db_path: db_path} do
+  test "query allows SQLite read statements without brittle pre-parsing", %{
+    db_path: db_path
+  } do
     assert {:ok, %{rows: [%{"answer" => 42}]}} =
              Spreadsheets.query(
                """
@@ -106,8 +108,14 @@ defmodule Sheaf.SpreadsheetsTest do
                db_path: db_path
              )
 
-    assert {:ok, %{columns: ["cid", "name", "type", "notnull", "dflt_value", "pk"], rows: rows}} =
-             Spreadsheets.query("PRAGMA table_info(spreadsheets)", db_path: db_path)
+    assert {:ok,
+            %{
+              columns: ["cid", "name", "type", "notnull", "dflt_value", "pk"],
+              rows: rows
+            }} =
+             Spreadsheets.query("PRAGMA table_info(spreadsheets)",
+               db_path: db_path
+             )
 
     assert Enum.any?(rows, &(&1["name"] == "title"))
   end

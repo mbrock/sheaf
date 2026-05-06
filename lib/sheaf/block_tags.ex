@@ -20,7 +20,11 @@ defmodule Sheaf.BlockTags do
   @tag_index Map.new(@tags)
   @tag_info_by_iri Map.new(@tags, fn {name, iri} ->
                      {iri,
-                      %{name: name, label: String.replace(name, "_", " "), iri: to_string(iri)}}
+                      %{
+                        name: name,
+                        label: String.replace(name, "_", " "),
+                        iri: to_string(iri)
+                      }}
                    end)
 
   def tag_names, do: @tag_names
@@ -150,9 +154,14 @@ defmodule Sheaf.BlockTags do
       |> String.trim_leading("#")
 
     cond do
-      value == "" -> []
-      String.starts_with?(value, ["http://", "https://"]) -> [Id.id_from_iri(value)]
-      true -> [value]
+      value == "" ->
+        []
+
+      String.starts_with?(value, ["http://", "https://"]) ->
+        [Id.id_from_iri(value)]
+
+      true ->
+        [value]
     end
   end
 
@@ -180,7 +189,9 @@ defmodule Sheaf.BlockTags do
     if value == "", do: [], else: [value]
   end
 
-  defp normalize_tag_name(%RDF.IRI{} = iri), do: normalize_tag_name(to_string(iri))
+  defp normalize_tag_name(%RDF.IRI{} = iri),
+    do: normalize_tag_name(to_string(iri))
+
   defp normalize_tag_name(_value), do: []
 
   defp require_nonempty([], message), do: {:error, message}
@@ -209,7 +220,8 @@ defmodule Sheaf.BlockTags do
         with :ok <- Sheaf.Repo.load_once({nil, AS.tag(), nil, workspace}) do
           graph =
             Sheaf.Repo.ask(fn dataset ->
-              RDF.Dataset.graph(dataset, workspace) || Graph.new(name: workspace)
+              RDF.Dataset.graph(dataset, workspace) ||
+                Graph.new(name: workspace)
             end)
 
           {:ok, graph}
@@ -238,10 +250,16 @@ defmodule Sheaf.BlockTags do
     |> Graph.triples()
     |> Enum.reduce(%{}, fn
       {block, ^tag_predicate, tag}, acc ->
-        if MapSet.member?(blocks, block) and Map.has_key?(@tag_info_by_iri, tag) do
-          Map.update(acc, Id.id_from_iri(block), [Map.fetch!(@tag_info_by_iri, tag)], fn tags ->
-            [Map.fetch!(@tag_info_by_iri, tag) | tags]
-          end)
+        if MapSet.member?(blocks, block) and
+             Map.has_key?(@tag_info_by_iri, tag) do
+          Map.update(
+            acc,
+            Id.id_from_iri(block),
+            [Map.fetch!(@tag_info_by_iri, tag)],
+            fn tags ->
+              [Map.fetch!(@tag_info_by_iri, tag) | tags]
+            end
+          )
         else
           acc
         end
@@ -266,7 +284,8 @@ defmodule Sheaf.BlockTags do
     block_ids
     |> Enum.reduce_while({:ok, [], %{}}, fn block_id, {:ok, blocks, graphs} ->
       with {:ok, document_id} <- document_id(block_id, resolver),
-           {:ok, graph, graphs} <- document_graph(document_id, graphs, graph_fetcher),
+           {:ok, graph, graphs} <-
+             document_graph(document_id, graphs, graph_fetcher),
            block = Id.iri(block_id),
            :ok <- require_paragraph_block(block_id, block, graph) do
         {:cont, {:ok, [block | blocks], graphs}}
@@ -292,7 +311,8 @@ defmodule Sheaf.BlockTags do
         {:error, "could not resolve block #{block_id}: #{inspect(reason)}"}
 
       other ->
-        {:error, "could not resolve block #{block_id}: unexpected result #{inspect(other)}"}
+        {:error,
+         "could not resolve block #{block_id}: unexpected result #{inspect(other)}"}
     end
   end
 
@@ -307,7 +327,8 @@ defmodule Sheaf.BlockTags do
             {:ok, graph, Map.put(graphs, document_id, graph)}
 
           {:error, reason} ->
-            {:error, "could not fetch document #{document_id}: #{inspect(reason)}"}
+            {:error,
+             "could not fetch document #{document_id}: #{inspect(reason)}"}
 
           other ->
             {:error,
@@ -325,7 +346,8 @@ defmodule Sheaf.BlockTags do
   end
 
   defp tag_graph(blocks, tag_iris) do
-    Enum.reduce(blocks, Graph.new(name: Sheaf.Workspace.graph()), fn block, graph ->
+    Enum.reduce(blocks, Graph.new(name: Sheaf.Workspace.graph()), fn block,
+                                                                     graph ->
       Enum.reduce(tag_iris, graph, fn tag, graph ->
         Graph.add(graph, {block, AS.tag(), tag})
       end)
@@ -363,7 +385,8 @@ defmodule Sheaf.BlockTags do
     end
   end
 
-  defp call_transact(transact, tx, changes, metadata) when is_function(transact) do
+  defp call_transact(transact, tx, changes, metadata)
+       when is_function(transact) do
     case :erlang.fun_info(transact, :arity) do
       {:arity, 3} -> transact.(tx, changes, metadata)
       {:arity, 2} -> transact.(tx, changes)

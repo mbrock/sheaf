@@ -33,7 +33,9 @@ defmodule Sheaf.Assistant.ToolResultText do
   def to_text(%ListDocuments{documents: documents}) do
     documents
     |> grouped_documents()
-    |> Enum.map(fn {group, documents} -> document_group_text(group, documents) end)
+    |> Enum.map(fn {group, documents} ->
+      document_group_text(group, documents)
+    end)
     |> Enum.reject(&blank?/1)
     |> Enum.join("\n\n")
   end
@@ -138,7 +140,11 @@ defmodule Sheaf.Assistant.ToolResultText do
   def to_text(%SearchResults{} = results) do
     [
       search_section("Exact matches", results.exact_results, :exact),
-      search_section("Approximate matches", results.approximate_results, :approximate)
+      search_section(
+        "Approximate matches",
+        results.approximate_results,
+        :approximate
+      )
     ]
     |> Enum.reject(&blank?/1)
     |> Enum.join("\n\n")
@@ -274,7 +280,9 @@ defmodule Sheaf.Assistant.ToolResultText do
     library_groups =
       library_documents
       |> Enum.group_by(&document_group/1)
-      |> Enum.map(fn {kind, docs} -> {kind, Enum.sort_by(docs, &document_sort_key/1)} end)
+      |> Enum.map(fn {kind, docs} ->
+        {kind, Enum.sort_by(docs, &document_sort_key/1)}
+      end)
       |> Enum.sort_by(fn {kind, docs} ->
         {kind_order(kind), kind_label(kind), first_title(docs)}
       end)
@@ -350,11 +358,20 @@ defmodule Sheaf.Assistant.ToolResultText do
     columns =
       sheet.columns
       |> Enum.map(fn
-        %{"name" => name, "header" => header} when name != header -> "#{name} (#{header})"
-        %{"name" => name} -> name
-        %{name: name, header: header} when name != header -> "#{name} (#{header})"
-        %{name: name} -> name
-        other -> to_string(other)
+        %{"name" => name, "header" => header} when name != header ->
+          "#{name} (#{header})"
+
+        %{"name" => name} ->
+          name
+
+        %{name: name, header: header} when name != header ->
+          "#{name} (#{header})"
+
+        %{name: name} ->
+          name
+
+        other ->
+          to_string(other)
       end)
       |> Enum.join(", ")
 
@@ -362,21 +379,28 @@ defmodule Sheaf.Assistant.ToolResultText do
   end
 
   defp document_sort_key(document),
-    do: {kind_order(document_group(document)), String.downcase(document.title || "")}
+    do:
+      {kind_order(document_group(document)),
+       String.downcase(document.title || "")}
 
-  defp document_group(%DocumentSummary{metadata_kind: kind}) when is_binary(kind),
-    do: {:expression, kind}
+  defp document_group(%DocumentSummary{metadata_kind: kind})
+       when is_binary(kind),
+       do: {:expression, kind}
 
   defp document_group(%DocumentSummary{kind: kind}), do: kind
 
-  defp first_title([document | _documents]), do: String.downcase(document.title || "")
+  defp first_title([document | _documents]),
+    do: String.downcase(document.title || "")
+
   defp first_title([]), do: ""
 
   defp kind_label({:expression, kind}), do: pluralize_expression_kind(kind)
   defp kind_label(:thesis), do: "Thesis"
   defp kind_label(:paper), do: "Papers"
   defp kind_label(:document), do: "Documents"
-  defp kind_label(kind) when is_atom(kind), do: kind |> Atom.to_string() |> String.capitalize()
+
+  defp kind_label(kind) when is_atom(kind),
+    do: kind |> Atom.to_string() |> String.capitalize()
 
   defp pluralize_expression_kind("Book"), do: "Books"
   defp pluralize_expression_kind("Book chapter"), do: "Book chapters"
@@ -425,7 +449,9 @@ defmodule Sheaf.Assistant.ToolResultText do
     end
   end
 
-  defp document_publication(%DocumentSummary{metadata_kind: "Book chapter"} = doc) do
+  defp document_publication(
+         %DocumentSummary{metadata_kind: "Book chapter"} = doc
+       ) do
     [doc.venue, doc.publisher, pages(doc.pages)]
     |> Enum.reject(&blank?/1)
     |> Enum.join(" | ")
@@ -449,11 +475,16 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp outline_entry_lines(%OutlineEntry{} = entry, level) do
     label =
-      [entry.number, "##{entry.id}", entry.title] |> Enum.reject(&blank?/1) |> Enum.join(" ")
+      [entry.number, "##{entry.id}", entry.title]
+      |> Enum.reject(&blank?/1)
+      |> Enum.join(" ")
 
     line = indent(level) <> "- " <> label
 
-    [line | Enum.flat_map(entry.children, &outline_entry_lines(&1, level + 1))]
+    [
+      line
+      | Enum.flat_map(entry.children, &outline_entry_lines(&1, level + 1))
+    ]
   end
 
   defp context_lines([]), do: "  (no context)"
@@ -587,7 +618,9 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
-  defp expanded_source(%Block{source: %{page: page}}) when not is_nil(page), do: " p. #{page}"
+  defp expanded_source(%Block{source: %{page: page}}) when not is_nil(page),
+    do: " p. #{page}"
+
   defp expanded_source(_block), do: ""
 
   defp selected_block_heading(%Block{} = block) do
@@ -611,7 +644,9 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp selected_context_lines(entries) do
     entries
     |> Enum.with_index()
-    |> Enum.map(fn {entry, index} -> indent(index + 2) <> context_label(entry) end)
+    |> Enum.map(fn {entry, index} ->
+      indent(index + 2) <> context_label(entry)
+    end)
     |> Enum.join("\n")
   end
 
@@ -641,8 +676,11 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp selected_block_body(_block), do: nil
 
-  defp document_line(%Block{document_id: id, ancestry: [%{id: id, title: title} | _]}),
-    do: "##{id} #{title}"
+  defp document_line(%Block{
+         document_id: id,
+         ancestry: [%{id: id, title: title} | _]
+       }),
+       do: "##{id} #{title}"
 
   defp document_line(%Block{document_id: id}), do: "##{id}"
 
@@ -732,14 +770,22 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp format_status(status), do: status
 
   defp score(nil), do: nil
-  defp score(score) when is_float(score), do: "Score: #{Float.round(score, 3)}"
+
+  defp score(score) when is_float(score),
+    do: "Score: #{Float.round(score, 3)}"
+
   defp score(score), do: "Score: #{score}"
 
   defp source_line(%SearchHit{} = hit) do
     page = if hit.source_page, do: ", p. #{hit.source_page}", else: ""
     authors = authors(hit.document_authors)
     byline = if blank?(authors), do: "", else: ", #{authors}"
-    status = if status = format_status(hit.document_status), do: " [#{status}]", else: ""
+
+    status =
+      if status = format_status(hit.document_status),
+        do: " [#{status}]",
+        else: ""
+
     "Source: #{hit.document_title}#{status} (##{hit.document_id})#{byline}#{page}"
   end
 
@@ -796,7 +842,9 @@ defmodule Sheaf.Assistant.ToolResultText do
     [
       Enum.map_join(columns, "\t", &tsv_cell/1)
       | Enum.map(rows, fn row ->
-          Enum.map_join(columns, "\t", fn column -> row |> Map.get(column) |> tsv_cell() end)
+          Enum.map_join(columns, "\t", fn column ->
+            row |> Map.get(column) |> tsv_cell()
+          end)
         end)
     ]
     |> Enum.join("\n")
@@ -805,7 +853,14 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp spreadsheet_hits_tsv([]), do: "(no hits)"
 
   defp spreadsheet_hits_tsv(hits) do
-    columns = ["spreadsheet_id", "sheet_name", "table_name", "row_number", "score", "row"]
+    columns = [
+      "spreadsheet_id",
+      "sheet_name",
+      "table_name",
+      "row_number",
+      "score",
+      "row"
+    ]
 
     [
       Enum.join(columns, "\t")
@@ -835,9 +890,15 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp tsv_cell(nil), do: ""
   defp tsv_cell(value) when is_binary(value), do: escape_tsv(value)
-  defp tsv_cell(value) when is_boolean(value), do: value |> to_string() |> escape_tsv()
-  defp tsv_cell(value) when is_integer(value), do: value |> Integer.to_string() |> escape_tsv()
-  defp tsv_cell(value) when is_float(value), do: value |> Float.to_string() |> escape_tsv()
+
+  defp tsv_cell(value) when is_boolean(value),
+    do: value |> to_string() |> escape_tsv()
+
+  defp tsv_cell(value) when is_integer(value),
+    do: value |> Integer.to_string() |> escape_tsv()
+
+  defp tsv_cell(value) when is_float(value),
+    do: value |> Float.to_string() |> escape_tsv()
 
   defp tsv_cell(value) do
     value

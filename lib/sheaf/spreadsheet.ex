@@ -35,7 +35,10 @@ defmodule Sheaf.Spreadsheet do
     source_path = opts |> Keyword.get(:source_path, "") |> present_value()
 
     source_groups = source_groups(rows)
-    sections = Enum.map(source_groups, &section_summary(&1, source_path, mint))
+
+    sections =
+      Enum.map(source_groups, &section_summary(&1, source_path, mint))
+
     row_summaries = Enum.flat_map(sections, & &1.rows)
 
     graph =
@@ -99,7 +102,9 @@ defmodule Sheaf.Spreadsheet do
           sources ++ [row.source]
         end
 
-      rows_by_source = Map.update(rows_by_source, row.source, [row], &(&1 ++ [row]))
+      rows_by_source =
+        Map.update(rows_by_source, row.source, [row], &(&1 ++ [row]))
+
       {sources, rows_by_source}
     end)
     |> then(fn {sources, rows_by_source} ->
@@ -137,8 +142,12 @@ defmodule Sheaf.Spreadsheet do
       graph
       |> Graph.add({section.iri, RDF.type(), DOC.Section})
       |> Graph.add({section.iri, RDFS.label(), RDF.literal(section.source)})
-      |> Graph.add({section.iri, DOC.sourceKey(), RDF.literal(section.source_key)})
-      |> Graph.add({section.iri, DOC.spreadsheetSource(), RDF.literal(section.source)})
+      |> Graph.add(
+        {section.iri, DOC.sourceKey(), RDF.literal(section.source_key)}
+      )
+      |> Graph.add(
+        {section.iri, DOC.spreadsheetSource(), RDF.literal(section.source)}
+      )
     end)
   end
 
@@ -148,9 +157,13 @@ defmodule Sheaf.Spreadsheet do
       |> Graph.add({row.iri, RDF.type(), DOC.Row})
       |> Graph.add({row.iri, DOC.text(), RDF.literal(row.marked_text)})
       |> Graph.add({row.iri, DOC.sourceKey(), RDF.literal(row.source_key)})
-      |> Graph.add({row.iri, DOC.sourceBlockType(), RDF.literal("Spreadsheet row")})
+      |> Graph.add(
+        {row.iri, DOC.sourceBlockType(), RDF.literal("Spreadsheet row")}
+      )
       |> Graph.add({row.iri, DOC.spreadsheetRow(), RDF.literal(row.line)})
-      |> Graph.add({row.iri, DOC.spreadsheetSource(), RDF.literal(row.source)})
+      |> Graph.add(
+        {row.iri, DOC.spreadsheetSource(), RDF.literal(row.source)}
+      )
       |> add_if(row.iri, DOC.codeCategory(), row.category)
       |> add_if(row.iri, DOC.codeCategoryTitle(), row.category_title)
     end)
@@ -158,13 +171,21 @@ defmodule Sheaf.Spreadsheet do
 
   defp add_section_child_lists(%Graph{} = graph, sections) do
     Enum.reduce(sections, graph, fn section, graph ->
-      add_child_list(graph, section.iri, Enum.map(section.rows, & &1.iri), section.list_iri)
+      add_child_list(
+        graph,
+        section.iri,
+        Enum.map(section.rows, & &1.iri),
+        section.list_iri
+      )
     end)
   end
 
   defp add_child_list(%Graph{} = graph, parent_iri, child_iris, list_iri) do
     child_iris
-    |> RDF.list(graph: Graph.add(graph, {parent_iri, DOC.children(), list_iri}), head: list_iri)
+    |> RDF.list(
+      graph: Graph.add(graph, {parent_iri, DOC.children(), list_iri}),
+      head: list_iri
+    )
     |> Map.fetch!(:graph)
   end
 

@@ -30,7 +30,10 @@ defmodule Sheaf.Corpus do
   ]
 
   @contained_resource_classes @document_classes ++ @block_classes
-  @contained_resource_class_iris Enum.map(@contained_resource_classes, &RDF.iri/1)
+  @contained_resource_class_iris Enum.map(
+                                   @contained_resource_classes,
+                                   &RDF.iri/1
+                                 )
 
   @doc """
   Full document list (delegates to `Sheaf.Documents.list/0`).
@@ -100,7 +103,11 @@ defmodule Sheaf.Corpus do
     |> Enum.reduce(%{}, fn {graph, subject, predicate, object}, index ->
       if predicate == RDF.type() and Map.has_key?(requested_iris, subject) and
            block_class?(object) do
-        Map.put_new(index, Map.fetch!(requested_iris, subject), Id.id_from_iri(graph))
+        Map.put_new(
+          index,
+          Map.fetch!(requested_iris, subject),
+          Id.id_from_iri(graph)
+        )
       else
         index
       end
@@ -130,7 +137,9 @@ defmodule Sheaf.Corpus do
   defp walk_to_target(graph, iri, target, trail) do
     graph
     |> Document.children(iri)
-    |> Enum.find_value(fn child -> walk_to_target(graph, child, target, [iri | trail]) end)
+    |> Enum.find_value(fn child ->
+      walk_to_target(graph, child, target, [iri | trail])
+    end)
   end
 
   defp ancestry_entry(graph, iri) do

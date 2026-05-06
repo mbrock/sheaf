@@ -9,7 +9,14 @@ defmodule Sheaf.TaskQueue.Store do
   alias Exqlite.Sqlite3
 
   @default_path "var/sheaf-embeddings.sqlite3"
-  @statuses ["pending", "running", "completed", "partial", "failed", "canceled"]
+  @statuses [
+    "pending",
+    "running",
+    "completed",
+    "partial",
+    "failed",
+    "canceled"
+  ]
 
   @type conn :: Sqlite3.db()
 
@@ -55,13 +62,18 @@ defmodule Sheaf.TaskQueue.Store do
              "CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(queue, status, run_after, priority)"
            ),
          :ok <-
-           Sqlite3.execute(conn, "CREATE INDEX IF NOT EXISTS tasks_batch_idx ON tasks(batch_id)") do
+           Sqlite3.execute(
+             conn,
+             "CREATE INDEX IF NOT EXISTS tasks_batch_idx ON tasks(batch_id)"
+           ) do
       :ok
     end
   end
 
-  @spec create_batch(conn(), map(), [map()]) :: {:ok, map()} | {:error, term()}
-  def create_batch(conn, attrs, tasks) when is_map(attrs) and is_list(tasks) do
+  @spec create_batch(conn(), map(), [map()]) ::
+          {:ok, map()} | {:error, term()}
+  def create_batch(conn, attrs, tasks)
+      when is_map(attrs) and is_list(tasks) do
     batch_iri = Map.fetch!(attrs, :iri)
     now = now_iso8601()
 
@@ -97,7 +109,8 @@ defmodule Sheaf.TaskQueue.Store do
     end)
   end
 
-  @spec create_task(conn(), String.t(), map(), map()) :: {:ok, map()} | {:error, term()}
+  @spec create_task(conn(), String.t(), map(), map()) ::
+          {:ok, map()} | {:error, term()}
   def create_task(conn, batch_iri, attrs, task)
       when is_binary(batch_iri) and is_map(attrs) and is_map(task) do
     now = now_iso8601()
@@ -291,7 +304,8 @@ defmodule Sheaf.TaskQueue.Store do
     end)
   end
 
-  @spec fail_task(conn(), integer(), term(), keyword()) :: :ok | {:error, term()}
+  @spec fail_task(conn(), integer(), term(), keyword()) ::
+          :ok | {:error, term()}
   def fail_task(conn, task_id, reason, opts \\ []) do
     now = now_iso8601()
 
@@ -300,7 +314,9 @@ defmodule Sheaf.TaskQueue.Store do
         task = task_row(row)
         terminal? = task.attempts >= task.max_attempts
         status = if terminal?, do: "failed", else: "pending"
-        run_after = if terminal?, do: nil, else: backoff_time(task.attempts, opts)
+
+        run_after =
+          if terminal?, do: nil, else: backoff_time(task.attempts, opts)
 
         with :ok <-
                execute(

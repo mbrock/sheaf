@@ -66,8 +66,11 @@ defmodule Sheaf.ResourceResolver do
     root = Id.iri(id)
 
     case Sheaf.fetch_graph(root) do
-      {:ok, %Graph{} = graph} -> RDF.Data.include?(graph, {root, RDF.type(), DOC.Document})
-      _error -> false
+      {:ok, %Graph{} = graph} ->
+        RDF.Data.include?(graph, {root, RDF.type(), DOC.Document})
+
+      _error ->
+        false
     end
   end
 

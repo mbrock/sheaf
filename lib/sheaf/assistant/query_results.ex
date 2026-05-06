@@ -85,7 +85,8 @@ defmodule Sheaf.Assistant.QueryResults do
 
     with {:ok, result_iri} <- normalize_iri(id_or_iri),
          {:ok, metadata} <- metadata(result_iri, opts),
-         {:ok, rows} <- read_rows(metadata.path, metadata.columns, offset, limit) do
+         {:ok, rows} <-
+           read_rows(metadata.path, metadata.columns, offset, limit) do
       {:ok,
        metadata
        |> Map.take([:id, :iri, :file_iri, :sql, :columns, :row_count])
@@ -102,7 +103,8 @@ defmodule Sheaf.Assistant.QueryResults do
          {:ok, graph} <- workspace_graph(opts),
          %Description{} = result <- Graph.description(graph, result_iri),
          file_iri = first_term(result, DCAT.distribution()),
-         true <- match?(%RDF.IRI{}, file_iri) || {:error, :missing_result_file},
+         true <-
+           match?(%RDF.IRI{}, file_iri) || {:error, :missing_result_file},
          %Description{} = file <- Graph.description(graph, file_iri),
          {:ok, path} <- Files.local_path(file, opts) do
       {:ok,
@@ -133,7 +135,11 @@ defmodule Sheaf.Assistant.QueryResults do
             with :ok <- ensure_extension(conn, "parquet"),
                  :ok <- create_result_table(conn, columns),
                  :ok <- append_rows(conn, columns, rows),
-                 :ok <- exec(conn, "COPY query_result TO #{literal(path)} (FORMAT parquet)") do
+                 :ok <-
+                   exec(
+                     conn,
+                     "COPY query_result TO #{literal(path)} (FORMAT parquet)"
+                   ) do
               {:ok, path}
             end
           after
@@ -187,7 +193,8 @@ defmodule Sheaf.Assistant.QueryResults do
       try do
         with {:ok, conn} <- Duckdbex.connection(db) do
           try do
-            sql = "SELECT * FROM read_parquet(#{literal(path)}) LIMIT #{limit} OFFSET #{offset}"
+            sql =
+              "SELECT * FROM read_parquet(#{literal(path)}) LIMIT #{limit} OFFSET #{offset}"
 
             with :ok <- ensure_extension(conn, "parquet"),
                  {:ok, result} <- Duckdbex.query(conn, sql) do
@@ -328,7 +335,8 @@ defmodule Sheaf.Assistant.QueryResults do
         with :ok <- Sheaf.Repo.load_once({nil, nil, nil, graph_name}) do
           graph =
             Sheaf.Repo.ask(fn dataset ->
-              RDF.Dataset.graph(dataset, graph_name) || Graph.new(name: graph_name)
+              RDF.Dataset.graph(dataset, graph_name) ||
+                Graph.new(name: graph_name)
             end)
 
           {:ok, graph}
@@ -338,7 +346,8 @@ defmodule Sheaf.Assistant.QueryResults do
 
   defp fetch_limited(result, limit), do: fetch_limited(result, limit, [])
 
-  defp fetch_limited(_result, remaining, rows) when remaining <= 0, do: Enum.reverse(rows)
+  defp fetch_limited(_result, remaining, rows) when remaining <= 0,
+    do: Enum.reverse(rows)
 
   defp fetch_limited(result, remaining, rows) do
     case Duckdbex.fetch_chunk(result) do
@@ -347,7 +356,12 @@ defmodule Sheaf.Assistant.QueryResults do
 
       chunk ->
         {taken, _rest} = Enum.split(chunk, remaining)
-        fetch_limited(result, remaining - length(taken), Enum.reverse(taken) ++ rows)
+
+        fetch_limited(
+          result,
+          remaining - length(taken),
+          Enum.reverse(taken) ++ rows
+        )
     end
   end
 
@@ -384,7 +398,9 @@ defmodule Sheaf.Assistant.QueryResults do
   end
 
   defp add(graph, _subject, _predicate, nil), do: graph
-  defp add(graph, subject, predicate, object), do: Graph.add(graph, {subject, predicate, object})
+
+  defp add(graph, subject, predicate, object),
+    do: Graph.add(graph, {subject, predicate, object})
 
   defp cell(nil), do: nil
   defp cell(%DateTime{} = value), do: DateTime.to_iso8601(value)
@@ -406,9 +422,14 @@ defmodule Sheaf.Assistant.QueryResults do
     value = String.trim(value)
 
     cond do
-      value == "" -> {:error, :invalid_query_result_id}
-      String.starts_with?(value, ["http://", "https://"]) -> {:ok, RDF.iri(value)}
-      true -> {:ok, Sheaf.Id.iri(value)}
+      value == "" ->
+        {:error, :invalid_query_result_id}
+
+      String.starts_with?(value, ["http://", "https://"]) ->
+        {:ok, RDF.iri(value)}
+
+      true ->
+        {:ok, Sheaf.Id.iri(value)}
     end
   end
 
@@ -434,11 +455,13 @@ defmodule Sheaf.Assistant.QueryResults do
   end
 
   defp result_sql(graph, %Description{} = result) do
-    with %RDF.IRI{} = execution_iri <- first_term(result, PROV.wasGeneratedBy()),
+    with %RDF.IRI{} = execution_iri <-
+           first_term(result, PROV.wasGeneratedBy()),
          %Description{} = execution <- Graph.description(graph, execution_iri),
          %RDF.IRI{} = query_iri <- query_plan_iri(graph, execution),
          %Description{} = query <- Graph.description(graph, query_iri) do
-      first_value(query, DOC.sourceQuery()) || first_value(query, RDF.NS.RDF.value())
+      first_value(query, DOC.sourceQuery()) ||
+        first_value(query, RDF.NS.RDF.value())
     else
       _ -> nil
     end
@@ -450,7 +473,10 @@ defmodule Sheaf.Assistant.QueryResults do
     |> Enum.find(fn iri ->
       case Graph.description(graph, iri) do
         %Description{} = description ->
-          Description.include?(description, {RDF.type(), DOC.SpreadsheetQuery})
+          Description.include?(
+            description,
+            {RDF.type(), DOC.SpreadsheetQuery}
+          )
 
         nil ->
           false

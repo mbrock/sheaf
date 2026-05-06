@@ -12,7 +12,8 @@ defmodule Sheaf.Assistant.NotesTest do
     session = Id.iri("SESS01")
     published_at = ~U[2026-04-24 12:34:56Z]
 
-    text = "Compare [#BLK111](/b/BLK111) with [#BLK222](/b/BLK222) and #BLK333."
+    text =
+      "Compare [#BLK111](/b/BLK111) with [#BLK222](/b/BLK222) and #BLK333."
 
     assert {:ok, graph} =
              Notes.build(
@@ -38,17 +39,45 @@ defmodule Sheaf.Assistant.NotesTest do
              MapSet.new(~w[BLK111 BLK222 BLK333 BLK444])
 
     assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.AS.Note})
-    assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.DOC.ResearchNote})
+
+    assert RDF.Data.include?(
+             graph,
+             {note, RDF.type(), Sheaf.NS.DOC.ResearchNote}
+           )
+
     assert RDF.Data.include?(graph, {note, Sheaf.NS.AS.attributedTo(), agent})
     assert RDF.Data.include?(graph, {note, Sheaf.NS.AS.context(), session})
-    assert RDF.Data.include?(graph, {note, Sheaf.NS.AS.published(), published_at})
+
+    assert RDF.Data.include?(
+             graph,
+             {note, Sheaf.NS.AS.published(), published_at}
+           )
+
     assert RDF.Data.include?(graph, {note, Sheaf.NS.AS.content(), text})
-    assert RDF.Data.include?(graph, {note, RDF.NS.RDFS.label(), "Circulation comparison"})
+
+    assert RDF.Data.include?(
+             graph,
+             {note, RDF.NS.RDFS.label(), "Circulation comparison"}
+           )
+
     assert RDF.Data.include?(graph, {agent, RDF.type(), PROV.SoftwareAgent})
-    assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.DOC.AssistantConversation})
-    assert RDF.Data.include?(graph, {session, RDF.type(), Sheaf.NS.AS.OrderedCollection})
+
+    assert RDF.Data.include?(
+             graph,
+             {session, RDF.type(), Sheaf.NS.DOC.AssistantConversation}
+           )
+
+    assert RDF.Data.include?(
+             graph,
+             {session, RDF.type(), Sheaf.NS.AS.OrderedCollection}
+           )
+
     assert RDF.Data.include?(graph, {session, Sheaf.NS.AS.items(), note})
-    assert RDF.Data.include?(graph, {note, Sheaf.NS.DOC.mentions(), Id.iri("BLK444")})
+
+    assert RDF.Data.include?(
+             graph,
+             {note, Sheaf.NS.DOC.mentions(), Id.iri("BLK444")}
+           )
   end
 
   test "write persists a note graph in the workspace graph" do
@@ -76,7 +105,11 @@ defmodule Sheaf.Assistant.NotesTest do
     assert_receive {:persist, graph}
     assert graph.name == RDF.iri(Sheaf.Workspace.graph())
     assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.AS.Note})
-    assert RDF.Data.include?(graph, {note, Sheaf.NS.DOC.mentions(), Id.iri("ABC123")})
+
+    assert RDF.Data.include?(
+             graph,
+             {note, Sheaf.NS.DOC.mentions(), Id.iri("ABC123")}
+           )
   end
 
   test "descriptions returns note descriptions newest first" do
@@ -86,7 +119,10 @@ defmodule Sheaf.Assistant.NotesTest do
     session = Id.iri("SESS04")
 
     graph =
-      RDF.Graph.build older: older, newer: newer, agent: agent, session: session do
+      RDF.Graph.build older: older,
+                      newer: newer,
+                      agent: agent,
+                      session: session do
         @prefix Sheaf.NS.AS
         @prefix Sheaf.NS.DOC
         @prefix RDF.NS.RDFS
@@ -114,7 +150,13 @@ defmodule Sheaf.Assistant.NotesTest do
     assert RDF.Description.first(newer_description, RDF.NS.RDFS.label()) ==
              RDF.literal("Newer note")
 
-    assert MapSet.new(RDF.Description.get(newer_description, Sheaf.NS.DOC.mentions(), [])) ==
+    assert MapSet.new(
+             RDF.Description.get(
+               newer_description,
+               Sheaf.NS.DOC.mentions(),
+               []
+             )
+           ) ==
              MapSet.new([Id.iri("BLK200"), Id.iri("BLK201")])
   end
 
@@ -186,20 +228,49 @@ defmodule Sheaf.Assistant.NotesTest do
     graph = Notes.from_dataset(dataset)
 
     assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.AS.Note})
-    assert RDF.Data.include?(graph, {note, RDF.type(), Sheaf.NS.DOC.ResearchNote})
-    assert RDF.Data.include?(graph, {legacy_note, RDF.type(), Sheaf.NS.AS.Note})
-    refute RDF.Data.include?(graph, {legacy_note, RDF.type(), Sheaf.NS.DOC.ResearchNote})
-    assert RDF.Data.include?(graph, {agent, RDF.NS.RDFS.label(), "Paper reader"})
-    assert RDF.Data.include?(graph, {session, RDF.NS.RDFS.label(), "Research session SESS05"})
-    assert RDF.Data.include?(graph, {question, RDF.type(), Sheaf.NS.DOC.Message})
 
     assert RDF.Data.include?(
              graph,
-             {question, Sheaf.NS.AS.content(), "What changed in the appendix?"}
+             {note, RDF.type(), Sheaf.NS.DOC.ResearchNote}
+           )
+
+    assert RDF.Data.include?(
+             graph,
+             {legacy_note, RDF.type(), Sheaf.NS.AS.Note}
+           )
+
+    refute RDF.Data.include?(
+             graph,
+             {legacy_note, RDF.type(), Sheaf.NS.DOC.ResearchNote}
+           )
+
+    assert RDF.Data.include?(
+             graph,
+             {agent, RDF.NS.RDFS.label(), "Paper reader"}
+           )
+
+    assert RDF.Data.include?(
+             graph,
+             {session, RDF.NS.RDFS.label(), "Research session SESS05"}
+           )
+
+    assert RDF.Data.include?(
+             graph,
+             {question, RDF.type(), Sheaf.NS.DOC.Message}
+           )
+
+    assert RDF.Data.include?(
+             graph,
+             {question, Sheaf.NS.AS.content(),
+              "What changed in the appendix?"}
            )
 
     assert RDF.Data.include?(graph, {user, RDF.NS.RDFS.label(), "Reader"})
     assert RDF.Data.include?(graph, {reply, RDF.type(), Sheaf.NS.DOC.Message})
-    assert RDF.Data.include?(graph, {reply, Sheaf.NS.AS.inReplyTo(), question})
+
+    assert RDF.Data.include?(
+             graph,
+             {reply, Sheaf.NS.AS.inReplyTo(), question}
+           )
   end
 end

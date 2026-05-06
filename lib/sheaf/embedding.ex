@@ -73,7 +73,10 @@ defmodule Sheaf.Embedding do
     configured =
       :sheaf
       |> Application.get_env(__MODULE__, [])
-      |> Keyword.get(base_url_config_key(provider), default_base_url(provider))
+      |> Keyword.get(
+        base_url_config_key(provider),
+        default_base_url(provider)
+      )
 
     Keyword.get(opts, :base_url, configured)
   end
@@ -114,19 +117,24 @@ defmodule Sheaf.Embedding do
   """
   @spec embed_document(String.t(), String.t() | nil, keyword()) :: response()
   def embed_document(text, title \\ nil, opts \\ []) when is_binary(text) do
-    embed_text(text, Keyword.merge(opts, task: :search, input_role: :document, title: title))
+    embed_text(
+      text,
+      Keyword.merge(opts, task: :search, input_role: :document, title: title)
+    )
   end
 
   @doc """
   Returns the exact text sent to Gemini after task/profile formatting.
   """
   @spec prepared_text(String.t(), keyword()) :: String.t()
-  def prepared_text(text, opts \\ []) when is_binary(text), do: prepare_text(text, opts).text
+  def prepared_text(text, opts \\ []) when is_binary(text),
+    do: prepare_text(text, opts).text
 
   @doc """
   Embeds several texts as separate embeddings with `batchEmbedContents`.
   """
-  @spec embed_texts([String.t()], keyword()) :: {:ok, [embedding()]} | {:error, term()}
+  @spec embed_texts([String.t()], keyword()) ::
+          {:ok, [embedding()]} | {:error, term()}
   def embed_texts(texts, opts \\ []) when is_list(texts) do
     texts
     |> Enum.map(&%{text: &1})
@@ -138,7 +146,8 @@ defmodule Sheaf.Embedding do
 
   Each document must contain `:text` and may contain `:title`.
   """
-  @spec embed_documents([map()], keyword()) :: {:ok, [embedding()]} | {:error, term()}
+  @spec embed_documents([map()], keyword()) ::
+          {:ok, [embedding()]} | {:error, term()}
   def embed_documents(documents, opts \\ []) when is_list(documents) do
     batch_size = Keyword.get(opts, :batch_size, 32)
 
@@ -175,7 +184,8 @@ defmodule Sheaf.Embedding do
   @doc """
   Embeds a batch of texts/documents with `batchEmbedContents`.
   """
-  @spec embed_text_batch([map()], keyword()) :: {:ok, [embedding()]} | {:error, term()}
+  @spec embed_text_batch([map()], keyword()) ::
+          {:ok, [embedding()]} | {:error, term()}
   def embed_text_batch(documents, opts \\ []) when is_list(documents) do
     embed_text_batch_with_retry(documents, opts, 0)
   end
@@ -187,12 +197,15 @@ defmodule Sheaf.Embedding do
   endpoint. By default it uses file-backed JSONL so large output sets are
   downloaded as JSONL instead of being returned in one large operation response.
   """
-  @spec async_batch_embed_documents([map()], keyword()) :: {:ok, [embedding()]} | {:error, term()}
-  def async_batch_embed_documents(documents, opts \\ []) when is_list(documents) do
+  @spec async_batch_embed_documents([map()], keyword()) ::
+          {:ok, [embedding()]} | {:error, term()}
+  def async_batch_embed_documents(documents, opts \\ [])
+      when is_list(documents) do
     with {:ok, batch} <- create_async_embed_batch(documents, opts),
          {:ok, completed} <- wait_for_batch(batch.name, opts),
          {:ok, responses} <- batch_embed_responses(completed, opts),
-         {:ok, embeddings} <- normalize_async_embed_responses(responses, model(opts)) do
+         {:ok, embeddings} <-
+           normalize_async_embed_responses(responses, model(opts)) do
       {:ok, embeddings}
     end
   end
@@ -200,8 +213,10 @@ defmodule Sheaf.Embedding do
   @doc """
   Creates an asynchronous Gemini embedding batch job.
   """
-  @spec create_async_embed_batch([map()], keyword()) :: {:ok, map()} | {:error, term()}
-  def create_async_embed_batch(documents, opts \\ []) when is_list(documents) do
+  @spec create_async_embed_batch([map()], keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def create_async_embed_batch(documents, opts \\ [])
+      when is_list(documents) do
     if provider(opts) == :gemini do
       create_gemini_async_embed_batch(documents, opts)
     else
@@ -212,7 +227,8 @@ defmodule Sheaf.Embedding do
   defp create_gemini_async_embed_batch(documents, opts) do
     with {:ok, api_key} <- api_key(opts),
          {:ok, input_config} <- async_batch_input_config(documents, opts),
-         {:ok, body} <- post_async_embed_batch(api_key, input_config, documents, opts),
+         {:ok, body} <-
+           post_async_embed_batch(api_key, input_config, documents, opts),
          {:ok, batch} <- normalize_batch(body) do
       {:ok, batch}
     end
@@ -240,7 +256,8 @@ defmodule Sheaf.Embedding do
   @doc """
   Polls a Gemini batch operation until it reaches a terminal state.
   """
-  @spec wait_for_batch(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  @spec wait_for_batch(String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
   def wait_for_batch(name, opts \\ []) when is_binary(name) do
     deadline =
       Keyword.get_lazy(opts, :poll_timeout_ms, fn -> :timer.hours(24) end)
@@ -257,7 +274,8 @@ defmodule Sheaf.Embedding do
   def collect_async_embed_batch(name, opts \\ []) when is_binary(name) do
     with {:ok, completed} <- wait_for_batch(name, opts),
          {:ok, responses} <- batch_embed_responses(completed, opts),
-         {:ok, embeddings} <- normalize_async_embed_responses(responses, model(opts)) do
+         {:ok, embeddings} <-
+           normalize_async_embed_responses(responses, model(opts)) do
       {:ok, embeddings}
     end
   end
@@ -269,7 +287,10 @@ defmodule Sheaf.Embedding do
     %{content: %{parts: parts}}
     |> maybe_put(:taskType, task_type(opts))
     |> maybe_put(:title, request_title(opts))
-    |> maybe_put(:output_dimensionality, Keyword.get(opts, :output_dimensionality))
+    |> maybe_put(
+      :output_dimensionality,
+      Keyword.get(opts, :output_dimensionality)
+    )
   end
 
   @doc false
@@ -329,7 +350,10 @@ defmodule Sheaf.Embedding do
     case provider(opts) do
       :gemini ->
         client(api_key, opts)
-        |> Req.post(url: embedding_path(model(opts)), json: request_body(parts, opts))
+        |> Req.post(
+          url: embedding_path(model(opts)),
+          json: request_body(parts, opts)
+        )
         |> handle_response()
 
       :openai ->
@@ -340,7 +364,10 @@ defmodule Sheaf.Embedding do
           |> Enum.join("\n")
 
         client(api_key, opts)
-        |> Req.post(url: "/embeddings", json: openai_embedding_body(text, opts))
+        |> Req.post(
+          url: "/embeddings",
+          json: openai_embedding_body(text, opts)
+        )
         |> handle_response()
     end
   end
@@ -357,7 +384,10 @@ defmodule Sheaf.Embedding do
 
       :openai ->
         client(api_key, opts)
-        |> Req.post(url: "/embeddings", json: openai_embedding_batch_body(documents, opts))
+        |> Req.post(
+          url: "/embeddings",
+          json: openai_embedding_batch_body(documents, opts)
+        )
         |> handle_response()
     end
   end
@@ -386,23 +416,26 @@ defmodule Sheaf.Embedding do
     [
       base_url: base_url(opts),
       headers: auth_headers(provider(opts), api_key),
-      receive_timeout: Keyword.get(opts, :receive_timeout, @default_receive_timeout),
+      receive_timeout:
+        Keyword.get(opts, :receive_timeout, @default_receive_timeout),
       http_errors: :return
     ]
     |> Keyword.merge(req_options)
     |> Req.new()
   end
 
-  defp handle_response({:ok, %{status: status, body: body}}) when status in 200..299,
-    do: {:ok, body}
+  defp handle_response({:ok, %{status: status, body: body}})
+       when status in 200..299,
+       do: {:ok, body}
 
   defp handle_response({:ok, %{status: status, body: body}}),
     do: {:error, %{status: status, body: body}}
 
   defp handle_response({:error, reason}), do: {:error, reason}
 
-  defp extract_embeddings(%{"embeddings" => embeddings}) when is_list(embeddings),
-    do: {:ok, embeddings}
+  defp extract_embeddings(%{"embeddings" => embeddings})
+       when is_list(embeddings),
+       do: {:ok, embeddings}
 
   defp extract_embeddings(%{"embedding" => embedding}) when is_map(embedding),
     do: {:ok, [embedding]}
@@ -413,7 +446,8 @@ defmodule Sheaf.Embedding do
 
   defp extract_embeddings(body), do: {:error, {:missing_embedding, body}}
 
-  defp normalize_embedding(%{"values" => values}, model) when is_list(values) do
+  defp normalize_embedding(%{"values" => values}, model)
+       when is_list(values) do
     values = Enum.map(values, &(&1 * 1.0))
     {:ok, %{values: values, dimensions: length(values), model: model}}
   end
@@ -423,7 +457,8 @@ defmodule Sheaf.Embedding do
     {:ok, %{values: values, dimensions: length(values), model: model}}
   end
 
-  defp normalize_embedding(embedding, _model), do: {:error, {:missing_values, embedding}}
+  defp normalize_embedding(embedding, _model),
+    do: {:error, {:missing_values, embedding}}
 
   defp normalize_embeddings(embeddings, model) when is_list(embeddings) do
     embeddings
@@ -473,13 +508,17 @@ defmodule Sheaf.Embedding do
   end
 
   defp response_payload(%{"response" => response}), do: response
-  defp response_payload(%{"output" => %{"response" => response}}), do: response
+
+  defp response_payload(%{"output" => %{"response" => response}}),
+    do: response
+
   defp response_payload(response), do: response
 
   defp async_batch_input_config(documents, opts) do
     case Keyword.get(opts, :batch_input, :file) do
       mode when mode in [:inline, "inline"] ->
-        {:ok, %{requests: %{requests: inlined_embed_requests(documents, opts)}}}
+        {:ok,
+         %{requests: %{requests: inlined_embed_requests(documents, opts)}}}
 
       mode when mode in [:file, "file"] ->
         with {:ok, file} <- upload_async_batch_file(documents, opts) do
@@ -538,13 +577,17 @@ defmodule Sheaf.Embedding do
         {"x-goog-api-key", api_key},
         {"X-Goog-Upload-Protocol", "resumable"},
         {"X-Goog-Upload-Command", "start"},
-        {"X-Goog-Upload-Header-Content-Length", Integer.to_string(byte_size(jsonl))},
+        {"X-Goog-Upload-Header-Content-Length",
+         Integer.to_string(byte_size(jsonl))},
         {"X-Goog-Upload-Header-Content-Type", "application/jsonl"},
         {"Content-Type", "application/json"}
       ],
-      json: %{file: %{displayName: display_name, mimeType: "application/jsonl"}},
+      json: %{
+        file: %{displayName: display_name, mimeType: "application/jsonl"}
+      },
       http_errors: :return,
-      receive_timeout: Keyword.get(opts, :receive_timeout, @default_receive_timeout)
+      receive_timeout:
+        Keyword.get(opts, :receive_timeout, @default_receive_timeout)
     )
     |> case do
       {:ok, %{status: status, headers: headers}} when status in 200..299 ->
@@ -571,7 +614,8 @@ defmodule Sheaf.Embedding do
       ],
       body: jsonl,
       http_errors: :return,
-      receive_timeout: Keyword.get(opts, :receive_timeout, @default_receive_timeout)
+      receive_timeout:
+        Keyword.get(opts, :receive_timeout, @default_receive_timeout)
     )
     |> handle_response()
   end
@@ -580,23 +624,36 @@ defmodule Sheaf.Embedding do
     {:ok, %{name: name, body: file}}
   end
 
-  defp normalize_uploaded_file(body), do: {:error, {:invalid_file_upload_response, body}}
+  defp normalize_uploaded_file(body),
+    do: {:error, {:invalid_file_upload_response, body}}
 
   defp wait_for_batch(name, opts, deadline, previous_state) do
     case get_batch(name, opts) do
       {:ok, %{state: state} = batch} when state in @terminal_batch_states ->
-        Logger.info("Gemini embedding batch #{name}: #{state} #{inspect(batch.stats)}")
+        Logger.info(
+          "Gemini embedding batch #{name}: #{state} #{inspect(batch.stats)}"
+        )
+
         terminal_batch_result(batch)
 
       {:ok, %{state: state} = batch} ->
         if state != previous_state do
-          Logger.info("Gemini embedding batch #{name}: #{state} #{inspect(batch.stats)}")
+          Logger.info(
+            "Gemini embedding batch #{name}: #{state} #{inspect(batch.stats)}"
+          )
         end
 
         if :erlang.monotonic_time(:millisecond) >= deadline do
           {:error, {:batch_poll_timeout, batch}}
         else
-          Process.sleep(Keyword.get(opts, :poll_interval_ms, @default_batch_poll_interval_ms))
+          Process.sleep(
+            Keyword.get(
+              opts,
+              :poll_interval_ms,
+              @default_batch_poll_interval_ms
+            )
+          )
+
           wait_for_batch(name, opts, deadline, state)
         end
 
@@ -605,7 +662,9 @@ defmodule Sheaf.Embedding do
     end
   end
 
-  defp terminal_batch_result(%{state: "BATCH_STATE_SUCCEEDED"} = batch), do: {:ok, batch}
+  defp terminal_batch_result(%{state: "BATCH_STATE_SUCCEEDED"} = batch),
+    do: {:ok, batch}
+
   defp terminal_batch_result(batch), do: {:error, {:batch_failed, batch}}
 
   defp batch_embed_responses(%{body: body}, opts) do
@@ -624,8 +683,10 @@ defmodule Sheaf.Embedding do
   end
 
   defp batch_output(body) do
-    body["output"] || get_in(body, ["metadata", "output"]) || get_in(body, ["response", "output"]) ||
-      body["dest"] || get_in(body, ["metadata", "dest"]) || get_in(body, ["response", "dest"])
+    body["output"] || get_in(body, ["metadata", "output"]) ||
+      get_in(body, ["response", "output"]) ||
+      body["dest"] || get_in(body, ["metadata", "dest"]) ||
+      get_in(body, ["response", "dest"])
   end
 
   defp inlined_embed_responses(nil), do: nil
@@ -643,7 +704,8 @@ defmodule Sheaf.Embedding do
            Req.get(download_file_url(file_name, opts),
              headers: [{"x-goog-api-key", api_key}],
              http_errors: :return,
-             receive_timeout: Keyword.get(opts, :receive_timeout, @default_receive_timeout)
+             receive_timeout:
+               Keyword.get(opts, :receive_timeout, @default_receive_timeout)
            )
            |> handle_response() do
       parse_jsonl_responses(body)
@@ -655,8 +717,11 @@ defmodule Sheaf.Embedding do
     |> String.split("\n", trim: true)
     |> Enum.reduce_while({:ok, []}, fn line, {:ok, acc} ->
       case Jason.decode(line) do
-        {:ok, response} -> {:cont, {:ok, [response | acc]}}
-        {:error, reason} -> {:halt, {:error, {:invalid_jsonl_response, reason, line}}}
+        {:ok, response} ->
+          {:cont, {:ok, [response | acc]}}
+
+        {:error, reason} ->
+          {:halt, {:error, {:invalid_jsonl_response, reason, line}}}
       end
     end)
     |> case do
@@ -681,7 +746,8 @@ defmodule Sheaf.Embedding do
 
   defp batch_state(body),
     do:
-      body["state"] || get_in(body, ["metadata", "state"]) || get_in(body, ["response", "state"])
+      body["state"] || get_in(body, ["metadata", "state"]) ||
+        get_in(body, ["response", "state"])
 
   defp batch_stats(body),
     do:
@@ -770,7 +836,13 @@ defmodule Sheaf.Embedding do
   defp normalize_task(nil), do: nil
 
   defp normalize_task(task)
-       when task in [:search, :semantic_similarity, :classification, :clustering], do: task
+       when task in [
+              :search,
+              :semantic_similarity,
+              :classification,
+              :clustering
+            ],
+       do: task
 
   defp normalize_task("search"), do: :search
   defp normalize_task("semantic_similarity"), do: :semantic_similarity
@@ -783,7 +855,9 @@ defmodule Sheaf.Embedding do
   defp normalize_input_role("document"), do: :document
 
   defp gemini_embedding_2?(model),
-    do: model |> String.trim() |> String.trim_leading("models/") == "gemini-embedding-2"
+    do:
+      model |> String.trim() |> String.trim_leading("models/") ==
+        "gemini-embedding-2"
 
   defp api_key(opts) do
     provider = provider(opts)
@@ -808,8 +882,12 @@ defmodule Sheaf.Embedding do
   end
 
   defp embedding_path(model), do: "/#{model_resource(model)}:embedContent"
-  defp batch_embedding_path(model), do: "/#{model_resource(model)}:batchEmbedContents"
-  defp async_batch_embedding_path(model), do: "/#{model_resource(model)}:asyncBatchEmbedContent"
+
+  defp batch_embedding_path(model),
+    do: "/#{model_resource(model)}:batchEmbedContents"
+
+  defp async_batch_embedding_path(model),
+    do: "/#{model_resource(model)}:asyncBatchEmbedContent"
 
   defp openai_embedding_body(text, opts) do
     %{
@@ -834,7 +912,9 @@ defmodule Sheaf.Embedding do
   end
 
   defp auth_headers(:gemini, api_key), do: [{"x-goog-api-key", api_key}]
-  defp auth_headers(:openai, api_key), do: [{"authorization", "Bearer #{api_key}"}]
+
+  defp auth_headers(:openai, api_key),
+    do: [{"authorization", "Bearer #{api_key}"}]
 
   defp normalize_provider(nil, model), do: provider_from_model(model)
   defp normalize_provider(:gemini, _model), do: :gemini
@@ -924,14 +1004,18 @@ defmodule Sheaf.Embedding do
   defp document_text(%{"text" => text}) when is_binary(text), do: text
 
   defp document_key(document, index) do
-    Map.get(document, :key) || Map.get(document, "key") || Integer.to_string(index)
+    Map.get(document, :key) || Map.get(document, "key") ||
+      Integer.to_string(index)
   end
 
-  defp retryable?(%{status: status}) when status in [408, 409, 425, 429], do: true
+  defp retryable?(%{status: status}) when status in [408, 409, 425, 429],
+    do: true
+
   defp retryable?(%{status: status}) when status in 500..599, do: true
   defp retryable?(_reason), do: false
 
-  defp max_retries(opts), do: Keyword.get(opts, :max_retries, @default_max_retries)
+  defp max_retries(opts),
+    do: Keyword.get(opts, :max_retries, @default_max_retries)
 
   defp sleep_before_retry(reason, attempt, opts) do
     delay_ms = retry_delay_ms(reason, attempt, opts)
@@ -952,7 +1036,10 @@ defmodule Sheaf.Embedding do
 
   defp exponential_retry_delay_ms(attempt, opts) do
     base = Keyword.get(opts, :retry_base_ms, 500)
-    (base * :math.pow(2, attempt)) |> round() |> Kernel.+(retry_jitter_ms(opts))
+
+    (base * :math.pow(2, attempt))
+    |> round()
+    |> Kernel.+(retry_jitter_ms(opts))
   end
 
   defp retry_jitter_ms(opts) do
@@ -991,8 +1078,11 @@ defmodule Sheaf.Embedding do
     end
   end
 
-  defp retry_summary(%{status: status, body: %{"error" => %{"status" => error_status}}}),
-    do: "HTTP #{status} #{error_status}"
+  defp retry_summary(%{
+         status: status,
+         body: %{"error" => %{"status" => error_status}}
+       }),
+       do: "HTTP #{status} #{error_status}"
 
   defp retry_summary(%{status: status}), do: "HTTP #{status}"
   defp retry_summary(reason), do: inspect(reason)

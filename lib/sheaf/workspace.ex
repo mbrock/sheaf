@@ -28,13 +28,15 @@ defmodule Sheaf.Workspace do
   @doc """
   Records whether a document is excluded from the active workspace corpus.
   """
-  def set_document_excluded(document_id, excluded?) when is_binary(document_id) do
+  def set_document_excluded(document_id, excluded?)
+      when is_binary(document_id) do
     workspace = default()
     document = Id.iri(document_id)
     mode = if excluded?, do: :assert, else: :retract
 
     Sheaf.Repo.transact([
-      {mode, Graph.new({workspace, DOC.excludesDocument(), document}, name: @graph)}
+      {mode,
+       Graph.new({workspace, DOC.excludesDocument(), document}, name: @graph)}
     ])
   end
 
@@ -48,9 +50,15 @@ defmodule Sheaf.Workspace do
 
     changes =
       Enum.map(previous, fn owner ->
-        {:retract, Graph.new({workspace, DOC.hasWorkspaceOwner(), owner}, name: @graph)}
+        {:retract,
+         Graph.new({workspace, DOC.hasWorkspaceOwner(), owner}, name: @graph)}
       end) ++
-        [{:assert, Graph.new({workspace, DOC.hasWorkspaceOwner(), person}, name: @graph)}]
+        [
+          {:assert,
+           Graph.new({workspace, DOC.hasWorkspaceOwner(), person},
+             name: @graph
+           )}
+        ]
 
     Sheaf.Repo.transact(changes)
   end
@@ -89,7 +97,9 @@ defmodule Sheaf.Workspace do
     retractions =
       Enum.map(previous, fn old_instructions ->
         {:retract,
-         Graph.new({workspace, DOC.assistantInstructions(), old_instructions}, name: @graph)}
+         Graph.new({workspace, DOC.assistantInstructions(), old_instructions},
+           name: @graph
+         )}
       end)
 
     assertions =
@@ -100,7 +110,9 @@ defmodule Sheaf.Workspace do
         instructions ->
           [
             {:assert,
-             Graph.new({workspace, DOC.assistantInstructions(), RDF.literal(instructions)},
+             Graph.new(
+               {workspace, DOC.assistantInstructions(),
+                RDF.literal(instructions)},
                name: @graph
              )}
           ]

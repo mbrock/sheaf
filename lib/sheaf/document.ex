@@ -39,8 +39,11 @@ defmodule Sheaf.Document do
 
   def text_chunks!(document_iri) do
     case text_chunks(document_iri) do
-      {:ok, chunks} -> chunks
-      {:error, reason} -> raise "could not fetch document text chunks: #{inspect(reason)}"
+      {:ok, chunks} ->
+        chunks
+
+      {:error, reason} ->
+        raise "could not fetch document text chunks: #{inspect(reason)}"
     end
   end
 
@@ -66,8 +69,11 @@ defmodule Sheaf.Document do
 
   def text_preview!(document_iri, opts \\ []) do
     case text_preview(document_iri, opts) do
-      {:ok, preview} -> preview
-      {:error, reason} -> raise "could not fetch document text preview: #{inspect(reason)}"
+      {:ok, preview} ->
+        preview
+
+      {:error, reason} ->
+        raise "could not fetch document text preview: #{inspect(reason)}"
     end
   end
 
@@ -114,8 +120,11 @@ defmodule Sheaf.Document do
 
   def doi_candidates!(document_iri, opts \\ []) do
     case doi_candidates(document_iri, opts) do
-      {:ok, candidates} -> candidates
-      {:error, reason} -> raise "could not fetch DOI candidates: #{inspect(reason)}"
+      {:ok, candidates} ->
+        candidates
+
+      {:error, reason} ->
+        raise "could not fetch DOI candidates: #{inspect(reason)}"
     end
   end
 
@@ -259,7 +268,9 @@ defmodule Sheaf.Document do
 
   defp text_chunks_for(%Graph{} = graph, iri) do
     chunk = text_chunk(graph, iri)
-    child_chunks = graph |> children(iri) |> Enum.flat_map(&text_chunks_for(graph, &1))
+
+    child_chunks =
+      graph |> children(iri) |> Enum.flat_map(&text_chunks_for(graph, &1))
 
     case chunk do
       nil -> child_chunks
@@ -317,21 +328,31 @@ defmodule Sheaf.Document do
       first_page = Enum.min(pages)
       last_page = Enum.max(pages)
 
-      first_page_set = MapSet.new(first_page..(first_page + max(first_pages - 1, 0)))
+      first_page_set =
+        MapSet.new(first_page..(first_page + max(first_pages - 1, 0)))
 
       last_page_set =
-        page_range_set(max(first_page, last_page - max(last_pages - 1, 0)), last_page, last_pages)
+        page_range_set(
+          max(first_page, last_page - max(last_pages - 1, 0)),
+          last_page,
+          last_pages
+        )
 
       selected_pages = MapSet.union(first_page_set, last_page_set)
 
-      Enum.filter(page_chunks, &MapSet.member?(selected_pages, &1.source_page))
+      Enum.filter(
+        page_chunks,
+        &MapSet.member?(selected_pages, &1.source_page)
+      )
     end
   end
 
   defp take_last(_chunks, count) when count in [nil, 0], do: []
   defp take_last(chunks, count), do: Enum.take(chunks, -count)
 
-  defp page_range_set(_first, _last, count) when count in [nil, 0], do: MapSet.new()
+  defp page_range_set(_first, _last, count) when count in [nil, 0],
+    do: MapSet.new()
+
   defp page_range_set(first, last, _count), do: MapSet.new(first..last)
 
   defp active_paragraph_iri(%Graph{} = graph, iri) do
@@ -447,13 +468,17 @@ defmodule Sheaf.Document do
       Regex.replace(
         ~r/<sup data-footnote="([^"]+)"><\/sup>/,
         markup,
-        fn _match, value -> ~s(<span data-footnote="#{value}">[#{value}]</span>) end
+        fn _match, value ->
+          ~s(<span data-footnote="#{value}">[#{value}]</span>)
+        end
       )
 
     Regex.replace(
       ~r/<sup data-footnote="([^"]+)">(.+?)<\/sup>/,
       markup,
-      fn _match, value, text -> ~s(<span data-footnote="#{value}">#{text}</span>) end
+      fn _match, value, text ->
+        ~s(<span data-footnote="#{value}">#{text}</span>)
+      end
     )
   end
 
@@ -480,7 +505,8 @@ defmodule Sheaf.Document do
   end
 
   defp sanitize_tag(tag) do
-    with [_, closing, name, attrs] <- Regex.run(~r/^<\s*(\/?)\s*([a-zA-Z0-9]+)([^>]*)>$/, tag),
+    with [_, closing, name, attrs] <-
+           Regex.run(~r/^<\s*(\/?)\s*([a-zA-Z0-9]+)([^>]*)>$/, tag),
          name = String.downcase(name),
          true <- name in @inline_markup_tags do
       cond do

@@ -32,7 +32,10 @@ defmodule SheafWeb.AssistantMarkdownTest do
       """)
 
     assert html =~ ~s(<section class="flex justify-center">)
-    assert html =~ ~s(<table class="border-separate border-spacing-0 text-left" id="data-table-)
+
+    assert html =~
+             ~s(<table class="border-separate border-spacing-0 text-left" id="data-table-)
+
     assert html =~ ~s(phx-hook="DataTable")
     assert html =~ ~s(data-table-heading-label)
     assert html =~ ~s(title="Name")
@@ -54,7 +57,10 @@ defmodule SheafWeb.AssistantMarkdownTest do
     refute html =~ "<script>alert(1)</script>"
     assert html =~ "&lt;b&gt;Bold&lt;/b&gt;"
     refute html =~ "<b>Bold</b>"
-    assert html =~ ~s(<table class="border-separate border-spacing-0 text-left" id="data-table-)
+
+    assert html =~
+             ~s(<table class="border-separate border-spacing-0 text-left" id="data-table-)
+
     assert html =~ ~s(phx-hook="DataTable")
   end
 

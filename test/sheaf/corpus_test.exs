@@ -7,9 +7,10 @@ defmodule Sheaf.CorpusTest do
   alias Sheaf.NS.DOC
 
   @tag :tmp_dir
-  test "find_document prefers the containing document graph over workspace metadata", %{
-    tmp_dir: tmp_dir
-  } do
+  test "find_document prefers the containing document graph over workspace metadata",
+       %{
+         tmp_dir: tmp_dir
+       } do
     path = Path.join(tmp_dir, "repo.sqlite3")
     document = Sheaf.Id.iri("DOC001")
     section = Sheaf.Id.iri("SEC001")
@@ -27,7 +28,8 @@ defmodule Sheaf.CorpusTest do
     metadata =
       RDF.Graph.new(
         [
-          {document, RDFS.label(), RDF.literal("Metadata-side document label")}
+          {document, RDFS.label(),
+           RDF.literal("Metadata-side document label")}
         ],
         name: metadata_graph
       )

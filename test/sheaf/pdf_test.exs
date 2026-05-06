@@ -45,7 +45,11 @@ defmodule Sheaf.PDFTest do
 
     assert Document.kind(result.graph, result.document) == :paper
     assert Document.title(result.graph, result.document) == "Example Paper"
-    assert rdf_value(Graph.description(result.graph, result.document), BIBO.numPages()) == 1
+
+    assert rdf_value(
+             Graph.description(result.graph, result.document),
+             BIBO.numPages()
+           ) == 1
 
     [intro] = Document.children(result.graph, result.document)
     assert Document.block_type(result.graph, intro) == :section
@@ -58,11 +62,15 @@ defmodule Sheaf.PDFTest do
     [picture] = Document.children(result.graph, background)
     assert Document.block_type(result.graph, picture) == :extracted
     assert Document.source_page(result.graph, picture) == 0
-    assert Document.source_html(result.graph, picture) =~ "data:image/png;base64,QUJD"
+
+    assert Document.source_html(result.graph, picture) =~
+             "data:image/png;base64,QUJD"
 
     picture_description = Graph.description(result.graph, picture)
 
-    assert rdf_value(picture_description, DOC.sourceKey()) == "/page/0/Picture/2"
+    assert rdf_value(picture_description, DOC.sourceKey()) ==
+             "/page/0/Picture/2"
+
     assert rdf_value(picture_description, DOC.sourceBlockType()) == "Picture"
   end
 
@@ -87,7 +95,12 @@ defmodule Sheaf.PDFTest do
     file_description = Graph.description(result.graph, file)
 
     assert RDF.Data.include?(result.graph, {document, DOC.sourceFile(), file})
-    assert Description.include?(file_description, {RDF.type(), FABIO.ComputerFile})
+
+    assert Description.include?(
+             file_description,
+             {RDF.type(), FABIO.ComputerFile}
+           )
+
     assert rdf_value(file_description, DOC.sha256()) == "abc123"
     assert rdf_value(file_description, DOC.mimeType()) == "application/pdf"
     assert rdf_value(file_description, DOC.byteSize()) == 123
@@ -117,7 +130,12 @@ defmodule Sheaf.PDFTest do
     file_description = Graph.description(result.graph, file)
 
     assert RDF.Data.include?(result.graph, {paper, DOC.sourceFile(), file})
-    refute Description.include?(file_description, {RDF.type(), FABIO.ComputerFile})
+
+    refute Description.include?(
+             file_description,
+             {RDF.type(), FABIO.ComputerFile}
+           )
+
     refute Description.include?(file_description, {DOC.sha256(), "abc123"})
   end
 
@@ -132,7 +150,10 @@ defmodule Sheaf.PDFTest do
         mint: mint(~w(DOC111))
       )
 
-    assert RDF.Data.include?(result.graph, {result.document, DOC.sourceFile(), file})
+    assert RDF.Data.include?(
+             result.graph,
+             {result.document, DOC.sourceFile(), file}
+           )
   end
 
   test "does not invent a title when the extracted document has none" do
@@ -147,7 +168,12 @@ defmodule Sheaf.PDFTest do
     description = Graph.description(result.graph, result.document)
 
     assert result.title == nil
-    refute Description.include?(description, {RDF.NS.RDFS.label(), "Untitled paper"})
+
+    refute Description.include?(
+             description,
+             {RDF.NS.RDFS.label(), "Untitled paper"}
+           )
+
     refute Description.first(description, RDF.NS.RDFS.label())
   end
 

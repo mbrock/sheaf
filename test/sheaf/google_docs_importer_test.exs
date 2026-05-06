@@ -18,13 +18,25 @@ defmodule Sheaf.GoogleDocsImporterTest do
 
     subgraph = GoogleDocsImporter.section_subgraph(graph, old_section)
 
-    assert RDF.Data.include?(subgraph, {old_section, RDFS.label(), RDF.literal("Old chapter")})
-    assert RDF.Data.include?(subgraph, {old_paragraph, DOC.paragraph(), old_revision})
-    assert RDF.Data.include?(subgraph, {old_revision, DOC.text(), RDF.literal("Old paragraph.")})
+    assert RDF.Data.include?(
+             subgraph,
+             {old_section, RDFS.label(), RDF.literal("Old chapter")}
+           )
+
+    assert RDF.Data.include?(
+             subgraph,
+             {old_paragraph, DOC.paragraph(), old_revision}
+           )
+
+    assert RDF.Data.include?(
+             subgraph,
+             {old_revision, DOC.text(), RDF.literal("Old paragraph.")}
+           )
 
     refute RDF.Data.include?(
              subgraph,
-             {RDF.iri("https://example.com/sheaf/DOC"), RDFS.label(), RDF.literal("Document")}
+             {RDF.iri("https://example.com/sheaf/DOC"), RDFS.label(),
+              RDF.literal("Document")}
            )
   end
 
@@ -56,7 +68,11 @@ defmodule Sheaf.GoogleDocsImporterTest do
 
     assert plan.old_children == [old_section, keep_section]
     assert plan.new_children == [new_section, keep_section]
-    assert Sheaf.Document.children(plan.assert, document) == [new_section, keep_section]
+
+    assert Sheaf.Document.children(plan.assert, document) == [
+             new_section,
+             keep_section
+           ]
 
     assert RDF.Data.include?(
              plan.assert,
@@ -98,14 +114,17 @@ defmodule Sheaf.GoogleDocsImporterTest do
       end
       |> Graph.change_name(RDF.iri(Sheaf.Repo.workspace_graph()))
 
-    assert RDF.Graph.name(plan.provenance) == RDF.iri(Sheaf.Repo.workspace_graph())
+    assert RDF.Graph.name(plan.provenance) ==
+             RDF.iri(Sheaf.Repo.workspace_graph())
+
     assert RDF.Graph.isomorphic?(plan.provenance, expected_provenance)
   end
 
   test "finds sections by exact title" do
     %{graph: graph, old_section: old_section} = fixture_graph()
 
-    assert {:ok, ^old_section} = GoogleDocsImporter.section_iri_by_title(graph, "Old chapter")
+    assert {:ok, ^old_section} =
+             GoogleDocsImporter.section_iri_by_title(graph, "Old chapter")
 
     assert {:error, {:section_not_found, "Missing"}} =
              GoogleDocsImporter.section_iri_by_title(graph, "Missing")
@@ -144,13 +163,16 @@ defmodule Sheaf.GoogleDocsImporterTest do
       |> then(fn graph ->
         RDF.list([old_section, keep_section], graph: graph, head: root_list).graph
       end)
-      |> then(fn graph -> RDF.list([old_paragraph], graph: graph, head: old_list).graph end)
+      |> then(fn graph ->
+        RDF.list([old_paragraph], graph: graph, head: old_list).graph
+      end)
 
     new_graph =
       Graph.new(
         [
           {document, RDFS.label(), RDF.literal("Document")},
-          {document, DOC.children(), RDF.iri("https://example.com/sheaf/NEWROOTLIST")},
+          {document, DOC.children(),
+           RDF.iri("https://example.com/sheaf/NEWROOTLIST")},
           {new_section, RDF.type(), DOC.Section},
           {new_section, RDFS.label(), RDF.literal("New chapter")},
           {new_section, DOC.children(), new_list},
@@ -167,7 +189,9 @@ defmodule Sheaf.GoogleDocsImporterTest do
           head: RDF.iri("https://example.com/sheaf/NEWROOTLIST")
         ).graph
       end)
-      |> then(fn graph -> RDF.list([new_paragraph], graph: graph, head: new_list).graph end)
+      |> then(fn graph ->
+        RDF.list([new_paragraph], graph: graph, head: new_list).graph
+      end)
 
     %{
       graph: graph,

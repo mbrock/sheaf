@@ -25,6 +25,16 @@ defmodule DocsTest do
     assert text =~ "Generates a new unique IRI"
   end
 
+  test "renders exported functions even when docs are hidden" do
+    text = Docs.render(["SheafWeb.AssistantChatComponent"])
+
+    assert text =~ "Public functions:"
+    assert text =~ "- mount(socket)"
+    assert text =~ "- update(assigns, socket)"
+    assert text =~ "- handle_event(binary, map, socket)"
+    assert text =~ "- render(assigns)"
+  end
+
   test "can include source clips" do
     text = Docs.render(["Sheaf.mint/0"], include_source: true)
 

@@ -63,8 +63,16 @@ defmodule Sheaf.Documents do
       rows =
         Sheaf.Repo.ask(fn dataset ->
           references = BIRO.references()
-          metadata = dataset |> RDF.Dataset.graph(Sheaf.Repo.metadata_graph()) |> graph_index()
-          workspace = dataset |> RDF.Dataset.graph(Sheaf.Repo.workspace_graph()) |> graph_index()
+
+          metadata =
+            dataset
+            |> RDF.Dataset.graph(Sheaf.Repo.metadata_graph())
+            |> graph_index()
+
+          workspace =
+            dataset
+            |> RDF.Dataset.graph(Sheaf.Repo.workspace_graph())
+            |> graph_index()
 
           references =
             graph
@@ -74,7 +82,11 @@ defmodule Sheaf.Documents do
               _triple -> []
             end)
 
-          docs = references |> Enum.map(fn {_block, doc} -> doc end) |> MapSet.new()
+          docs =
+            references
+            |> Enum.map(fn {_block, doc} -> doc end)
+            |> MapSet.new()
+
           document_index = referenced_document_index(dataset, docs)
           cited_docs = docs
 
@@ -85,7 +97,13 @@ defmodule Sheaf.Documents do
                 rows_for_metadata_only_document(metadata, workspace, doc)
 
               info ->
-                rows_for_document_info(metadata, workspace, cited_docs, doc, info)
+                rows_for_document_info(
+                  metadata,
+                  workspace,
+                  cited_docs,
+                  doc,
+                  info
+                )
             end
             |> Enum.map(&Map.put(&1, "block", block))
           end)
@@ -104,19 +122,28 @@ defmodule Sheaf.Documents do
       grouped =
         Tracer.with_span "Sheaf.Documents.from_rows.group", %{kind: :internal} do
           grouped = Enum.group_by(rows, &row_iri/1)
-          Tracer.set_attribute("sheaf.document_group_count", map_size(grouped))
+
+          Tracer.set_attribute(
+            "sheaf.document_group_count",
+            map_size(grouped)
+          )
+
           grouped
         end
 
       documents =
         Tracer.with_span "Sheaf.Documents.from_rows.build", %{kind: :internal} do
-          documents = Enum.map(grouped, fn {_iri, rows} -> from_document_rows(rows) end)
+          documents =
+            Enum.map(grouped, fn {_iri, rows} -> from_document_rows(rows) end)
+
           Tracer.set_attribute("sheaf.document_count", length(documents))
           documents
         end
 
       documents =
-        Tracer.with_span "Sheaf.Documents.from_rows.filter_sort", %{kind: :internal} do
+        Tracer.with_span "Sheaf.Documents.from_rows.filter_sort", %{
+          kind: :internal
+        } do
           documents =
             documents
             |> maybe_reject_excluded(opts)
@@ -134,7 +161,9 @@ defmodule Sheaf.Documents do
   def from_dataset(dataset, opts \\ []) do
     Tracer.with_span "Sheaf.Documents.from_dataset", %{
       kind: :internal,
-      attributes: [{"sheaf.statement_count", RDF.Data.statement_count(dataset)}]
+      attributes: [
+        {"sheaf.statement_count", RDF.Data.statement_count(dataset)}
+      ]
     } do
       rows = dataset_rows(dataset)
       Tracer.set_attribute("sheaf.row_count", length(rows))
@@ -215,12 +244,28 @@ defmodule Sheaf.Documents do
       ]
     } do
       {metadata, workspace} =
-        Tracer.with_span "Sheaf.Documents.dataset_rows.index_graphs", %{kind: :internal} do
-          metadata = dataset |> RDF.Dataset.graph(Sheaf.Repo.metadata_graph()) |> graph_index()
-          workspace = dataset |> RDF.Dataset.graph(Sheaf.Repo.workspace_graph()) |> graph_index()
+        Tracer.with_span "Sheaf.Documents.dataset_rows.index_graphs", %{
+          kind: :internal
+        } do
+          metadata =
+            dataset
+            |> RDF.Dataset.graph(Sheaf.Repo.metadata_graph())
+            |> graph_index()
 
-          Tracer.set_attribute("sheaf.metadata_statement_count", metadata.statement_count)
-          Tracer.set_attribute("sheaf.workspace_statement_count", workspace.statement_count)
+          workspace =
+            dataset
+            |> RDF.Dataset.graph(Sheaf.Repo.workspace_graph())
+            |> graph_index()
+
+          Tracer.set_attribute(
+            "sheaf.metadata_statement_count",
+            metadata.statement_count
+          )
+
+          Tracer.set_attribute(
+            "sheaf.workspace_statement_count",
+            workspace.statement_count
+          )
 
           {metadata, workspace}
         end
@@ -230,26 +275,46 @@ defmodule Sheaf.Documents do
       cited_docs = index.cited_docs
 
       document_rows =
-        Tracer.with_span "Sheaf.Documents.dataset_rows.document_rows", %{kind: :internal} do
+        Tracer.with_span "Sheaf.Documents.dataset_rows.document_rows", %{
+          kind: :internal
+        } do
           rows =
             index.documents
             |> Enum.flat_map(fn {doc, info} ->
-              rows_for_document_info(metadata, workspace, cited_docs, doc, info)
+              rows_for_document_info(
+                metadata,
+                workspace,
+                cited_docs,
+                doc,
+                info
+              )
             end)
 
-          Tracer.set_attribute("sheaf.document_description_count", map_size(index.documents))
+          Tracer.set_attribute(
+            "sheaf.document_description_count",
+            map_size(index.documents)
+          )
+
           Tracer.set_attribute("sheaf.row_count", length(rows))
           rows
         end
 
       metadata_only_rows =
-        Tracer.with_span "Sheaf.Documents.dataset_rows.metadata_only_rows", %{kind: :internal} do
+        Tracer.with_span "Sheaf.Documents.dataset_rows.metadata_only_rows", %{
+          kind: :internal
+        } do
           rows =
             cited_docs
             |> Enum.reject(&MapSet.member?(document_iris, &1))
-            |> Enum.flat_map(&rows_for_metadata_only_document(metadata, workspace, &1))
+            |> Enum.flat_map(
+              &rows_for_metadata_only_document(metadata, workspace, &1)
+            )
 
-          Tracer.set_attribute("sheaf.cited_document_count", MapSet.size(cited_docs))
+          Tracer.set_attribute(
+            "sheaf.cited_document_count",
+            MapSet.size(cited_docs)
+          )
+
           Tracer.set_attribute("sheaf.row_count", length(rows))
           rows
         end
@@ -292,7 +357,10 @@ defmodule Sheaf.Documents do
       documents =
         index.documents
         |> add_legacy_page_ranges(
-          page_ranges_from_dataset(dataset, documents_missing_page_counts(index.documents))
+          page_ranges_from_dataset(
+            dataset,
+            documents_missing_page_counts(index.documents)
+          )
         )
         |> Enum.filter(fn {_doc, info} -> info.kinds != [] end)
         |> Map.new()
@@ -303,7 +371,8 @@ defmodule Sheaf.Documents do
           theses = Map.get(index.theses_by_graph, graph, MapSet.new())
 
           Enum.flat_map(cites, fn {subject, object} ->
-            if MapSet.member?(theses, subject) and not excluded?(workspace, subject) do
+            if MapSet.member?(theses, subject) and
+                 not excluded?(workspace, subject) do
               [object]
             else
               []
@@ -313,7 +382,11 @@ defmodule Sheaf.Documents do
         |> MapSet.new()
 
       Tracer.set_attribute("sheaf.document_count", map_size(documents))
-      Tracer.set_attribute("sheaf.cited_document_count", MapSet.size(cited_docs))
+
+      Tracer.set_attribute(
+        "sheaf.cited_document_count",
+        MapSet.size(cited_docs)
+      )
 
       %{documents: documents, cited_docs: cited_docs}
     end
@@ -352,17 +425,28 @@ defmodule Sheaf.Documents do
     index =
       description
       |> Description.get(label, [])
-      |> Enum.reduce(index, &update_document_index(&2, graph_name, :labels, &1))
+      |> Enum.reduce(
+        index,
+        &update_document_index(&2, graph_name, :labels, &1)
+      )
 
     index =
       description
       |> Description.get(page_count, [])
-      |> Enum.reduce(index, &update_document_index(&2, graph_name, :page_counts, page_number(&1)))
+      |> Enum.reduce(
+        index,
+        &update_document_index(&2, graph_name, :page_counts, page_number(&1))
+      )
 
     description
     |> Description.get(cites, [])
     |> Enum.reduce(index, fn cited_doc, index ->
-      update_graph_list(index, :cites_by_graph, graph_name, {graph_name, cited_doc})
+      update_graph_list(
+        index,
+        :cites_by_graph,
+        graph_name,
+        {graph_name, cited_doc}
+      )
     end)
   end
 
@@ -389,7 +473,9 @@ defmodule Sheaf.Documents do
     end)
   end
 
-  defp new_document_info(nil), do: %{kinds: [], labels: [], page_counts: [], pages: []}
+  defp new_document_info(nil),
+    do: %{kinds: [], labels: [], page_counts: [], pages: []}
+
   defp new_document_info(info), do: info
 
   defp add_legacy_page_ranges(documents, page_ranges) do
@@ -413,7 +499,8 @@ defmodule Sheaf.Documents do
     end)
   end
 
-  defp referenced_document_index(_dataset, docs) when map_size(docs) == 0, do: %{}
+  defp referenced_document_index(_dataset, docs) when map_size(docs) == 0,
+    do: %{}
 
   defp referenced_document_index(dataset, docs) do
     Tracer.with_span "Sheaf.Documents.referenced_document_index", %{
@@ -428,7 +515,8 @@ defmodule Sheaf.Documents do
         Enum.reduce(RDF.Dataset.graphs(dataset), %{}, fn graph, documents ->
           Enum.reduce(Graph.triples(graph), documents, fn
             {subject, ^rdf_type, object}, documents ->
-              if MapSet.member?(docs, subject) and MapSet.member?(kinds, object) do
+              if MapSet.member?(docs, subject) and
+                   MapSet.member?(kinds, object) do
                 update_document_info(documents, subject, :kinds, object)
               else
                 documents
@@ -482,7 +570,10 @@ defmodule Sheaf.Documents do
         |> put_flag("excluded", excluded?(workspace, doc))
         |> put_flag("cited", MapSet.member?(cited_docs, doc))
         |> put_flag("workspaceOwnerAuthored", workspace_owner_authored?)
-        |> put_optional("workspaceOwnerName", resource_name(metadata, workspace_owner))
+        |> put_optional(
+          "workspaceOwnerName",
+          resource_name(metadata, workspace_owner)
+        )
         |> Map.merge(metadata_values)
 
       expand_author_rows(row, metadata_values)
@@ -493,17 +584,28 @@ defmodule Sheaf.Documents do
     workspace_owner = workspace_owner(workspace)
 
     workspace_owner_authored? =
-      workspace_owner_authored?(metadata, doc, workspace_owner, :metadata_only)
+      workspace_owner_authored?(
+        metadata,
+        doc,
+        workspace_owner,
+        :metadata_only
+      )
 
     metadata_values = metadata_only_document_metadata(metadata, doc)
 
     row =
       %{"doc" => doc, "kind" => RDF.iri(FABIO.ScholarlyWork)}
-      |> put_optional("title", metadata_only_title(metadata, doc, metadata_values))
+      |> put_optional(
+        "title",
+        metadata_only_title(metadata, doc, metadata_values)
+      )
       |> put_flag("cited", true)
       |> put_flag("metadataOnly", true)
       |> put_flag("workspaceOwnerAuthored", workspace_owner_authored?)
-      |> put_optional("workspaceOwnerName", resource_name(metadata, workspace_owner))
+      |> put_optional(
+        "workspaceOwnerName",
+        resource_name(metadata, workspace_owner)
+      )
       |> Map.merge(metadata_values)
 
     expand_author_rows(row, metadata_values)
@@ -532,13 +634,18 @@ defmodule Sheaf.Documents do
       |> subjects_with(FRBR.realizationOf(), doc)
       |> List.first()
 
-    expression_values = if expression, do: expression_metadata(metadata, expression), else: %{}
+    expression_values =
+      if expression, do: expression_metadata(metadata, expression), else: %{}
+
     status = first_object(metadata, doc, bibo_status())
     status_label = if status, do: first_object(metadata, status, RDFS.label())
 
     expression_values
     |> put_optional("status", expression_values["status"] || status)
-    |> put_optional("statusLabel", expression_values["statusLabel"] || status_label)
+    |> put_optional(
+      "statusLabel",
+      expression_values["statusLabel"] || status_label
+    )
   end
 
   defp expression_metadata(metadata, expression) do
@@ -547,18 +654,45 @@ defmodule Sheaf.Documents do
     status = first_object(metadata, expression, bibo_status())
 
     %{}
-    |> put_optional("metadataTitle", first_object(metadata, expression, DCTERMS.title()))
-    |> put_optional("metadataKind", first_object(metadata, expression, RDF.type()))
-    |> put_optional("year", first_object(metadata, expression, FABIO.hasPublicationYear()))
-    |> put_optional("venueTitle", first_object(metadata, venue, DCTERMS.title()))
+    |> put_optional(
+      "metadataTitle",
+      first_object(metadata, expression, DCTERMS.title())
+    )
+    |> put_optional(
+      "metadataKind",
+      first_object(metadata, expression, RDF.type())
+    )
+    |> put_optional(
+      "year",
+      first_object(metadata, expression, FABIO.hasPublicationYear())
+    )
+    |> put_optional(
+      "venueTitle",
+      first_object(metadata, venue, DCTERMS.title())
+    )
     |> put_optional("publisherTitle", publisher_title(metadata, publisher))
     |> put_optional("doi", first_object(metadata, expression, FABIO.hasDOI()))
-    |> put_optional("volume", first_object(metadata, expression, FABIO.hasVolumeIdentifier()))
-    |> put_optional("issue", first_object(metadata, expression, FABIO.hasIssueIdentifier()))
-    |> put_optional("pages", first_object(metadata, expression, FABIO.hasPageRange()))
-    |> put_optional("metadataPageCount", first_object(metadata, expression, BIBO.numPages()))
+    |> put_optional(
+      "volume",
+      first_object(metadata, expression, FABIO.hasVolumeIdentifier())
+    )
+    |> put_optional(
+      "issue",
+      first_object(metadata, expression, FABIO.hasIssueIdentifier())
+    )
+    |> put_optional(
+      "pages",
+      first_object(metadata, expression, FABIO.hasPageRange())
+    )
+    |> put_optional(
+      "metadataPageCount",
+      first_object(metadata, expression, BIBO.numPages())
+    )
     |> put_optional("status", status)
-    |> put_optional("statusLabel", first_object(metadata, status, RDFS.label()))
+    |> put_optional(
+      "statusLabel",
+      first_object(metadata, status, RDFS.label())
+    )
     |> Map.put(:author_names, author_names(metadata, expression))
   end
 
@@ -568,7 +702,8 @@ defmodule Sheaf.Documents do
       metadata_values["metadataTitle"]
   end
 
-  defp expand_author_rows(row, %{author_names: []}), do: [Map.delete(row, :author_names)]
+  defp expand_author_rows(row, %{author_names: []}),
+    do: [Map.delete(row, :author_names)]
 
   defp expand_author_rows(row, %{author_names: author_names}) do
     row = Map.delete(row, :author_names)
@@ -596,7 +731,9 @@ defmodule Sheaf.Documents do
     do: first_object(metadata, publisher, DCTERMS.title())
 
   defp resource_name(_metadata, nil), do: nil
-  defp resource_name(metadata, resource), do: first_object(metadata, resource, FOAF.name())
+
+  defp resource_name(metadata, resource),
+    do: first_object(metadata, resource, FOAF.name())
 
   defp workspace_owner(workspace) do
     workspace
@@ -633,7 +770,8 @@ defmodule Sheaf.Documents do
     end
   end
 
-  defp page_count({min, max}) when is_integer(min) and is_integer(max), do: max - min + 1
+  defp page_count({min, max}) when is_integer(min) and is_integer(max),
+    do: max - min + 1
 
   defp page_number(object) do
     object
@@ -651,7 +789,8 @@ defmodule Sheaf.Documents do
     |> Map.new(fn {doc, _info} -> {doc, true} end)
   end
 
-  defp page_ranges_from_dataset(_dataset, documents) when map_size(documents) == 0, do: %{}
+  defp page_ranges_from_dataset(_dataset, documents)
+       when map_size(documents) == 0, do: %{}
 
   defp page_ranges_from_dataset(dataset, documents) do
     source_page = DOC.sourcePage()
@@ -667,8 +806,11 @@ defmodule Sheaf.Documents do
             |> Enum.reject(&is_nil/1)
 
           case pages do
-            [] -> ranges
-            pages -> Map.put(ranges, graph.name, {Enum.min(pages), Enum.max(pages)})
+            [] ->
+              ranges
+
+            pages ->
+              Map.put(ranges, graph.name, {Enum.min(pages), Enum.max(pages)})
           end
 
         _other ->
@@ -714,21 +856,26 @@ defmodule Sheaf.Documents do
   defp graph_index(nil), do: %{by_sp: %{}, by_po: %{}, statement_count: 0}
 
   defp graph_index(graph) do
-    Enum.reduce(Graph.triples(graph), %{by_sp: %{}, by_po: %{}, statement_count: 0}, fn {subject,
-                                                                                         predicate,
-                                                                                         object},
-                                                                                        index ->
-      index
-      |> Map.update!(:statement_count, &(&1 + 1))
-      |> Map.update!(
-        :by_sp,
-        &Map.update(&1, {subject, predicate}, [object], fn objects -> [object | objects] end)
-      )
-      |> Map.update!(
-        :by_po,
-        &Map.update(&1, {predicate, object}, [subject], fn subjects -> [subject | subjects] end)
-      )
-    end)
+    Enum.reduce(
+      Graph.triples(graph),
+      %{by_sp: %{}, by_po: %{}, statement_count: 0},
+      fn {subject, predicate, object}, index ->
+        index
+        |> Map.update!(:statement_count, &(&1 + 1))
+        |> Map.update!(
+          :by_sp,
+          &Map.update(&1, {subject, predicate}, [object], fn objects ->
+            [object | objects]
+          end)
+        )
+        |> Map.update!(
+          :by_po,
+          &Map.update(&1, {predicate, object}, [subject], fn subjects ->
+            [subject | subjects]
+          end)
+        )
+      end
+    )
   end
 
   defp put_flag(row, _key, false), do: row
@@ -744,14 +891,19 @@ defmodule Sheaf.Documents do
   defp document_kind_set, do: document_kinds() |> MapSet.new()
 
   defp specific_document_kinds do
-    [RDF.iri(DOC.Paper), RDF.iri(DOC.Thesis), RDF.iri(DOC.Transcript), RDF.iri(DOC.Spreadsheet)]
+    [
+      RDF.iri(DOC.Paper),
+      RDF.iri(DOC.Thesis),
+      RDF.iri(DOC.Transcript),
+      RDF.iri(DOC.Spreadsheet)
+    ]
   end
 
   defp bibo_status, do: RDF.iri("http://purl.org/ontology/bibo/status")
 
   defp document_sort_key(document) do
-    {if(document.workspace_owner_authored?, do: 0, else: 1), kind_order(document.kind),
-     String.downcase(document.title)}
+    {if(document.workspace_owner_authored?, do: 0, else: 1),
+     kind_order(document.kind), String.downcase(document.title)}
   end
 
   defp from_document_rows(rows) do
@@ -781,7 +933,8 @@ defmodule Sheaf.Documents do
     |> Map.new(fn {block_id, rows} -> {block_id, from_rows(rows)} end)
   end
 
-  defp block_id(row), do: row |> Map.fetch!("block") |> term_value() |> Id.id_from_iri()
+  defp block_id(row),
+    do: row |> Map.fetch!("block") |> term_value() |> Id.id_from_iri()
 
   defp row_iri(row), do: row |> Map.fetch!("doc") |> term_value()
 
@@ -799,7 +952,9 @@ defmodule Sheaf.Documents do
     do: Enum.any?(rows, &Map.has_key?(&1, "workspaceOwnerAuthored"))
 
   defp cited?(rows), do: Enum.any?(rows, &Map.has_key?(&1, "cited"))
-  defp metadata_only?(rows), do: Enum.any?(rows, &Map.has_key?(&1, "metadataOnly"))
+
+  defp metadata_only?(rows),
+    do: Enum.any?(rows, &Map.has_key?(&1, "metadataOnly"))
 
   defp title(nil, iri), do: Id.id_from_iri(iri)
   defp title(term, _iri), do: term_value(term)
@@ -810,7 +965,9 @@ defmodule Sheaf.Documents do
       doi: value(rows, "doi"),
       issue: value(rows, "issue"),
       kind: value(rows, "metadataKind") |> kind_name(),
-      page_count: integer_value(rows, "pageCount") || integer_value(rows, "metadataPageCount"),
+      page_count:
+        integer_value(rows, "pageCount") ||
+          integer_value(rows, "metadataPageCount"),
       pages: value(rows, "pages"),
       publisher: value(rows, "publisherTitle"),
       status: status(rows),

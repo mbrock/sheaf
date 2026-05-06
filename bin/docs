@@ -2,40 +2,5 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-INCLUDE_SOURCE=false
-TARGETS_FILE="$(mktemp /tmp/sheaf_docs_targets_XXXXXX)"
-cleanup() { rm -f "$TARGETS_FILE"; }
-trap cleanup EXIT
 
-for arg in "$@"; do
-  case "$arg" in
-    --source|-s)
-      INCLUDE_SOURCE=true
-      ;;
-    --help|-h)
-      cat <<'USAGE'
-Usage: bin/docs [--source] [:app_name | Module.Name | Module.function/arity ...]
-
-Examples:
-  bin/docs
-  bin/docs :rdf
-  bin/docs Sheaf
-  bin/docs Sheaf.mint/0
-  bin/docs --source Sheaf.query/2 RDF.Graph
-USAGE
-      exit 0
-      ;;
-    *)
-      printf '%s\n' "$arg" >> "$TARGETS_FILE"
-      ;;
-  esac
-done
-
-exec "$SCRIPT_DIR/rpc" "
-targets =
-  \"$TARGETS_FILE\"
-  |> File.read!()
-  |> String.split(\"\\n\", trim: true)
-
-Docs.render(targets, include_source: $INCLUDE_SOURCE)
-"
+exec "$SCRIPT_DIR/env" bun "$SCRIPT_DIR/docs.ts" "$@"

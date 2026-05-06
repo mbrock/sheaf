@@ -65,7 +65,10 @@ defmodule Sheaf.MetadataResolverTest do
     test_pid = self()
 
     extract_metadata = fn seen_candidate, opts ->
-      send(test_pid, {:extract_metadata, seen_candidate.document, opts[:pdf_fallback]})
+      send(
+        test_pid,
+        {:extract_metadata, seen_candidate.document, opts[:pdf_fallback]}
+      )
 
       {:ok,
        Sheaf.PaperMetadata.normalize_object(%{

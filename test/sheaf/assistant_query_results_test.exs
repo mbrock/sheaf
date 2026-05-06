@@ -5,7 +5,8 @@ defmodule Sheaf.Assistant.QueryResultsTest do
   alias Sheaf.Assistant.QueryResults
 
   @tag :tmp_dir
-  test "stores query results as RDF-backed Parquet artifacts and reads pages", %{tmp_dir: tmp_dir} do
+  test "stores query results as RDF-backed Parquet artifacts and reads pages",
+       %{tmp_dir: tmp_dir} do
     result_iri = RDF.IRI.new!("https://example.com/sheaf/RES111")
     file_iri = RDF.IRI.new!("https://example.com/sheaf/FILE11")
     query_iri = RDF.IRI.new!("https://example.com/sheaf/QUERY1")
@@ -58,21 +59,48 @@ defmodule Sheaf.Assistant.QueryResultsTest do
     execution = Graph.description(result_graph, execution_iri)
     file = Graph.description(result_graph, file_iri)
 
-    assert RDF.Description.include?(result, {RDF.type(), Sheaf.NS.DOC.SpreadsheetQueryResult})
-    assert RDF.Description.include?(result, {Sheaf.NS.DCAT.distribution(), file_iri})
+    assert RDF.Description.include?(
+             result,
+             {RDF.type(), Sheaf.NS.DOC.SpreadsheetQueryResult}
+           )
+
+    assert RDF.Description.include?(
+             result,
+             {Sheaf.NS.DCAT.distribution(), file_iri}
+           )
+
     assert rdf_value(result, Sheaf.NS.DOC.rowCount()) == 3
-    assert rdf_value(result, Sheaf.NS.DOC.columnNameList()) == ~s(["name","amount"])
-    assert RDF.Description.include?(query, {RDF.type(), Sheaf.NS.DOC.SpreadsheetQuery})
-    assert rdf_value(query, Sheaf.NS.DOC.sourceQuery()) == "SELECT name, amount FROM example"
+
+    assert rdf_value(result, Sheaf.NS.DOC.columnNameList()) ==
+             ~s(["name","amount"])
+
+    assert RDF.Description.include?(
+             query,
+             {RDF.type(), Sheaf.NS.DOC.SpreadsheetQuery}
+           )
+
+    assert rdf_value(query, Sheaf.NS.DOC.sourceQuery()) ==
+             "SELECT name, amount FROM example"
 
     assert RDF.Description.include?(
              execution,
              {RDF.type(), Sheaf.NS.DOC.SpreadsheetQueryExecution}
            )
 
-    assert RDF.Description.include?(execution, {Sheaf.NS.PROV.used(), query_iri})
-    assert RDF.Description.include?(execution, {Sheaf.NS.PROV.generated(), result_iri})
-    assert RDF.Description.include?(file, {RDF.type(), Sheaf.NS.DCAT.Distribution})
+    assert RDF.Description.include?(
+             execution,
+             {Sheaf.NS.PROV.used(), query_iri}
+           )
+
+    assert RDF.Description.include?(
+             execution,
+             {Sheaf.NS.PROV.generated(), result_iri}
+           )
+
+    assert RDF.Description.include?(
+             file,
+             {RDF.type(), Sheaf.NS.DCAT.Distribution}
+           )
 
     assert {:ok,
             %{

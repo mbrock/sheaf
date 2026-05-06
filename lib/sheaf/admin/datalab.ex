@@ -50,8 +50,9 @@ defmodule Sheaf.Admin.Datalab do
     end
   end
 
-  defp command([command | rest]) when command in ~w(submit poll import status),
-    do: {command, rest}
+  defp command([command | rest])
+       when command in ~w(submit poll import status),
+       do: {command, rest}
 
   defp command(args), do: {"status", args}
 
@@ -67,7 +68,9 @@ defmodule Sheaf.Admin.Datalab do
 
       with {:ok, path} <- Files.local_path(file),
            {:ok, %{"execution_id" => execution_id}} <-
-             Datalab.start_job(path, output_format: file_job.output_format || output_format(opts)),
+             Datalab.start_job(path,
+               output_format: file_job.output_format || output_format(opts)
+             ),
            {:ok, _updated} <-
              DatalabJobs.update_file_job(job.iri, file_job.source_file,
                execution_id: execution_id,
@@ -117,17 +120,23 @@ defmodule Sheaf.Admin.Datalab do
       info(remote_stats_line(remote_stats))
 
       stats =
-        Enum.reduce(submitted, %{completed: 0, failed: 0, running: 0, errors: 0}, fn file_job,
-                                                                                     stats ->
-          case Map.fetch(executions, file_job.execution_id) do
-            {:ok, body} ->
-              handle_poll_status(job, file_job, body, output_dir, stats)
+        Enum.reduce(
+          submitted,
+          %{completed: 0, failed: 0, running: 0, errors: 0},
+          fn file_job, stats ->
+            case Map.fetch(executions, file_job.execution_id) do
+              {:ok, body} ->
+                handle_poll_status(job, file_job, body, output_dir, stats)
 
-            :error ->
-              error("ERROR #{file_job.execution_id}: not found in pipeline executions")
-              %{stats | errors: stats.errors + 1}
+              :error ->
+                error(
+                  "ERROR #{file_job.execution_id}: not found in pipeline executions"
+                )
+
+                %{stats | errors: stats.errors + 1}
+            end
           end
-        end)
+        )
 
       print_job_progress(job.iri, cycle: stats)
     else
@@ -146,25 +155,34 @@ defmodule Sheaf.Admin.Datalab do
   end
 
   defp remote_stats(file_jobs, executions) do
-    Enum.reduce(file_jobs, %{ready: 0, failed: 0, running: 0, unknown: 0}, fn file_job, counts ->
-      case Map.fetch(executions, file_job.execution_id) do
-        {:ok, body} ->
-          case Datalab.status(body) do
-            {:ok, status} ->
-              cond do
-                Datalab.complete_status?(status) -> %{counts | ready: counts.ready + 1}
-                Datalab.failed_status?(status) -> %{counts | failed: counts.failed + 1}
-                true -> %{counts | running: counts.running + 1}
-              end
+    Enum.reduce(
+      file_jobs,
+      %{ready: 0, failed: 0, running: 0, unknown: 0},
+      fn file_job, counts ->
+        case Map.fetch(executions, file_job.execution_id) do
+          {:ok, body} ->
+            case Datalab.status(body) do
+              {:ok, status} ->
+                cond do
+                  Datalab.complete_status?(status) ->
+                    %{counts | ready: counts.ready + 1}
 
-            {:error, _reason} ->
-              %{counts | unknown: counts.unknown + 1}
-          end
+                  Datalab.failed_status?(status) ->
+                    %{counts | failed: counts.failed + 1}
 
-        :error ->
-          %{counts | unknown: counts.unknown + 1}
+                  true ->
+                    %{counts | running: counts.running + 1}
+                end
+
+              {:error, _reason} ->
+                %{counts | unknown: counts.unknown + 1}
+            end
+
+          :error ->
+            %{counts | unknown: counts.unknown + 1}
+        end
       end
-    end)
+    )
   end
 
   defp remote_stats_line(stats) do
@@ -204,7 +222,10 @@ defmodule Sheaf.Admin.Datalab do
 
     fields =
       if cycle do
-        fields ++ ["cycle +#{cycle.completed}/-#{cycle.failed}, errors #{cycle.errors}"]
+        fields ++
+          [
+            "cycle +#{cycle.completed}/-#{cycle.failed}, errors #{cycle.errors}"
+          ]
       else
         fields
       end
@@ -231,7 +252,8 @@ defmodule Sheaf.Admin.Datalab do
     percent = div(done * 100, total)
 
     "[" <>
-      String.duplicate("#", filled) <> String.duplicate("-", width - filled) <> "] #{percent}%"
+      String.duplicate("#", filled) <>
+      String.duplicate("-", width - filled) <> "] #{percent}%"
   end
 
   defp execution_index([], _opts), do: {:ok, %{}}
@@ -266,7 +288,12 @@ defmodule Sheaf.Admin.Datalab do
            offset + length(executions) >= total or executions == [] do
         {:ok, acc}
       else
-        fetch_execution_pages(wanted, opts, offset + @execution_page_size, acc)
+        fetch_execution_pages(
+          wanted,
+          opts,
+          offset + @execution_page_size,
+          acc
+        )
       end
     end
   end
@@ -320,8 +347,10 @@ defmodule Sheaf.Admin.Datalab do
 
   defp complete_file_job(job, file_job, output_dir, stats) do
     with {:ok, body} <- Datalab.result(file_job.execution_id),
-         {:ok, output} <- Datalab.output(body, file_job.output_format || "json"),
-         {:ok, output_path} <- write_output(job.iri, file_job, output, output_dir),
+         {:ok, output} <-
+           Datalab.output(body, file_job.output_format || "json"),
+         {:ok, output_path} <-
+           write_output(job.iri, file_job, output, output_dir),
          {:ok, _updated} <-
            DatalabJobs.update_file_job(job.iri, file_job.source_file,
              output_path: output_path,
@@ -374,11 +403,19 @@ defmodule Sheaf.Admin.Datalab do
 
     candidates
     |> Enum.reduce(
-      %{imported: 0, errors: 0, already_imported: already_imported, limited: limited},
+      %{
+        imported: 0,
+        errors: 0,
+        already_imported: already_imported,
+        limited: limited
+      },
       fn {job, file_job}, stats ->
         cond do
           opts[:dry_run] ->
-            info("would import #{file_job.output_path} from #{file_job.source_file}")
+            info(
+              "would import #{file_job.output_path} from #{file_job.source_file}"
+            )
+
             stats
 
           not is_binary(file_job.output_path) ->
@@ -401,7 +438,9 @@ defmodule Sheaf.Admin.Datalab do
                 %{stats | imported: stats.imported + 1}
 
               {:error, reason} ->
-                error("ERROR #{job.iri} #{file_job.output_path}: #{inspect(reason)}")
+                error(
+                  "ERROR #{job.iri} #{file_job.output_path}: #{inspect(reason)}"
+                )
 
                 %{stats | errors: stats.errors + 1}
             end
@@ -431,7 +470,8 @@ defmodule Sheaf.Admin.Datalab do
 
   defp datalab_metadata(path) do
     with {:ok, bytes} <- File.read(path),
-         {:ok, %{"metadata" => metadata}} when is_map(metadata) <- Jason.decode(bytes) do
+         {:ok, %{"metadata" => metadata}} when is_map(metadata) <-
+           Jason.decode(bytes) do
       metadata
     else
       _ -> %{}
@@ -481,23 +521,12 @@ defmodule Sheaf.Admin.Datalab do
   end
 
   defp imported_source_files do
-    with {:ok, dataset} <- Sheaf.fetch_dataset() do
-      source_file = DOC.sourceFile()
-
-      source_files =
-        dataset
-        |> RDF.Dataset.graphs()
-        |> Enum.flat_map(fn graph ->
-          graph
-          |> RDF.Graph.triples()
-          |> Enum.flat_map(fn
-            {_doc, ^source_file, file} -> [file]
-            _triple -> []
-          end)
-        end)
-        |> MapSet.new()
-
-      {:ok, source_files}
+    with {:ok, rows} <-
+           Sheaf.Repo.match_rows({nil, DOC.sourceFile(), nil, nil}) do
+      rows
+      |> Enum.map(fn {_graph, _doc, _predicate, file} -> file end)
+      |> MapSet.new()
+      |> then(&{:ok, &1})
     end
   end
 
@@ -559,7 +588,8 @@ defmodule Sheaf.Admin.Datalab do
     |> Kernel.not()
   end
 
-  defp write_output(job_iri, file_job, output, output_dir) when is_map(output) do
+  defp write_output(job_iri, file_job, output, output_dir)
+       when is_map(output) do
     job_id = Sheaf.Id.id_from_iri(job_iri)
     file_id = Sheaf.Id.id_from_iri(file_job.source_file)
     path = Path.join([output_dir, job_id, "#{file_id}.datalab.json"])
@@ -571,7 +601,8 @@ defmodule Sheaf.Admin.Datalab do
   end
 
   defp file_name(%Description{} = file) do
-    first_value(file, DOC.originalFilename()) || Sheaf.Id.id_from_iri(file.subject)
+    first_value(file, DOC.originalFilename()) ||
+      Sheaf.Id.id_from_iri(file.subject)
   end
 
   defp first_value(%Description{} = description, property) do
@@ -592,11 +623,16 @@ defmodule Sheaf.Admin.Datalab do
 
   defp output_format(opts), do: Keyword.get(opts, :output_format, "json")
 
-  defp execution_id(%{"execution_id" => execution_id}) when is_binary(execution_id),
+  defp execution_id(%{"execution_id" => execution_id})
+       when is_binary(execution_id),
+       do: execution_id
+
+  defp execution_id(%{"id" => execution_id}) when is_binary(execution_id),
     do: execution_id
 
-  defp execution_id(%{"id" => execution_id}) when is_binary(execution_id), do: execution_id
-  defp execution_id(%{execution_id: execution_id}) when is_binary(execution_id), do: execution_id
+  defp execution_id(%{execution_id: execution_id})
+       when is_binary(execution_id), do: execution_id
+
   defp execution_id(_execution), do: nil
 
   defp await_interval(opts) do

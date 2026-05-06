@@ -8,7 +8,8 @@ watchers =
     []
   else
     [
-      esbuild: {Esbuild, :install_and_run, [:sheaf, ~w(--sourcemap=inline --watch)]},
+      esbuild:
+        {Esbuild, :install_and_run, [:sheaf, ~w(--sourcemap=inline --watch)]},
       tailwind: {Tailwind, :install_and_run, [:sheaf, ~w(--watch)]}
     ]
   end
@@ -26,8 +27,7 @@ live_reload =
         ~r"priv/gettext/.*\.po$"E,
         # Router, Controllers, LiveViews and LiveComponents
         ~r"lib/sheaf_web/router\.ex$"E,
-        ~r"lib/sheaf_web/(controllers|live|components)/.*\.(ex|heex)$"E,
-        ~r"apps/sheaf_rdf_browser/lib/.*\.(ex|heex)$"E
+        ~r"lib/sheaf_web/(controllers|live|components)/.*\.(ex|heex)$"E
       ]
     ]
   end
@@ -46,7 +46,8 @@ config :sheaf, SheafWeb.Endpoint,
   code_reloader: not steady_dev_server?,
   reloadable_apps: [:sheaf],
   # debug_errors: not steady_dev_server?,
-  secret_key_base: "EZd+P1fNcVZFqt1rjqJ8sm+U6xvhE09n6hcPmky7kWWAUq9KLR9Crh8GXd8lwwnC",
+  secret_key_base:
+    "EZd+P1fNcVZFqt1rjqJ8sm+U6xvhE09n6hcPmky7kWWAUq9KLR9Crh8GXd8lwwnC",
   watchers: watchers
 
 # ## SSL Support
@@ -86,12 +87,17 @@ config :logger, :default_formatter, format: "[$level] $message\n"
 config :phoenix, :stacktrace_depth, 20
 
 # Initialize plugs at runtime for faster development compilation
-config :phoenix, :plug_init_mode, if(steady_dev_server?, do: :compile, else: :runtime)
+config :phoenix,
+       :plug_init_mode,
+       if(steady_dev_server?, do: :compile, else: :runtime)
 
 config :phoenix_live_view,
   # Include debug annotations and locations in rendered markup.
   # Changing this configuration will require mix clean and a full recompile.
-  debug_heex_annotations: true, # not steady_dev_server?,
-  debug_attributes: true, # not steady_dev_server?,
+  # not steady_dev_server?,
+  debug_heex_annotations: true,
+  # not steady_dev_server?,
+  debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
-  enable_expensive_runtime_checks: false # not steady_dev_server?
+  # not steady_dev_server?
+  enable_expensive_runtime_checks: false

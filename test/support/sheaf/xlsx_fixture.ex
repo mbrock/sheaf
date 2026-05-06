@@ -104,7 +104,8 @@ defmodule Sheaf.XLSXFixture do
     ~s(<row r="#{row_index}">#{cells}</row>)
   end
 
-  defp cell_ref(col_index, row_index), do: column_name(col_index) <> Integer.to_string(row_index)
+  defp cell_ref(col_index, row_index),
+    do: column_name(col_index) <> Integer.to_string(row_index)
 
   defp column_name(index) do
     index

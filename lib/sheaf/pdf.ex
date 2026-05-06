@@ -29,10 +29,15 @@ defmodule Sheaf.PDF do
     title = Keyword.get(opts, :title) || title(document)
     source_path = present_value(Keyword.get(opts, :source_path))
     source_file = Keyword.get(opts, :source_file)
-    source_file_iri = Keyword.get(opts, :source_file_iri) || (source_file && mint.())
+
+    source_file_iri =
+      Keyword.get(opts, :source_file_iri) || (source_file && mint.())
 
     source_file_metadata =
-      source_file_metadata(source_file, Keyword.has_key?(opts, :source_file_iri))
+      source_file_metadata(
+        source_file,
+        Keyword.has_key?(opts, :source_file_iri)
+      )
 
     blocks = DatalabDocument.document_blocks(document)
     nodes = flatten_nodes(blocks)
@@ -88,7 +93,12 @@ defmodule Sheaf.PDF do
         child_lists
       end
 
-    %{document: document_iri, graph: graph, source_file: source_file, title: title}
+    %{
+      document: document_iri,
+      graph: graph,
+      source_file: source_file,
+      title: title
+    }
   end
 
   defp source_file_metadata(nil, _existing_file?), do: nil
@@ -105,7 +115,8 @@ defmodule Sheaf.PDF do
     |> Map.new(fn {key, value} -> {key, present_value(value)} end)
   end
 
-  defp page_count(%{"children" => pages}, _nodes) when is_list(pages), do: length(pages)
+  defp page_count(%{"children" => pages}, _nodes) when is_list(pages),
+    do: length(pages)
 
   defp page_count(_document, nodes) do
     nodes
@@ -118,7 +129,9 @@ defmodule Sheaf.PDF do
   end
 
   defp node_summaries(nodes, node_iris) do
-    Enum.map(nodes, fn node -> node_summary(node, Map.fetch!(node_iris, node.id)) end)
+    Enum.map(nodes, fn node ->
+      node_summary(node, Map.fetch!(node_iris, node.id))
+    end)
   end
 
   defp node_summary(%{type: :section, block: block} = node, iri) do
@@ -156,7 +169,13 @@ defmodule Sheaf.PDF do
       ordered_children_graph(parent_iri, child_iris, list_iri)
       | Enum.flat_map(children, fn child ->
           child_iri = Map.fetch!(node_iris, child.id)
-          child_list_graphs(child_iri, Map.get(child, :children, []), node_iris, mint)
+
+          child_list_graphs(
+            child_iri,
+            Map.get(child, :children, []),
+            node_iris,
+            mint
+          )
         end)
     ]
   end
@@ -170,10 +189,13 @@ defmodule Sheaf.PDF do
     |> Map.fetch!(:graph)
   end
 
-  defp node_iris(nodes, mint), do: Map.new(nodes, fn node -> {node.id, mint.()} end)
+  defp node_iris(nodes, mint),
+    do: Map.new(nodes, fn node -> {node.id, mint.()} end)
 
   defp flatten_nodes(nodes) do
-    Enum.flat_map(nodes, fn node -> [node | flatten_nodes(Map.get(node, :children, []))] end)
+    Enum.flat_map(nodes, fn node ->
+      [node | flatten_nodes(Map.get(node, :children, []))]
+    end)
   end
 
   defp source_file_for(path, opts) do
@@ -193,7 +215,9 @@ defmodule Sheaf.PDF do
   end
 
   defp put_source_file(opts, nil), do: opts
-  defp put_source_file(opts, source_file), do: Keyword.put(opts, :source_file, source_file)
+
+  defp put_source_file(opts, source_file),
+    do: Keyword.put(opts, :source_file, source_file)
 
   defp default_pdf_path(path) do
     pdf_path =
@@ -228,7 +252,8 @@ defmodule Sheaf.PDF do
 
   defp present_value(value), do: value
 
-  defp title(%{"metadata" => %{"title" => title}}) when is_binary(title) and title != "" do
+  defp title(%{"metadata" => %{"title" => title}})
+       when is_binary(title) and title != "" do
     title
   end
 

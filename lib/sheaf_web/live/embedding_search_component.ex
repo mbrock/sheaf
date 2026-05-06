@@ -26,9 +26,18 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
   @impl true
   def update(assigns, socket) do
-    variant = Map.get(assigns, :variant, Map.get(socket.assigns, :variant, :full))
-    limit = Map.get(assigns, :limit, Map.get(socket.assigns, :limit, default_limit(variant)))
-    preview_limit = Map.get(assigns, :preview_limit, toolbar_visible_limit(variant))
+    variant =
+      Map.get(assigns, :variant, Map.get(socket.assigns, :variant, :full))
+
+    limit =
+      Map.get(
+        assigns,
+        :limit,
+        Map.get(socket.assigns, :limit, default_limit(variant))
+      )
+
+    preview_limit =
+      Map.get(assigns, :preview_limit, toolbar_visible_limit(variant))
 
     {:ok,
      socket
@@ -44,7 +53,11 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   end
 
   @impl true
-  def handle_event("search_key", %{"key" => "Enter", "value" => query}, socket) do
+  def handle_event(
+        "search_key",
+        %{"key" => "Enter", "value" => query},
+        socket
+      ) do
     search(query, socket)
   end
 
@@ -94,8 +107,14 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   end
 
   defp run_search(%{assigns: %{variant: :toolbar}} = socket, query) do
-    exact = Sheaf.Embedding.Index.exact_search(query, limit: socket.assigns.limit)
-    approximate = Sheaf.Embedding.Index.search(query, limit: socket.assigns.limit, exact_limit: 0)
+    exact =
+      Sheaf.Embedding.Index.exact_search(query, limit: socket.assigns.limit)
+
+    approximate =
+      Sheaf.Embedding.Index.search(query,
+        limit: socket.assigns.limit,
+        exact_limit: 0
+      )
 
     case {exact, approximate} do
       {{:ok, exact_results}, {:ok, approximate_results}} ->
@@ -147,7 +166,11 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <section class={if @variant == :toolbar, do: "min-w-0 flex-1 sm:max-w-72 md:max-w-96", else: nil}>
+    <section class={
+      if @variant == :toolbar,
+        do: "min-w-0 flex-1 sm:max-w-72 md:max-w-96",
+        else: nil
+    }>
       <.toolbar_search :if={@variant == :toolbar} {assigns} />
       <.full_search :if={@variant != :toolbar} {assigns} />
     </section>
@@ -156,7 +179,11 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
   defp toolbar_search(assigns) do
     assigns =
-      assign(assigns, :open?, toolbar_open?(assigns.query, assigns.searched?, assigns.error))
+      assign(
+        assigns,
+        :open?,
+        toolbar_open?(assigns.query, assigns.searched?, assigns.error)
+      )
 
     ~H"""
     <div
@@ -283,7 +310,10 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   defp search_results(assigns) do
     assigns =
       assigns
-      |> assign(:visible_results, visible_results(assigns.results, assigns.preview_limit))
+      |> assign(
+        :visible_results,
+        visible_results(assigns.results, assigns.preview_limit)
+      )
       |> assign(
         :visible_exact_results,
         visible_results(assigns.exact_results, assigns.preview_limit)
@@ -317,12 +347,20 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
     <div :if={@compact? and @visible_exact_results != []} class="pb-1">
       <.result_group_title title="Exact matches" />
-      <.result_list query={@query} results={@visible_exact_results} compact?={@compact?} />
+      <.result_list
+        query={@query}
+        results={@visible_exact_results}
+        compact?={@compact?}
+      />
     </div>
 
     <div :if={@compact? and @visible_approximate_results != []} class="pb-1">
       <.result_group_title title="Approximate matches" />
-      <.result_list query={@query} results={@visible_approximate_results} compact?={@compact?} />
+      <.result_list
+        query={@query}
+        results={@visible_approximate_results}
+        compact?={@compact?}
+      />
     </div>
 
     <.result_list
@@ -372,7 +410,10 @@ defmodule SheafWeb.EmbeddingSearchComponent do
               href={result_path(result)}
               class={[
                 "min-w-0 flex-1 truncate font-sans text-stone-950 hover:underline dark:text-stone-50",
-                if(@compact?, do: "text-[11px] font-normal", else: "text-xs font-medium")
+                if(@compact?,
+                  do: "text-[11px] font-normal",
+                  else: "text-xs font-medium"
+                )
               ]}
             >
               {result_title(result)}
@@ -421,15 +462,22 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   defp result_path(%{kind: "note", iri: iri}), do: "/#{block_id(iri)}"
   defp result_path(%{iri: iri}), do: "/b/#{block_id(iri)}"
 
-  defp result_title(%{kind: "note", doc_title: title}) when is_binary(title), do: title
+  defp result_title(%{kind: "note", doc_title: title}) when is_binary(title),
+    do: title
+
   defp result_title(%{kind: "note"}), do: "Research note"
   defp result_title(result), do: result.doc_title || "Untitled document"
 
-  defp context_label(%{kind: "sourceHtml", source_page: page}) when is_integer(page),
-    do: "p. #{page}"
+  defp context_label(%{kind: "sourceHtml", source_page: page})
+       when is_integer(page),
+       do: "p. #{page}"
 
   defp context_label(%{kind: "row"} = result) do
-    [row_label(result.spreadsheet_row), result.spreadsheet_source, result.code_category_title]
+    [
+      row_label(result.spreadsheet_row),
+      result.spreadsheet_source,
+      result.code_category_title
+    ]
     |> Enum.reject(&blank?/1)
     |> Enum.join(" · ")
     |> blank_to_nil()
@@ -444,7 +492,8 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   defp score_percent(score) when is_float(score), do: "#{round(score * 100)}%"
   defp score_percent(_score), do: ""
 
-  defp authors_line(%{doc_authors: authors}) when is_list(authors) and authors != [] do
+  defp authors_line(%{doc_authors: authors})
+       when is_list(authors) and authors != [] do
     authors
     |> Enum.take(4)
     |> Enum.join(", ")

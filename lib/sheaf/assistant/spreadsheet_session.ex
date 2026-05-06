@@ -63,11 +63,19 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
   end
 
   def query(server, sql, opts \\ []) when is_binary(sql) do
-    GenServer.call(server, {:query, sql, opts}, Keyword.get(opts, :timeout, 60_000))
+    GenServer.call(
+      server,
+      {:query, sql, opts},
+      Keyword.get(opts, :timeout, 60_000)
+    )
   end
 
   def search(server, text, opts \\ []) when is_binary(text) do
-    GenServer.call(server, {:search, text, opts}, Keyword.get(opts, :timeout, 60_000))
+    GenServer.call(
+      server,
+      {:search, text, opts},
+      Keyword.get(opts, :timeout, 60_000)
+    )
   end
 
   @impl true
@@ -85,12 +93,24 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
       } do
         case open_and_load(id, directory, opts) do
           {:ok, state} ->
-            Tracer.set_attribute("sheaf.spreadsheet.count", length(state.spreadsheets))
-            Tracer.set_attribute("sheaf.spreadsheet.load_error_count", length(state.errors))
+            Tracer.set_attribute(
+              "sheaf.spreadsheet.count",
+              length(state.spreadsheets)
+            )
+
+            Tracer.set_attribute(
+              "sheaf.spreadsheet.load_error_count",
+              length(state.errors)
+            )
+
             state
 
           {:error, reason} ->
-            Tracer.set_attribute("sheaf.spreadsheet.load_error", inspect(reason))
+            Tracer.set_attribute(
+              "sheaf.spreadsheet.load_error",
+              inspect(reason)
+            )
+
             %__MODULE__{id: id, directory: directory, error: reason}
         end
       end
@@ -134,7 +154,10 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
       } do
         case query_loaded(state, sql, limit, opts) do
           {:ok, result} = ok ->
-            Tracer.set_attribute("db.response.returned_rows", length(result.rows))
+            Tracer.set_attribute(
+              "db.response.returned_rows",
+              length(result.rows)
+            )
 
             Tracer.set_attribute(
               "db.response.row_count",
@@ -196,7 +219,8 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
         Enum.reduce(sources, {[], []}, fn source, {spreadsheets, errors} ->
           case load_workbook(conn, directory, source, loaded_at) do
             {:ok, spreadsheet, sheet_errors} ->
-              {[spreadsheet | spreadsheets], Enum.reverse(sheet_errors) ++ errors}
+              {[spreadsheet | spreadsheets],
+               Enum.reverse(sheet_errors) ++ errors}
 
             {:error, reason} ->
               {spreadsheets, [%{path: source.path, error: reason} | errors]}
@@ -347,7 +371,9 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
            ]}
       end
     end)
-    |> then(fn {sheets, errors} -> {:ok, Enum.reverse(sheets), Enum.reverse(errors)} end)
+    |> then(fn {sheets, errors} ->
+      {:ok, Enum.reverse(sheets), Enum.reverse(errors)}
+    end)
   end
 
   defp load_sheet(conn, spreadsheet_id, sheet, loaded_at) do
@@ -363,7 +389,8 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
              """
            ),
          {:ok, columns} <- table_columns(conn, table),
-         {:ok, row_count} <- scalar(conn, "SELECT count(*) FROM #{identifier(table)}"),
+         {:ok, row_count} <-
+           scalar(conn, "SELECT count(*) FROM #{identifier(table)}"),
          :ok <-
            exec(
              conn,
@@ -452,7 +479,8 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     Keyword.get(
       opts,
       :persist_result?,
-      Keyword.has_key?(opts, :query_result_context) or Keyword.has_key?(opts, :query_result_opts)
+      Keyword.has_key?(opts, :query_result_context) or
+        Keyword.has_key?(opts, :query_result_opts)
     )
   end
 
@@ -464,7 +492,10 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
       |> Keyword.merge(if(is_list(context), do: context, else: []))
       |> Keyword.merge(Keyword.get(opts, :query_result_opts, []))
 
-    case QueryResults.create(%{sql: sql, columns: columns, rows: rows}, query_result_opts) do
+    case QueryResults.create(
+           %{sql: sql, columns: columns, rows: rows},
+           query_result_opts
+         ) do
       {:ok, result} -> result
       {:error, _reason} -> nil
     end
@@ -494,7 +525,8 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     end
   end
 
-  defp search_loaded(_state, query, _limit) when query in ["", nil], do: {:ok, []}
+  defp search_loaded(_state, query, _limit) when query in ["", nil],
+    do: {:ok, []}
 
   defp search_loaded(state, query, limit) do
     terms = search_terms(query)
@@ -514,7 +546,9 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
         {:ok, hits} ->
           {:ok,
            hits
-           |> Enum.sort_by(&{-&1.score, &1.spreadsheet_id, &1.sheet_name, &1.row_number})
+           |> Enum.sort_by(
+             &{-&1.score, &1.spreadsheet_id, &1.sheet_name, &1.row_number}
+           )
            |> Enum.take(limit)}
 
         error ->
@@ -552,7 +586,8 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
   defp fetch_rows(result, :all), do: fetch_all_rows(result)
   defp fetch_rows(result, limit), do: fetch_limited(result, limit, [])
 
-  defp fetch_limited(_result, remaining, rows) when remaining <= 0, do: Enum.reverse(rows)
+  defp fetch_limited(_result, remaining, rows) when remaining <= 0,
+    do: Enum.reverse(rows)
 
   defp fetch_limited(result, remaining, rows) do
     case Duckdbex.fetch_chunk(result) do
@@ -561,7 +596,12 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
 
       chunk ->
         {taken, _rest} = Enum.split(chunk, remaining)
-        fetch_limited(result, remaining - length(taken), Enum.reverse(taken) ++ rows)
+
+        fetch_limited(
+          result,
+          remaining - length(taken),
+          Enum.reverse(taken) ++ rows
+        )
     end
   end
 
@@ -644,7 +684,12 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
     with {:ok, graph} <- workspace_graph(opts) do
       graph
       |> RDF.Data.descriptions()
-      |> Enum.filter(&Description.include?(&1, {RDF.type(), Sheaf.NS.DOC.SpreadsheetWorkbook}))
+      |> Enum.filter(
+        &Description.include?(
+          &1,
+          {RDF.type(), Sheaf.NS.DOC.SpreadsheetWorkbook}
+        )
+      )
       |> Enum.flat_map(&source_from_workbook(graph, &1, opts))
       |> Enum.uniq_by(& &1.id)
       |> Enum.sort_by(& &1.title)
@@ -664,7 +709,8 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
         with :ok <- Sheaf.Repo.load_once({nil, nil, nil, graph_name}) do
           graph =
             Sheaf.Repo.ask(fn dataset ->
-              RDF.Dataset.graph(dataset, graph_name) || Graph.new(name: graph_name)
+              RDF.Dataset.graph(dataset, graph_name) ||
+                Graph.new(name: graph_name)
             end)
 
           {:ok, graph}
@@ -694,7 +740,9 @@ defmodule Sheaf.Assistant.SpreadsheetSession do
               first_value(workbook, RDF.NS.RDFS.label()) ||
               first_value(file, Sheaf.NS.DOC.originalFilename()) ||
               Path.basename(path),
-          basename: first_value(file, Sheaf.NS.DOC.originalFilename()) || Path.basename(path),
+          basename:
+            first_value(file, Sheaf.NS.DOC.originalFilename()) ||
+              Path.basename(path),
           sheets: sheets
         }
       ]

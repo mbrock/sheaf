@@ -1,0 +1,205 @@
+#!/usr/bin/env elixir
+
+expert_root =
+  System.get_env("EXPERT_SOURCE") ||
+    Path.expand("~/src/expert/apps/expert")
+
+System.put_env(
+  "EXPERT_ENGINE_PATH",
+  System.get_env("EXPERT_ENGINE_PATH") ||
+    Path.expand("~/src/expert/apps/engine")
+)
+
+project_root =
+  System.argv()
+  |> List.first()
+  |> case do
+    nil -> File.cwd!()
+    path -> Path.expand(path)
+  end
+
+Mix.install(
+  [
+    {:expert, path: expert_root}
+  ],
+  start_applications: false
+)
+
+Application.ensure_all_started(:logger)
+
+:logger.update_primary_config(%{
+  metadata: %{instance_id: Integer.to_string(System.os_time(:millisecond), 16)}
+})
+
+Application.put_env(:kernel, :epmd_module, Forge.EPMD, persistent: true)
+
+node_suffix = System.unique_integer([:positive])
+manager_node = :"expert-manager-sheaf-spike-#{node_suffix}@127.0.0.1"
+
+case Node.start(manager_node, :longnames) do
+  {:ok, _pid} ->
+    :ok
+
+  {:error, {:already_started, _pid}} ->
+    :ok
+
+  {:error, reason} ->
+    raise "could not start manager node #{inspect(manager_node)}: #{inspect(reason)}"
+end
+
+{:ok, _mapper} = Forge.NodePortMapper.start_link([])
+
+{:ok, _document_store} =
+  Forge.Document.Store.start_link(derive: [analysis: &Forge.Ast.analyze/1])
+
+project =
+  project_root
+  |> Forge.Document.Path.to_uri()
+  |> Forge.Project.new()
+
+:ok = Forge.Project.ensure_workspace(project)
+
+IO.puts("manager: #{inspect(Node.self())}")
+IO.puts("project: #{Forge.Project.root_path(project)}")
+IO.puts("engine node: #{inspect(Forge.Project.node_name(project))}")
+
+{:ok, {namespaced_paths, mix_home}} = Expert.EngineNode.Builder.build_engine(project)
+
+dev_build_path =
+  namespaced_paths
+  |> List.first()
+  |> Path.split()
+  |> Enum.reverse()
+  |> then(fn
+    ["ebin", _app, "lib", "dev_ns", "_build" | rest] ->
+      root = rest |> Enum.reverse() |> Path.join()
+      Path.join([root, "_build", "dev"])
+
+    _ ->
+      raise "could not derive unnamespaced dev build from #{inspect(namespaced_paths)}"
+  end)
+
+engine_paths =
+  dev_build_path
+  |> Path.join("lib/**/ebin")
+  |> Path.wildcard()
+
+path_args = Enum.flat_map(engine_paths, &["-pa", Path.expand(&1)])
+
+engine_node = Forge.Project.node_name(project)
+
+child_code =
+  quote do
+    node = unquote(engine_node)
+
+    node_start = Node.start(node, :longnames)
+
+    case node_start do
+      {:ok, _} ->
+        :ok
+
+      {:error, {:already_started, _}} ->
+        :ok
+
+      {:error, reason} ->
+        IO.puts("error starting node: #{inspect(reason)}")
+    end
+
+    :ok = Forge.NodePortMapper.register()
+    IO.puts("ok")
+  end
+  |> Macro.to_string()
+  |> Base.encode64()
+
+env =
+  [
+    {"EXPERT_PARENT_NODE", to_string(Node.self())},
+    {"EXPERT_PARENT_PORT", to_string(Forge.EPMD.dist_port())}
+  ] ++
+    if is_binary(mix_home), do: [{"MIX_HOME", mix_home}], else: []
+
+args =
+  path_args ++
+    [
+      "--erl",
+      "-start_epmd false -epmd_module #{Forge.EPMD}",
+      "--cookie",
+      Node.get_cookie(),
+      "--no-halt",
+      "-e",
+      "System.argv() |> hd() |> Base.decode64!() |> Code.eval_string()",
+      child_code
+    ]
+
+:ok = :net_kernel.monitor_nodes(true, node_type: :all)
+port = Expert.Port.open_elixir(project, args: args, env: env, line: 4096)
+
+receive do
+  {:nodeup, ^engine_node, _} ->
+    :ok
+
+  {^port, {:data, data}} ->
+    raise "engine node failed before nodeup: #{inspect(data)}"
+after
+  10_000 ->
+    raise "timed out waiting for #{inspect(engine_node)}"
+end
+
+bootstrap_args = [
+  project,
+  Forge.Document.Store.entropy(),
+  for {app, _, _} <- Application.loaded_applications() do
+    {app, Application.get_all_env(app)}
+  end,
+  Node.self(),
+  :logger.get_primary_config().metadata
+]
+
+:ok = :rpc.call(engine_node, Engine.Bootstrap, :init, bootstrap_args)
+:ok = :rpc.call(engine_node, Engine, :ensure_apps_started, [Expert.Progress.noop_token()])
+
+IO.puts("started: #{inspect(engine_node)}")
+
+:ok = :erpc.call(engine_node, Engine.Search.Store, :enable, [], 30_000)
+:ok = :erpc.call(engine_node, Engine.Commands.Reindex, :perform, [project], 30_000)
+
+wait_until = System.monotonic_time(:millisecond) + 60_000
+
+wait_for_index = fn wait_for_index ->
+  running? = :erpc.call(engine_node, Engine.Commands.Reindex, :running?, [], 5_000)
+  loaded? = :erpc.call(engine_node, Engine.Search.Store, :loaded?, [], 5_000)
+
+  cond do
+    loaded? and not running? ->
+      :ok
+
+    System.monotonic_time(:millisecond) > wait_until ->
+      {:error, :timeout}
+
+    true ->
+      Process.sleep(500)
+      wait_for_index.(wait_for_index)
+  end
+end
+
+case wait_for_index.(wait_for_index) do
+  :ok -> :ok
+  {:error, reason} -> raise "index did not finish: #{inspect(reason)}"
+end
+
+symbols =
+  :erpc.call(
+    engine_node,
+    Engine.CodeIntelligence.Symbols,
+    :for_workspace,
+    ["AssistantChat"],
+    30_000
+  )
+
+symbols
+|> Enum.take(20)
+|> Enum.each(fn symbol ->
+  IO.inspect(symbol, label: "symbol")
+end)
+
+:erpc.call(engine_node, System, :stop, [])

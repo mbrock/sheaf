@@ -92,8 +92,10 @@ defmodule Sheaf.Crossref do
          opts =
            metadata_options(metadata_graph, doi, opts)
            |> Keyword.put(:crossref_work, crossref_work),
-         merged_graph = merge_metadata_graph(metadata_graph, crossref_graph, doi, opts),
-         additions = metadata_additions(metadata_graph, merged_graph, graph_name),
+         merged_graph =
+           merge_metadata_graph(metadata_graph, crossref_graph, doi, opts),
+         additions =
+           metadata_additions(metadata_graph, merged_graph, graph_name),
          :ok <- put_metadata_additions(graph_name, additions) do
       {:ok,
        %{
@@ -118,11 +120,17 @@ defmodule Sheaf.Crossref do
     metadata_graph
     |> RDF.Graph.add(crossref_graph)
     |> RDF.Graph.add(metadata_links(expression, doi, opts))
-    |> RDF.Graph.add(local_metadata(expression, crossref_graph, crossref_work, doi, opts))
+    |> RDF.Graph.add(
+      local_metadata(expression, crossref_graph, crossref_work, doi, opts)
+    )
   end
 
   @doc false
-  def metadata_additions(metadata_graph, merged_graph, graph_name \\ @default_metadata_graph) do
+  def metadata_additions(
+        metadata_graph,
+        merged_graph,
+        graph_name \\ @default_metadata_graph
+      ) do
     graph_name = RDF.iri(graph_name)
 
     merged_graph
@@ -156,8 +164,9 @@ defmodule Sheaf.Crossref do
     |> Req.new()
   end
 
-  defp handle_response({:ok, %{status: status, body: body}}) when status in 200..299,
-    do: {:ok, body}
+  defp handle_response({:ok, %{status: status, body: body}})
+       when status in 200..299,
+       do: {:ok, body}
 
   defp handle_response({:ok, %{status: status, body: body}}),
     do: {:error, %{status: status, body: body}}
@@ -170,7 +179,9 @@ defmodule Sheaf.Crossref do
     work = opts[:work] && RDF.iri(opts[:work])
     work_type = work_type(opts)
     title = crossref_title(opts)
-    same_as = same_as_resources([expression | List.wrap(opts[:same_as])], doi_iri)
+
+    same_as =
+      same_as_resources([expression | List.wrap(opts[:same_as])], doi_iri)
 
     RDF.Graph.build expression: expression,
                     doi_iri: doi_iri,
@@ -280,7 +291,8 @@ defmodule Sheaf.Crossref do
         RDF.iri(opts[:work])
 
       true ->
-        existing_work(metadata_graph, opts[:paper], expression) || (opts[:paper] && Sheaf.mint())
+        existing_work(metadata_graph, opts[:paper], expression) ||
+          (opts[:paper] && Sheaf.mint())
     end
   end
 
@@ -324,26 +336,35 @@ defmodule Sheaf.Crossref do
     do: title(Keyword.get(opts, :crossref_work, %{}), RDF.Graph.new(), nil)
 
   defp title(crossref_work, crossref_graph, doi_iri) do
-    first_string(crossref_work["title"]) || first_value(crossref_graph, doi_iri, DCTERMS.title())
+    first_string(crossref_work["title"]) ||
+      first_value(crossref_graph, doi_iri, DCTERMS.title())
   end
 
   defp publication_year(crossref_work) do
-    Enum.find_value(["published-print", "published-online", "published", "issued"], fn key ->
-      case crossref_work[key] do
-        %{"date-parts" => [[year | _] | _]} when is_integer(year) -> Integer.to_string(year)
-        _other -> nil
+    Enum.find_value(
+      ["published-print", "published-online", "published", "issued"],
+      fn key ->
+        case crossref_work[key] do
+          %{"date-parts" => [[year | _] | _]} when is_integer(year) ->
+            Integer.to_string(year)
+
+          _other ->
+            nil
+        end
       end
-    end)
+    )
   end
 
   defp volume(crossref_work, crossref_graph, doi_iri) do
-    string(crossref_work["volume"]) || first_value(crossref_graph, doi_iri, PRISM.volume())
+    string(crossref_work["volume"]) ||
+      first_value(crossref_graph, doi_iri, PRISM.volume())
   end
 
   defp issue(crossref_work), do: string(crossref_work["issue"])
 
   defp page_range(crossref_work, crossref_graph, doi_iri) do
-    string(crossref_work["page"]) || page_range_from_graph(crossref_graph, doi_iri)
+    string(crossref_work["page"]) ||
+      page_range_from_graph(crossref_graph, doi_iri)
   end
 
   defp page_range_from_graph(crossref_graph, doi_iri) do
@@ -365,8 +386,12 @@ defmodule Sheaf.Crossref do
     end
   end
 
-  defp expression_type(%{"type" => "journal-article"}), do: RDF.iri(FABIO.JournalArticle)
-  defp expression_type(%{"type" => "book-chapter"}), do: RDF.iri(FABIO.BookChapter)
+  defp expression_type(%{"type" => "journal-article"}),
+    do: RDF.iri(FABIO.JournalArticle)
+
+  defp expression_type(%{"type" => "book-chapter"}),
+    do: RDF.iri(FABIO.BookChapter)
+
   defp expression_type(%{"type" => "book"}), do: RDF.iri(FABIO.Book)
   defp expression_type(_crossref_work), do: nil
 
@@ -403,7 +428,8 @@ defmodule Sheaf.Crossref do
     |> Enum.uniq()
   end
 
-  defp doi_iri(doi), do: DOI |> RDF.IRI.coerce_base() |> RDF.IRI.append(normalized_doi(doi))
+  defp doi_iri(doi),
+    do: DOI |> RDF.IRI.coerce_base() |> RDF.IRI.append(normalized_doi(doi))
 
   defp normalized_doi(doi), do: String.trim(doi)
 

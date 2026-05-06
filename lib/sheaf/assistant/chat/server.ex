@@ -96,7 +96,10 @@ defmodule Sheaf.Assistant.Chat.Server do
   end
 
   def send_user_message(server, text, turn_context \\ %{}) do
-    GenServer.call(server_ref(server), {:send_user_message, text, turn_context})
+    GenServer.call(
+      server_ref(server),
+      {:send_user_message, text, turn_context}
+    )
   end
 
   def put_model(server, model) do
@@ -108,11 +111,17 @@ defmodule Sheaf.Assistant.Chat.Server do
   end
 
   def subscribe(server, live_view, component, component_id) do
-    GenServer.call(server_ref(server), {:subscribe, live_view, component, component_id})
+    GenServer.call(
+      server_ref(server),
+      {:subscribe, live_view, component, component_id}
+    )
   end
 
   def unsubscribe(server, live_view, component, component_id) do
-    GenServer.cast(server_ref(server), {:unsubscribe, live_view, component, component_id})
+    GenServer.cast(
+      server_ref(server),
+      {:unsubscribe, live_view, component, component_id}
+    )
   end
 
   @impl true
@@ -123,8 +132,13 @@ defmodule Sheaf.Assistant.Chat.Server do
     title = Keyword.get_lazy(opts, :title, fn -> default_title(kind) end)
     model = Keyword.get(opts, :model, Sheaf.LLM.default_model())
     llm_options = Keyword.get(opts, :llm_options, [])
-    max_tool_rounds = Keyword.get(opts, :max_tool_rounds, @default_max_tool_rounds)
-    task_supervisor = Keyword.get(opts, :task_supervisor, Sheaf.Assistant.TaskSupervisor)
+
+    max_tool_rounds =
+      Keyword.get(opts, :max_tool_rounds, @default_max_tool_rounds)
+
+    task_supervisor =
+      Keyword.get(opts, :task_supervisor, Sheaf.Assistant.TaskSupervisor)
+
     generate_text = Keyword.get(opts, :generate_text, &ReqLLM.generate_text/3)
     stream_text = Keyword.get(opts, :stream_text, &ReqLLM.stream_text/3)
     stream? = Keyword.get(opts, :stream?, false)
@@ -135,18 +149,32 @@ defmodule Sheaf.Assistant.Chat.Server do
     context_store = Keyword.get(opts, :context_store, ContextStore)
 
     spreadsheet_session =
-      Keyword.get_lazy(opts, :spreadsheet_session, fn -> SpreadsheetSession.via(id) end)
+      Keyword.get_lazy(opts, :spreadsheet_session, fn ->
+        SpreadsheetSession.via(id)
+      end)
 
     workspace_instructions =
-      Keyword.get_lazy(opts, :workspace_instructions, &workspace_instructions/0)
+      Keyword.get_lazy(
+        opts,
+        :workspace_instructions,
+        &workspace_instructions/0
+      )
 
     allow_notes? =
-      Keyword.get(opts, :allow_notes?, Keyword.get(opts, :allow_notes, kind == :research))
+      Keyword.get(
+        opts,
+        :allow_notes?,
+        Keyword.get(opts, :allow_notes, kind == :research)
+      )
 
     context =
       Keyword.get(opts, :context) ||
         persisted_context(context_store, session_iri) ||
-        Context.new([Context.system(system_prompt(kind, allow_notes?, workspace_instructions))])
+        Context.new([
+          Context.system(
+            system_prompt(kind, allow_notes?, workspace_instructions)
+          )
+        ])
 
     messages = visible_messages_from_context(context, titles)
     title = maybe_title_from_context(title, kind, messages)
@@ -155,7 +183,9 @@ defmodule Sheaf.Assistant.Chat.Server do
       CorpusTools.tools(
         tool_set: tool_set(kind),
         include_notes?: allow_notes?,
-        notify: fn event -> GenServer.cast(chat, {:assistant_event, event}) end,
+        notify: fn event ->
+          GenServer.cast(chat, {:assistant_event, event})
+        end,
         note_context: %{
           agent_iri: agent_iri,
           agent_label: agent_label(kind),
@@ -225,7 +255,11 @@ defmodule Sheaf.Assistant.Chat.Server do
     {:reply, {:error, :invalid_message}, state}
   end
 
-  def handle_call({:send_user_message, text, _turn_context}, _from, %{pending_ref: ref} = state)
+  def handle_call(
+        {:send_user_message, text, _turn_context},
+        _from,
+        %{pending_ref: ref} = state
+      )
       when not is_nil(ref) do
     if String.trim(text) == "" do
       {:reply, {:error, :empty_message}, state}
@@ -266,7 +300,11 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
-  def handle_call({:put_llm_options, _opts}, _from, %{pending_ref: ref} = state)
+  def handle_call(
+        {:put_llm_options, _opts},
+        _from,
+        %{pending_ref: ref} = state
+      )
       when not is_nil(ref) do
     {:reply, {:error, :busy}, state}
   end
@@ -278,7 +316,11 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
-  def handle_call({:subscribe, live_view, component, component_id}, _from, state) do
+  def handle_call(
+        {:subscribe, live_view, component, component_id},
+        _from,
+        state
+      ) do
     state = put_subscriber(state, live_view, component, component_id)
     {:reply, snapshot_from_state(state), state}
   end
@@ -293,11 +335,15 @@ defmodule Sheaf.Assistant.Chat.Server do
   end
 
   @impl true
-  def handle_info({:assistant_result, ref, result}, %{pending_ref: ref} = state) do
+  def handle_info(
+        {:assistant_result, ref, result},
+        %{pending_ref: ref} = state
+      ) do
     {:noreply, handle_assistant_result(state, result)}
   end
 
-  def handle_info({:assistant_result, _ref, _result}, state), do: {:noreply, state}
+  def handle_info({:assistant_result, _ref, _result}, state),
+    do: {:noreply, state}
 
   def handle_info({:DOWN, monitor_ref, :process, _pid, _reason}, state) do
     subscribers =
@@ -333,7 +379,10 @@ defmodule Sheaf.Assistant.Chat.Server do
 
       {:error, reason} ->
         state
-        |> append_message(:error, "Could not start assistant turn: #{inspect(reason)}")
+        |> append_message(
+          :error,
+          "Could not start assistant turn: #{inspect(reason)}"
+        )
         |> broadcast_snapshot()
     end
   end
@@ -402,7 +451,9 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp handle_assistant_event(state, {:text_delta, ref, text})
        when is_reference(ref) and is_binary(text) do
     if state.pending_ref == ref do
-      {chunks, stream_buffer} = StreamBuffer.push(Map.get(state, :stream_buffer), text)
+      {chunks, stream_buffer} =
+        StreamBuffer.push(Map.get(state, :stream_buffer), text)
+
       state = Map.put(state, :stream_buffer, stream_buffer)
 
       case chunks do
@@ -448,7 +499,11 @@ defmodule Sheaf.Assistant.Chat.Server do
         %{state | messages: messages ++ [message]}
 
       {_other, _messages} ->
-        append_raw_message(state, %{role: :assistant, text: text, streaming?: true})
+        append_raw_message(state, %{
+          role: :assistant,
+          text: text,
+          streaming?: true
+        })
     end
   end
 
@@ -467,7 +522,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
-  defp promote_assistant_message(state, index) when is_integer(index) and index >= 0 do
+  defp promote_assistant_message(state, index)
+       when is_integer(index) and index >= 0 do
     case Enum.at(state.messages, index) do
       %{role: :assistant, text: text} = message when is_binary(text) ->
         text = String.trim(text)
@@ -483,7 +539,8 @@ defmodule Sheaf.Assistant.Chat.Server do
             agent_label: agent_label(state.kind),
             session_iri: state.session_iri,
             session_label: session_label(state.kind, state.id),
-            conversation_mode: conversation_mode(state.kind, state.allow_notes?)
+            conversation_mode:
+              conversation_mode(state.kind, state.allow_notes?)
           }
 
           case Notes.write(attrs) do
@@ -497,7 +554,10 @@ defmodule Sheaf.Assistant.Chat.Server do
 
               state =
                 state
-                |> update_message(index, Map.put(message, :promoted_note, note_result))
+                |> update_message(
+                  index,
+                  Map.put(message, :promoted_note, note_result)
+                )
                 |> broadcast_snapshot()
 
               {:ok, note_result, state}
@@ -515,7 +575,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
-  defp promote_assistant_message(_state, _index), do: {:error, :invalid_message_index}
+  defp promote_assistant_message(_state, _index),
+    do: {:error, :invalid_message_index}
 
   defp refresh_note_indexes_async(state, note) do
     if Process.whereis(state.task_supervisor) do
@@ -547,8 +608,13 @@ defmodule Sheaf.Assistant.Chat.Server do
     |> String.replace(~r/^[#*\s]+/, "")
     |> String.trim()
     |> case do
-      "" -> "Promoted assistant response"
-      title -> if String.length(title) > 90, do: String.slice(title, 0, 87) <> "...", else: title
+      "" ->
+        "Promoted assistant response"
+
+      title ->
+        if String.length(title) > 90,
+          do: String.slice(title, 0, 87) <> "...",
+          else: title
     end
   end
 
@@ -558,7 +624,8 @@ defmodule Sheaf.Assistant.Chat.Server do
       |> Enum.reverse()
       |> Enum.map_reduce(false, fn msg, updated? ->
         if not updated? and tool_pending?(msg, name) do
-          {Map.merge(msg, %{status: status, summary: summary, result: result}), true}
+          {Map.merge(msg, %{status: status, summary: summary, result: result}),
+           true}
         else
           {msg, updated?}
         end
@@ -647,7 +714,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     _kind, _reason -> nil
   end
 
-  defp persisted_context({store, opts}, session_iri) when is_atom(store) and is_list(opts) do
+  defp persisted_context({store, opts}, session_iri)
+       when is_atom(store) and is_list(opts) do
     case store.read(session_iri, opts) do
       {:ok, %Context{} = context} -> context
       _other -> nil
@@ -750,7 +818,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     |> Enum.reduce([], &append_visible_message(&2, &1, titles))
   end
 
-  defp append_visible_message(messages, %{role: :system}, _titles), do: messages
+  defp append_visible_message(messages, %{role: :system}, _titles),
+    do: messages
 
   defp append_visible_message(messages, %{role: :user} = message, _titles) do
     append_if_text(messages, :user, message_text(message))
@@ -784,7 +853,11 @@ defmodule Sheaf.Assistant.Chat.Server do
     end)
   end
 
-  defp append_visible_message(messages, %{role: :assistant} = message, _titles) do
+  defp append_visible_message(
+         messages,
+         %{role: :assistant} = message,
+         _titles
+       ) do
     append_if_text(messages, :assistant, message_text(message))
   end
 
@@ -795,13 +868,19 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp append_visible_message(messages, _message, _titles), do: messages
 
   defp append_if_text(messages, _role, ""), do: messages
-  defp append_if_text(messages, role, text), do: messages ++ [%{role: role, text: text}]
+
+  defp append_if_text(messages, role, text),
+    do: messages ++ [%{role: role, text: text}]
 
   defp update_visible_tool_result(messages, message) do
     name = Map.get(message, :name)
     id = Map.get(message, :tool_call_id)
-    result = message |> Map.get(:metadata, %{}) |> sheaf_result_from_metadata()
-    summary = if name && result, do: CorpusTools.result_summary(name, {:ok, result})
+
+    result =
+      message |> Map.get(:metadata, %{}) |> sheaf_result_from_metadata()
+
+    summary =
+      if name && result, do: CorpusTools.result_summary(name, {:ok, result})
 
     {messages, updated?} =
       messages
@@ -812,7 +891,8 @@ defmodule Sheaf.Assistant.Chat.Server do
             {msg, updated?}
 
           Map.get(msg, :role) == :tool and Map.get(msg, :tool_call_id) == id ->
-            {Map.merge(msg, %{status: :ok, summary: summary, result: result}), true}
+            {Map.merge(msg, %{status: :ok, summary: summary, result: result}),
+             true}
 
           true ->
             {msg, updated?}
@@ -825,7 +905,16 @@ defmodule Sheaf.Assistant.Chat.Server do
       messages
     else
       messages ++
-        [%{role: :tool, tool: name, input: %{}, status: :ok, summary: summary, result: result}]
+        [
+          %{
+            role: :tool,
+            tool: name,
+            input: %{},
+            status: :ok,
+            summary: summary,
+            result: result
+          }
+        ]
     end
   end
 
@@ -845,7 +934,8 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp message_text(_message), do: ""
 
   defp message_metadata_text(%{metadata: metadata}) when is_map(metadata) do
-    Map.get(metadata, :sheaf_user_text) || Map.get(metadata, "sheaf_user_text")
+    Map.get(metadata, :sheaf_user_text) ||
+      Map.get(metadata, "sheaf_user_text")
   end
 
   defp message_metadata_text(_message), do: nil
@@ -873,7 +963,9 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp sheaf_result_from_metadata(_metadata), do: nil
 
   defp truncate(text, limit) do
-    if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 3) <> "..."
+    if String.length(text) <= limit,
+      do: text,
+      else: String.slice(text, 0, limit - 3) <> "..."
   end
 
   defp user_input(text, turn_context) do
@@ -915,7 +1007,9 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp maybe_add_open_document(lines, turn_context) do
     open_document = context_document(turn_context, :open_document)
-    working_document = context_document(turn_context, :working_document) || open_document
+
+    working_document =
+      context_document(turn_context, :working_document) || open_document
 
     cond do
       is_nil(open_document) ->
@@ -1005,7 +1099,11 @@ defmodule Sheaf.Assistant.Chat.Server do
     if Map.has_key?(state.subscribers, key) do
       state
     else
-      %{state | subscribers: Map.put(state.subscribers, key, Process.monitor(live_view))}
+      %{
+        state
+        | subscribers:
+            Map.put(state.subscribers, key, Process.monitor(live_view))
+      }
     end
   end
 
@@ -1023,7 +1121,8 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp broadcast_snapshot(state) do
     snapshot = snapshot_from_state(state)
 
-    Enum.each(state.subscribers, fn {{live_view, component, component_id}, _ref} ->
+    Enum.each(state.subscribers, fn {{live_view, component, component_id},
+                                     _ref} ->
       Phoenix.LiveView.send_update(live_view, component,
         id: component_id,
         chat_snapshot: snapshot
@@ -1060,8 +1159,11 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp snapshot_messages(%{pending_ref: nil, messages: messages} = state) do
     if missing_visible_tool_results?(messages) do
       case Assistant.context(state.assistant) do
-        %Context{} = context -> visible_messages_from_context(context, state.titles)
-        _other -> messages
+        %Context{} = context ->
+          visible_messages_from_context(context, state.titles)
+
+        _other ->
+          messages
       end
     else
       messages

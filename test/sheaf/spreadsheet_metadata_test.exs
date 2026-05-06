@@ -7,11 +7,14 @@ defmodule Sheaf.Spreadsheet.MetadataTest do
   alias Sheaf.XLSXFixture
 
   @tag :tmp_dir
-  test "imports XLSX workbook metadata into the workspace graph", %{tmp_dir: tmp_dir} do
+  test "imports XLSX workbook metadata into the workspace graph", %{
+    tmp_dir: tmp_dir
+  } do
     xlsx_path = Path.join(tmp_dir, "inventory.xlsx")
 
     XLSXFixture.write_workbook!(xlsx_path, [
-      {"Items", [["buyer_type", "amount"], ["agency", "3"], ["municipality", "7"]]},
+      {"Items",
+       [["buyer_type", "amount"], ["agency", "3"], ["municipality", "7"]]},
       {"Notes", [["label"], ["visible"]]}
     ])
 
@@ -43,7 +46,9 @@ defmodule Sheaf.Spreadsheet.MetadataTest do
     workbook =
       graph
       |> RDF.Data.descriptions()
-      |> Enum.find(&RDF.Description.include?(&1, {RDF.type(), DOC.SpreadsheetWorkbook}))
+      |> Enum.find(
+        &RDF.Description.include?(&1, {RDF.type(), DOC.SpreadsheetWorkbook})
+      )
 
     assert workbook
     assert RDF.Description.include?(workbook, {RDF.type(), DCAT.Dataset})
@@ -64,7 +69,9 @@ defmodule Sheaf.Spreadsheet.MetadataTest do
     parquet = Graph.description(graph, parquet_iri)
 
     assert RDF.Description.include?(parquet, {RDF.type(), DCAT.Distribution})
-    assert rdf_value(parquet, DCAT.mediaType()) == "application/vnd.apache.parquet"
+
+    assert rdf_value(parquet, DCAT.mediaType()) ==
+             "application/vnd.apache.parquet"
 
     file_iri = RDF.Description.first(workbook, DCAT.distribution())
     file = Graph.description(graph, file_iri)

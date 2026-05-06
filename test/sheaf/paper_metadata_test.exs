@@ -148,7 +148,9 @@ defmodule Sheaf.PaperMetadataTest do
         {block, DOC.sourceHtml(),
          RDF.literal("<p>Paper DOI: 10.1000/GRAPH and practice theory.</p>")}
       ])
-      |> then(fn graph -> RDF.list([section, block], graph: graph, head: root_list).graph end)
+      |> then(fn graph ->
+        RDF.list([section, block], graph: graph, head: root_list).graph
+      end)
 
     test_pid = self()
 
@@ -164,7 +166,9 @@ defmodule Sheaf.PaperMetadataTest do
     end
 
     assert {:ok, metadata} =
-             PaperMetadata.extract_graph(graph, paper, generate_object: generate_object)
+             PaperMetadata.extract_graph(graph, paper,
+               generate_object: generate_object
+             )
 
     assert metadata.title == "Graph Paper"
     assert metadata.doi == "10.1000/graph"
@@ -179,18 +183,23 @@ defmodule Sheaf.PaperMetadataTest do
   end
 
   test "returns file read errors without calling the model" do
-    missing_path = Path.join(System.tmp_dir!(), "missing-sheaf-paper-metadata-test.pdf")
+    missing_path =
+      Path.join(System.tmp_dir!(), "missing-sheaf-paper-metadata-test.pdf")
 
     generate_object = fn _model, _message, _schema, _opts ->
       flunk("Gemini should not be called for a missing file")
     end
 
     assert {:error, :enoent} =
-             PaperMetadata.extract_pdf(missing_path, generate_object: generate_object)
+             PaperMetadata.extract_pdf(missing_path,
+               generate_object: generate_object
+             )
   end
 
   test "passes model errors through" do
-    generate_object = fn _model, _message, _schema, _opts -> {:error, :quota_exceeded} end
+    generate_object = fn _model, _message, _schema, _opts ->
+      {:error, :quota_exceeded}
+    end
 
     assert {:error, :quota_exceeded} =
              PaperMetadata.extract_pdf_binary("%PDF", "paper.pdf",

@@ -58,3 +58,5 @@ npm-debug.log
 
 # Compiled Elixir admin escript.
 /bin/sheaf-admin
+
+/node_modules/

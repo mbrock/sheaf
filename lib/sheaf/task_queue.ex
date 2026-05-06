@@ -13,12 +13,14 @@ defmodule Sheaf.TaskQueue do
   @spec close(conn()) :: :ok | {:error, term()}
   def close(conn), do: Store.close(conn)
 
-  @spec create_batch(map(), [map()], keyword()) :: {:ok, map()} | {:error, term()}
+  @spec create_batch(map(), [map()], keyword()) ::
+          {:ok, map()} | {:error, term()}
   def create_batch(attrs, tasks, opts \\ []) do
     with_conn(opts, &Store.create_batch(&1, attrs, tasks))
   end
 
-  @spec create_task(String.t(), map(), map(), keyword()) :: {:ok, map()} | {:error, term()}
+  @spec create_task(String.t(), map(), map(), keyword()) ::
+          {:ok, map()} | {:error, term()}
   def create_task(batch_iri, attrs, task, opts \\ []) do
     with_conn(opts, &Store.create_task(&1, batch_iri, attrs, task))
   end

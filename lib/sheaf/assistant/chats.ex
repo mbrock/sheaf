@@ -31,7 +31,10 @@ defmodule Sheaf.Assistant.Chats do
   end
 
   def subscribe(live_view, component, component_id) do
-    GenServer.call(__MODULE__, {:subscribe, live_view, component, component_id})
+    GenServer.call(
+      __MODULE__,
+      {:subscribe, live_view, component, component_id}
+    )
   end
 
   def touch(id, attrs \\ []) do
@@ -63,7 +66,11 @@ defmodule Sheaf.Assistant.Chats do
     {:reply, reply, state}
   end
 
-  def handle_call({:subscribe, live_view, component, component_id}, _from, state) do
+  def handle_call(
+        {:subscribe, live_view, component, component_id},
+        _from,
+        state
+      ) do
     state = put_subscriber(state, live_view, component, component_id)
     {:reply, list_from_state(state), state}
   end
@@ -78,7 +85,10 @@ defmodule Sheaf.Assistant.Chats do
             |> Map.merge(Map.new(attrs))
             |> Map.put(:updated_at, timestamp())
 
-          %{state | conversations: Map.put(state.conversations, id, conversation)}
+          %{
+            state
+            | conversations: Map.put(state.conversations, id, conversation)
+          }
           |> move_to_front(id)
           |> broadcast_list()
 
@@ -114,7 +124,13 @@ defmodule Sheaf.Assistant.Chats do
 
     case DynamicSupervisor.start_child(@supervisor, {Chat, child_opts}) do
       {:ok, _pid} ->
-        conversation = %{id: id, title: title, kind: kind, created_at: now, updated_at: now}
+        conversation = %{
+          id: id,
+          title: title,
+          kind: kind,
+          created_at: now,
+          updated_at: now
+        }
 
         state =
           if listed? do
@@ -147,8 +163,11 @@ defmodule Sheaf.Assistant.Chats do
   defp put_conversation(state, conversation) do
     %{
       state
-      | conversations: Map.put(state.conversations, conversation.id, conversation),
-        order: [conversation.id | Enum.reject(state.order, &(&1 == conversation.id))]
+      | conversations:
+          Map.put(state.conversations, conversation.id, conversation),
+        order: [
+          conversation.id | Enum.reject(state.order, &(&1 == conversation.id))
+        ]
     }
   end
 
@@ -166,15 +185,23 @@ defmodule Sheaf.Assistant.Chats do
     if Map.has_key?(state.subscribers, key) do
       state
     else
-      %{state | subscribers: Map.put(state.subscribers, key, Process.monitor(live_view))}
+      %{
+        state
+        | subscribers:
+            Map.put(state.subscribers, key, Process.monitor(live_view))
+      }
     end
   end
 
   defp broadcast_list(state) do
     chats = list_from_state(state)
 
-    Enum.each(state.subscribers, fn {{live_view, component, component_id}, _ref} ->
-      Phoenix.LiveView.send_update(live_view, component, id: component_id, assistant_chats: chats)
+    Enum.each(state.subscribers, fn {{live_view, component, component_id},
+                                     _ref} ->
+      Phoenix.LiveView.send_update(live_view, component,
+        id: component_id,
+        assistant_chats: chats
+      )
     end)
 
     state

@@ -18,7 +18,9 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       assigns
       |> assign(
         :document,
-        AssistantMarkdown.document(assigns.text, resource_paths: assigns.resource_paths)
+        AssistantMarkdown.document(assigns.text,
+          resource_paths: assigns.resource_paths
+        )
       )
 
     ~H"""
@@ -68,12 +70,24 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       |> assign(:level, node.level |> max(1) |> min(6))
 
     ~H"""
-    <h1 :if={@level == 1}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h1>
-    <h2 :if={@level == 2}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h2>
-    <h3 :if={@level == 3}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h3>
-    <h4 :if={@level == 4}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h4>
-    <h5 :if={@level == 5}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h5>
-    <h6 :if={@level == 6}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></h6>
+    <h1 :if={@level == 1}>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </h1>
+    <h2 :if={@level == 2}>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </h2>
+    <h3 :if={@level == 3}>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </h3>
+    <h4 :if={@level == 4}>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </h4>
+    <h5 :if={@level == 5}>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </h5>
+    <h6 :if={@level == 6}>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </h6>
     """
   end
 
@@ -120,7 +134,9 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <strong><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></strong>
+    <strong>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </strong>
     """
   end
 
@@ -160,10 +176,16 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       leading_punctuation={@leading_punctuation}
       trailing_punctuation={@trailing_punctuation}
     />
-    <a :if={@href && (!@resource_id || !@block_ref_target)} href={@href} title={@title}>
+    <a
+      :if={@href && (!@resource_id || !@block_ref_target)}
+      href={@href}
+      title={@title}
+    >
       <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
     </a>
-    <span :if={!@href}><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></span>
+    <span :if={!@href}>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </span>
     """
   end
 
@@ -223,7 +245,9 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <blockquote><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></blockquote>
+    <blockquote>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </blockquote>
     """
   end
 
@@ -231,7 +255,9 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     assigns = assign(assigns, :nodes, node.nodes)
 
     ~H"""
-    <blockquote><.nodes nodes={@nodes} block_ref_target={@block_ref_target} /></blockquote>
+    <blockquote>
+      <.nodes nodes={@nodes} block_ref_target={@block_ref_target} />
+    </blockquote>
     """
   end
 
@@ -278,7 +304,8 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     """
   end
 
-  defp render_node(%{node: %{literal: literal}} = assigns) when is_binary(literal) do
+  defp render_node(%{node: %{literal: literal}} = assigns)
+       when is_binary(literal) do
     assigns = assign(assigns, :literal, literal)
 
     ~H"""
@@ -350,7 +377,9 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   defp collect_ref_list(_nodes, _links), do: nil
 
   defp collect_ref_list_after_separator([%MDEx.Link{} = link | rest], links) do
-    if resource_link?(link), do: collect_ref_list(rest, [link | links]), else: nil
+    if resource_link?(link),
+      do: collect_ref_list(rest, [link | links]),
+      else: nil
   end
 
   defp collect_ref_list_after_separator(_nodes, _links), do: nil
@@ -377,9 +406,11 @@ defmodule SheafWeb.AssistantMarkdownComponents do
          ],
          acc
        ) do
-    with {before, leading_punctuation} <- trailing_punctuation_before_ref(link, literal) do
+    with {before, leading_punctuation} <-
+           trailing_punctuation_before_ref(link, literal) do
       {trailing_punctuation, next_literal} =
-        leading_punctuation_after_ref(link, next_literal) || {nil, next_literal}
+        leading_punctuation_after_ref(link, next_literal) ||
+          {nil, next_literal}
 
       rest = [%{next_text | literal: next_literal} | rest]
 
@@ -391,7 +422,9 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       do_attach_ref_punctuation(rest, acc)
     else
       _other ->
-        do_attach_ref_punctuation([link, next_text | rest], [{text, nil, nil} | acc])
+        do_attach_ref_punctuation([link, next_text | rest], [
+          {text, nil, nil} | acc
+        ])
     end
   end
 
@@ -438,8 +471,10 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   defp maybe_push_text(acc, %MDEx.Text{} = text), do: [{text, nil, nil} | acc]
 
   defp trailing_punctuation_before_ref(%MDEx.Link{} = link, literal) do
-    with resource_id when is_binary(resource_id) <- resource_link_id(safe_href(link.url)),
-         [_, before, punctuation] <- Regex.run(~r/^(.*?)([\(\[\{])[\t ]*$/s, literal) do
+    with resource_id when is_binary(resource_id) <-
+           resource_link_id(safe_href(link.url)),
+         [_, before, punctuation] <-
+           Regex.run(~r/^(.*?)([\(\[\{])[\t ]*$/s, literal) do
       {before, punctuation}
     else
       _other -> nil
@@ -447,15 +482,18 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   end
 
   defp leading_punctuation_after_ref(%MDEx.Link{} = link, literal) do
-    with resource_id when is_binary(resource_id) <- resource_link_id(safe_href(link.url)),
-         [_, punctuation, rest] <- Regex.run(~r/^[ \t]*([,.;:!?\)\]\}]+)(.*)$/s, literal) do
+    with resource_id when is_binary(resource_id) <-
+           resource_link_id(safe_href(link.url)),
+         [_, punctuation, rest] <-
+           Regex.run(~r/^[ \t]*([,.;:!?\)\]\}]+)(.*)$/s, literal) do
       {punctuation, rest}
     else
       _other -> nil
     end
   end
 
-  defp resource_link?(%MDEx.Link{} = link), do: is_binary(resource_link_id(safe_href(link.url)))
+  defp resource_link?(%MDEx.Link{} = link),
+    do: is_binary(resource_link_id(safe_href(link.url)))
 
   attr :title, :string, default: nil
   attr :resource_id, :string, required: true
@@ -465,7 +503,10 @@ defmodule SheafWeb.AssistantMarkdownComponents do
 
   defp resource_ref_link(assigns) do
     {leading_punctuation, trailing_punctuation} =
-      display_ref_punctuation(assigns.leading_punctuation, assigns.trailing_punctuation)
+      display_ref_punctuation(
+        assigns.leading_punctuation,
+        assigns.trailing_punctuation
+      )
 
     assigns =
       assigns
@@ -493,7 +534,8 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   defp display_ref_punctuation(leading, trailing), do: {leading, trailing}
 
   defp table_data(%MDEx.Table{nodes: rows}) do
-    {header_rows, body_rows} = Enum.split_with(rows, &match?(%MDEx.TableRow{header: true}, &1))
+    {header_rows, body_rows} =
+      Enum.split_with(rows, &match?(%MDEx.TableRow{header: true}, &1))
 
     columns =
       header_rows
@@ -509,7 +551,9 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     {columns, body}
   end
 
-  defp row_values(%MDEx.TableRow{nodes: cells}), do: Enum.map(cells, &cell_text/1)
+  defp row_values(%MDEx.TableRow{nodes: cells}),
+    do: Enum.map(cells, &cell_text/1)
+
   defp row_values(_row), do: []
 
   defp row_map(columns, values) do
@@ -528,7 +572,9 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     |> Enum.reduce({[], %{}}, fn column, {columns, counts} ->
       count = Map.get(counts, column, 0)
       next_counts = Map.put(counts, column, count + 1)
-      unique_column = if count == 0, do: column, else: "#{column}_#{count + 1}"
+
+      unique_column =
+        if count == 0, do: column, else: "#{column}_#{count + 1}"
 
       {[unique_column | columns], next_counts}
     end)
@@ -543,12 +589,17 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     |> String.trim()
   end
 
-  defp text_content(nodes) when is_list(nodes), do: Enum.map_join(nodes, "", &text_content/1)
+  defp text_content(nodes) when is_list(nodes),
+    do: Enum.map_join(nodes, "", &text_content/1)
+
   defp text_content(%MDEx.Text{literal: literal}), do: literal
   defp text_content(%MDEx.Code{literal: literal}), do: literal
   defp text_content(%MDEx.SoftBreak{}), do: " "
   defp text_content(%MDEx.LineBreak{}), do: " "
-  defp text_content(%{nodes: nodes}) when is_list(nodes), do: text_content(nodes)
+
+  defp text_content(%{nodes: nodes}) when is_list(nodes),
+    do: text_content(nodes)
+
   defp text_content(%{literal: literal}) when is_binary(literal), do: literal
   defp text_content(_node), do: ""
 
@@ -579,7 +630,8 @@ defmodule SheafWeb.AssistantMarkdownComponents do
     end
   end
 
-  defp resource_link_id("/b/" <> id), do: id |> String.split(["?", "#"], parts: 2) |> hd()
+  defp resource_link_id("/b/" <> id),
+    do: id |> String.split(["?", "#"], parts: 2) |> hd()
 
   defp resource_link_id("/" <> id) do
     case String.split(id, ["/", "?", "#"], parts: 2) do

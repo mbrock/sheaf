@@ -16,7 +16,9 @@ defmodule SheafWeb.DocumentLive do
   alias Sheaf.SearchMaintenance
   alias SheafWeb.AppChrome
   alias SheafWeb.AssistantChatComponent
-  import SheafWeb.DocumentEntryComponents, only: [document_entry: 1, document_metadata_heading: 1]
+
+  import SheafWeb.DocumentEntryComponents,
+    only: [document_entry: 1, document_metadata_heading: 1]
 
   # Knuth-Plass justification is useful for short documents, but large imported
   # books can make client-side paragraph rewriting feel sluggish.
@@ -42,7 +44,11 @@ defmodule SheafWeb.DocumentLive do
             socket
 
           {:error, reason} ->
-            put_flash(socket, :error, "Could not load document #{id}: #{inspect(reason)}")
+            put_flash(
+              socket,
+              :error,
+              "Could not load document #{id}: #{inspect(reason)}"
+            )
         end
       else
         assign(socket, :selected_block_id, selected_block_id)
@@ -66,7 +72,8 @@ defmodule SheafWeb.DocumentLive do
 
     case target_document_id(block_id, socket) do
       nil ->
-        {:noreply, put_flash(socket, :error, "Block #{block_id} was not found.")}
+        {:noreply,
+         put_flash(socket, :error, "Block #{block_id} was not found.")}
 
       ^current_document_id ->
         {:noreply,
@@ -82,7 +89,8 @@ defmodule SheafWeb.DocumentLive do
     end
   end
 
-  def handle_event("assistant_block_link", _params, socket), do: {:noreply, socket}
+  def handle_event("assistant_block_link", _params, socket),
+    do: {:noreply, socket}
 
   def handle_event("edit_paragraph", %{"id" => id}, socket) do
     {:noreply, start_paragraph_edit(socket, id)}
@@ -96,7 +104,11 @@ defmodule SheafWeb.DocumentLive do
     {:noreply, insert_document_block_after(socket, id)}
   end
 
-  def handle_event("move_block", %{"id" => id, "direction" => direction}, socket) do
+  def handle_event(
+        "move_block",
+        %{"id" => id, "direction" => direction},
+        socket
+      ) do
     {:noreply, move_document_block(socket, id, direction)}
   end
 
@@ -108,15 +120,24 @@ defmodule SheafWeb.DocumentLive do
     {:noreply, clear_paragraph_edit(socket)}
   end
 
-  def handle_event("save_paragraph_edit", %{"id" => id, "text" => text}, socket) do
+  def handle_event(
+        "save_paragraph_edit",
+        %{"id" => id, "text" => text},
+        socket
+      ) do
     {:noreply, save_paragraph_edit(socket, id, text)}
   end
 
-  def handle_event("save_paragraph_edit", %{"id" => id, "markup" => markup}, socket) do
+  def handle_event(
+        "save_paragraph_edit",
+        %{"id" => id, "markup" => markup},
+        socket
+      ) do
     {:noreply, save_paragraph_markup_edit(socket, id, markup)}
   end
 
-  def handle_event("save_paragraph_edit", _params, socket), do: {:noreply, socket}
+  def handle_event("save_paragraph_edit", _params, socket),
+    do: {:noreply, socket}
 
   @impl true
   def handle_info(
@@ -134,7 +155,9 @@ defmodule SheafWeb.DocumentLive do
       assigns
       |> assign_new(:tags_by_block, fn -> %{} end)
       |> assign_new(:editing_block_id, fn -> nil end)
-      |> assign_new(:blocks, fn -> document_blocks(assigns.graph, assigns.root) end)
+      |> assign_new(:blocks, fn ->
+        document_blocks(assigns.graph, assigns.root)
+      end)
 
     assigns =
       assigns
@@ -311,9 +334,14 @@ defmodule SheafWeb.DocumentLive do
 
         <h2
           :if={!@editing?}
-          class={["small-caps font-semibold leading-tight", section_heading_class(@block.number)]}
+          class={[
+            "small-caps font-semibold leading-tight",
+            section_heading_class(@block.number)
+          ]}
         >
-          <span class="text-stone-500 dark:text-stone-400">{section_number(@block.number)}</span>
+          <span class="text-stone-500 dark:text-stone-400">
+            {section_number(@block.number)}
+          </span>
           <span class="ml-2">{Document.heading(@graph, @block.iri)}</span>
         </h2>
       </header>
@@ -448,7 +476,9 @@ defmodule SheafWeb.DocumentLive do
     """
   end
 
-  defp reader_block(%{block: %{type: :extracted, source_type: "Text"}} = assigns) do
+  defp reader_block(
+         %{block: %{type: :extracted, source_type: "Text"}} = assigns
+       ) do
     ~H"""
     <div
       id={"block-#{Document.id(@block.iri)}"}
@@ -483,7 +513,10 @@ defmodule SheafWeb.DocumentLive do
       phx-click="inspect_block"
       phx-value-id={Document.id(@block.iri)}
     >
-      <div id={"text-#{Document.id(@block.iri)}"} class={extracted_other_block_classes()}>
+      <div
+        id={"text-#{Document.id(@block.iri)}"}
+        class={extracted_other_block_classes()}
+      >
         {raw(Document.source_html(@graph, @block.iri))}
       </div>
     </div>
@@ -500,8 +533,14 @@ defmodule SheafWeb.DocumentLive do
       assigns
       |> assign(:block_id, block_id)
       |> assign(:text, editable_block_text(assigns.graph, assigns.block.iri))
-      |> assign(:markup, editable_block_markup(assigns.graph, assigns.block.iri) || "")
-      |> assign(:format, editable_block_format(assigns.graph, assigns.block.iri))
+      |> assign(
+        :markup,
+        editable_block_markup(assigns.graph, assigns.block.iri) || ""
+      )
+      |> assign(
+        :format,
+        editable_block_format(assigns.graph, assigns.block.iri)
+      )
 
     ~H"""
     <div
@@ -615,7 +654,8 @@ defmodule SheafWeb.DocumentLive do
           <.icon name="hero-trash" class="size-3.5" />
         </button>
       </div>
-      <div :if={@show_tags?} class="h-4 w-px bg-stone-300 dark:bg-stone-700"></div>
+      <div :if={@show_tags?} class="h-4 w-px bg-stone-300 dark:bg-stone-700">
+      </div>
       <div :if={@show_tags?} class="flex items-center gap-px">
         <button
           :for={tag <- writing_tag_options()}
@@ -687,18 +727,31 @@ defmodule SheafWeb.DocumentLive do
   end
 
   defp writing_tag_options do
-    Enum.map(BlockTags.tag_names(), fn name -> %{name: name, label: BlockTags.label(name)} end)
+    Enum.map(BlockTags.tag_names(), fn name ->
+      %{name: name, label: BlockTags.label(name)}
+    end)
   end
 
   @doc false
   def paragraph_block_count(blocks) do
     Enum.reduce(blocks, 0, fn
-      %{type: :document, children: children}, acc -> acc + paragraph_block_count(children)
-      %{type: :section, children: children}, acc -> acc + paragraph_block_count(children)
-      %{type: :paragraph}, acc -> acc + 1
-      %{type: :row}, acc -> acc + 1
-      %{type: :extracted, source_type: "Text"}, acc -> acc + 1
-      _other, acc -> acc
+      %{type: :document, children: children}, acc ->
+        acc + paragraph_block_count(children)
+
+      %{type: :section, children: children}, acc ->
+        acc + paragraph_block_count(children)
+
+      %{type: :paragraph}, acc ->
+        acc + 1
+
+      %{type: :row}, acc ->
+        acc + 1
+
+      %{type: :extracted, source_type: "Text"}, acc ->
+        acc + 1
+
+      _other, acc ->
+        acc
     end)
   end
 
@@ -718,14 +771,18 @@ defmodule SheafWeb.DocumentLive do
       case Document.block_type(graph, iri) do
         :section ->
           number = prefix ++ [section_index + 1]
-          children = number_blocks(Document.children(graph, iri), graph, number)
+
+          children =
+            number_blocks(Document.children(graph, iri), graph, number)
 
           {%{type: :section, iri: iri, number: number, children: children},
            {section_index + 1, paragraph_index}}
 
         :paragraph ->
           number = paragraph_index + 1
-          {%{type: :paragraph, iri: iri, number: number}, {section_index, number}}
+
+          {%{type: :paragraph, iri: iri, number: number},
+           {section_index, number}}
 
         :row ->
           number = paragraph_index + 1
@@ -737,8 +794,12 @@ defmodule SheafWeb.DocumentLive do
           if source_type == "Text" do
             number = paragraph_index + 1
 
-            {%{type: :extracted, iri: iri, source_type: source_type, number: number},
-             {section_index, number}}
+            {%{
+               type: :extracted,
+               iri: iri,
+               source_type: source_type,
+               number: number
+             }, {section_index, number}}
           else
             {%{type: :extracted, iri: iri, source_type: source_type},
              {section_index, paragraph_index}}
@@ -781,7 +842,9 @@ defmodule SheafWeb.DocumentLive do
   defp descendant_blocks(graph, block) do
     graph
     |> Document.children(block)
-    |> Enum.flat_map(fn child -> [child | descendant_blocks(graph, child)] end)
+    |> Enum.flat_map(fn child ->
+      [child | descendant_blocks(graph, child)]
+    end)
   end
 
   defp block_tags(tags_by_block, iri) do
@@ -816,10 +879,18 @@ defmodule SheafWeb.DocumentLive do
     ]
   end
 
-  defp toolbar_tag_dot_class("placeholder"), do: "size-1.5 rounded-full bg-amber-500"
-  defp toolbar_tag_dot_class("needs_evidence"), do: "size-1.5 rounded-full bg-sky-500"
-  defp toolbar_tag_dot_class("needs_revision"), do: "size-1.5 rounded-full bg-rose-500"
-  defp toolbar_tag_dot_class("fragment"), do: "size-1.5 rounded-full bg-violet-500"
+  defp toolbar_tag_dot_class("placeholder"),
+    do: "size-1.5 rounded-full bg-amber-500"
+
+  defp toolbar_tag_dot_class("needs_evidence"),
+    do: "size-1.5 rounded-full bg-sky-500"
+
+  defp toolbar_tag_dot_class("needs_revision"),
+    do: "size-1.5 rounded-full bg-rose-500"
+
+  defp toolbar_tag_dot_class("fragment"),
+    do: "size-1.5 rounded-full bg-violet-500"
+
   defp toolbar_tag_dot_class(_name), do: "size-1.5 rounded-full bg-stone-400"
 
   defp paragraph_article_class(_selected?, editing?) do
@@ -956,7 +1027,11 @@ defmodule SheafWeb.DocumentLive do
             put_flash(socket, :error, "Could not toggle tag: #{reason}")
 
           {:error, reason} ->
-            put_flash(socket, :error, "Could not toggle tag: #{inspect(reason)}")
+            put_flash(
+              socket,
+              :error,
+              "Could not toggle tag: #{inspect(reason)}"
+            )
         end
     end
   end
@@ -987,7 +1062,11 @@ defmodule SheafWeb.DocumentLive do
             put_flash(socket, :error, "Could not create block: #{reason}")
 
           {:error, reason} ->
-            put_flash(socket, :error, "Could not create block: #{inspect(reason)}")
+            put_flash(
+              socket,
+              :error,
+              "Could not create block: #{inspect(reason)}"
+            )
         end
     end
   end
@@ -996,8 +1075,10 @@ defmodule SheafWeb.DocumentLive do
   def move_document_block(socket, block_id, direction) do
     block_id = normalize_block_id(block_id)
 
-    with {:ok, target_id, position} <- adjacent_move(socket.assigns.blocks, block_id, direction),
-         {:ok, result} <- DocumentEdits.move_block(block_id, target_id, position) do
+    with {:ok, target_id, position} <-
+           adjacent_move(socket.assigns.blocks, block_id, direction),
+         {:ok, result} <-
+           DocumentEdits.move_block(block_id, target_id, position) do
       if Map.get(socket.assigns, :refresh_search_indexes?, true) do
         refresh_search_indexes_async(result.affected_blocks)
       end
@@ -1009,7 +1090,11 @@ defmodule SheafWeb.DocumentLive do
       |> push_event("scroll-to-block", %{id: block_id})
     else
       {:error, :no_adjacent_sibling} ->
-        put_flash(socket, :error, "That block cannot move farther in this section.")
+        put_flash(
+          socket,
+          :error,
+          "That block cannot move farther in this section."
+        )
 
       {:error, reason} when is_binary(reason) ->
         put_flash(socket, :error, "Could not move block: #{reason}")
@@ -1045,7 +1130,11 @@ defmodule SheafWeb.DocumentLive do
             put_flash(socket, :error, "Could not delete block: #{reason}")
 
           {:error, reason} ->
-            put_flash(socket, :error, "Could not delete block: #{inspect(reason)}")
+            put_flash(
+              socket,
+              :error,
+              "Could not delete block: #{inspect(reason)}"
+            )
         end
     end
   end
@@ -1097,7 +1186,11 @@ defmodule SheafWeb.DocumentLive do
             put_flash(socket, :error, "Could not save paragraph: #{reason}")
 
           {:error, reason} ->
-            put_flash(socket, :error, "Could not save paragraph: #{inspect(reason)}")
+            put_flash(
+              socket,
+              :error,
+              "Could not save paragraph: #{inspect(reason)}"
+            )
         end
     end
   end
@@ -1105,7 +1198,8 @@ defmodule SheafWeb.DocumentLive do
   def save_paragraph_edit(socket, _block_id, _text), do: socket
 
   @doc false
-  def save_paragraph_markup_edit(socket, block_id, markup) when is_binary(markup) do
+  def save_paragraph_markup_edit(socket, block_id, markup)
+      when is_binary(markup) do
     block_id = normalize_block_id(block_id)
     block = Id.iri(block_id)
     markup = Document.sanitize_inline_markup(markup)
@@ -1115,7 +1209,11 @@ defmodule SheafWeb.DocumentLive do
         socket
 
       not editable_markup_block?(socket.assigns.graph, block) ->
-        put_flash(socket, :error, "Only markup paragraph blocks can be edited as markup.")
+        put_flash(
+          socket,
+          :error,
+          "Only markup paragraph blocks can be edited as markup."
+        )
 
       markup == (Document.paragraph_markup(socket.assigns.graph, block) || "") ->
         clear_paragraph_edit(socket)
@@ -1137,7 +1235,11 @@ defmodule SheafWeb.DocumentLive do
             put_flash(socket, :error, "Could not save paragraph: #{reason}")
 
           {:error, reason} ->
-            put_flash(socket, :error, "Could not save paragraph: #{inspect(reason)}")
+            put_flash(
+              socket,
+              :error,
+              "Could not save paragraph: #{inspect(reason)}"
+            )
         end
     end
   end
@@ -1145,11 +1247,14 @@ defmodule SheafWeb.DocumentLive do
   def save_paragraph_markup_edit(socket, _block_id, _markup), do: socket
 
   @doc false
-  def reload_document_assigns(%{assigns: %{document_id: document_id}} = socket) do
+  def reload_document_assigns(
+        %{assigns: %{document_id: document_id}} = socket
+      ) do
     root = Id.iri(document_id)
 
     with {:ok, graph} <- Sheaf.fetch_graph(root),
-         {:ok, references_by_block} <- Documents.references_for_document(root, graph),
+         {:ok, references_by_block} <-
+           Documents.references_for_document(root, graph),
          {:ok, tags_by_block} <- BlockTags.for_document(graph, root) do
       socket
       |> assign(:page_title, page_title(graph, root))
@@ -1161,7 +1266,11 @@ defmodule SheafWeb.DocumentLive do
       |> assign_document_view(graph, root, tags_by_block)
     else
       {:error, reason} ->
-        put_flash(socket, :error, "Could not reload document #{document_id}: #{inspect(reason)}")
+        put_flash(
+          socket,
+          :error,
+          "Could not reload document #{document_id}: #{inspect(reason)}"
+        )
     end
   end
 
@@ -1169,7 +1278,8 @@ defmodule SheafWeb.DocumentLive do
     root = Id.iri(id)
 
     with {:ok, graph} <- Sheaf.fetch_graph(root),
-         {:ok, references_by_block} <- Documents.references_for_document(root, graph),
+         {:ok, references_by_block} <-
+           Documents.references_for_document(root, graph),
          {:ok, tags_by_block} <- BlockTags.for_document(graph, root) do
       document = sidebar_document(id, root, graph)
 
@@ -1197,13 +1307,18 @@ defmodule SheafWeb.DocumentLive do
 
     if connected?(socket) and subscribed_id != document_id do
       if is_binary(subscribed_id) do
-        Phoenix.PubSub.unsubscribe(Sheaf.PubSub, DocumentEdits.topic(subscribed_id))
+        Phoenix.PubSub.unsubscribe(
+          Sheaf.PubSub,
+          DocumentEdits.topic(subscribed_id)
+        )
       end
 
       Phoenix.PubSub.subscribe(Sheaf.PubSub, DocumentEdits.topic(document_id))
       assign(socket, :document_change_subscription_id, document_id)
     else
-      assign_new(socket, :document_change_subscription_id, fn -> subscribed_id end)
+      assign_new(socket, :document_change_subscription_id, fn ->
+        subscribed_id
+      end)
     end
   end
 
@@ -1213,7 +1328,10 @@ defmodule SheafWeb.DocumentLive do
 
     socket
     |> assign(:blocks, blocks)
-    |> assign(:toc, graph |> Document.toc(root) |> tagged_toc_entries(graph, tags_by_block))
+    |> assign(
+      :toc,
+      graph |> Document.toc(root) |> tagged_toc_entries(graph, tags_by_block)
+    )
     |> assign(:knuth_plass?, knuth_plass?(blocks))
   end
 
@@ -1259,7 +1377,8 @@ defmodule SheafWeb.DocumentLive do
     end
   end
 
-  defp adjacent_move(_blocks, _block_id, _direction), do: {:error, "unknown move direction"}
+  defp adjacent_move(_blocks, _block_id, _direction),
+    do: {:error, "unknown move direction"}
 
   defp sibling_ids(blocks, block_id) do
     Enum.find_value(blocks, fn block ->
@@ -1280,9 +1399,11 @@ defmodule SheafWeb.DocumentLive do
 
   defp adjacent_before([block_id | _rest], block_id), do: nil
 
-  defp adjacent_before([previous_id, block_id | _rest], block_id), do: previous_id
+  defp adjacent_before([previous_id, block_id | _rest], block_id),
+    do: previous_id
 
-  defp adjacent_before([_id | rest], block_id), do: adjacent_before(rest, block_id)
+  defp adjacent_before([_id | rest], block_id),
+    do: adjacent_before(rest, block_id)
 
   defp adjacent_after(nil, _block_id), do: nil
 
@@ -1290,7 +1411,8 @@ defmodule SheafWeb.DocumentLive do
 
   defp adjacent_after([block_id, next_id | _rest], block_id), do: next_id
 
-  defp adjacent_after([_id | rest], block_id), do: adjacent_after(rest, block_id)
+  defp adjacent_after([_id | rest], block_id),
+    do: adjacent_after(rest, block_id)
 
   defp normalize_editor_text(text) do
     text
@@ -1317,7 +1439,9 @@ defmodule SheafWeb.DocumentLive do
         :ok
 
       {:error, reason} ->
-        Logger.warning("Paragraph edit search index refresh failed: #{inspect(reason)}")
+        Logger.warning(
+          "Paragraph edit search index refresh failed: #{inspect(reason)}"
+        )
     end
   end
 
@@ -1346,7 +1470,8 @@ defmodule SheafWeb.DocumentLive do
     Map.get(references_by_block, Document.id(iri), [])
   end
 
-  defp selected_block_id(%{"block" => block_id}) when is_binary(block_id) and block_id != "" do
+  defp selected_block_id(%{"block" => block_id})
+       when is_binary(block_id) and block_id != "" do
     block_id
   end
 
@@ -1360,7 +1485,9 @@ defmodule SheafWeb.DocumentLive do
     push_event(socket, "scroll-to-block", %{id: block_id})
   end
 
-  defp maybe_scroll_reader(socket, true), do: push_event(socket, "scroll-reader-to-top", %{})
+  defp maybe_scroll_reader(socket, true),
+    do: push_event(socket, "scroll-reader-to-top", %{})
+
   defp maybe_scroll_reader(socket, false), do: socket
 
   defp target_document_id(block_id, socket) do
@@ -1370,7 +1497,8 @@ defmodule SheafWeb.DocumentLive do
       Map.get(socket.assigns, :root) == iri ->
         socket.assigns.document_id
 
-      Map.has_key?(socket.assigns, :graph) and Document.block_type(socket.assigns.graph, iri) ->
+      Map.has_key?(socket.assigns, :graph) and
+          Document.block_type(socket.assigns.graph, iri) ->
         socket.assigns.document_id
 
       true ->

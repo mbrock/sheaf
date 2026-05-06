@@ -27,7 +27,13 @@ defmodule Sheaf.MetadataResolver.Queue do
     @import_kind => 1
   }
 
-  @phase_order [@extract_kind, @legacy_resolve_kind, @lookup_kind, @match_kind, @import_kind]
+  @phase_order [
+    @extract_kind,
+    @legacy_resolve_kind,
+    @lookup_kind,
+    @match_kind,
+    @import_kind
+  ]
 
   @spec enqueue(keyword()) :: {:ok, map()} | {:error, term()}
   def enqueue(opts \\ []) do
@@ -36,7 +42,8 @@ defmodule Sheaf.MetadataResolver.Queue do
 
       Sheaf.TaskQueue.create_batch(
         %{
-          iri: Keyword.get_lazy(opts, :batch_iri, &Sheaf.mint/0) |> to_string(),
+          iri:
+            Keyword.get_lazy(opts, :batch_iri, &Sheaf.mint/0) |> to_string(),
           queue: @queue,
           kind: @kind,
           input: %{
@@ -104,9 +111,14 @@ defmodule Sheaf.MetadataResolver.Queue do
     1..limit
     |> Enum.reduce_while([], fn _index, tasks ->
       case Sheaf.TaskQueue.claim_task(queue: @queue, kind: kind) do
-        {:ok, nil} -> {:halt, Enum.reverse(tasks)}
-        {:ok, task} -> {:cont, [task | tasks]}
-        {:error, reason} -> {:halt, [%{queue_error: reason} | tasks] |> Enum.reverse()}
+        {:ok, nil} ->
+          {:halt, Enum.reverse(tasks)}
+
+        {:ok, task} ->
+          {:cont, [task | tasks]}
+
+        {:error, reason} ->
+          {:halt, [%{queue_error: reason} | tasks] |> Enum.reverse()}
       end
     end)
   end
@@ -153,7 +165,8 @@ defmodule Sheaf.MetadataResolver.Queue do
        when kind in [@extract_kind, @legacy_resolve_kind] do
     candidate = candidate_from_input(task.input)
 
-    with {:ok, metadata} <- Sheaf.MetadataResolver.extract_candidate_metadata(candidate, opts),
+    with {:ok, metadata} <-
+           Sheaf.MetadataResolver.extract_candidate_metadata(candidate, opts),
          payload = extraction_payload(candidate, metadata),
          :ok <- Sheaf.TaskQueue.complete_task(task.id, payload),
          :ok <- enqueue_lookup_if_needed(task, payload) do
@@ -164,7 +177,8 @@ defmodule Sheaf.MetadataResolver.Queue do
   defp process_task(%{kind: @lookup_kind} = task, opts) do
     metadata = metadata_from_input(task.input)
 
-    with {:ok, lookup} <- Sheaf.MetadataResolver.lookup_identifier(metadata, opts),
+    with {:ok, lookup} <-
+           Sheaf.MetadataResolver.lookup_identifier(metadata, opts),
          payload = lookup_payload(task.input, lookup),
          :ok <- Sheaf.TaskQueue.complete_task(task.id, payload),
          :ok <- enqueue_match_if_needed(task, payload) do
@@ -189,7 +203,13 @@ defmodule Sheaf.MetadataResolver.Queue do
     metadata = metadata_from_input(task.input)
     match = match_from_input(task.input)
 
-    with {:ok, result} <- Sheaf.MetadataResolver.import_match(candidate, metadata, match, opts),
+    with {:ok, result} <-
+           Sheaf.MetadataResolver.import_match(
+             candidate,
+             metadata,
+             match,
+             opts
+           ),
          payload = result_payload(result),
          :ok <- Sheaf.TaskQueue.complete_task(task.id, payload) do
       {:ok, payload}
@@ -227,7 +247,8 @@ defmodule Sheaf.MetadataResolver.Queue do
                kind: kind,
                subject_iri: document_from_payload(input),
                identifier: identifier,
-               unique_key: "#{kind}:#{document_from_payload(input)}:#{identifier}",
+               unique_key:
+                 "#{kind}:#{document_from_payload(input)}:#{identifier}",
                input: input
              }
            ) do
@@ -332,11 +353,19 @@ defmodule Sheaf.MetadataResolver.Queue do
     }
   end
 
-  defp lookup_payload_map(%{source: "doi", identifier: identifier, work: work}) do
+  defp lookup_payload_map(%{
+         source: "doi",
+         identifier: identifier,
+         work: work
+       }) do
     %{source: "doi", identifier: identifier, work: work}
   end
 
-  defp lookup_payload_map(%{source: "isbn", identifier: identifier, works: works}) do
+  defp lookup_payload_map(%{
+         source: "isbn",
+         identifier: identifier,
+         works: works
+       }) do
     %{source: "isbn", identifier: identifier, works: works}
   end
 
@@ -397,7 +426,8 @@ defmodule Sheaf.MetadataResolver.Queue do
     match = input_value(input, :match) || %{}
 
     %{
-      accept?: input_value(match, :accept?) || input_value(match, :accept) || false,
+      accept?:
+        input_value(match, :accept?) || input_value(match, :accept) || false,
       score: input_value(match, :score) || 0.0,
       source: input_value(match, :source),
       identifier: input_value(match, :identifier),
@@ -420,9 +450,15 @@ defmodule Sheaf.MetadataResolver.Queue do
     |> input_value(:document)
   end
 
-  defp count_result(acc, %{wrote: true}), do: Map.update!(acc, :imported, &(&1 + 1))
-  defp count_result(acc, %{match: %{accept?: false}}), do: Map.update!(acc, :skipped, &(&1 + 1))
-  defp count_result(acc, %{doi: nil, isbn: nil}), do: Map.update!(acc, :skipped, &(&1 + 1))
+  defp count_result(acc, %{wrote: true}),
+    do: Map.update!(acc, :imported, &(&1 + 1))
+
+  defp count_result(acc, %{match: %{accept?: false}}),
+    do: Map.update!(acc, :skipped, &(&1 + 1))
+
+  defp count_result(acc, %{doi: nil, isbn: nil}),
+    do: Map.update!(acc, :skipped, &(&1 + 1))
+
   defp count_result(acc, _result), do: acc
 
   defp fail_processed_task(task, reason, acc, opts) do
@@ -444,7 +480,10 @@ defmodule Sheaf.MetadataResolver.Queue do
 
   defp concurrency_for(kind, opts) do
     overrides = Keyword.get(opts, :concurrency_by_kind, %{})
-    override = Map.get(overrides, kind) || Map.get(overrides, phase_label(kind))
+
+    override =
+      Map.get(overrides, kind) || Map.get(overrides, phase_label(kind))
+
     max(override || Map.fetch!(@default_concurrency, kind), 1)
   end
 
@@ -455,7 +494,8 @@ defmodule Sheaf.MetadataResolver.Queue do
   defp kind_order(@import_kind), do: 4
   defp kind_order(_kind), do: 99
 
-  defp short_iri(iri), do: String.replace_prefix(to_string(iri), "https://sheaf.less.rest/", "")
+  defp short_iri(iri),
+    do: String.replace_prefix(to_string(iri), "https://sheaf.less.rest/", "")
 
   defp start_message(limit, opts) do
     pdf =
@@ -541,12 +581,14 @@ defmodule Sheaf.MetadataResolver.Queue do
     |> String.trim()
   end
 
-  defp task_result_summary(:completed, %{wrote: true}), do: "imported RDF metadata"
+  defp task_result_summary(:completed, %{wrote: true}),
+    do: "imported RDF metadata"
 
   defp task_result_summary(:completed, %{doi: nil, isbn: nil}),
     do: "no DOI/ISBN found; no Crossref task queued"
 
-  defp task_result_summary(:completed, %{lookup: %{source: "none"}}), do: "no Crossref lookup"
+  defp task_result_summary(:completed, %{lookup: %{source: "none"}}),
+    do: "no Crossref lookup"
 
   defp task_result_summary(:completed, %{lookup: lookup}) do
     source = input_value(lookup, :source) || "unknown"

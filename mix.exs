@@ -7,7 +7,11 @@ defmodule Sheaf.MixProject do
       version: "0.1.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
-      escript: [main_module: Sheaf.Admin.CLI, path: "bin/sheaf-admin", app: nil],
+      escript: [
+        main_module: Sheaf.Admin.CLI,
+        path: "bin/sheaf-admin",
+        app: nil
+      ],
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
@@ -86,7 +90,6 @@ defmodule Sheaf.MixProject do
       {:explorer, "~> 0.11.1"},
       {:dux, "~> 0.3.0"},
       {:kino_dux, "~> 0.2.0"},
-      {:sheaf_rdf_browser, path: "apps/sheaf_rdf_browser"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"}
     ]

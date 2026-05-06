@@ -13,7 +13,8 @@ defmodule Sheaf.Admin do
   alias Sheaf.NS.DOC
 
   def backup(args) do
-    {opts, _positional, invalid} = OptionParser.parse(args, strict: [output: :string])
+    {opts, _positional, invalid} =
+      OptionParser.parse(args, strict: [output: :string])
 
     reject_invalid!(invalid)
 
@@ -29,10 +30,18 @@ defmodule Sheaf.Admin do
   def upload_schema(args) do
     reject_positional!(args)
 
-    Sheaf.put_graph(DOC.__base_iri__(), Serialization.read_file!(schema_path()))
+    Sheaf.put_graph(
+      DOC.__base_iri__(),
+      Serialization.read_file!(schema_path())
+    )
+
     info("Uploaded schema graph #{DOC.__base_iri__()}")
 
-    Sheaf.put_graph(extension_graph(), Serialization.read_file!(extension_path()))
+    Sheaf.put_graph(
+      extension_graph(),
+      Serialization.read_file!(extension_path())
+    )
+
     info("Uploaded schema extension graph #{extension_graph()}")
 
     Sheaf.put_graph(imported_ontologies_graph(), imported_ontologies())
@@ -41,7 +50,9 @@ defmodule Sheaf.Admin do
 
   def sync_search(args) do
     {opts, _positional, invalid} =
-      OptionParser.parse(args, strict: [db: :string, limit: :integer, kind: :keep])
+      OptionParser.parse(args,
+        strict: [db: :string, limit: :integer, kind: :keep]
+      )
 
     reject_invalid!(invalid)
 
@@ -63,7 +74,8 @@ defmodule Sheaf.Admin do
   end
 
   def sync_search_indexes(args) do
-    {opts, _positional, invalid} = OptionParser.parse(args, strict: embedding_sync_options())
+    {opts, _positional, invalid} =
+      OptionParser.parse(args, strict: embedding_sync_options())
 
     reject_invalid!(invalid)
 
@@ -75,7 +87,8 @@ defmodule Sheaf.Admin do
 
     with {:ok, rows} <- Sheaf.TextUnits.fetch_rows(row_opts),
          search_units = Sheaf.Search.Index.units_from_rows(rows, search_opts),
-         embedding_units = Sheaf.Embedding.Index.units_from_rows(rows, embedding_opts),
+         embedding_units =
+           Sheaf.Embedding.Index.units_from_rows(rows, embedding_opts),
          {:ok, search_summary} <- sync_search_units(search_units, search_opts),
          {:ok, embedding_summary} <-
            Sheaf.Embedding.Index.sync_units(embedding_units, embedding_opts) do
@@ -93,7 +106,8 @@ defmodule Sheaf.Admin do
   end
 
   def sync_embeddings(args) do
-    {opts, _positional, invalid} = OptionParser.parse(args, strict: embedding_sync_options())
+    {opts, _positional, invalid} =
+      OptionParser.parse(args, strict: embedding_sync_options())
 
     reject_invalid!(invalid)
 
@@ -110,7 +124,9 @@ defmodule Sheaf.Admin do
 
   def plan_embeddings(args) do
     {opts, _positional, invalid} =
-      OptionParser.parse(args, strict: Keyword.merge(embedding_sync_options(), sample: :integer))
+      OptionParser.parse(args,
+        strict: Keyword.merge(embedding_sync_options(), sample: :integer)
+      )
 
     reject_invalid!(invalid)
 
@@ -134,7 +150,12 @@ defmodule Sheaf.Admin do
   def ingest_files(args) do
     {opts, paths, invalid} =
       OptionParser.parse(args,
-        strict: [recursive: :boolean, no_backup: :boolean, dry_run: :boolean, extensions: :string]
+        strict: [
+          recursive: :boolean,
+          no_backup: :boolean,
+          dry_run: :boolean,
+          extensions: :string
+        ]
       )
 
     reject_invalid!(invalid)
@@ -157,7 +178,9 @@ defmodule Sheaf.Admin do
 
   def import_datalab_json(args) do
     {opts, paths, invalid} =
-      OptionParser.parse(args, strict: [title: :string, pdf: :string, no_backup: :boolean])
+      OptionParser.parse(args,
+        strict: [title: :string, pdf: :string, no_backup: :boolean]
+      )
 
     reject_invalid!(invalid)
 
@@ -170,12 +193,18 @@ defmodule Sheaf.Admin do
     unless opts[:no_backup], do: backup([])
     [path] = paths
 
-    case Sheaf.PDF.import_file(path, title: opts[:title], pdf_path: opts[:pdf]) do
+    case Sheaf.PDF.import_file(path,
+           title: opts[:title],
+           pdf_path: opts[:pdf]
+         ) do
       {:ok, result} ->
         id = Sheaf.Id.id_from_iri(result.document)
         info("Imported #{result.title}")
         info("Graph #{result.document}")
-        if result.source_file, do: info("Source file #{result.source_file.path}")
+
+        if result.source_file,
+          do: info("Source file #{result.source_file.path}")
+
         info("URL /#{id}")
 
       {:error, reason} ->
@@ -185,7 +214,9 @@ defmodule Sheaf.Admin do
 
   def import_spreadsheet(args) do
     {opts, paths, invalid} =
-      OptionParser.parse(args, strict: [title: :string, graph: :string, no_backup: :boolean])
+      OptionParser.parse(args,
+        strict: [title: :string, graph: :string, no_backup: :boolean]
+      )
 
     reject_invalid!(invalid)
 
@@ -224,7 +255,9 @@ defmodule Sheaf.Admin do
     reject_invalid!(invalid)
 
     if paths == [] do
-      fail!("Usage: sheaf-admin spreadsheets import PATH... [--title TITLE] [--db PATH]")
+      fail!(
+        "Usage: sheaf-admin spreadsheets import PATH... [--title TITLE] [--db PATH]"
+      )
     end
 
     Enum.each(paths, fn path ->
@@ -250,12 +283,15 @@ defmodule Sheaf.Admin do
   end
 
   def import_spreadsheet_metadata(args) do
-    {opts, paths, invalid} = OptionParser.parse(args, strict: [no_backup: :boolean])
+    {opts, paths, invalid} =
+      OptionParser.parse(args, strict: [no_backup: :boolean])
 
     reject_invalid!(invalid)
 
     if paths == [] do
-      fail!("Usage: sheaf-admin spreadsheets import-metadata PATH... [--no-backup]")
+      fail!(
+        "Usage: sheaf-admin spreadsheets import-metadata PATH... [--no-backup]"
+      )
     end
 
     unless opts[:no_backup], do: backup([])
@@ -263,15 +299,21 @@ defmodule Sheaf.Admin do
     case Sheaf.Spreadsheet.Metadata.import_paths(paths) do
       {:ok, %{imported: imported, errors: errors}} ->
         Enum.each(imported, fn workbook ->
-          info("Imported spreadsheet metadata #{workbook.workbook}: #{workbook.title}")
+          info(
+            "Imported spreadsheet metadata #{workbook.workbook}: #{workbook.title}"
+          )
 
           Enum.each(workbook.sheets, fn sheet ->
-            info("  #{sheet.name} rows=#{sheet.row_count} cols=#{sheet.col_count}")
+            info(
+              "  #{sheet.name} rows=#{sheet.row_count} cols=#{sheet.col_count}"
+            )
           end)
         end)
 
         Enum.each(errors, fn error ->
-          info("Skipped spreadsheet metadata #{error.path}: #{inspect(error.error)}")
+          info(
+            "Skipped spreadsheet metadata #{error.path}: #{inspect(error.error)}"
+          )
         end)
 
       {:error, reason} ->
@@ -280,7 +322,9 @@ defmodule Sheaf.Admin do
   end
 
   def list_spreadsheets(args) do
-    {opts, positional, invalid} = OptionParser.parse(args, strict: [db: :string])
+    {opts, positional, invalid} =
+      OptionParser.parse(args, strict: [db: :string])
+
     reject_invalid!(invalid)
     reject_positional!(positional)
 
@@ -290,8 +334,12 @@ defmodule Sheaf.Admin do
           info("#{spreadsheet.id} #{spreadsheet.title} #{spreadsheet.path}")
 
           Enum.each(spreadsheet.sheets, fn sheet ->
-            columns = sheet.columns |> Enum.map(& &1["name"]) |> Enum.join(", ")
-            info("  #{sheet.table_name} #{sheet.name} rows=#{sheet.row_count} columns=#{columns}")
+            columns =
+              sheet.columns |> Enum.map(& &1["name"]) |> Enum.join(", ")
+
+            info(
+              "  #{sheet.table_name} #{sheet.name} rows=#{sheet.row_count} columns=#{columns}"
+            )
           end)
         end)
 
@@ -301,11 +349,15 @@ defmodule Sheaf.Admin do
   end
 
   def query_spreadsheets(args) do
-    {opts, positional, invalid} = OptionParser.parse(args, strict: [db: :string, limit: :integer])
+    {opts, positional, invalid} =
+      OptionParser.parse(args, strict: [db: :string, limit: :integer])
+
     reject_invalid!(invalid)
 
     if positional == [] do
-      fail!("Usage: sheaf-admin spreadsheets query SQL [--db PATH] [--limit N]")
+      fail!(
+        "Usage: sheaf-admin spreadsheets query SQL [--db PATH] [--limit N]"
+      )
     end
 
     sql = Enum.join(positional, " ")
@@ -341,9 +393,13 @@ defmodule Sheaf.Admin do
 
     case Sheaf.MetadataResolver.Queue.enqueue(resolver_opts) do
       {:ok, batch} ->
-        message = "Enqueued #{batch.target_count} metadata task(s) in #{short(batch.iri)}"
+        message =
+          "Enqueued #{batch.target_count} metadata task(s) in #{short(batch.iri)}"
+
         info(message)
-        if opts[:telegram], do: Sheaf.Telegram.notify(telegram_message(batch, resolver_opts))
+
+        if opts[:telegram],
+          do: Sheaf.Telegram.notify(telegram_message(batch, resolver_opts))
 
       {:error, reason} ->
         fail!("Failed to enqueue metadata tasks: #{inspect(reason)}")
@@ -390,7 +446,9 @@ defmodule Sheaf.Admin do
 
   def list_metadata_tasks(args) do
     {opts, _positional} =
-      OptionParser.parse!(args, strict: [tasks: :boolean, limit: :integer, status: :string])
+      OptionParser.parse!(args,
+        strict: [tasks: :boolean, limit: :integer, status: :string]
+      )
 
     if opts[:tasks], do: list_tasks(opts), else: list_batches(opts)
   end
@@ -449,10 +507,13 @@ defmodule Sheaf.Admin do
         {:ok, conn} ->
           try do
             with {:ok, _result} <-
-                   Exqlite.query(conn, "VACUUM main INTO ?", [path], timeout: :infinity) do
+                   Exqlite.query(conn, "VACUUM main INTO ?", [path],
+                     timeout: :infinity
+                   ) do
               {:ok, path}
             else
-              {:error, reason} -> {:error, "SQLite backup failed: #{inspect(reason)}"}
+              {:error, reason} ->
+                {:error, "SQLite backup failed: #{inspect(reason)}"}
             end
           after
             GenServer.stop(conn)
@@ -484,7 +545,9 @@ defmodule Sheaf.Admin do
   defp schema_path, do: priv_path("sheaf-schema.ttl")
   defp extension_path, do: priv_path("sheaf-ext.ttl")
   defp extension_graph, do: "https://less.rest/sheaf/ext"
-  defp imported_ontologies_graph, do: "https://less.rest/sheaf/imported-ontologies"
+
+  defp imported_ontologies_graph,
+    do: "https://less.rest/sheaf/imported-ontologies"
 
   defp imported_ontologies do
     "ontologies/*"
@@ -496,7 +559,9 @@ defmodule Sheaf.Admin do
   end
 
   defp priv_path(path) do
-    checkout_root = System.get_env("SHEAF_CHECKOUT_ROOT") || System.get_env("SHEAF_APP_ROOT")
+    checkout_root =
+      System.get_env("SHEAF_CHECKOUT_ROOT") ||
+        System.get_env("SHEAF_APP_ROOT")
 
     cond do
       is_binary(checkout_root) and File.dir?(Path.join(checkout_root, "priv")) ->
@@ -511,7 +576,9 @@ defmodule Sheaf.Admin do
   end
 
   defp ingest!(files, opts) do
-    info("#{if opts[:dry_run], do: "Would ingest", else: "Ingesting"} #{length(files)} files")
+    info(
+      "#{if opts[:dry_run], do: "Would ingest", else: "Ingesting"} #{length(files)} files"
+    )
 
     results =
       Enum.map(files, fn path ->
@@ -538,14 +605,19 @@ defmodule Sheaf.Admin do
     if opts[:dry_run] do
       with {:ok, hash} <- Sheaf.BlobStore.sha256(path),
            {:ok, existing_iri} <- Sheaf.Files.find_by_hash(hash) do
-        {:ok, %{iri: existing_iri, hash: hash, created?: is_nil(existing_iri)}}
+        {:ok,
+         %{iri: existing_iri, hash: hash, created?: is_nil(existing_iri)}}
       end
     else
       Sheaf.Files.ingest(path)
     end
   end
 
-  defp print_ingest_result(path, %{created?: created?, iri: iri} = result, opts) do
+  defp print_ingest_result(
+         path,
+         %{created?: created?, iri: iri} = result,
+         opts
+       ) do
     status =
       cond do
         opts[:dry_run] && created? -> "would create"
@@ -583,9 +655,14 @@ defmodule Sheaf.Admin do
     path = Path.expand(path)
 
     cond do
-      File.dir?(path) && opts[:recursive] -> Path.wildcard(Path.join([path, "**", "*"]))
-      File.dir?(path) -> Path.wildcard(Path.join(path, "*"))
-      true -> Path.wildcard(path)
+      File.dir?(path) && opts[:recursive] ->
+        Path.wildcard(Path.join([path, "**", "*"]))
+
+      File.dir?(path) ->
+        Path.wildcard(Path.join(path, "*"))
+
+      true ->
+        Path.wildcard(path)
     end
   end
 
@@ -607,13 +684,17 @@ defmodule Sheaf.Admin do
   defp extension_match?(_path, :all), do: true
 
   defp extension_match?(path, extensions) do
-    extension = path |> Path.extname() |> String.trim_leading(".") |> String.downcase()
+    extension =
+      path |> Path.extname() |> String.trim_leading(".") |> String.downcase()
+
     MapSet.member?(extensions, extension)
   end
 
   defp hidden?(path), do: path |> Path.basename() |> String.starts_with?(".")
   defp maybe_put_document(opts, nil), do: opts
-  defp maybe_put_document(opts, graph), do: Keyword.put(opts, :document, RDF.iri(graph))
+
+  defp maybe_put_document(opts, graph),
+    do: Keyword.put(opts, :document, RDF.iri(graph))
 
   defp resolver_opts(opts) do
     []
@@ -666,7 +747,9 @@ defmodule Sheaf.Admin do
     queue_opts = [limit: opts[:limit] || 50]
 
     queue_opts =
-      if opts[:status], do: Keyword.put(queue_opts, :status, opts[:status]), else: queue_opts
+      if opts[:status],
+        do: Keyword.put(queue_opts, :status, opts[:status]),
+        else: queue_opts
 
     case Sheaf.TaskQueue.list_tasks(queue_opts) do
       {:ok, tasks} ->
@@ -727,9 +810,16 @@ defmodule Sheaf.Admin do
     if errors > 0, do: fail!("Some metadata resolutions failed.")
   end
 
-  defp print_metadata_result(%{metadata: metadata, wrote?: true, crossref: crossref}) do
+  defp print_metadata_result(%{
+         metadata: metadata,
+         wrote?: true,
+         crossref: crossref
+       }) do
     info("  metadata #{metadata_line(metadata)}")
-    info("  crossref #{crossref.doi} expression=#{short(crossref.expression)}")
+
+    info(
+      "  crossref #{crossref.doi} expression=#{short(crossref.expression)}"
+    )
   end
 
   defp print_metadata_result(%{metadata: metadata, wrote?: false}) do
@@ -738,7 +828,11 @@ defmodule Sheaf.Admin do
   end
 
   defp candidate_scope(opts),
-    do: if(Keyword.get(opts, :missing_only, true), do: "missing-metadata", else: "source-linked")
+    do:
+      if(Keyword.get(opts, :missing_only, true),
+        do: "missing-metadata",
+        else: "source-linked"
+      )
 
   defp candidate_line(candidate) do
     original = candidate.original_filename || Path.basename(candidate.path)
@@ -791,7 +885,8 @@ defmodule Sheaf.Admin do
   defp date_time(value), do: to_string(value)
 
   defp pdf_title(path) do
-    with executable when is_binary(executable) <- System.find_executable("pdfinfo"),
+    with executable when is_binary(executable) <-
+           System.find_executable("pdfinfo"),
          {output, 0} <- System.cmd(executable, [path], stderr_to_stdout: true) do
       output
       |> String.split("\n")
@@ -928,9 +1023,15 @@ defmodule Sheaf.Admin do
   defp batch_summary(_summary), do: ""
 
   defp reject_invalid!([]), do: :ok
-  defp reject_invalid!(invalid), do: fail!("Unrecognized arguments: #{inspect(invalid)}")
+
+  defp reject_invalid!(invalid),
+    do: fail!("Unrecognized arguments: #{inspect(invalid)}")
+
   defp reject_positional!([]), do: :ok
-  defp reject_positional!(args), do: fail!("Unexpected arguments: #{inspect(args)}")
+
+  defp reject_positional!(args),
+    do: fail!("Unexpected arguments: #{inspect(args)}")
+
   defp info(message), do: IO.puts(message)
   defp error(message), do: IO.puts(:stderr, message)
   defp fail!(message), do: raise(Sheaf.Admin.Error, message)

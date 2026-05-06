@@ -24,16 +24,30 @@ defmodule Sheaf.Assistant.ActivityTest do
                published_at: published_at
              )
 
-    assert RDF.Data.include?(question_graph, {question, RDF.type(), Sheaf.NS.DOC.Message})
+    assert RDF.Data.include?(
+             question_graph,
+             {question, RDF.type(), Sheaf.NS.DOC.Message}
+           )
 
     assert RDF.Data.include?(
              question_graph,
              {session, RDF.type(), Sheaf.NS.DOC.AssistantConversation}
            )
 
-    assert RDF.Data.include?(question_graph, {session, RDF.type(), Sheaf.NS.AS.OrderedCollection})
-    assert RDF.Data.include?(question_graph, {session, Sheaf.NS.DOC.conversationMode(), "quick"})
-    assert RDF.Data.include?(question_graph, {session, Sheaf.NS.AS.items(), question})
+    assert RDF.Data.include?(
+             question_graph,
+             {session, RDF.type(), Sheaf.NS.AS.OrderedCollection}
+           )
+
+    assert RDF.Data.include?(
+             question_graph,
+             {session, Sheaf.NS.DOC.conversationMode(), "quick"}
+           )
+
+    assert RDF.Data.include?(
+             question_graph,
+             {session, Sheaf.NS.AS.items(), question}
+           )
 
     assert [user] =
              RDF.Description.get(
@@ -42,7 +56,11 @@ defmodule Sheaf.Assistant.ActivityTest do
              )
 
     assert %RDF.BlankNode{} = user
-    assert RDF.Data.include?(question_graph, {user, RDF.type(), Sheaf.NS.AS.Person})
+
+    assert RDF.Data.include?(
+             question_graph,
+             {user, RDF.type(), Sheaf.NS.AS.Person}
+           )
 
     assert {:ok, reply_graph} =
              Activity.build_message(
@@ -60,11 +78,30 @@ defmodule Sheaf.Assistant.ActivityTest do
                published_at: published_at
              )
 
-    assert RDF.Data.include?(reply_graph, {reply, RDF.type(), Sheaf.NS.DOC.Message})
-    refute RDF.Data.include?(reply_graph, {reply, RDF.type(), Sheaf.NS.AS.Note})
-    assert RDF.Data.include?(reply_graph, {reply, Sheaf.NS.AS.inReplyTo(), question})
-    assert RDF.Data.include?(reply_graph, {session, Sheaf.NS.AS.items(), reply})
-    assert RDF.Data.include?(reply_graph, {session, Sheaf.NS.DOC.conversationMode(), "research"})
+    assert RDF.Data.include?(
+             reply_graph,
+             {reply, RDF.type(), Sheaf.NS.DOC.Message}
+           )
+
+    refute RDF.Data.include?(
+             reply_graph,
+             {reply, RDF.type(), Sheaf.NS.AS.Note}
+           )
+
+    assert RDF.Data.include?(
+             reply_graph,
+             {reply, Sheaf.NS.AS.inReplyTo(), question}
+           )
+
+    assert RDF.Data.include?(
+             reply_graph,
+             {session, Sheaf.NS.AS.items(), reply}
+           )
+
+    assert RDF.Data.include?(
+             reply_graph,
+             {session, Sheaf.NS.DOC.conversationMode(), "research"}
+           )
 
     assert [^assistant_iri] =
              RDF.Description.get(

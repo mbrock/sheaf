@@ -31,7 +31,8 @@ defmodule SheafWeb.SearchLive do
 
   @impl true
   def handle_event("search", %{"search" => %{"query" => query}}, socket) do
-    {:noreply, push_patch(socket, to: ~p"/search?q=#{String.trim(query || "")}")}
+    {:noreply,
+     push_patch(socket, to: ~p"/search?q=#{String.trim(query || "")}")}
   end
 
   defp run_search(socket, query) do
@@ -64,7 +65,10 @@ defmodule SheafWeb.SearchLive do
           end
 
         {approximate_results, approximate_error} =
-          case Sheaf.Embedding.Index.search(query, limit: @limit, exact_limit: 0) do
+          case Sheaf.Embedding.Index.search(query,
+                 limit: @limit,
+                 exact_limit: 0
+               ) do
             {:ok, results} -> {results, nil}
             {:error, reason} -> {[], inspect(reason)}
           end
@@ -108,7 +112,10 @@ defmodule SheafWeb.SearchLive do
             </div>
           </form>
 
-          <div :if={!@searched?} class="text-sm text-stone-500 dark:text-stone-400">
+          <div
+            :if={!@searched?}
+            class="text-sm text-stone-500 dark:text-stone-400"
+          >
             Search indexed passages across the corpus.
           </div>
 
@@ -149,7 +156,10 @@ defmodule SheafWeb.SearchLive do
         </span>
       </div>
 
-      <p :if={@error} class="py-2 text-xs leading-5 text-rose-700 dark:text-rose-300">
+      <p
+        :if={@error}
+        class="py-2 text-xs leading-5 text-rose-700 dark:text-rose-300"
+      >
         {@error}
       </p>
 
@@ -198,15 +208,22 @@ defmodule SheafWeb.SearchLive do
   defp result_path(%{kind: "note", iri: iri}), do: "/#{Id.id_from_iri(iri)}"
   defp result_path(%{iri: iri}), do: "/b/#{Id.id_from_iri(iri)}"
 
-  defp result_title(%{kind: "note", doc_title: title}) when is_binary(title), do: title
+  defp result_title(%{kind: "note", doc_title: title}) when is_binary(title),
+    do: title
+
   defp result_title(%{kind: "note"}), do: "Research note"
   defp result_title(result), do: result.doc_title || "Untitled document"
 
-  defp context_label(%{kind: "sourceHtml", source_page: page}) when is_integer(page),
-    do: "p. #{page}"
+  defp context_label(%{kind: "sourceHtml", source_page: page})
+       when is_integer(page),
+       do: "p. #{page}"
 
   defp context_label(%{kind: "row"} = result) do
-    [row_label(result.spreadsheet_row), result.spreadsheet_source, result.code_category_title]
+    [
+      row_label(result.spreadsheet_row),
+      result.spreadsheet_source,
+      result.code_category_title
+    ]
     |> Enum.reject(&blank?/1)
     |> Enum.join(" · ")
     |> blank_to_nil()
@@ -221,7 +238,8 @@ defmodule SheafWeb.SearchLive do
   defp score_percent(score) when is_float(score), do: "#{round(score * 100)}%"
   defp score_percent(_score), do: ""
 
-  defp authors_line(%{doc_authors: authors}) when is_list(authors) and authors != [] do
+  defp authors_line(%{doc_authors: authors})
+       when is_list(authors) and authors != [] do
     authors
     |> Enum.take(4)
     |> Enum.join(", ")

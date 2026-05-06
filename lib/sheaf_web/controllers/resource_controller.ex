@@ -20,7 +20,11 @@ defmodule SheafWeb.ResourceController do
       {:error, reason} ->
         conn
         |> put_status(:not_found)
-        |> json(%{error: "resource not found", id: id, reason: inspect(reason)})
+        |> json(%{
+          error: "resource not found",
+          id: id,
+          reason: inspect(reason)
+        })
     end
   end
 
@@ -45,7 +49,12 @@ defmodule SheafWeb.ResourceController do
         query_result_payload(result_id)
 
       {:ok, %{kind: :assistant_conversation, id: chat_id}} ->
-        {:ok, %{id: chat_id, iri: to_string(Id.iri(chat_id)), kind: "assistant_conversation"}}
+        {:ok,
+         %{
+           id: chat_id,
+           iri: to_string(Id.iri(chat_id)),
+           kind: "assistant_conversation"
+         }}
 
       {:error, reason} ->
         {:error, reason}
@@ -104,12 +113,27 @@ defmodule SheafWeb.ResourceController do
     with {:ok, result} <- QueryResults.read(result_id, limit: 100) do
       {:ok,
        result
-       |> Map.take([:id, :iri, :file_iri, :sql, :columns, :row_count, :offset, :limit, :rows])
+       |> Map.take([
+         :id,
+         :iri,
+         :file_iri,
+         :sql,
+         :columns,
+         :row_count,
+         :offset,
+         :limit,
+         :rows
+       ])
        |> Map.put(:kind, "spreadsheet_query_result")}
     end
   end
 
-  defp outline_entry(%{iri: iri, title: title, number: number, children: children}) do
+  defp outline_entry(%{
+         iri: iri,
+         title: title,
+         number: number,
+         children: children
+       }) do
     %{
       id: Id.id_from_iri(iri),
       iri: to_string(iri),
@@ -153,8 +177,12 @@ defmodule SheafWeb.ResourceController do
   defp block_title(graph, iri, :section), do: Document.heading(graph, iri)
   defp block_title(_graph, _iri, _type), do: nil
 
-  defp block_text(graph, iri, :paragraph), do: Document.paragraph_text(graph, iri)
-  defp block_text(graph, iri, :extracted), do: Document.source_html(graph, iri)
+  defp block_text(graph, iri, :paragraph),
+    do: Document.paragraph_text(graph, iri)
+
+  defp block_text(graph, iri, :extracted),
+    do: Document.source_html(graph, iri)
+
   defp block_text(graph, iri, :row), do: Document.text(graph, iri)
   defp block_text(_graph, _iri, _type), do: nil
 

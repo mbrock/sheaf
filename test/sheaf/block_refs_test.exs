@@ -4,7 +4,8 @@ defmodule Sheaf.BlockRefsTest do
   alias Sheaf.BlockRefs
 
   test "links explicit block ids without rewriting existing block links" do
-    text = "See ABC234, #DEF456, and [SJ3K7R], but not [#GHK789](/b/GHK789) again."
+    text =
+      "See ABC234, #DEF456, and [SJ3K7R], but not [#GHK789](/b/GHK789) again."
 
     assert BlockRefs.linkify_markdown(text) ==
              "See ABC234, [#DEF456](/b/DEF456), and [#SJ3K7R](/b/SJ3K7R), but not [#GHK789](/b/GHK789) again."
@@ -26,7 +27,8 @@ defmodule Sheaf.BlockRefsTest do
                "DEF456" -> "/b/DEF456"
                _id -> nil
              end
-           ) == "Read result [#PK9ACK](/PK9ACK) and block [#DEF456](/b/DEF456)."
+           ) ==
+             "Read result [#PK9ACK](/PK9ACK) and block [#DEF456](/b/DEF456)."
   end
 
   test "accepts looser hash refs and normalizes spaces before punctuation" do
@@ -51,7 +53,8 @@ defmodule Sheaf.BlockRefsTest do
                "PK9ACK" -> "/PK9ACK"
                _id -> nil
              end
-           ) == "Read result [#PK9ACK](/PK9ACK), but keep `SELECT #PK9ACK` as code."
+           ) ==
+             "Read result [#PK9ACK](/PK9ACK), but keep `SELECT #PK9ACK` as code."
   end
 
   test "does not normalize spaces before punctuation inside inline code" do
@@ -62,7 +65,8 @@ defmodule Sheaf.BlockRefsTest do
                "ABC123" -> "/b/ABC123"
                _id -> nil
              end
-           ) == "Read [#ABC123](/b/ABC123), but keep `#ABC123 , #DEF456` as code."
+           ) ==
+             "Read [#ABC123](/b/ABC123), but keep `#ABC123 , #DEF456` as code."
   end
 
   test "does not link inside fenced code blocks" do
@@ -98,6 +102,11 @@ defmodule Sheaf.BlockRefsTest do
   test "extracts ids from bare text and existing links" do
     text = "See ABC234, #DEF456, [SJ3K7R], and [#GHK789](/b/GHK789)."
 
-    assert BlockRefs.ids_from_text(text) == ["ABC234", "DEF456", "SJ3K7R", "GHK789"]
+    assert BlockRefs.ids_from_text(text) == [
+             "ABC234",
+             "DEF456",
+             "SJ3K7R",
+             "GHK789"
+           ]
   end
 end

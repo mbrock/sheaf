@@ -7,7 +7,10 @@ defmodule Sheaf.Assistant.StreamBufferTest do
     buffer = StreamBuffer.new()
 
     assert {[], buffer} = StreamBuffer.push(buffer, "This is incom")
-    assert {["This is incomplete. "], buffer} = StreamBuffer.push(buffer, "plete. Next")
+
+    assert {["This is incomplete. "], buffer} =
+             StreamBuffer.push(buffer, "plete. Next")
+
     assert {"Next", _buffer} = StreamBuffer.flush(buffer)
   end
 
@@ -24,13 +27,16 @@ defmodule Sheaf.Assistant.StreamBufferTest do
     buffer = StreamBuffer.new()
 
     assert {[], buffer} = StreamBuffer.push(buffer, "This is **important.")
-    assert {["This is **important.** "], _buffer} = StreamBuffer.push(buffer, "** Next")
+
+    assert {["This is **important.** "], _buffer} =
+             StreamBuffer.push(buffer, "** Next")
   end
 
   test "keeps unclosed fenced code together" do
     buffer = StreamBuffer.new()
 
-    assert {[], buffer} = StreamBuffer.push(buffer, "```elixir\nIO.puts(\"hi\")\n")
+    assert {[], buffer} =
+             StreamBuffer.push(buffer, "```elixir\nIO.puts(\"hi\")\n")
 
     assert {["```elixir\nIO.puts(\"hi\")\n```\n"], _buffer} =
              StreamBuffer.push(buffer, "```\nAfter")
@@ -39,7 +45,9 @@ defmodule Sheaf.Assistant.StreamBufferTest do
   test "flushes complete markdown lines without waiting for sentence punctuation" do
     buffer = StreamBuffer.new()
 
-    assert {["- first item\n"], buffer} = StreamBuffer.push(buffer, "- first item\n- second")
+    assert {["- first item\n"], buffer} =
+             StreamBuffer.push(buffer, "- first item\n- second")
+
     assert {"- second", _buffer} = StreamBuffer.flush(buffer)
   end
 end

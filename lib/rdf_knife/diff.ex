@@ -63,8 +63,12 @@ defmodule RDFKnife.Diff do
   @spec read_file!(Path.t()) :: t()
   def read_file!(path) do
     case read_file(path) do
-      {:ok, diff} -> diff
-      {:error, reason} -> raise ArgumentError, "failed to read RDF diff patch: #{inspect(reason)}"
+      {:ok, diff} ->
+        diff
+
+      {:error, reason} ->
+        raise ArgumentError,
+              "failed to read RDF diff patch: #{inspect(reason)}"
     end
   end
 
@@ -108,7 +112,8 @@ defmodule RDFKnife.Diff do
         sparql
 
       {:error, reason} ->
-        raise ArgumentError, "failed to render RDF diff patch: #{inspect(reason)}"
+        raise ArgumentError,
+              "failed to render RDF diff patch: #{inspect(reason)}"
     end
   end
 
@@ -153,10 +158,15 @@ defmodule RDFKnife.Diff do
   end
 
   defp validate_format(%{"format" => @format}), do: :ok
-  defp validate_format(%{"format" => other}), do: {:error, {:unsupported_patch_format, other}}
+
+  defp validate_format(%{"format" => other}),
+    do: {:error, {:unsupported_patch_format, other}}
+
   defp validate_format(_raw), do: {:error, :missing_patch_format}
 
-  defp parse_nquads(nquads) when is_binary(nquads), do: RDF.NQuads.read_string(nquads)
+  defp parse_nquads(nquads) when is_binary(nquads),
+    do: RDF.NQuads.read_string(nquads)
+
   defp parse_nquads(other), do: {:error, {:invalid_nquads_payload, other}}
 
   defp operation(verb, %Dataset{} = dataset) do
@@ -200,7 +210,8 @@ defmodule RDFKnife.Diff do
         {:ok, indent(triples)}
 
       match?(%IRI{}, graph.name) ->
-        {:ok, "  GRAPH #{format_iri(graph.name)} {\n#{indent(triples, 4)}\n  }"}
+        {:ok,
+         "  GRAPH #{format_iri(graph.name)} {\n#{indent(triples, 4)}\n  }"}
 
       true ->
         {:error, {:unsupported_graph_name, graph.name}}

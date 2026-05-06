@@ -35,24 +35,76 @@ defmodule Docs do
     end
   end
 
+  @doc """
+  Describes docs targets as JSON-compatible data.
+  """
+  def describe(targets \\ [], opts \\ []) do
+    include_source = Keyword.get(opts, :include_source, false)
+
+    entries =
+      targets
+      |> List.wrap()
+      |> Enum.map(&to_string/1)
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+      |> case do
+        [] ->
+          [overview_data(:sheaf)]
+
+        normalized_targets ->
+          Enum.map(normalized_targets, &describe_target(&1, include_source))
+      end
+
+    %{targets: entries}
+  end
+
   defp overview(app) when is_atom(app) do
-    modules = app_modules(app)
-    title = app |> Atom.to_string() |> app_title()
+    %{app: app_name, title: title, modules: modules} = overview_data(app)
 
     [
       "# #{title} module overview",
       "",
-      "Application: `#{inspect(app)}`",
+      "Application: `:#{app_name}`",
       "Use `bin/docs Module.Name` or `bin/docs Module.function/arity` for details.",
       "Use `bin/docs :app_name` to list modules for another loaded OTP application.",
       "Use `bin/docs --source Module.function/arity` to include a short source clip.",
       "",
       "#{title} modules",
-      hierarchy_lines(modules)
+      modules
+      |> Enum.map(fn module ->
+        "#{String.duplicate("  ", module.depth)}- #{module.name}#{if module.summary, do: " - #{module.summary}", else: ""}"
+      end)
     ]
     |> List.flatten()
     |> Enum.reject(&(&1 in [nil, false]))
     |> Enum.join("\n")
+  end
+
+  defp overview_data(app) when is_atom(app) do
+    modules = app_modules(app)
+
+    module_names =
+      MapSet.new(modules, fn module ->
+        module
+        |> Atom.to_string()
+        |> String.trim_leading("Elixir.")
+      end)
+
+    %{
+      kind: "overview",
+      app: Atom.to_string(app),
+      title: app |> Atom.to_string() |> app_title(),
+      modules:
+        modules
+        |> hierarchy_entries(module_names)
+        |> Enum.map(fn entry ->
+          %{
+            name: entry.name,
+            depth: entry.depth,
+            summary: entry.summary
+          }
+        end)
+    }
   end
 
   defp app_modules(app) when is_atom(app) do
@@ -68,14 +120,7 @@ defmodule Docs do
     |> Enum.map_join(" ", &String.capitalize/1)
   end
 
-  defp hierarchy_lines(modules) do
-    module_names =
-      MapSet.new(modules, fn module ->
-        module
-        |> Atom.to_string()
-        |> String.trim_leading("Elixir.")
-      end)
-
+  defp hierarchy_entries(modules, module_names) do
     modules
     |> Enum.map(fn module ->
       module
@@ -84,7 +129,7 @@ defmodule Docs do
       |> String.split(".")
     end)
     |> Enum.reduce(%{}, &put_module_path/2)
-    |> render_module_tree([], module_names, 0)
+    |> module_tree_entries([], module_names, 0)
   end
 
   defp put_module_path([segment], tree) do
@@ -92,36 +137,35 @@ defmodule Docs do
   end
 
   defp put_module_path([segment | rest], tree) do
-    Map.update(tree, segment, put_module_path(rest, %{}), &put_module_path(rest, &1))
+    Map.update(
+      tree,
+      segment,
+      put_module_path(rest, %{}),
+      &put_module_path(rest, &1)
+    )
   end
 
   defp put_module_path([], tree), do: tree
 
-  defp render_module_tree(tree, prefix, module_names, depth) do
+  defp module_tree_entries(tree, prefix, module_names, depth) do
     tree
     |> Enum.sort_by(fn {segment, _children} -> segment end)
     |> Enum.flat_map(fn {segment, children} ->
       path = prefix ++ [segment]
       name = Enum.join(path, ".")
 
-      line = "#{String.duplicate("  ", depth)}- #{name}#{module_summary(name, module_names)}"
+      summary =
+        if MapSet.member?(module_names, name) do
+          name
+          |> module_from_name()
+          |> module_doc_summary()
+        end
 
-      [line | render_module_tree(children, path, module_names, depth + 1)]
+      [
+        %{name: name, depth: depth, summary: summary}
+        | module_tree_entries(children, path, module_names, depth + 1)
+      ]
     end)
-  end
-
-  defp module_summary(name, module_names) do
-    if MapSet.member?(module_names, name) do
-      name
-      |> module_from_name()
-      |> module_doc_summary()
-      |> case do
-        nil -> ""
-        summary -> " - #{summary}"
-      end
-    else
-      ""
-    end
   end
 
   defp module_from_name(name) when is_binary(name) do
@@ -172,11 +216,110 @@ defmodule Docs do
     end
   end
 
+  defp describe_target(target, include_source) do
+    case parse_target(target) do
+      {:ok, {:module, module}} ->
+        describe_module(module, target, include_source)
+
+      {:ok, {:function, module, function, arity}} ->
+        describe_function(module, function, arity, target, include_source)
+
+      {:ok, {:app, app}} ->
+        overview_data(app)
+
+      {:error, reason} ->
+        %{kind: "error", requested_as: target, error: reason}
+    end
+  end
+
+  defp describe_module(module, requested_as, include_source) do
+    case expert_docs(module) do
+      {:ok, docs} ->
+        source_path = source_path(module)
+        public_functions = public_functions(docs)
+
+        %{
+          kind: "module",
+          module: inspect(module),
+          requested_as: requested_as,
+          source: source_path,
+          doc: present_doc(Map.get(docs, :doc)),
+          public_function_count: length(public_functions),
+          public_functions: Enum.map(public_functions, &function_data/1),
+          source_excerpt:
+            if(include_source,
+              do: source_excerpt(source_path, 1, @default_source_context)
+            )
+        }
+
+      {:error, reason} ->
+        %{
+          kind: "error",
+          requested_as: requested_as,
+          module: inspect(module),
+          error: inspect(reason)
+        }
+    end
+  end
+
+  defp describe_function(
+         module,
+         function,
+         arity,
+         requested_as,
+         include_source
+       ) do
+    case expert_docs(module) do
+      {:ok, docs} ->
+        source_path = source_path(module)
+        ranges_by_subject = ranges_by_subject(source_path)
+        matches = matching_functions(docs, function, arity)
+
+        case matches do
+          [] ->
+            %{
+              kind: "error",
+              requested_as: requested_as,
+              error:
+                "No matching public function found in #{inspect(module)}."
+            }
+
+          functions ->
+            %{
+              kind: "function_group",
+              requested_as: requested_as,
+              functions:
+                Enum.map(functions, fn function ->
+                  function_data(
+                    module,
+                    function,
+                    source_path,
+                    Map.get(
+                      ranges_by_subject,
+                      function_subject(module, function)
+                    ),
+                    include_source
+                  )
+                end)
+            }
+        end
+
+      {:error, reason} ->
+        %{
+          kind: "error",
+          requested_as: requested_as,
+          module: inspect(module),
+          error:
+            "No docs available for #{inspect(module)}: #{inspect(reason)}"
+        }
+    end
+  end
+
   defp render_module(module, requested_as, include_source) do
-    case Code.fetch_docs(module) do
-      {:docs_v1, _, _, _, module_doc, metadata, fun_docs} ->
-        source_path = source_path(module, metadata)
-        public_functions = public_functions(fun_docs)
+    case expert_docs(module) do
+      {:ok, docs} ->
+        source_path = source_path(module)
+        public_functions = public_functions(docs)
 
         [
           "# #{inspect(module)}",
@@ -184,13 +327,17 @@ defmodule Docs do
           "Requested as: #{requested_as}",
           "Source: #{source_path || "(unknown)"}",
           "Public functions: #{length(public_functions)}",
-          doc_text(module_doc) && "",
-          doc_text(module_doc),
+          present_doc(Map.get(docs, :doc)) && "",
+          present_doc(Map.get(docs, :doc)),
           "",
           "Public API",
-          Enum.map(public_functions, &"- #{&1.signature || "#{&1.name}/#{&1.arity}"}"),
+          Enum.map(
+            public_functions,
+            &"- #{function_signature(&1)}"
+          ),
           include_source && "",
-          include_source && source_clip(source_path, 1, @default_source_context)
+          include_source &&
+            source_clip(source_path, 1, @default_source_context)
         ]
         |> List.flatten()
         |> Enum.reject(&(&1 in [nil, false]))
@@ -202,10 +349,11 @@ defmodule Docs do
   end
 
   defp render_function(module, function, arity, requested_as, include_source) do
-    case Code.fetch_docs(module) do
-      {:docs_v1, _, _, _, _module_doc, metadata, fun_docs} ->
-        source_path = source_path(module, metadata)
-        matches = matching_functions(fun_docs, function, arity)
+    case expert_docs(module) do
+      {:ok, docs} ->
+        source_path = source_path(module)
+        ranges_by_subject = ranges_by_subject(source_path)
+        matches = matching_functions(docs, function, arity)
 
         case matches do
           [] ->
@@ -213,7 +361,16 @@ defmodule Docs do
 
           functions ->
             functions
-            |> Enum.map(&function_text(module, &1, requested_as, source_path, include_source))
+            |> Enum.map(
+              &function_text(
+                module,
+                &1,
+                requested_as,
+                source_path,
+                Map.get(ranges_by_subject, function_subject(module, &1)),
+                include_source
+              )
+            )
             |> Enum.join("\n\n")
         end
 
@@ -222,55 +379,164 @@ defmodule Docs do
     end
   end
 
-  defp function_text(module, function, requested_as, source_path, include_source) do
+  defp function_text(
+         module,
+         function,
+         requested_as,
+         source_path,
+         source_range,
+         include_source
+       ) do
+    source_line = range_start_line(source_range) || Map.get(function, :line)
+
     [
       "# #{inspect(module)}.#{function.name}/#{function.arity}",
       "",
       "Requested as: #{requested_as}",
-      function.signature && "Signature: #{function.signature}",
-      "Source: #{source_path || "(unknown)"}:#{function.line || 0}",
-      function.doc && "",
-      function.doc,
+      "Signature: #{function_signature(function)}",
+      "Source: #{source_path || "(unknown)"}:#{source_line || 0}",
+      present_doc(function.doc) && "",
+      present_doc(function.doc),
       include_source && "",
-      include_source && source_clip(source_path, function.line, @default_source_context)
+      include_source &&
+        source_clip(source_path, source_range || source_line)
     ]
     |> Enum.reject(&(&1 in [nil, false]))
     |> Enum.join("\n")
   end
 
-  defp public_functions(fun_docs) do
-    fun_docs
-    |> Enum.flat_map(fn
-      {{:function, _name, _arity}, _line, _signatures, :hidden, _metadata} ->
-        []
-
-      {{:function, name, arity}, line, signatures, docs, _metadata} ->
-        [
-          %{
-            name: Atom.to_string(name),
-            arity: arity,
-            line: line,
-            signature: List.first(signatures),
-            doc: doc_text(docs)
-          }
-        ]
+  defp expert_docs(module) do
+    case Process.whereis(Sheaf.Expert) do
+      pid when is_pid(pid) ->
+        case Sheaf.Expert.docs(module, exclude_hidden: false) do
+          {:ok, _docs} = ok -> ok
+          _error -> local_docs(module)
+        end
 
       _ ->
-        []
+        local_docs(module)
+    end
+  catch
+    _kind, _reason -> local_docs(module)
+  end
+
+  defp local_docs(module) do
+    case Code.fetch_docs(module) do
+      {:docs_v1, _, _, _, module_doc, _metadata, fun_docs} ->
+        {:ok,
+         %{
+           module: module,
+           doc: doc_text(module_doc),
+           functions_and_macros: local_functions(module, fun_docs)
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp local_functions(module, fun_docs) do
+    docs_by_function = docs_by_function(fun_docs)
+
+    module.__info__(:functions)
+    |> Enum.map(fn {name, arity} ->
+      doc_entry = Map.get(docs_by_function, {name, arity}, %{})
+
+      %{
+        name: name,
+        arity: arity,
+        kind: :function,
+        line: Map.get(doc_entry, :line),
+        signature:
+          List.wrap(Map.get(doc_entry, :signature) || "#{name}/#{arity}"),
+        doc: Map.get(doc_entry, :doc)
+      }
     end)
+    |> Enum.group_by(& &1.name)
+  end
+
+  defp docs_by_function(fun_docs) do
+    Map.new(fun_docs, fn
+      {{:function, name, arity}, line, signatures, docs, _metadata} ->
+        {{name, arity},
+         %{
+           line: line,
+           signature: List.first(signatures),
+           doc: doc_text(docs)
+         }}
+
+      _ ->
+        {nil, nil}
+    end)
+    |> Map.delete(nil)
+  end
+
+  defp public_functions(docs) do
+    docs
+    |> Map.get(:functions_and_macros, %{})
+    |> Map.values()
+    |> List.flatten()
+    |> Enum.filter(&(&1.kind in [:function, :macro]))
     |> Enum.sort_by(&{&1.name, &1.arity})
   end
 
-  defp matching_functions(fun_docs, function, nil) do
-    fun_docs
-    |> public_functions()
-    |> Enum.filter(&(&1.name == function))
+  defp function_data(function) do
+    %{
+      name: Atom.to_string(function.name),
+      arity: function.arity,
+      kind: Atom.to_string(function.kind),
+      signature: function_signature(function),
+      doc: present_doc(Map.get(function, :doc))
+    }
   end
 
-  defp matching_functions(fun_docs, function, arity) do
-    fun_docs
+  defp function_data(
+         module,
+         function,
+         source_path,
+         source_range,
+         include_source
+       ) do
+    source_line = range_start_line(source_range) || Map.get(function, :line)
+
+    function
+    |> function_data()
+    |> Map.merge(%{
+      module: inspect(module),
+      requested_name: "#{inspect(module)}.#{function.name}/#{function.arity}",
+      source: %{path: source_path, line: source_line}
+    })
+    |> Map.put(
+      :source_excerpt,
+      if(include_source,
+        do: source_excerpt(source_path, source_range || source_line)
+      )
+    )
+  end
+
+  defp function_signature(function) do
+    function
+    |> Map.get(:signature)
+    |> List.wrap()
+    |> List.first()
+    |> case do
+      signature when is_binary(signature) -> signature
+      _ -> "#{function.name}/#{function.arity}"
+    end
+  end
+
+  defp matching_functions(docs, function, nil) do
+    docs
     |> public_functions()
-    |> Enum.filter(&(&1.name == function and &1.arity == arity))
+    |> Enum.filter(&(Atom.to_string(&1.name) == function))
+  end
+
+  defp matching_functions(docs, function, arity) do
+    docs
+    |> public_functions()
+    |> Enum.filter(
+      &(Atom.to_string(&1.name) == function and &1.arity == arity)
+    )
   end
 
   defp parse_target(target) do
@@ -290,7 +556,9 @@ defmodule Docs do
 
       captures = Regex.named_captures(function_pattern, target) ->
         with {:ok, module} <- resolve_module(captures["module"]) do
-          {:ok, {:function, module, captures["function"], parse_arity(captures["arity"])}}
+          {:ok,
+           {:function, module, captures["function"],
+            parse_arity(captures["arity"])}}
         end
 
       Regex.match?(module_pattern, target) ->
@@ -306,15 +574,18 @@ defmodule Docs do
   defp resolve_module(name) when is_binary(name) do
     name
     |> module_candidates()
-    |> Enum.find_value({:error, "Unknown or unloaded module: #{name}"}, fn candidate ->
-      try do
-        module = String.to_existing_atom(candidate)
+    |> Enum.find_value(
+      {:error, "Unknown or unloaded module: #{name}"},
+      fn candidate ->
+        try do
+          module = String.to_existing_atom(candidate)
 
-        if Code.ensure_loaded?(module), do: {:ok, module}, else: nil
-      rescue
-        ArgumentError -> nil
+          if Code.ensure_loaded?(module), do: {:ok, module}, else: nil
+        rescue
+          ArgumentError -> nil
+        end
       end
-    end)
+    )
   end
 
   defp module_candidates("Elixir." <> _ = name), do: [name]
@@ -346,8 +617,19 @@ defmodule Docs do
   defp doc_text(:none), do: nil
   defp doc_text(_), do: nil
 
-  defp source_path(module, metadata) do
-    normalize_path(metadata[:source_path]) || compile_source(module)
+  defp present_doc(text) when is_binary(text), do: String.trim(text)
+  defp present_doc(_), do: nil
+
+  defp source_path(module) do
+    module
+    |> Code.fetch_docs()
+    |> case do
+      {:docs_v1, _, _, _, _module_doc, metadata, _fun_docs} ->
+        normalize_path(metadata[:source_path])
+
+      _ ->
+        nil
+    end || compile_source(module)
   end
 
   defp compile_source(module) do
@@ -363,26 +645,114 @@ defmodule Docs do
   defp normalize_path(path) when is_list(path), do: List.to_string(path)
   defp normalize_path(_), do: nil
 
-  defp source_clip(path, line, context)
-       when is_binary(path) and is_integer(line) and line > 0 do
-    if File.regular?(path) do
-      lines = File.read!(path) |> String.split("\n")
-      from_line = max(line, 1)
-      to_line = min(line + context - 1, length(lines))
-
-      body =
-        lines
-        |> Enum.slice(from_line - 1, to_line - from_line + 1)
-        |> Enum.with_index(from_line)
-        |> Enum.map(fn {text, number} -> "#{number}: #{text}" end)
-        |> Enum.join("\n")
-
-      ["Source excerpt #{from_line}-#{to_line}:", "```elixir", body, "```"]
-      |> Enum.join("\n")
+  defp ranges_by_subject(path) when is_binary(path) do
+    with pid when is_pid(pid) <- Process.whereis(Sheaf.Expert),
+         {:ok, symbols} <- Sheaf.Expert.outline(path) do
+      symbols
+      |> flatten_symbols()
+      |> Map.new(fn symbol ->
+        {symbol.subject, Map.get(symbol, :range)}
+      end)
     else
-      "(source unavailable)"
+      _ -> %{}
+    end
+  catch
+    _kind, _reason -> %{}
+  end
+
+  defp ranges_by_subject(_path), do: %{}
+
+  defp flatten_symbols(symbols) when is_list(symbols) do
+    Enum.flat_map(symbols, fn symbol ->
+      [symbol | flatten_symbols(Map.get(symbol, :children, []))]
+    end)
+  end
+
+  defp function_subject(module, function) do
+    "#{inspect(module)}.#{function.name}/#{function.arity}"
+  end
+
+  defp range_start_line(range) do
+    range
+    |> case do
+      nil -> nil
+      range -> range |> Map.get(:start) |> Map.get(:line)
     end
   end
 
-  defp source_clip(_path, _line, _context), do: "(source unavailable)"
+  defp source_clip(path, %{__struct__: _} = range) when is_binary(path) do
+    range
+    |> source_excerpt(path)
+    |> format_source_excerpt()
+  end
+
+  defp source_clip(path, line) do
+    path
+    |> source_excerpt(line)
+    |> format_source_excerpt()
+  end
+
+  defp source_clip(path, from_line, to_line)
+       when is_binary(path) and is_integer(from_line) and is_integer(to_line) do
+    path
+    |> source_excerpt(from_line, to_line)
+    |> format_source_excerpt()
+  end
+
+  defp source_clip(_path, _from_line, _to_line), do: "(source unavailable)"
+
+  defp source_excerpt(%{__struct__: _} = range, path) when is_binary(path) do
+    from_line = range_start_line(range)
+    to_line = range |> Map.get(:end) |> Map.get(:line)
+
+    source_excerpt(path, from_line, to_line)
+  end
+
+  defp source_excerpt(path, %{__struct__: _} = range) when is_binary(path),
+    do: source_excerpt(range, path)
+
+  defp source_excerpt(path, line)
+       when is_binary(path) and is_integer(line) and line > 0 do
+    source_excerpt(path, line, line + @default_source_context - 1)
+  end
+
+  defp source_excerpt(path, from_line, to_line)
+       when is_binary(path) and is_integer(from_line) and from_line > 0 and
+              is_integer(to_line) do
+    if File.regular?(path) do
+      lines = File.read!(path) |> String.split("\n")
+      from_line = max(from_line, 1)
+      to_line = min(to_line, length(lines))
+
+      excerpt_lines =
+        lines
+        |> Enum.slice(from_line - 1, to_line - from_line + 1)
+
+      %{
+        from: from_line,
+        to: to_line,
+        language: "elixir",
+        lines: excerpt_lines
+      }
+    else
+      nil
+    end
+  end
+
+  defp source_excerpt(_path, _from_line, _to_line), do: nil
+
+  defp format_source_excerpt(nil), do: "(source unavailable)"
+
+  defp format_source_excerpt(%{from: from_line, to: to_line, lines: lines}) do
+    body =
+      lines
+      |> Enum.with_index(from_line)
+      |> Enum.map(fn {text, number} ->
+        "#{number}: #{text}"
+      end)
+      |> Enum.join("\n")
+
+    ["Source excerpt #{from_line}-#{to_line}:", "```elixir", body, "```"]
+    |> Enum.join("\n")
+  end
 end

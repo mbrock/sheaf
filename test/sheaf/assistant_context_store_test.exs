@@ -21,7 +21,13 @@ defmodule Sheaf.Assistant.ContextStoreTest do
       Context.new([
         Context.system("System prompt."),
         Context.assistant("",
-          tool_calls: [ToolCall.new("call_1", "query_spreadsheets", ~s({"sql":"SELECT 1"}))]
+          tool_calls: [
+            ToolCall.new(
+              "call_1",
+              "query_spreadsheets",
+              ~s({"sql":"SELECT 1"})
+            )
+          ]
         ),
         Context.tool_result_message(
           "query_spreadsheets",
@@ -60,7 +66,10 @@ defmodule Sheaf.Assistant.ContextStoreTest do
           %ToolResult{
             content: [ContentPart.text("No hits.")],
             metadata: %{
-              sheaf_result: %ToolResults.SpreadsheetSearch{query: "missing", hits: []}
+              sheaf_result: %ToolResults.SpreadsheetSearch{
+                query: "missing",
+                hits: []
+              }
             }
           }
         )
@@ -74,7 +83,9 @@ defmodule Sheaf.Assistant.ContextStoreTest do
              |> ContextCodec.decode_context()
 
     [tool] = decoded.messages
-    assert %ToolResults.SpreadsheetSearch{hits: []} = Map.fetch!(tool.metadata, "sheaf_result")
+
+    assert %ToolResults.SpreadsheetSearch{hits: []} =
+             Map.fetch!(tool.metadata, "sheaf_result")
   end
 
   test "codec repairs previously encoded empty list fields in structured metadata" do
@@ -88,7 +99,8 @@ defmodule Sheaf.Assistant.ContextStoreTest do
           "tool_calls" => nil,
           "metadata" => %{
             "sheaf_result" => %{
-              "__struct__" => "Elixir.Sheaf.Assistant.ToolResults.SpreadsheetSearch",
+              "__struct__" =>
+                "Elixir.Sheaf.Assistant.ToolResults.SpreadsheetSearch",
               "fields" => %{"query" => "missing", "hits" => %{}}
             }
           },
@@ -99,7 +111,9 @@ defmodule Sheaf.Assistant.ContextStoreTest do
 
     assert {:ok, decoded} = ContextCodec.decode_context(payload)
     [tool] = decoded.messages
-    assert %ToolResults.SpreadsheetSearch{hits: []} = Map.fetch!(tool.metadata, "sheaf_result")
+
+    assert %ToolResults.SpreadsheetSearch{hits: []} =
+             Map.fetch!(tool.metadata, "sheaf_result")
   end
 
   test "stores context messages as indexed rdf:JSON payloads" do
@@ -126,13 +140,19 @@ defmodule Sheaf.Assistant.ContextStoreTest do
     assert {:ok, decoded} = ContextStore.read(session, graph: graph)
     assert Enum.map(decoded.messages, & &1.role) == [:system, :user]
 
-    context_description = Graph.description(graph, ContextStore.context_iri(session))
+    context_description =
+      Graph.description(graph, ContextStore.context_iri(session))
 
     [message_node | _] =
-      RDF.Description.get(context_description, Sheaf.NS.DOC.hasContextMessage())
+      RDF.Description.get(
+        context_description,
+        Sheaf.NS.DOC.hasContextMessage()
+      )
 
     message_description = Graph.description(graph, message_node)
-    payload = RDF.Description.first(message_description, Sheaf.NS.DOC.reqLLMMessage())
+
+    payload =
+      RDF.Description.first(message_description, Sheaf.NS.DOC.reqLLMMessage())
 
     assert RDF.Literal.datatype_id(payload) ==
              RDF.iri("http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON")
@@ -167,8 +187,14 @@ defmodule Sheaf.Assistant.ContextStoreTest do
 
     assert_receive {:persisted_context_graph, graph}
 
-    context_description = Graph.description(graph, ContextStore.context_iri(session))
-    payload = RDF.Description.first(context_description, Sheaf.NS.DOC.toolSchemaList())
+    context_description =
+      Graph.description(graph, ContextStore.context_iri(session))
+
+    payload =
+      RDF.Description.first(
+        context_description,
+        Sheaf.NS.DOC.toolSchemaList()
+      )
 
     assert RDF.Literal.datatype_id(payload) ==
              RDF.iri("http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON")

@@ -11,14 +11,20 @@ defmodule Sheaf.Spreadsheets do
 
   alias Exqlite.Sqlite3
 
-  Record.defrecord(:xmlElement, Record.extract(:xmlElement, from_lib: "xmerl/include/xmerl.hrl"))
+  Record.defrecord(
+    :xmlElement,
+    Record.extract(:xmlElement, from_lib: "xmerl/include/xmerl.hrl")
+  )
 
   Record.defrecord(
     :xmlAttribute,
     Record.extract(:xmlAttribute, from_lib: "xmerl/include/xmerl.hrl")
   )
 
-  Record.defrecord(:xmlText, Record.extract(:xmlText, from_lib: "xmerl/include/xmerl.hrl"))
+  Record.defrecord(
+    :xmlText,
+    Record.extract(:xmlText, from_lib: "xmerl/include/xmerl.hrl")
+  )
 
   @default_path "var/sheaf-embeddings.sqlite3"
 
@@ -159,11 +165,15 @@ defmodule Sheaf.Spreadsheets do
                path: Path.expand(path),
                basename: Path.basename(path),
                file_size: stat.size,
-               file_mtime: stat.mtime |> NaiveDateTime.from_erl!() |> NaiveDateTime.to_iso8601(),
+               file_mtime:
+                 stat.mtime
+                 |> NaiveDateTime.from_erl!()
+                 |> NaiveDateTime.to_iso8601(),
                sha256: sha,
                imported_at: imported_at
              }),
-           {:ok, sheets} <- import_sheets(conn, id, workbook.sheets, imported_at) do
+           {:ok, sheets} <-
+             import_sheets(conn, id, workbook.sheets, imported_at) do
         {:ok,
          %{
            id: id,
@@ -182,7 +192,14 @@ defmodule Sheaf.Spreadsheets do
     |> Enum.reduce_while({:ok, []}, fn {sheet, index}, {:ok, imported} ->
       table = "ss_#{String.downcase(spreadsheet_id)}_#{index}"
 
-      case import_sheet(conn, spreadsheet_id, table, sheet, index, imported_at) do
+      case import_sheet(
+             conn,
+             spreadsheet_id,
+             table,
+             sheet,
+             index,
+             imported_at
+           ) do
         {:ok, summary} -> {:cont, {:ok, [summary | imported]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -239,7 +256,8 @@ defmodule Sheaf.Spreadsheets do
     {headers, Enum.drop(rows, header_index + 1)}
   end
 
-  defp filled_cells(%{values: values}), do: Enum.count(values, &(not blank?(&1)))
+  defp filled_cells(%{values: values}),
+    do: Enum.count(values, &(not blank?(&1)))
 
   defp header_name(nil, index), do: "column_#{index}"
   defp header_name("", index), do: "column_#{index}"
@@ -363,7 +381,10 @@ defmodule Sheaf.Spreadsheets do
 
       {:ok,
        Enum.map(spreadsheet_rows, fn row ->
-         spreadsheet_from_row(row, Map.get(sheets_by_spreadsheet, Enum.at(row, 0), []))
+         spreadsheet_from_row(
+           row,
+           Map.get(sheets_by_spreadsheet, Enum.at(row, 0), [])
+         )
        end)}
     end
   end
@@ -388,7 +409,9 @@ defmodule Sheaf.Spreadsheets do
           {:ok, hits} ->
             {:ok,
              hits
-             |> Enum.sort_by(&{-&1.score, &1.spreadsheet_id, &1.sheet_name, &1.row_number})
+             |> Enum.sort_by(
+               &{-&1.score, &1.spreadsheet_id, &1.sheet_name, &1.row_number}
+             )
              |> Enum.take(limit)}
 
           error ->
@@ -468,7 +491,8 @@ defmodule Sheaf.Spreadsheets do
     end
   end
 
-  defp fetch_rows(conn, statement, limit), do: fetch_rows(conn, statement, limit, [])
+  defp fetch_rows(conn, statement, limit),
+    do: fetch_rows(conn, statement, limit, [])
 
   defp fetch_rows(_conn, _statement, 0, rows), do: {:ok, Enum.reverse(rows)}
 
@@ -483,10 +507,12 @@ defmodule Sheaf.Spreadsheets do
 
   defp read_xlsx(path) do
     with {:ok, entries} <- :zip.extract(String.to_charlist(path), [:memory]) do
-      files = Map.new(entries, fn {name, bytes} -> {List.to_string(name), bytes} end)
+      files =
+        Map.new(entries, fn {name, bytes} -> {List.to_string(name), bytes} end)
 
       with {:ok, workbook} <- parse_xml(Map.fetch!(files, "xl/workbook.xml")),
-           {:ok, rels} <- parse_xml(Map.fetch!(files, "xl/_rels/workbook.xml.rels")) do
+           {:ok, rels} <-
+             parse_xml(Map.fetch!(files, "xl/_rels/workbook.xml.rels")) do
         shared_strings = shared_strings(files)
         relationships = workbook_relationships(rels)
 
@@ -562,9 +588,15 @@ defmodule Sheaf.Spreadsheets do
 
     value =
       case type do
-        "inlineStr" -> cell |> elements("is") |> Enum.map_join(&text_content/1)
-        "s" -> shared_strings |> Enum.at(cell |> first_child_text("v") |> parse_integer())
-        _ -> first_child_text(cell, "v") || first_child_text(cell, "t")
+        "inlineStr" ->
+          cell |> elements("is") |> Enum.map_join(&text_content/1)
+
+        "s" ->
+          shared_strings
+          |> Enum.at(cell |> first_child_text("v") |> parse_integer())
+
+        _ ->
+          first_child_text(cell, "v") || first_child_text(cell, "t")
       end
 
     normalize_cell_value(value)
@@ -730,7 +762,10 @@ defmodule Sheaf.Spreadsheets do
            ) do
       rows
       |> Enum.reduce_while(:ok, fn [table_name], :ok ->
-        case Sqlite3.execute(conn, "DROP TABLE IF EXISTS #{quote_identifier(table_name)}") do
+        case Sqlite3.execute(
+               conn,
+               "DROP TABLE IF EXISTS #{quote_identifier(table_name)}"
+             ) do
           :ok -> {:cont, :ok}
           {:error, reason} -> {:halt, {:error, reason}}
         end
@@ -739,7 +774,9 @@ defmodule Sheaf.Spreadsheets do
   end
 
   defp delete_spreadsheet(conn, id) do
-    execute(conn, "DELETE FROM spreadsheet_sheets WHERE spreadsheet_id = ?", [id])
+    execute(conn, "DELETE FROM spreadsheet_sheets WHERE spreadsheet_id = ?", [
+      id
+    ])
     |> case do
       :ok -> execute(conn, "DELETE FROM spreadsheets WHERE id = ?", [id])
       error -> error

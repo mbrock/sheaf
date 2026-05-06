@@ -159,8 +159,10 @@ defmodule Sheaf.Search.Index do
   inserted. This keeps FTS maintenance proportional to the edited blocks rather
   than rebuilding the whole corpus mirror.
   """
-  @spec replace_units([map()], [String.t()], keyword()) :: {:ok, map()} | {:error, term()}
-  def replace_units(units, stale_iris, opts \\ []) when is_list(units) and is_list(stale_iris) do
+  @spec replace_units([map()], [String.t()], keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def replace_units(units, stale_iris, opts \\ [])
+      when is_list(units) and is_list(stale_iris) do
     db_path = path(opts)
 
     with {:ok, conn} <- open(opts) do
@@ -219,7 +221,10 @@ defmodule Sheaf.Search.Index do
   @doc false
   def search_loaded(conn, query, opts \\ []) when is_binary(query) do
     limit = Keyword.get(opts, :limit, 20)
-    candidate_limit = Keyword.get(opts, :candidate_limit, max(limit * 10, 500))
+
+    candidate_limit =
+      Keyword.get(opts, :candidate_limit, max(limit * 10, 500))
+
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
     document_id = Keyword.get(opts, :document_id)
     phrase = String.downcase(String.trim(query))
@@ -241,7 +246,8 @@ defmodule Sheaf.Search.Index do
     LIMIT ?
     """
 
-    with {:ok, rows} <- query(conn, sql, [phrase] ++ params ++ [candidate_limit]) do
+    with {:ok, rows} <-
+           query(conn, sql, [phrase] ++ params ++ [candidate_limit]) do
       {:ok,
        rows
        |> rows_to_results(search_terms(query), phrase)
@@ -254,7 +260,8 @@ defmodule Sheaf.Search.Index do
   @doc """
   Returns mirrored text units by IRI from the sidecar table.
   """
-  @spec units_by_iris([String.t()], keyword()) :: {:ok, map()} | {:error, term()}
+  @spec units_by_iris([String.t()], keyword()) ::
+          {:ok, map()} | {:error, term()}
   def units_by_iris(iris, opts \\ []) when is_list(iris) do
     iris = iris |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
@@ -293,7 +300,8 @@ defmodule Sheaf.Search.Index do
   defp add_document_filter({conditions, params}, nil),
     do: {Enum.join(conditions, " AND "), params}
 
-  defp add_document_filter({conditions, params}, ""), do: {Enum.join(conditions, " AND "), params}
+  defp add_document_filter({conditions, params}, ""),
+    do: {Enum.join(conditions, " AND "), params}
 
   defp add_document_filter({conditions, params}, document_id) do
     {Enum.join(conditions ++ ["u.doc_iri = ?"], " AND "),
@@ -306,8 +314,11 @@ defmodule Sheaf.Search.Index do
 
     expression =
       case terms do
-        [] -> phrase
-        terms -> ([phrase] ++ Enum.map(terms, &quote_fts/1)) |> Enum.join(" OR ")
+        [] ->
+          phrase
+
+        terms ->
+          ([phrase] ++ Enum.map(terms, &quote_fts/1)) |> Enum.join(" OR ")
       end
 
     {["search_text_units_fts MATCH ?"], [expression]}
@@ -341,7 +352,9 @@ defmodule Sheaf.Search.Index do
   defp row_to_result(row, terms, phrase, max_rank) do
     [rank, exact_match] = Enum.slice(row, 11, 2)
     text = Enum.at(row, 3)
-    lexical_score = lexical_score(text, terms, phrase, rank, exact_match, max_rank)
+
+    lexical_score =
+      lexical_score(text, terms, phrase, rank, exact_match, max_rank)
 
     row
     |> Enum.take(11)
@@ -392,7 +405,8 @@ defmodule Sheaf.Search.Index do
         terms -> term_stats.matched / length(terms)
       end
 
-    frequency_score = min(1.0, term_stats.occurrences / max(length(terms), 1) / 3)
+    frequency_score =
+      min(1.0, term_stats.occurrences / max(length(terms), 1) / 3)
 
     rank_score =
       case max_rank do
@@ -401,7 +415,9 @@ defmodule Sheaf.Search.Index do
       end
 
     phrase_score =
-      if exact_match in [1, true] or phrase_match?(text, phrase), do: 1.0, else: 0.0
+      if exact_match in [1, true] or phrase_match?(text, phrase),
+        do: 1.0,
+        else: 0.0
 
     (0.32 + coverage_score * 0.34 + rank_score * 0.22 + frequency_score * 0.07 +
        phrase_score * 0.05)
@@ -423,7 +439,8 @@ defmodule Sheaf.Search.Index do
     end)
   end
 
-  defp term_occurrences(text, term) when is_binary(text) and is_binary(term) do
+  defp term_occurrences(text, term)
+       when is_binary(text) and is_binary(term) do
     escaped = Regex.escape(term)
     pattern = ~r/(^|[^\p{L}\p{N}])#{escaped}(?=$|[^\p{L}\p{N}])/iu
 
@@ -434,7 +451,8 @@ defmodule Sheaf.Search.Index do
 
   defp term_occurrences(_text, _term), do: 0
 
-  defp phrase_match?(text, phrase) when is_binary(text) and is_binary(phrase) do
+  defp phrase_match?(text, phrase)
+       when is_binary(text) and is_binary(phrase) do
     phrase != "" and String.contains?(String.downcase(text), phrase)
   end
 
@@ -489,11 +507,15 @@ defmodule Sheaf.Search.Index do
   end
 
   defp reject_unit?(%{text: text}) when text in [nil, ""], do: true
-  defp reject_unit?(%{kind: "sourceHtml", text: text}), do: source_html_noise?(text)
+
+  defp reject_unit?(%{kind: "sourceHtml", text: text}),
+    do: source_html_noise?(text)
+
   defp reject_unit?(_unit), do: false
 
   defp source_html_noise?(text) when is_binary(text) do
-    String.contains?(text, ";base64,") or String.contains?(text, "data:image/")
+    String.contains?(text, ";base64,") or
+      String.contains?(text, "data:image/")
   end
 
   defp source_html_noise?(_text), do: false
@@ -555,10 +577,14 @@ defmodule Sheaf.Search.Index do
            query(conn, "SELECT rowid FROM search_text_units WHERE iri = ?", [
              Map.fetch!(unit, :iri)
            ]) do
-      execute(conn, "INSERT INTO search_text_units_fts(rowid, text) VALUES (?, ?)", [
-        rowid,
-        Map.fetch!(unit, :text)
-      ])
+      execute(
+        conn,
+        "INSERT INTO search_text_units_fts(rowid, text) VALUES (?, ?)",
+        [
+          rowid,
+          Map.fetch!(unit, :text)
+        ]
+      )
     end
   end
 
@@ -573,7 +599,11 @@ defmodule Sheaf.Search.Index do
 
   defp delete_unit(conn, iri) do
     with {:ok, rows} <-
-           query(conn, "SELECT rowid, text FROM search_text_units WHERE iri = ?", [iri]),
+           query(
+             conn,
+             "SELECT rowid, text FROM search_text_units WHERE iri = ?",
+             [iri]
+           ),
          :ok <- delete_fts_rows(conn, rows) do
       execute(conn, "DELETE FROM search_text_units WHERE iri = ?", [iri])
     end
@@ -606,7 +636,10 @@ defmodule Sheaf.Search.Index do
         if MapSet.member?(columns, column) do
           {:cont, :ok}
         else
-          case Sqlite3.execute(conn, "ALTER TABLE search_text_units ADD COLUMN #{column} #{type}") do
+          case Sqlite3.execute(
+                 conn,
+                 "ALTER TABLE search_text_units ADD COLUMN #{column} #{type}"
+               ) do
             :ok -> {:cont, :ok}
             {:error, reason} -> {:halt, {:error, reason}}
           end

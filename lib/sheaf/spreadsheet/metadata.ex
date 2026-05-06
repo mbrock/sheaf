@@ -23,7 +23,9 @@ defmodule Sheaf.Spreadsheet.Metadata do
   end
 
   def import_paths(paths, opts \\ []) when is_list(paths) do
-    paths = paths |> Enum.flat_map(&xlsx_files/1) |> Enum.uniq() |> Enum.sort()
+    paths =
+      paths |> Enum.flat_map(&xlsx_files/1) |> Enum.uniq() |> Enum.sort()
+
     directory = Keyword.get(opts, :directory, common_directory(paths))
 
     Tracer.with_span "Sheaf.Spreadsheet.Metadata.import_paths", %{
@@ -36,8 +38,11 @@ defmodule Sheaf.Spreadsheet.Metadata do
       {imported, errors} =
         Enum.reduce(paths, {[], []}, fn path, {imported, errors} ->
           case import_file(path, Keyword.put(opts, :directory, directory)) do
-            {:ok, result} -> {[result | imported], errors}
-            {:error, reason} -> {imported, [%{path: path, error: reason} | errors]}
+            {:ok, result} ->
+              {[result | imported], errors}
+
+            {:error, reason} ->
+              {imported, [%{path: path, error: reason} | errors]}
           end
         end)
 
@@ -59,7 +64,8 @@ defmodule Sheaf.Spreadsheet.Metadata do
       with {:ok, spreadsheet} <-
              Materializer.materialize_file(path,
                directory: directory,
-               blob_root: Keyword.get(opts, :blob_root, configured_blob_root())
+               blob_root:
+                 Keyword.get(opts, :blob_root, configured_blob_root())
              ),
            {:ok, stored_file} <-
              BlobStore.put_file(path,
@@ -91,7 +97,9 @@ defmodule Sheaf.Spreadsheet.Metadata do
       workbooks =
         graph
         |> RDF.Data.descriptions()
-        |> Enum.filter(&Description.include?(&1, {RDF.type(), DOC.SpreadsheetWorkbook}))
+        |> Enum.filter(
+          &Description.include?(&1, {RDF.type(), DOC.SpreadsheetWorkbook})
+        )
         |> Enum.map(&workbook_info(graph, &1))
         |> Enum.sort_by(& &1.title)
 
@@ -123,7 +131,11 @@ defmodule Sheaf.Spreadsheet.Metadata do
     |> add(workbook, RDF.NS.RDFS.label(), spreadsheet.title)
     |> add(workbook, DCTERMS.title(), spreadsheet.title)
     |> add(workbook, DCTERMS.identifier(), spreadsheet.id)
-    |> add(workbook, DOC.workspacePath(), relative_path(directory, spreadsheet.path))
+    |> add(
+      workbook,
+      DOC.workspacePath(),
+      relative_path(directory, spreadsheet.path)
+    )
     |> add(workbook, DOC.sourceFile(), file)
     |> add(workbook, DCAT.distribution(), file)
     |> add_sheets(workbook, spreadsheet.sheets)
@@ -148,7 +160,11 @@ defmodule Sheaf.Spreadsheet.Metadata do
       |> add(sheet_iri, DOC.sheetIndex(), sheet.sheet_index)
       |> add(sheet_iri, DOC.duckdbTableName(), sheet.table_name)
       |> add(sheet_iri, DOC.rowCount(), sheet.row_count)
-      |> add(sheet_iri, DOC.columnNameList(), Jason.encode!(Enum.map(columns, & &1.name)))
+      |> add(
+        sheet_iri,
+        DOC.columnNameList(),
+        Jason.encode!(Enum.map(columns, & &1.name))
+      )
       |> add(schema, RDF.type(), CSVW.Schema)
       |> add_columns(schema, sheet_iri, columns)
       |> add_materialized_distribution(sheet_iri, sheet.parquet_file)
@@ -200,9 +216,12 @@ defmodule Sheaf.Spreadsheet.Metadata do
     %{
       iri: to_string(workbook.subject),
       id: Sheaf.Id.id_from_iri(workbook.subject),
-      title: first_value(workbook, DCTERMS.title()) || first_value(workbook, RDF.NS.RDFS.label()),
+      title:
+        first_value(workbook, DCTERMS.title()) ||
+          first_value(workbook, RDF.NS.RDFS.label()),
       path: first_value(workbook, DOC.workspacePath()),
-      file_iri: workbook |> first_term(DOC.sourceFile()) |> to_string_or_nil(),
+      file_iri:
+        workbook |> first_term(DOC.sourceFile()) |> to_string_or_nil(),
       sheets: sheets
     }
   end
@@ -233,10 +252,15 @@ defmodule Sheaf.Spreadsheet.Metadata do
 
     %{
       iri: to_string(sheet.subject),
-      name: first_value(sheet, CSVW.name()) || first_value(sheet, RDF.NS.RDFS.label()),
+      name:
+        first_value(sheet, CSVW.name()) ||
+          first_value(sheet, RDF.NS.RDFS.label()),
       sheet_index: first_value(sheet, DOC.sheetIndex()),
       table_name: first_value(sheet, DOC.duckdbTableName()),
-      parquet_file_iri: sheet |> first_term(DOC.materializedDistribution()) |> to_string_or_nil(),
+      parquet_file_iri:
+        sheet
+        |> first_term(DOC.materializedDistribution())
+        |> to_string_or_nil(),
       row_count: first_value(sheet, DOC.rowCount()),
       columns: columns
     }
@@ -274,7 +298,9 @@ defmodule Sheaf.Spreadsheet.Metadata do
 
     graph
     |> Graph.triples()
-    |> Enum.filter(fn {subject, _predicate, _object} -> MapSet.member?(subject_set, subject) end)
+    |> Enum.filter(fn {subject, _predicate, _object} ->
+      MapSet.member?(subject_set, subject)
+    end)
     |> Graph.new(name: Sheaf.Workspace.graph())
   end
 
@@ -289,7 +315,8 @@ defmodule Sheaf.Spreadsheet.Metadata do
         with :ok <- Sheaf.Repo.load_once({nil, nil, nil, workspace}) do
           graph =
             Sheaf.Repo.ask(fn dataset ->
-              RDF.Dataset.graph(dataset, workspace) || Graph.new(name: workspace)
+              RDF.Dataset.graph(dataset, workspace) ||
+                Graph.new(name: workspace)
             end)
 
           {:ok, graph}
@@ -305,9 +332,12 @@ defmodule Sheaf.Spreadsheet.Metadata do
   end
 
   defp workbook_iri(spreadsheet),
-    do: Sheaf.Id.iri("XLSX-" <> String.slice(workbook_key(spreadsheet), 0, 16))
+    do:
+      Sheaf.Id.iri("XLSX-" <> String.slice(workbook_key(spreadsheet), 0, 16))
 
-  defp file_iri(spreadsheet), do: workbook_iri(spreadsheet) |> append_iri("/source-file")
+  defp file_iri(spreadsheet),
+    do: workbook_iri(spreadsheet) |> append_iri("/source-file")
+
   defp sheet_iri(workbook, index), do: append_iri(workbook, "/sheet/#{index}")
   defp schema_iri(sheet), do: append_iri(sheet, "/schema")
   defp column_iri(sheet, index), do: append_iri(sheet, "/column/#{index}")
@@ -316,7 +346,10 @@ defmodule Sheaf.Spreadsheet.Metadata do
   defp append_iri(iri, suffix), do: RDF.iri(to_string(iri) <> suffix)
 
   defp workbook_key(spreadsheet) do
-    :crypto.hash(:sha256, Path.expand(spreadsheet.path) <> "\0" <> spreadsheet.sha256)
+    :crypto.hash(
+      :sha256,
+      Path.expand(spreadsheet.path) <> "\0" <> spreadsheet.sha256
+    )
     |> Base.encode16(case: :lower)
   end
 
@@ -342,7 +375,9 @@ defmodule Sheaf.Spreadsheet.Metadata do
   defp xlsx?(path), do: path |> Path.extname() |> String.downcase() == ".xlsx"
 
   defp add(graph, _subject, _predicate, nil), do: graph
-  defp add(graph, subject, predicate, object), do: Graph.add(graph, {subject, predicate, object})
+
+  defp add(graph, subject, predicate, object),
+    do: Graph.add(graph, {subject, predicate, object})
 
   defp first_term(%Description{} = description, property),
     do: Description.first(description, property)
@@ -373,7 +408,9 @@ defmodule Sheaf.Spreadsheet.Metadata do
 
   defp common_directory([]), do: File.cwd!()
   defp common_directory([path]), do: Path.dirname(path)
-  defp common_directory(paths), do: paths |> Enum.map(&Path.dirname/1) |> common_path()
+
+  defp common_directory(paths),
+    do: paths |> Enum.map(&Path.dirname/1) |> common_path()
 
   defp common_path(paths) do
     paths

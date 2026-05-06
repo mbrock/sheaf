@@ -56,7 +56,8 @@ defmodule Sheaf.MetadataResolver do
   Set `pdf_fallback: true` to try the first few PDF pages after text extraction.
   The only RDF write path is `Sheaf.Crossref.import_metadata/2`.
   """
-  @spec resolve(candidate(), keyword()) :: {:ok, resolve_result()} | {:error, term()}
+  @spec resolve(candidate(), keyword()) ::
+          {:ok, resolve_result()} | {:error, term()}
   def resolve(%{path: path} = candidate, opts \\ []) when is_binary(path) do
     with true <- File.exists?(path) || {:error, {:missing_blob, path}},
          {:ok, metadata} <- extract_metadata(candidate, opts) do
@@ -69,7 +70,8 @@ defmodule Sheaf.MetadataResolver do
   """
   @spec extract_candidate_metadata(candidate(), keyword()) ::
           {:ok, Sheaf.PaperMetadata.t()} | {:error, term()}
-  def extract_candidate_metadata(%{path: path} = candidate, opts \\ []) when is_binary(path) do
+  def extract_candidate_metadata(%{path: path} = candidate, opts \\ [])
+      when is_binary(path) do
     with true <- File.exists?(path) || {:error, {:missing_blob, path}} do
       extract_metadata(candidate, opts)
     end
@@ -78,7 +80,11 @@ defmodule Sheaf.MetadataResolver do
   @doc """
   Resolves already-extracted metadata through Crossref and RDF import.
   """
-  @spec resolve_candidate_metadata(candidate(), Sheaf.PaperMetadata.t(), keyword()) ::
+  @spec resolve_candidate_metadata(
+          candidate(),
+          Sheaf.PaperMetadata.t(),
+          keyword()
+        ) ::
           {:ok, resolve_result()} | {:error, term()}
   def resolve_candidate_metadata(candidate, metadata, opts \\ []) do
     resolve_metadata(candidate, metadata, opts)
@@ -87,22 +93,28 @@ defmodule Sheaf.MetadataResolver do
   @doc """
   Looks up Crossref data for extracted DOI or ISBN metadata.
   """
-  @spec lookup_identifier(Sheaf.PaperMetadata.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  @spec lookup_identifier(Sheaf.PaperMetadata.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
   def lookup_identifier(metadata, opts \\ []) do
     cond do
       metadata.doi ->
-        with {:ok, work} <- Sheaf.Crossref.work(metadata.doi, crossref_lookup_opts(opts)) do
+        with {:ok, work} <-
+               Sheaf.Crossref.work(metadata.doi, crossref_lookup_opts(opts)) do
           {:ok, %{source: "doi", identifier: metadata.doi, work: work}}
         end
 
       metadata.isbn ->
         with {:ok, works} <-
-               Sheaf.Crossref.works_by_isbn(metadata.isbn, crossref_lookup_opts(opts)) do
+               Sheaf.Crossref.works_by_isbn(
+                 metadata.isbn,
+                 crossref_lookup_opts(opts)
+               ) do
           {:ok, %{source: "isbn", identifier: metadata.isbn, works: works}}
         end
 
       true ->
-        {:ok, %{source: "none", identifier: nil, reason: "no DOI or ISBN found"}}
+        {:ok,
+         %{source: "none", identifier: nil, reason: "no DOI or ISBN found"}}
     end
   end
 
@@ -124,8 +136,11 @@ defmodule Sheaf.MetadataResolver do
      %{
        accept?: false,
        score: 0.0,
-       source: Map.get(lookup, :source) || Map.get(lookup, "source") || "none",
-       reason: Map.get(lookup, :reason) || Map.get(lookup, "reason") || "no lookup result"
+       source:
+         Map.get(lookup, :source) || Map.get(lookup, "source") || "none",
+       reason:
+         Map.get(lookup, :reason) || Map.get(lookup, "reason") ||
+           "no lookup result"
      }}
   end
 
@@ -147,7 +162,9 @@ defmodule Sheaf.MetadataResolver do
          no_import(
            candidate,
            metadata,
-           match |> clean_match() |> Map.put(:reason, "accepted match has no DOI")
+           match
+           |> clean_match()
+           |> Map.put(:reason, "accepted match has no DOI")
          )}
     end
   end
@@ -155,7 +172,8 @@ defmodule Sheaf.MetadataResolver do
   @doc """
   Resolves one queued task input map.
   """
-  @spec resolve_task(map(), keyword()) :: {:ok, resolve_result()} | {:error, term()}
+  @spec resolve_task(map(), keyword()) ::
+          {:ok, resolve_result()} | {:error, term()}
   def resolve_task(input, opts \\ []) when is_map(input) do
     input
     |> candidate_from_input()
@@ -163,7 +181,8 @@ defmodule Sheaf.MetadataResolver do
   end
 
   @doc false
-  def task_candidate(input) when is_map(input), do: candidate_from_input(input)
+  def task_candidate(input) when is_map(input),
+    do: candidate_from_input(input)
 
   @doc false
   def candidates_from(rows, files_graph, opts \\ []) when is_list(rows) do
@@ -182,28 +201,64 @@ defmodule Sheaf.MetadataResolver do
   defp select_candidates(opts) do
     metadata_graph = Keyword.get(opts, :metadata_graph, @metadata_graph)
 
-    with {:ok, dataset} <- Sheaf.fetch_dataset() do
-      metadata = RDF.Dataset.graph(dataset, metadata_graph) || RDF.Graph.new()
+    with {:ok, metadata} <- Sheaf.fetch_graph(metadata_graph),
+         {:ok, source_rows} <-
+           Sheaf.Repo.match_rows({nil, DOC.sourceFile(), nil, nil}) do
+      docs =
+        source_rows
+        |> Enum.map(fn {_graph, doc, _predicate, _file} -> doc end)
+        |> Enum.uniq()
 
-      rows =
-        dataset
-        |> RDF.Dataset.graphs()
-        |> Enum.flat_map(fn graph ->
-          for {doc, predicate, file} <- RDF.Graph.triples(graph),
-              predicate == DOC.sourceFile(),
-              document?(graph, doc) do
-            %{
-              "doc" => doc,
-              "file" => file,
-              "label" => first_object(graph, doc, RDFS.label()),
-              "expression" => first_object(metadata, doc, FABIO.isRepresentationOf())
-            }
-          end
-        end)
-        |> Enum.sort_by(&(Map.fetch!(&1, "doc") |> to_string()))
+      with {:ok, type_rows} <-
+             Sheaf.Repo.match_rows({docs, RDF.type(), document_types(), nil}),
+           {:ok, label_rows} <-
+             Sheaf.Repo.match_rows({docs, RDFS.label(), nil, nil}) do
+        documents =
+          type_rows
+          |> Enum.map(fn {_graph, doc, _predicate, _type} -> doc end)
+          |> MapSet.new()
 
-      {:ok, %{results: rows}}
+        labels = first_objects(label_rows)
+
+        rows =
+          source_rows
+          |> Enum.flat_map(fn {_graph, doc, _predicate, file} ->
+            if MapSet.member?(documents, doc) do
+              [
+                %{
+                  "doc" => doc,
+                  "file" => file,
+                  "label" => Map.get(labels, doc),
+                  "expression" =>
+                    first_object(metadata, doc, FABIO.isRepresentationOf())
+                }
+              ]
+            else
+              []
+            end
+          end)
+          |> Enum.sort_by(&(Map.fetch!(&1, "doc") |> to_string()))
+
+        {:ok, %{results: rows}}
+      end
     end
+  end
+
+  defp first_objects(rows) do
+    Enum.reduce(rows, %{}, fn {_graph, subject, _predicate, object}, index ->
+      Map.put_new(index, subject, object)
+    end)
+  end
+
+  defp document_types do
+    [
+      RDF.iri(DOC.Document),
+      RDF.iri(DOC.Paper),
+      RDF.iri(DOC.Thesis),
+      RDF.iri(DOC.Transcript),
+      RDF.iri(DOC.Spreadsheet),
+      RDF.iri(DOC.Interview)
+    ]
   end
 
   defp files_graph(opts) do
@@ -216,7 +271,8 @@ defmodule Sheaf.MetadataResolver do
   defp candidate_from_row(row, files, opts) do
     with {:ok, document} <- Map.fetch(row, "doc"),
          {:ok, file} <- Map.fetch(row, "file"),
-         %Description{} = file_description <- Enum.find(files, &(&1.subject == file)),
+         %Description{} = file_description <-
+           Enum.find(files, &(&1.subject == file)),
          {:ok, path} <- Sheaf.Files.local_path(file_description, opts) do
       [
         %{
@@ -225,11 +281,13 @@ defmodule Sheaf.MetadataResolver do
           path: path,
           label: value(Map.get(row, "label")),
           metadata_expression: Map.get(row, "expression"),
-          original_filename: first_value(file_description, DOC.originalFilename()),
+          original_filename:
+            first_value(file_description, DOC.originalFilename()),
           mime_type: first_value(file_description, DOC.mimeType()),
           byte_size: first_value(file_description, DOC.byteSize()),
           sha256: first_value(file_description, DOC.sha256()),
-          generated_at: first_value(file_description, Sheaf.NS.PROV.generatedAtTime())
+          generated_at:
+            first_value(file_description, Sheaf.NS.PROV.generatedAtTime())
         }
       ]
     else
@@ -274,13 +332,22 @@ defmodule Sheaf.MetadataResolver do
     crossref_opts =
       opts
       |> Keyword.take([:base_url, :req_options])
-      |> Keyword.put(:metadata_graph, Keyword.get(opts, :metadata_graph, @metadata_graph))
+      |> Keyword.put(
+        :metadata_graph,
+        Keyword.get(opts, :metadata_graph, @metadata_graph)
+      )
       |> Keyword.put(:paper, candidate.document)
       |> put_if_present(:page_count, document_page_count(candidate.document))
 
     with {:ok, crossref} <- Sheaf.Crossref.import_metadata(doi, crossref_opts) do
       {:ok,
-       %{candidate: candidate, metadata: metadata, crossref: crossref, wrote?: true, match: match}}
+       %{
+         candidate: candidate,
+         metadata: metadata,
+         crossref: crossref,
+         wrote?: true,
+         match: match
+       }}
     end
   end
 
@@ -290,7 +357,8 @@ defmodule Sheaf.MetadataResolver do
 
   defp clean_match(match), do: Map.delete(match, :work)
 
-  defp crossref_lookup_opts(opts), do: Keyword.take(opts, [:base_url, :req_options])
+  defp crossref_lookup_opts(opts),
+    do: Keyword.take(opts, [:base_url, :req_options])
 
   defp document_page_count(document) do
     with {:ok, graph} <- Sheaf.fetch_graph(document) do
@@ -301,9 +369,12 @@ defmodule Sheaf.MetadataResolver do
   end
 
   defp document_page_count(graph, document) do
-    description = RDF.Graph.description(graph, document) || Description.new(document)
+    description =
+      RDF.Graph.description(graph, document) || Description.new(document)
 
-    case description |> Description.first(BIBO.numPages()) |> integer_value() do
+    case description
+         |> Description.first(BIBO.numPages())
+         |> integer_value() do
       count when is_integer(count) ->
         count
 
@@ -327,7 +398,9 @@ defmodule Sheaf.MetadataResolver do
   end
 
   defp extract_metadata(candidate, opts) do
-    extract_metadata = Keyword.get(opts, :extract_metadata, &default_extract_metadata/2)
+    extract_metadata =
+      Keyword.get(opts, :extract_metadata, &default_extract_metadata/2)
+
     extract_metadata.(candidate, opts)
   end
 
@@ -335,8 +408,12 @@ defmodule Sheaf.MetadataResolver do
     metadata_opts = llm_opts(opts)
 
     with {:ok, metadata} <-
-           Sheaf.PaperMetadata.extract_document(candidate.document, metadata_opts) do
-      if missing_identifiers?(metadata) and Keyword.get(opts, :pdf_fallback, false) do
+           Sheaf.PaperMetadata.extract_document(
+             candidate.document,
+             metadata_opts
+           ) do
+      if missing_identifiers?(metadata) and
+           Keyword.get(opts, :pdf_fallback, false) do
         candidate.path
         |> Sheaf.PaperMetadata.extract_pdf_pages(
           Keyword.put(metadata_opts, :pages, Keyword.get(opts, :pdf_pages, 3))
@@ -347,7 +424,8 @@ defmodule Sheaf.MetadataResolver do
     end
   end
 
-  defp missing_identifiers?(metadata), do: is_nil(metadata.doi) and is_nil(metadata.isbn)
+  defp missing_identifiers?(metadata),
+    do: is_nil(metadata.doi) and is_nil(metadata.isbn)
 
   defp llm_opts(opts) do
     opts
@@ -381,7 +459,8 @@ defmodule Sheaf.MetadataResolver do
     }
   end
 
-  defp input_value(input, key), do: Map.get(input, key) || Map.get(input, to_string(key))
+  defp input_value(input, key),
+    do: Map.get(input, key) || Map.get(input, to_string(key))
 
   defp nullable_iri(nil), do: nil
   defp nullable_iri(value), do: RDF.iri(value)
@@ -391,7 +470,13 @@ defmodule Sheaf.MetadataResolver do
     |> Enum.map(&{&1, match_crossref(metadata, &1, :isbn)})
     |> Enum.sort_by(fn {_work, match} -> match.score end, :desc)
     |> List.first(
-      {%{}, %{accept?: false, score: 0.0, source: "isbn", reason: "no Crossref ISBN candidates"}}
+      {%{},
+       %{
+         accept?: false,
+         score: 0.0,
+         source: "isbn",
+         reason: "no Crossref ISBN candidates"
+       }}
     )
   end
 
@@ -470,13 +555,6 @@ defmodule Sheaf.MetadataResolver do
 
   defp put_if_present(opts, _key, nil), do: opts
   defp put_if_present(opts, key, value), do: Keyword.put(opts, key, value)
-
-  defp document?(graph, doc) do
-    case RDF.Graph.description(graph, doc) do
-      nil -> false
-      description -> Description.include?(description, {RDF.type(), DOC.Document})
-    end
-  end
 
   defp first_object(nil, _subject, _predicate), do: nil
 

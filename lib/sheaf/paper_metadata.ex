@@ -65,7 +65,8 @@ defmodule Sheaf.PaperMetadata do
   @doc """
   Extracts metadata from the first pages of a local PDF.
   """
-  @spec extract_pdf_pages(Path.t(), keyword()) :: {:ok, t()} | {:error, term()}
+  @spec extract_pdf_pages(Path.t(), keyword()) ::
+          {:ok, t()} | {:error, term()}
   def extract_pdf_pages(path, opts \\ []) when is_binary(path) do
     pages = Keyword.get(opts, :pages, 3)
 
@@ -77,7 +78,8 @@ defmodule Sheaf.PaperMetadata do
   @doc """
   Extracts metadata from PDF bytes.
   """
-  @spec extract_pdf_binary(binary(), String.t(), keyword()) :: {:ok, t()} | {:error, term()}
+  @spec extract_pdf_binary(binary(), String.t(), keyword()) ::
+          {:ok, t()} | {:error, term()}
   def extract_pdf_binary(pdf, filename, opts \\ [])
       when is_binary(pdf) and is_binary(filename) do
     message =
@@ -130,7 +132,8 @@ defmodule Sheaf.PaperMetadata do
   @doc """
   Fetches a stored document graph by IRI and extracts metadata from its text blocks.
   """
-  @spec extract_document(RDF.IRI.t() | String.t(), keyword()) :: {:ok, t()} | {:error, term()}
+  @spec extract_document(RDF.IRI.t() | String.t(), keyword()) ::
+          {:ok, t()} | {:error, term()}
   def extract_document(document_iri, opts \\ []) do
     document_iri = RDF.iri(document_iri)
 
@@ -146,8 +149,11 @@ defmodule Sheaf.PaperMetadata do
   @spec extract_pdf!(Path.t(), keyword()) :: t()
   def extract_pdf!(path, opts \\ []) do
     case extract_pdf(path, opts) do
-      {:ok, metadata} -> metadata
-      {:error, reason} -> raise "failed to extract paper metadata: #{inspect(reason)}"
+      {:ok, metadata} ->
+        metadata
+
+      {:error, reason} ->
+        raise "failed to extract paper metadata: #{inspect(reason)}"
     end
   end
 
@@ -253,15 +259,24 @@ defmodule Sheaf.PaperMetadata do
   end
 
   defp first_pages_pdf(path, pages) when is_integer(pages) and pages > 0 do
-    with pdfseparate when is_binary(pdfseparate) <- System.find_executable("pdfseparate"),
-         pdfunite when is_binary(pdfunite) <- System.find_executable("pdfunite") do
+    with pdfseparate when is_binary(pdfseparate) <-
+           System.find_executable("pdfseparate"),
+         pdfunite when is_binary(pdfunite) <-
+           System.find_executable("pdfunite") do
       with_tmp_dir(fn dir ->
         pages = min(pages, pdf_page_count(path) || pages)
         page_pattern = Path.join(dir, "page-%d.pdf")
 
         case System.cmd(
                pdfseparate,
-               ["-f", "1", "-l", Integer.to_string(pages), path, page_pattern],
+               [
+                 "-f",
+                 "1",
+                 "-l",
+                 Integer.to_string(pages),
+                 path,
+                 page_pattern
+               ],
                stderr_to_stdout: true
              ) do
           {_output, 0} ->
@@ -310,14 +325,20 @@ defmodule Sheaf.PaperMetadata do
   defp unite_pages(pdfunite, page_paths, dir) do
     output_path = Path.join(dir, "excerpt.pdf")
 
-    case System.cmd(pdfunite, page_paths ++ [output_path], stderr_to_stdout: true) do
+    case System.cmd(pdfunite, page_paths ++ [output_path],
+           stderr_to_stdout: true
+         ) do
       {_output, 0} -> File.read(output_path)
       {output, status} -> {:error, {:pdfunite_failed, status, output}}
     end
   end
 
   defp with_tmp_dir(fun) do
-    dir = Path.join(System.tmp_dir!(), "sheaf-pdf-pages-#{System.unique_integer([:positive])}")
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-pdf-pages-#{System.unique_integer([:positive])}"
+      )
 
     with :ok <- File.mkdir_p(dir) do
       try do
@@ -374,7 +395,9 @@ defmodule Sheaf.PaperMetadata do
     end
   end
 
-  defp string_value(value) when is_integer(value), do: Integer.to_string(value)
+  defp string_value(value) when is_integer(value),
+    do: Integer.to_string(value)
+
   defp string_value(value) when is_float(value), do: Float.to_string(value)
   defp string_value(_value), do: nil
 

@@ -120,15 +120,19 @@ defmodule Sheaf.LLM do
     * `:llm_options` - extra ReqLLM options merged into the final request.
     * `:generate_object` - test seam, defaulting to `ReqLLM.generate_object/4`.
   """
-  @spec generate_object(term(), keyword(), keyword()) :: {:ok, object_result()} | {:error, term()}
+  @spec generate_object(term(), keyword(), keyword()) ::
+          {:ok, object_result()} | {:error, term()}
   def generate_object(message, schema, opts \\ []) when is_list(schema) do
     model = Keyword.get(opts, :model, @default_model)
-    generate_object = Keyword.get(opts, :generate_object, &ReqLLM.generate_object/4)
+
+    generate_object =
+      Keyword.get(opts, :generate_object, &ReqLLM.generate_object/4)
 
     case generate_object.(model, message, schema, request_options(opts)) do
       {:ok, response} ->
         with {:ok, object} <- response_object(response) do
-          {:ok, %{object: object, model: model, usage: response_usage(response)}}
+          {:ok,
+           %{object: object, model: model, usage: response_usage(response)}}
         end
 
       {:error, reason} ->
@@ -153,7 +157,10 @@ defmodule Sheaf.LLM do
   def request_options(opts) do
     model = Keyword.get(opts, :model, @default_model)
     provider_options = provider_options(opts)
-    raw_llm_options = opts |> Keyword.get(:llm_options, []) |> Keyword.delete(:temperature)
+
+    raw_llm_options =
+      opts |> Keyword.get(:llm_options, []) |> Keyword.delete(:temperature)
+
     llm_options = Keyword.delete(raw_llm_options, :provider_options)
 
     llm_provider_options =
@@ -163,7 +170,8 @@ defmodule Sheaf.LLM do
 
     [
       max_tokens: Keyword.get(opts, :max_tokens, @default_max_tokens),
-      receive_timeout: Keyword.get(opts, :receive_timeout, @default_receive_timeout),
+      receive_timeout:
+        Keyword.get(opts, :receive_timeout, @default_receive_timeout),
       provider_options:
         model
         |> model_provider_options(opts)
@@ -188,7 +196,9 @@ defmodule Sheaf.LLM do
   def text_request_options(opts) do
     opts
     |> request_options()
-    |> put_default_context_cache_options(Keyword.get(opts, :model, @default_model))
+    |> put_default_context_cache_options(
+      Keyword.get(opts, :model, @default_model)
+    )
     |> Keyword.merge(text_passthrough_options(opts))
     |> Keyword.update!(:provider_options, &Keyword.delete(&1, :temperature))
     |> Keyword.delete(:temperature)
@@ -202,12 +212,16 @@ defmodule Sheaf.LLM do
     end
   end
 
-  def response_object(%{object: object}) when is_map(object), do: {:ok, object}
+  def response_object(%{object: object}) when is_map(object),
+    do: {:ok, object}
+
   def response_object(object) when is_map(object), do: {:ok, object}
   def response_object(_), do: {:error, :missing_object}
 
   @doc false
-  def response_usage(%ReqLLM.Response{} = response), do: Response.usage(response)
+  def response_usage(%ReqLLM.Response{} = response),
+    do: Response.usage(response)
+
   def response_usage(%{usage: usage}) when is_map(usage), do: usage
   def response_usage(_), do: nil
 
@@ -221,7 +235,9 @@ defmodule Sheaf.LLM do
   defp normalize_assistant_mode("research"), do: :research
   defp normalize_assistant_mode(_mode), do: :quick
 
-  defp do_assistant_llm_options("gpt", :research), do: [reasoning_effort: :high]
+  defp do_assistant_llm_options("gpt", :research),
+    do: [reasoning_effort: :high]
+
   defp do_assistant_llm_options("gpt", _mode), do: [reasoning_effort: :medium]
   defp do_assistant_llm_options(_provider, _mode), do: []
 
@@ -230,7 +246,8 @@ defmodule Sheaf.LLM do
   defp anthropic_adaptive_model?(_model), do: false
 
   defp anthropic_model?(model) when is_binary(model) do
-    String.starts_with?(model, "anthropic:") or String.starts_with?(model, "claude-")
+    String.starts_with?(model, "anthropic:") or
+      String.starts_with?(model, "claude-")
   end
 
   defp anthropic_model?({:anthropic, _opts}), do: true
@@ -250,7 +267,9 @@ defmodule Sheaf.LLM do
     end
   end
 
-  defp provider_thinking_options(thinking) when thinking in [nil, false], do: []
+  defp provider_thinking_options(thinking) when thinking in [nil, false],
+    do: []
+
   defp provider_thinking_options(thinking), do: [thinking: thinking]
 
   defp put_default_context_cache_options(opts, model) do

@@ -17,11 +17,18 @@ defmodule SheafWeb.AssistantHistoryLive do
       kind: :internal,
       attributes: [{"sheaf.live.connected", connected?(socket)}]
     } do
-      {notes, notes_graph, notes_error} = AssistantHistoryComponents.fetch_notes(limit: 100)
-      research_session_titles = AssistantHistoryComponents.research_session_titles()
+      {notes, notes_graph, notes_error} =
+        AssistantHistoryComponents.fetch_notes(limit: 100)
+
+      research_session_titles =
+        AssistantHistoryComponents.research_session_titles()
 
       groups =
-        AssistantHistoryComponents.history_groups(notes, notes_graph, research_session_titles)
+        AssistantHistoryComponents.history_groups(
+          notes,
+          notes_graph,
+          research_session_titles
+        )
 
       rows = Enum.map(groups, &history_row/1)
 
@@ -104,7 +111,10 @@ defmodule SheafWeb.AssistantHistoryLive do
 
                   <span class="min-w-0 flex-1"></span>
 
-                  <span :if={row.assistant_count > 0} class="shrink-0 tabular-nums">
+                  <span
+                    :if={row.assistant_count > 0}
+                    class="shrink-0 tabular-nums"
+                  >
                     {row.assistant_count}
                   </span>
                 </span>
@@ -151,12 +161,15 @@ defmodule SheafWeb.AssistantHistoryLive do
 
     %{
       id: id,
-      initial_message: initial_user_message(entries) || group.title || "Untitled conversation",
+      initial_message:
+        initial_user_message(entries) || group.title ||
+          "Untitled conversation",
       published_at: group.published_at,
       assistant_count:
         Enum.count(
           entries,
-          &(Map.get(&1, :type) == :message and Map.get(&1, :role) == :assistant)
+          &(Map.get(&1, :type) == :message and
+              Map.get(&1, :role) == :assistant)
         ),
       provider_label: provider_label(entries),
       notes: note_links(entries),
@@ -175,7 +188,8 @@ defmodule SheafWeb.AssistantHistoryLive do
       %{
         id: id,
         title:
-          blank_to_nil(Map.get(note, :title)) || blank_to_nil(Map.get(note, :preview)) ||
+          blank_to_nil(Map.get(note, :title)) ||
+            blank_to_nil(Map.get(note, :preview)) ||
             "Research note #{id}"
       }
     end)
@@ -184,9 +198,15 @@ defmodule SheafWeb.AssistantHistoryLive do
   defp initial_user_message(entries) do
     entries
     |> Enum.find_value(fn
-      %{type: :message, role: :user, text: text} when is_binary(text) -> text
-      %{type: :message, role: :user, preview: preview} when is_binary(preview) -> preview
-      _entry -> nil
+      %{type: :message, role: :user, text: text} when is_binary(text) ->
+        text
+
+      %{type: :message, role: :user, preview: preview}
+      when is_binary(preview) ->
+        preview
+
+      _entry ->
+        nil
     end)
     |> blank_to_nil()
   end
@@ -200,7 +220,8 @@ defmodule SheafWeb.AssistantHistoryLive do
 
   defp provider_label(entries) do
     Enum.find_value(entries, fn
-      %{type: :message, role: :assistant, model_name: model_name} when is_binary(model_name) ->
+      %{type: :message, role: :assistant, model_name: model_name}
+      when is_binary(model_name) ->
         model_provider_label(model_name)
 
       _entry ->
@@ -212,10 +233,12 @@ defmodule SheafWeb.AssistantHistoryLive do
     normalized = String.downcase(model_name)
 
     cond do
-      String.contains?(normalized, "gpt") or String.contains?(normalized, "openai") ->
+      String.contains?(normalized, "gpt") or
+          String.contains?(normalized, "openai") ->
         "GPT"
 
-      String.contains?(normalized, "claude") or String.contains?(normalized, "anthropic") ->
+      String.contains?(normalized, "claude") or
+          String.contains?(normalized, "anthropic") ->
         "Claude"
 
       true ->
@@ -226,7 +249,9 @@ defmodule SheafWeb.AssistantHistoryLive do
   defp row_icon("research"), do: "hero-beaker"
   defp row_icon(_mode), do: "hero-chat-bubble-left-ellipsis"
 
-  defp row_icon_class("research"), do: "size-4 text-emerald-600 dark:text-emerald-300"
+  defp row_icon_class("research"),
+    do: "size-4 text-emerald-600 dark:text-emerald-300"
+
   defp row_icon_class(_mode), do: "size-4 text-stone-400 dark:text-stone-500"
 
   defp time_label(%DateTime{} = datetime) do

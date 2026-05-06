@@ -30,15 +30,22 @@ defmodule Sheaf.Telegram do
       receive_timeout: Keyword.get(opts, :receive_timeout, 30_000)
     )
     |> case do
-      {:ok, %{status: status}} when status in 200..299 -> :ok
-      {:ok, %{status: status, body: body}} -> {:error, %{status: status, body: body}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %{status: status}} when status in 200..299 ->
+        :ok
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, %{status: status, body: body}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   defp credentials(opts) do
     token = Keyword.get(opts, :token) || System.get_env("TELEGRAM_BOT_TOKEN")
-    chat_id = Keyword.get(opts, :chat_id) || System.get_env("TELEGRAM_CHAT_ID")
+
+    chat_id =
+      Keyword.get(opts, :chat_id) || System.get_env("TELEGRAM_CHAT_ID")
 
     if present?(token) and present?(chat_id) do
       {:ok, token, chat_id}

@@ -19,7 +19,13 @@ defmodule SheafWeb.AssistantMarkdown do
 
   def document(text, opts \\ []) do
     text = text || ""
-    refs = text |> BlockRefs.ids_from_text() |> Enum.map(&String.upcase/1) |> Enum.uniq()
+
+    refs =
+      text
+      |> BlockRefs.ids_from_text()
+      |> Enum.map(&String.upcase/1)
+      |> Enum.uniq()
+
     resource_paths = Keyword.get(opts, :resource_paths)
 
     Tracer.with_span "SheafWeb.AssistantMarkdown.document", %{
@@ -49,7 +55,10 @@ defmodule SheafWeb.AssistantMarkdown do
       attributes: [{"sheaf.resource_ref_count", length(refs)}]
     } do
       block_documents = Corpus.find_documents(refs)
-      paths = block_paths(block_documents) |> Map.merge(resource_paths(refs, block_documents))
+
+      paths =
+        block_paths(block_documents)
+        |> Map.merge(resource_paths(refs, block_documents))
 
       Tracer.set_attribute("sheaf.block_ref_count", map_size(block_documents))
       Tracer.set_attribute("sheaf.resource_path_count", map_size(paths))
@@ -60,7 +69,8 @@ defmodule SheafWeb.AssistantMarkdown do
 
   def resource_paths(_other), do: %{}
 
-  defp resource_ref_resolver(refs, resource_paths) when is_map(resource_paths) do
+  defp resource_ref_resolver(refs, resource_paths)
+       when is_map(resource_paths) do
     Tracer.with_span "SheafWeb.AssistantMarkdown.resource_ref_resolver", %{
       kind: :internal,
       attributes: [
@@ -86,7 +96,11 @@ defmodule SheafWeb.AssistantMarkdown do
       resource_paths = resource_paths(refs, block_documents)
 
       Tracer.set_attribute("sheaf.block_ref_count", map_size(block_documents))
-      Tracer.set_attribute("sheaf.non_block_ref_count", map_size(resource_paths))
+
+      Tracer.set_attribute(
+        "sheaf.non_block_ref_count",
+        map_size(resource_paths)
+      )
 
       fn id ->
         cond do

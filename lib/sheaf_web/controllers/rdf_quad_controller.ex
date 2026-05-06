@@ -10,7 +10,13 @@ defmodule SheafWeb.RDFQuadController do
         |> put_resp_content_type("application/n-quads")
         |> send_chunked(200)
 
-      case Quadlog.stream_nquads(Sheaf.Repo.path(), pattern, conn, &chunk/2, []) do
+      case Quadlog.stream_nquads(
+             Sheaf.Repo.path(),
+             pattern,
+             conn,
+             &chunk/2,
+             []
+           ) do
         {:ok, count, conn} ->
           Tracer.set_attribute("sheaf.rdf.quad_count", count)
           conn
@@ -54,7 +60,9 @@ defmodule SheafWeb.RDFQuadController do
     end
   end
 
-  defp resource_param(params, keys), do: param(params, keys, &parse_resource/1)
+  defp resource_param(params, keys),
+    do: param(params, keys, &parse_resource/1)
+
   defp object_param(params, keys), do: param(params, keys, &parse_object/1)
 
   defp param(params, keys, parser) do

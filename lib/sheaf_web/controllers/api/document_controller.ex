@@ -50,7 +50,10 @@ defmodule SheafWeb.API.DocumentController do
 
         conn
         |> put_resp_content_type("application/x-tex", "utf-8")
-        |> put_resp_header("content-disposition", ~s(inline; filename="#{filename}"))
+        |> put_resp_header(
+          "content-disposition",
+          ~s(inline; filename="#{filename}")
+        )
         |> send_resp(200, source)
 
       {:error, reason} ->
@@ -67,7 +70,10 @@ defmodule SheafWeb.API.DocumentController do
 
         conn
         |> put_resp_header("content-type", "application/pdf")
-        |> put_resp_header("content-disposition", ~s(inline; filename="#{filename}"))
+        |> put_resp_header(
+          "content-disposition",
+          ~s(inline; filename="#{filename}")
+        )
         |> send_resp(200, pdf)
 
       {:error, reason} ->
@@ -88,7 +94,10 @@ defmodule SheafWeb.API.DocumentController do
         })
 
       payload ->
-        json(conn, Map.put(payload, :document, %{id: id, iri: to_string(root)}))
+        json(
+          conn,
+          Map.put(payload, :document, %{id: id, iri: to_string(root)})
+        )
     end
   end
 
@@ -112,7 +121,12 @@ defmodule SheafWeb.API.DocumentController do
     }
   end
 
-  defp outline_entry(%{iri: iri, title: title, number: number, children: children}) do
+  defp outline_entry(%{
+         iri: iri,
+         title: title,
+         number: number,
+         children: children
+       }) do
     %{
       id: Id.id_from_iri(iri),
       iri: to_string(iri),
@@ -174,8 +188,12 @@ defmodule SheafWeb.API.DocumentController do
   defp block_title(graph, iri, :section), do: Document.heading(graph, iri)
   defp block_title(_graph, _iri, _type), do: nil
 
-  defp block_text(graph, iri, :paragraph), do: Document.paragraph_text(graph, iri)
-  defp block_text(graph, iri, :extracted), do: Document.source_html(graph, iri)
+  defp block_text(graph, iri, :paragraph),
+    do: Document.paragraph_text(graph, iri)
+
+  defp block_text(graph, iri, :extracted),
+    do: Document.source_html(graph, iri)
+
   defp block_text(graph, iri, :row), do: Document.text(graph, iri)
   defp block_text(_graph, _iri, _type), do: nil
 

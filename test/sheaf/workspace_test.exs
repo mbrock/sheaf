@@ -13,12 +13,15 @@ defmodule Sheaf.WorkspaceTest do
 
     assert RDF.Data.include?(
              Sheaf.Repo.dataset(),
-             {RDF.iri(workspace), RDF.type(), DOC.Workspace, RDF.iri(Sheaf.Workspace.graph())}
+             {RDF.iri(workspace), RDF.type(), DOC.Workspace,
+              RDF.iri(Sheaf.Workspace.graph())}
            )
   end
 
   @tag :tmp_dir
-  test "loads the default workspace after the Repo cache is cleared", %{tmp_dir: tmp_dir} do
+  test "loads the default workspace after the Repo cache is cleared", %{
+    tmp_dir: tmp_dir
+  } do
     start_repo!(tmp_dir)
 
     workspace = Sheaf.Workspace.default()

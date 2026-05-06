@@ -40,7 +40,8 @@ defmodule Sheaf.Assistant.Activity do
     end
   end
 
-  def build_message(actor_kind, attrs, opts \\ []) when actor_kind in [:user, :assistant] do
+  def build_message(actor_kind, attrs, opts \\ [])
+      when actor_kind in [:user, :assistant] do
     with {:ok, text} <- required_text(attrs),
          {:ok, message_iri} <- message_iri(attrs, opts),
          {:ok, actor} <- actor(attrs, actor_kind),
@@ -57,7 +58,8 @@ defmodule Sheaf.Assistant.Activity do
                         actor_type: actor_type,
                         model_name: optional_text(attrs, :model_name),
                         session_label: optional_text(attrs, :session_label),
-                        conversation_mode: optional_text(attrs, :conversation_mode),
+                        conversation_mode:
+                          optional_text(attrs, :conversation_mode),
                         in_reply_to: optional_iri(attrs, :in_reply_to) do
           @prefix Sheaf.NS.AS
           @prefix Sheaf.NS.DOC
@@ -118,7 +120,9 @@ defmodule Sheaf.Assistant.Activity do
   defp message_descriptions(%Graph{} = graph) do
     graph
     |> RDF.Data.descriptions()
-    |> Enum.filter(&RDF.Description.include?(&1, {RDF.type(), Sheaf.NS.DOC.Message}))
+    |> Enum.filter(
+      &RDF.Description.include?(&1, {RDF.type(), Sheaf.NS.DOC.Message})
+    )
   end
 
   defp actor_type(:assistant), do: Sheaf.NS.PROV.SoftwareAgent
@@ -145,7 +149,8 @@ defmodule Sheaf.Assistant.Activity do
   end
 
   defp message_iri(attrs, opts) do
-    case Keyword.get(opts, :message_iri) || arg(attrs, :message_iri) || arg(attrs, :message_id) do
+    case Keyword.get(opts, :message_iri) || arg(attrs, :message_iri) ||
+           arg(attrs, :message_id) do
       nil -> {:ok, Sheaf.mint()}
       value -> normalize_iri(value, :message)
     end
@@ -221,5 +226,6 @@ defmodule Sheaf.Assistant.Activity do
     |> Enum.map_join("\n", &(padding <> &1))
   end
 
-  defp arg(attrs, key), do: Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+  defp arg(attrs, key),
+    do: Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
 end

@@ -16,13 +16,18 @@ defmodule Sheaf.SearchMaintenance do
   def refresh_blocks(block_ids) do
     with {:ok, affected_blocks} <- affected_text_block_ids(block_ids),
          {:ok, rows} <- affected_text_rows(affected_blocks),
-         affected_iris = MapSet.new(Enum.map(affected_blocks, &(Id.iri(&1) |> to_string()))),
+         affected_iris =
+           MapSet.new(Enum.map(affected_blocks, &(Id.iri(&1) |> to_string()))),
          stale_iris = MapSet.to_list(affected_iris),
          current_search_units = SearchIndex.units_from_rows(rows),
          current_embedding_units = EmbeddingIndex.units_from_rows(rows),
-         current_embedding_iris = MapSet.new(Enum.map(current_embedding_units, & &1.iri)),
+         current_embedding_iris =
+           MapSet.new(Enum.map(current_embedding_units, & &1.iri)),
          embedding_units =
-           Enum.filter(current_embedding_units, &MapSet.member?(affected_iris, &1.iri)),
+           Enum.filter(
+             current_embedding_units,
+             &MapSet.member?(affected_iris, &1.iri)
+           ),
          current_hashes =
            current_embedding_units
            |> Enum.map(&{&1.iri, &1.text_hash})
@@ -32,13 +37,16 @@ defmodule Sheaf.SearchMaintenance do
              current_hashes: current_hashes,
              vector_iris: stale_iris
            ),
-         {:ok, search} <- SearchIndex.replace_units(current_search_units, stale_iris) do
+         {:ok, search} <-
+           SearchIndex.replace_units(current_search_units, stale_iris) do
       {:ok,
        %{
          block_ids: List.wrap(block_ids),
          affected_blocks: affected_blocks,
          current_blocks:
-           current_embedding_iris |> MapSet.to_list() |> Enum.map(&Id.id_from_iri/1),
+           current_embedding_iris
+           |> MapSet.to_list()
+           |> Enum.map(&Id.id_from_iri/1),
          embedding: embedding,
          search: search
        }}
@@ -49,7 +57,9 @@ defmodule Sheaf.SearchMaintenance do
   Refreshes embedding and FTS search indexes for persisted research notes.
   """
   def refresh_notes(note_ids) do
-    note_ids = note_ids |> List.wrap() |> Enum.map(&Id.id_from_iri/1) |> Enum.uniq()
+    note_ids =
+      note_ids |> List.wrap() |> Enum.map(&Id.id_from_iri/1) |> Enum.uniq()
+
     note_iris = note_ids |> Enum.map(&(Id.iri(&1) |> to_string()))
     affected_iris = MapSet.new(note_iris)
 
@@ -65,7 +75,9 @@ defmodule Sheaf.SearchMaintenance do
 
       search_units = SearchIndex.units_from_rows(rows)
       embedding_units = EmbeddingIndex.units_from_rows(rows)
-      current_hashes = embedding_units |> Enum.map(&{&1.iri, &1.text_hash}) |> MapSet.new()
+
+      current_hashes =
+        embedding_units |> Enum.map(&{&1.iri, &1.text_hash}) |> MapSet.new()
 
       with {:ok, embedding} <-
              EmbeddingIndex.sync_units(embedding_units,
@@ -120,7 +132,8 @@ defmodule Sheaf.SearchMaintenance do
       |> Map.values()
       |> Enum.uniq()
 
-    affected_iris = MapSet.new(Enum.map(block_ids, &(Id.iri(&1) |> to_string())))
+    affected_iris =
+      MapSet.new(Enum.map(block_ids, &(Id.iri(&1) |> to_string())))
 
     document_ids
     |> Enum.reduce_while({:ok, []}, fn document_id, {:ok, rows} ->

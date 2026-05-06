@@ -24,7 +24,8 @@ defmodule Sheaf.GoogleDocsImporter do
       kind: :internal,
       attributes: [
         {"sheaf.google_docs_importer.path", path},
-        {"sheaf.google_docs_importer.title", Keyword.get(opts, :title, @default_title)}
+        {"sheaf.google_docs_importer.title",
+         Keyword.get(opts, :title, @default_title)}
       ]
     } do
       with {:ok, summary} <- build_file(path, opts),
@@ -96,8 +97,16 @@ defmodule Sheaf.GoogleDocsImporter do
       }
 
       Tracer.set_attribute("sheaf.statement_count", summary.statement_count)
-      Tracer.set_attribute("sheaf.references_linked", summary.references_linked)
-      Tracer.set_attribute("sheaf.cited_document_count", summary.cited_document_count)
+
+      Tracer.set_attribute(
+        "sheaf.references_linked",
+        summary.references_linked
+      )
+
+      Tracer.set_attribute(
+        "sheaf.cited_document_count",
+        summary.cited_document_count
+      )
 
       {:ok, summary}
     end
@@ -117,25 +126,32 @@ defmodule Sheaf.GoogleDocsImporter do
   become unreachable from the parent list, but remain in the named graph.
   """
   def build_section_replacement_file(path, opts) do
-    Tracer.with_span "sheaf.google_docs_importer.build_section_replacement_file", %{
-      kind: :internal,
-      attributes: [
-        {"sheaf.google_docs_importer.path", path},
-        {"sheaf.google_docs_importer.old_section_title", Keyword.get(opts, :old_section_title)},
-        {"sheaf.google_docs_importer.new_section_title", Keyword.get(opts, :new_section_title)}
-      ]
-    } do
+    Tracer.with_span "sheaf.google_docs_importer.build_section_replacement_file",
+                     %{
+                       kind: :internal,
+                       attributes: [
+                         {"sheaf.google_docs_importer.path", path},
+                         {"sheaf.google_docs_importer.old_section_title",
+                          Keyword.get(opts, :old_section_title)},
+                         {"sheaf.google_docs_importer.new_section_title",
+                          Keyword.get(opts, :new_section_title)}
+                       ]
+                     } do
       document =
-        Keyword.get(opts, :document_iri) || Sheaf.Id.iri(Keyword.fetch!(opts, :document_id))
+        Keyword.get(opts, :document_iri) ||
+          Sheaf.Id.iri(Keyword.fetch!(opts, :document_id))
 
       parent = Keyword.get(opts, :parent_iri, document)
       old_title = Keyword.fetch!(opts, :old_section_title)
       new_title = Keyword.fetch!(opts, :new_section_title)
 
       with {:ok, existing_graph} <- Sheaf.fetch_graph(document),
-           {:ok, imported} <- build_file(path, Keyword.put(opts, :document_iri, document)),
-           {:ok, old_section} <- section_iri_by_title(existing_graph, old_title),
-           {:ok, new_section} <- section_iri_by_title(imported.graph, new_title),
+           {:ok, imported} <-
+             build_file(path, Keyword.put(opts, :document_iri, document)),
+           {:ok, old_section} <-
+             section_iri_by_title(existing_graph, old_title),
+           {:ok, new_section} <-
+             section_iri_by_title(imported.graph, new_title),
            {:ok, plan} <-
              section_replacement_plan(
                existing_graph,
@@ -211,14 +227,26 @@ defmodule Sheaf.GoogleDocsImporter do
     old_section = RDF.iri(old_section)
     new_section = RDF.iri(new_section)
 
-    with {:ok, old_children} <- children_containing(existing_graph, parent, old_section),
-         {:ok, current_parent_list} <- children_list_iri(existing_graph, parent) do
-      new_children = Enum.map(old_children, &if(&1 == old_section, do: new_section, else: &1))
+    with {:ok, old_children} <-
+           children_containing(existing_graph, parent, old_section),
+         {:ok, current_parent_list} <-
+           children_list_iri(existing_graph, parent) do
+      new_children =
+        Enum.map(
+          old_children,
+          &if(&1 == old_section, do: new_section, else: &1)
+        )
+
       retract = list_link_graph(existing_graph, parent, current_parent_list)
-      parent_assert = parent_children_graph(existing_graph, parent, new_children)
+
+      parent_assert =
+        parent_children_graph(existing_graph, parent, new_children)
+
       new_section_graph = section_subgraph(imported_graph, new_section)
       assert_graph = Graph.add(parent_assert, new_section_graph)
-      provenance_graph = section_replacement_provenance(old_section, new_section, opts)
+
+      provenance_graph =
+        section_replacement_provenance(old_section, new_section, opts)
 
       {:ok,
        %{
@@ -233,8 +261,10 @@ defmodule Sheaf.GoogleDocsImporter do
          new_section_graph: new_section_graph,
          retract_statement_count: RDF.Data.statement_count(retract),
          assert_statement_count: RDF.Data.statement_count(assert_graph),
-         provenance_statement_count: RDF.Data.statement_count(provenance_graph),
-         new_section_statement_count: RDF.Data.statement_count(new_section_graph)
+         provenance_statement_count:
+           RDF.Data.statement_count(provenance_graph),
+         new_section_statement_count:
+           RDF.Data.statement_count(new_section_graph)
        }}
     end
   end
@@ -293,15 +323,24 @@ defmodule Sheaf.GoogleDocsImporter do
         state.graph
         |> Graph.add({section, RDF.type(), DOC.Section})
         |> Graph.add({section, RDFS.label(), RDF.literal(title)})
-        |> Graph.add({section, DOC.sourceKey(), RDF.literal(source_key(paragraph))})
-        |> Graph.add({section, DOC.sourceBlockType(), RDF.literal(paragraph.style)})
+        |> Graph.add(
+          {section, DOC.sourceKey(), RDF.literal(source_key(paragraph))}
+        )
+        |> Graph.add(
+          {section, DOC.sourceBlockType(), RDF.literal(paragraph.style)}
+        )
 
       %{
         state
         | graph: graph,
           stack: push_heading(state.stack, %{iri: section, level: level}),
-          bibliography?: String.downcase(title) in ["list of sources", "literature sources"],
-          blocks_by_parent: append_child(state.blocks_by_parent, parent, section)
+          bibliography?:
+            String.downcase(title) in [
+              "list of sources",
+              "literature sources"
+            ],
+          blocks_by_parent:
+            append_child(state.blocks_by_parent, parent, section)
       }
       |> ensure_parent(section)
     end
@@ -312,14 +351,21 @@ defmodule Sheaf.GoogleDocsImporter do
     block = Sheaf.mint()
     revision = Sheaf.mint()
     markup = paragraph_markup(paragraph, state.footnotes)
-    reference = if state.bibliography?, do: match_reference(state.reference_index, paragraph.text)
+
+    reference =
+      if state.bibliography?,
+        do: match_reference(state.reference_index, paragraph.text)
 
     graph =
       state.graph
       |> Graph.add({block, RDF.type(), DOC.ParagraphBlock})
       |> Graph.add({block, DOC.paragraph(), revision})
-      |> Graph.add({block, DOC.sourceKey(), RDF.literal(source_key(paragraph))})
-      |> Graph.add({block, DOC.sourceBlockType(), RDF.literal(paragraph.style)})
+      |> Graph.add(
+        {block, DOC.sourceKey(), RDF.literal(source_key(paragraph))}
+      )
+      |> Graph.add(
+        {block, DOC.sourceBlockType(), RDF.literal(paragraph.style)}
+      )
       |> Graph.add({revision, RDF.type(), DOC.Paragraph})
       |> Graph.add({revision, DOC.text(), RDF.literal(paragraph.text)})
       |> add_optional_literal(block, DOC.markup(), markup)
@@ -327,7 +373,9 @@ defmodule Sheaf.GoogleDocsImporter do
       |> add_footnotes(block, paragraph, state.footnotes)
 
     references =
-      if reference, do: Map.put(state.references, block, reference), else: state.references
+      if reference,
+        do: Map.put(state.references, block, reference),
+        else: state.references
 
     %{
       state
@@ -347,7 +395,10 @@ defmodule Sheaf.GoogleDocsImporter do
           list = Sheaf.mint()
 
           children
-          |> RDF.list(graph: Graph.new({parent, DOC.children(), list}), head: list)
+          |> RDF.list(
+            graph: Graph.new({parent, DOC.children(), list}),
+            head: list
+          )
           |> Map.fetch!(:graph)
           |> then(&Graph.add(graph, &1))
       end)
@@ -363,7 +414,9 @@ defmodule Sheaf.GoogleDocsImporter do
     triples =
       graph
       |> Graph.triples()
-      |> Enum.filter(fn {subject, _predicate, _object} -> MapSet.member?(subjects, subject) end)
+      |> Enum.filter(fn {subject, _predicate, _object} ->
+        MapSet.member?(subjects, subject)
+      end)
 
     Graph.new(triples, name: Graph.name(graph))
   end
@@ -418,7 +471,11 @@ defmodule Sheaf.GoogleDocsImporter do
       |> Sheaf.NS.PROV.invalidatedAtTime(generated_at)
     end
     |> Graph.change_name(RDF.iri(Sheaf.Repo.workspace_graph()))
-    |> add_optional_literal(activity, DOC.sourceKey(), source_url || source_path)
+    |> add_optional_literal(
+      activity,
+      DOC.sourceKey(),
+      source_url || source_path
+    )
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
@@ -445,7 +502,10 @@ defmodule Sheaf.GoogleDocsImporter do
 
     children
     |> RDF.list(
-      graph: Graph.new({parent, DOC.children(), list}, name: Graph.name(existing_graph)),
+      graph:
+        Graph.new({parent, DOC.children(), list},
+          name: Graph.name(existing_graph)
+        ),
       head: list
     )
     |> Map.fetch!(:graph)
@@ -495,7 +555,11 @@ defmodule Sheaf.GoogleDocsImporter do
   end
 
   defp add_root_citations(graph, document, references) do
-    Enum.reduce(references, graph, &Graph.add(&2, {document, CITO.cites(), &1}))
+    Enum.reduce(
+      references,
+      graph,
+      &Graph.add(&2, {document, CITO.cites(), &1})
+    )
   end
 
   defp add_reference(graph, _block, nil), do: graph
@@ -514,7 +578,10 @@ defmodule Sheaf.GoogleDocsImporter do
       graph
       |> Graph.add({block, DOC.hasFootnote(), footnote})
       |> Graph.add({footnote, RDF.type(), DOC.ParagraphBlock})
-      |> Graph.add({footnote, DOC.sourceKey(), RDF.literal("google-docs:footnote:#{ref.id}")})
+      |> Graph.add(
+        {footnote, DOC.sourceKey(),
+         RDF.literal("google-docs:footnote:#{ref.id}")}
+      )
       |> Graph.add({footnote, DOC.text(), RDF.literal(text)})
       |> add_optional_literal(footnote, DOC.markup(), markup)
     end)
@@ -533,7 +600,9 @@ defmodule Sheaf.GoogleDocsImporter do
     %{
       start_index: Map.get(element, "startIndex"),
       end_index: Map.get(element, "endIndex"),
-      style: get_in(paragraph, ["paragraphStyle", "namedStyleType"]) || "NORMAL_TEXT",
+      style:
+        get_in(paragraph, ["paragraphStyle", "namedStyleType"]) ||
+          "NORMAL_TEXT",
       text: text,
       elements: elements,
       footnote_references: footnote_references(elements)
@@ -566,8 +635,16 @@ defmodule Sheaf.GoogleDocsImporter do
 
   defp heading_level(%{style: "NORMAL_TEXT", text: text}) do
     case Regex.run(~r/^\d+(?:\.\d+)+\.?\s+\S/u, text) do
-      nil -> nil
-      _match -> 1 + length(Regex.run(~r/^(\d+(?:\.\d+)+)/, text) |> hd() |> String.split("."))
+      nil ->
+        nil
+
+      _match ->
+        1 +
+          length(
+            Regex.run(~r/^(\d+(?:\.\d+)+)/, text)
+            |> hd()
+            |> String.split(".")
+          )
     end
   end
 
@@ -603,7 +680,10 @@ defmodule Sheaf.GoogleDocsImporter do
   end
 
   defp ensure_parent(state, parent) do
-    %{state | blocks_by_parent: Map.put_new(state.blocks_by_parent, parent, [])}
+    %{
+      state
+      | blocks_by_parent: Map.put_new(state.blocks_by_parent, parent, [])
+    }
   end
 
   defp source_key(paragraph) do
@@ -617,12 +697,17 @@ defmodule Sheaf.GoogleDocsImporter do
       |> String.replace(~r/\n$/, "")
       |> String.trim()
 
-    plain = Phoenix.HTML.html_escape(paragraph.text) |> Phoenix.HTML.safe_to_string()
+    plain =
+      Phoenix.HTML.html_escape(paragraph.text)
+      |> Phoenix.HTML.safe_to_string()
 
     if markup == "" or markup == plain, do: nil, else: markup
   end
 
-  defp element_markup(%{"textRun" => %{"content" => content} = run}, _footnotes) do
+  defp element_markup(
+         %{"textRun" => %{"content" => content} = run},
+         _footnotes
+       ) do
     content
     |> String.replace(<<11>>, "")
     |> html_text_escape()
@@ -630,7 +715,12 @@ defmodule Sheaf.GoogleDocsImporter do
   end
 
   defp element_markup(
-         %{"footnoteReference" => %{"footnoteId" => id, "footnoteNumber" => number}},
+         %{
+           "footnoteReference" => %{
+             "footnoteId" => id,
+             "footnoteNumber" => number
+           }
+         },
          _footnotes
        ) do
     marker = number || id
@@ -668,7 +758,12 @@ defmodule Sheaf.GoogleDocsImporter do
 
   defp footnote_references(elements) do
     Enum.flat_map(elements, fn
-      %{"footnoteReference" => %{"footnoteId" => id, "footnoteNumber" => number}} ->
+      %{
+        "footnoteReference" => %{
+          "footnoteId" => id,
+          "footnoteNumber" => number
+        }
+      } ->
         [%{id: id, number: number}]
 
       _element ->
@@ -678,7 +773,9 @@ defmodule Sheaf.GoogleDocsImporter do
 
   defp footnote_text(%{"content" => content}) do
     content
-    |> Enum.flat_map(fn block -> get_in(block, ["paragraph", "elements"]) || [] end)
+    |> Enum.flat_map(fn block ->
+      get_in(block, ["paragraph", "elements"]) || []
+    end)
     |> plain_text()
   end
 
@@ -687,7 +784,9 @@ defmodule Sheaf.GoogleDocsImporter do
   defp footnote_markup(%{"content" => content}) do
     markup =
       content
-      |> Enum.flat_map(fn block -> get_in(block, ["paragraph", "elements"]) || [] end)
+      |> Enum.flat_map(fn block ->
+        get_in(block, ["paragraph", "elements"]) || []
+      end)
       |> Enum.map_join("", &element_markup(&1, %{}))
       |> String.replace(~r/\n$/, "")
       |> String.trim()
@@ -718,14 +817,22 @@ defmodule Sheaf.GoogleDocsImporter do
   end
 
   defp reference_index(previous_document) do
-    :ok = Sheaf.Repo.load_once({nil, nil, nil, RDF.iri(Sheaf.Repo.metadata_graph())})
+    :ok =
+      Sheaf.Repo.load_once(
+        {nil, nil, nil, RDF.iri(Sheaf.Repo.metadata_graph())}
+      )
+
     {:ok, old_graph} = Sheaf.fetch_graph(previous_document)
 
-    metadata = Dataset.graph(Sheaf.Repo.dataset(), Sheaf.Repo.metadata_graph()) || Graph.new()
+    metadata =
+      Dataset.graph(Sheaf.Repo.dataset(), Sheaf.Repo.metadata_graph()) ||
+        Graph.new()
+
     old_cited = cited_documents(old_graph, previous_document)
 
     %{
-      by_doi: doi_reference_index(metadata, old_cited, local_papers(metadata)),
+      by_doi:
+        doi_reference_index(metadata, old_cited, local_papers(metadata)),
       by_key: text_reference_index(old_graph)
     }
   end
@@ -820,19 +927,36 @@ defmodule Sheaf.GoogleDocsImporter do
   defp reference_keys(text) do
     normalized = normalize_reference_text(text)
 
-    with [_, author, year, rest] <- Regex.run(~r/^([a-z0-9]+).*?\b(\d{4})\b(.*)$/u, normalized) do
+    with [_, author, year, rest] <-
+           Regex.run(~r/^([a-z0-9]+).*?\b(\d{4})\b(.*)$/u, normalized) do
       words =
         rest
         |> String.split(~r/[^a-z0-9]+/u, trim: true)
-        |> Enum.reject(&(&1 in ["a", "an", "and", "the", "of", "in", "on", "pp", "ed", "eds"]))
+        |> Enum.reject(
+          &(&1 in [
+              "a",
+              "an",
+              "and",
+              "the",
+              "of",
+              "in",
+              "on",
+              "pp",
+              "ed",
+              "eds"
+            ])
+        )
 
       5..2//-1
       |> Enum.flat_map(fn count ->
         words
         |> Enum.take(count)
         |> case do
-          words when length(words) >= 2 -> [Enum.join([author, year | words], ":")]
-          _words -> []
+          words when length(words) >= 2 ->
+            [Enum.join([author, year | words], ":")]
+
+          _words ->
+            []
         end
       end)
     else
@@ -883,10 +1007,15 @@ defmodule Sheaf.GoogleDocsImporter do
 
   defp previous_document_iri(opts),
     do:
-      opts |> Keyword.get(:previous_document_id, @default_previous_document_id) |> Sheaf.Id.iri()
+      opts
+      |> Keyword.get(:previous_document_id, @default_previous_document_id)
+      |> Sheaf.Id.iri()
 
   defp expression_iri(opts),
-    do: opts |> Keyword.get(:expression_id, @default_expression_id) |> Sheaf.Id.iri()
+    do:
+      opts
+      |> Keyword.get(:expression_id, @default_expression_id)
+      |> Sheaf.Id.iri()
 
   defp html_escape(value),
     do: value |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()

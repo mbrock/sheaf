@@ -18,7 +18,10 @@ defmodule Sheaf.Assistant.Chat.Session do
     spreadsheet_opts =
       [id: id]
       |> put_if_present(:directory, Keyword.get(opts, :spreadsheet_directory))
-      |> put_if_present(:workspace_graph, Keyword.get(opts, :spreadsheet_workspace_graph))
+      |> put_if_present(
+        :workspace_graph,
+        Keyword.get(opts, :spreadsheet_workspace_graph)
+      )
       |> put_if_present(:blob_root, Keyword.get(opts, :spreadsheet_blob_root))
 
     server_opts =

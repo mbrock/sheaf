@@ -11,11 +11,17 @@ defmodule Sheaf.DocumentTest do
     intro = RDF.IRI.new!("https://example.com/sheaf/SEC111")
     intro_list = RDF.IRI.new!("https://example.com/sheaf/LST111")
     first_paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR111")
-    first_paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV1111")
+
+    first_paragraph_revision =
+      RDF.IRI.new!("https://example.com/sheaf/PV1111")
+
     nested_section = RDF.IRI.new!("https://example.com/sheaf/SEC222")
     nested_list = RDF.IRI.new!("https://example.com/sheaf/LST222")
     nested_paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR222")
-    nested_paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV2222")
+
+    nested_paragraph_revision =
+      RDF.IRI.new!("https://example.com/sheaf/PV2222")
+
     tail_paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR333")
     tail_paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV3333")
     row = RDF.IRI.new!("https://example.com/sheaf/ROW444")
@@ -32,18 +38,21 @@ defmodule Sheaf.DocumentTest do
         {first_paragraph, RDF.type(), DOC.ParagraphBlock},
         {first_paragraph, DOC.paragraph(), first_paragraph_revision},
         {first_paragraph_revision, RDF.type(), DOC.Paragraph},
-        {first_paragraph_revision, DOC.text(), RDF.literal("Opening paragraph.")},
+        {first_paragraph_revision, DOC.text(),
+         RDF.literal("Opening paragraph.")},
         {nested_section, RDF.type(), DOC.Section},
         {nested_section, RDFS.label(), RDF.literal("Research Questions")},
         {nested_section, DOC.children(), nested_list},
         {nested_paragraph, RDF.type(), DOC.ParagraphBlock},
         {nested_paragraph, DOC.paragraph(), nested_paragraph_revision},
         {nested_paragraph_revision, RDF.type(), DOC.Paragraph},
-        {nested_paragraph_revision, DOC.text(), RDF.literal("Nested paragraph.")},
+        {nested_paragraph_revision, DOC.text(),
+         RDF.literal("Nested paragraph.")},
         {tail_paragraph, RDF.type(), DOC.ParagraphBlock},
         {tail_paragraph, DOC.paragraph(), tail_paragraph_revision},
         {tail_paragraph_revision, RDF.type(), DOC.Paragraph},
-        {tail_paragraph_revision, DOC.text(), RDF.literal("Trailing paragraph.")},
+        {tail_paragraph_revision, DOC.text(),
+         RDF.literal("Trailing paragraph.")},
         {row, RDF.type(), DOC.Row},
         {row, DOC.text(), RDF.literal("Spreadsheet row text.")}
       ])
@@ -51,9 +60,14 @@ defmodule Sheaf.DocumentTest do
         RDF.list([intro, tail_paragraph, row], graph: graph, head: root_list).graph
       end)
       |> then(fn graph ->
-        RDF.list([first_paragraph, nested_section], graph: graph, head: intro_list).graph
+        RDF.list([first_paragraph, nested_section],
+          graph: graph,
+          head: intro_list
+        ).graph
       end)
-      |> then(fn graph -> RDF.list([nested_paragraph], graph: graph, head: nested_list).graph end)
+      |> then(fn graph ->
+        RDF.list([nested_paragraph], graph: graph, head: nested_list).graph
+      end)
 
     assert Document.title(graph, thesis) == "Example Thesis"
     assert Document.kind(graph, thesis) == :thesis
@@ -62,18 +76,28 @@ defmodule Sheaf.DocumentTest do
     assert Document.block_type(graph, intro) == :section
     assert Document.heading(graph, intro) == "Introduction"
     assert Document.block_type(graph, tail_paragraph) == :paragraph
-    assert Document.paragraph_text(graph, tail_paragraph) == "Trailing paragraph."
+
+    assert Document.paragraph_text(graph, tail_paragraph) ==
+             "Trailing paragraph."
+
     assert Document.block_type(graph, row) == :row
     assert Document.text(graph, row) == "Spreadsheet row text."
 
-    assert [^first_paragraph, ^nested_section] = Document.children(graph, intro)
+    assert [^first_paragraph, ^nested_section] =
+             Document.children(graph, intro)
+
     assert Document.block_type(graph, first_paragraph) == :paragraph
-    assert Document.paragraph_text(graph, first_paragraph) == "Opening paragraph."
+
+    assert Document.paragraph_text(graph, first_paragraph) ==
+             "Opening paragraph."
+
     assert Document.block_type(graph, nested_section) == :section
     assert Document.heading(graph, nested_section) == "Research Questions"
 
     assert [^nested_paragraph] = Document.children(graph, nested_section)
-    assert Document.paragraph_text(graph, nested_paragraph) == "Nested paragraph."
+
+    assert Document.paragraph_text(graph, nested_paragraph) ==
+             "Nested paragraph."
 
     assert [
              %{id: "SEC111", type: :section, text: "Introduction"},
@@ -159,8 +183,16 @@ defmodule Sheaf.DocumentTest do
       ])
 
     assert [
-             %{id: "FN1111", source_key: "word/footnotes.xml#1", text: "First footnote."},
-             %{id: "FN2222", source_key: "word/footnotes.xml#2", text: "Second footnote."}
+             %{
+               id: "FN1111",
+               source_key: "word/footnotes.xml#1",
+               text: "First footnote."
+             },
+             %{
+               id: "FN2222",
+               source_key: "word/footnotes.xml#2",
+               text: "Second footnote."
+             }
            ] = Document.footnotes(graph, block)
 
     assert [%{markup: "<em>First</em> footnote."}, %{markup: nil}] =
@@ -188,15 +220,22 @@ defmodule Sheaf.DocumentTest do
         {paragraph, RDF.type(), DOC.ParagraphBlock},
         {paragraph, DOC.paragraph(), paragraph_revision},
         {paragraph, DOC.markup(),
-         RDF.literal(~s(Things <em>move</em> &amp; matter <span data-footnote="1">[1]</span>.))},
+         RDF.literal(
+           ~s(Things <em>move</em> &amp; matter <span data-footnote="1">[1]</span>.)
+         )},
         {paragraph, DOC.hasFootnote(), footnote},
         {paragraph_revision, RDF.type(), DOC.Paragraph},
-        {paragraph_revision, DOC.text(), RDF.literal("Things move and matter.")},
+        {paragraph_revision, DOC.text(),
+         RDF.literal("Things move and matter.")},
         {footnote, DOC.sourceKey(), RDF.literal("word/footnotes.xml#1")},
         {footnote, DOC.text(), RDF.literal("A grounded note & detail.")}
       ])
-      |> then(fn graph -> RDF.list([section], graph: graph, head: root_list).graph end)
-      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: section_list).graph end)
+      |> then(fn graph ->
+        RDF.list([section], graph: graph, head: root_list).graph
+      end)
+      |> then(fn graph ->
+        RDF.list([paragraph], graph: graph, head: section_list).graph
+      end)
 
     expression = RDF.IRI.new!("https://example.com/sheaf/WORK123")
     author = RDF.IRI.new!("https://example.com/sheaf/AUTHOR1")
@@ -216,14 +255,20 @@ defmodule Sheaf.DocumentTest do
         {school, Sheaf.NS.FOAF.name(), RDF.literal("School of Humanities")},
         {expression, DOC.thesisDegreeText(), RDF.literal("MA Thesis")},
         {expression, DOC.academicSupervisor(), supervisor},
-        {supervisor, Sheaf.NS.FOAF.name(), RDF.literal("Maarja Kaaristo, PhD")},
+        {supervisor, Sheaf.NS.FOAF.name(),
+         RDF.literal("Maarja Kaaristo, PhD")},
         {expression, DOC.submissionPlace(), RDF.literal("Tallinn")},
-        {expression, Sheaf.NS.FABIO.hasPublicationYear(), RDF.literal("2026")},
-        {expression, DOC.authorshipDeclaration(), RDF.literal("I hereby confirm authorship.")},
+        {expression, Sheaf.NS.FABIO.hasPublicationYear(),
+         RDF.literal("2026")},
+        {expression, DOC.authorshipDeclaration(),
+         RDF.literal("I hereby confirm authorship.")},
         {expression, DOC.declarationDate(), RDF.literal("05.05.2026.")}
       ])
 
-    latex = Sheaf.Document.LaTeX.render(graph, thesis, metadata_graph: metadata_graph)
+    latex =
+      Sheaf.Document.LaTeX.render(graph, thesis,
+        metadata_graph: metadata_graph
+      )
 
     assert latex =~ "\\documentclass[12pt,a4paper,oneside]{report}"
     assert latex =~ "\\IfFileExists{"
@@ -244,7 +289,9 @@ defmodule Sheaf.DocumentTest do
     assert latex =~ "I hereby confirm authorship."
     assert latex =~ "Ieva Lange 05.05.2026."
     assert latex =~ "\\chapter{Introduction}"
-    assert latex =~ "Things \\emph{move} \\& matter \\footnote{A grounded note \\& detail.}."
+
+    assert latex =~
+             "Things \\emph{move} \\& matter \\footnote{A grounded note \\& detail.}."
   end
 
   test "returns ordered readable text chunks and DOI candidates for imported papers" do
@@ -270,22 +317,35 @@ defmodule Sheaf.DocumentTest do
         {body_section, DOC.children(), body_list},
         {body_block, RDF.type(), DOC.ExtractedBlock},
         {body_block, DOC.sourceBlockType(), RDF.literal("Text")},
-        {body_block, DOC.sourceHtml(), RDF.literal("<p>Body &amp; argument.</p>")}
+        {body_block, DOC.sourceHtml(),
+         RDF.literal("<p>Body &amp; argument.</p>")}
       ])
       |> then(fn graph ->
         RDF.list([title_block, body_section], graph: graph, head: root_list).graph
       end)
-      |> then(fn graph -> RDF.list([body_block], graph: graph, head: body_list).graph end)
+      |> then(fn graph ->
+        RDF.list([body_block], graph: graph, head: body_list).graph
+      end)
 
     assert [
-             %{id: "BLKTITLE", source_page: 1, source_type: "Text", text: title},
+             %{
+               id: "BLKTITLE",
+               source_page: 1,
+               source_type: "Text",
+               text: title
+             },
              %{id: "SEC1", type: :section, text: "Introduction"},
              %{id: "BLKBODY", text: "Body & argument."}
            ] = Document.text_chunks(graph, paper)
 
     assert title == "Example Paper DOI: 10.1177/1749975520923521."
-    assert Document.text_preview(graph, paper, chars: 32) == "Example Paper DOI: 10.1177/17499"
-    assert Document.doi_candidates(graph, paper, chars: 200) == ["10.1177/1749975520923521"]
+
+    assert Document.text_preview(graph, paper, chars: 32) ==
+             "Example Paper DOI: 10.1177/17499"
+
+    assert Document.doi_candidates(graph, paper, chars: 200) == [
+             "10.1177/1749975520923521"
+           ]
   end
 
   test "samples first source pages for bibliographic text and only includes last pages when requested" do
@@ -307,12 +367,17 @@ defmodule Sheaf.DocumentTest do
           {paper, DOC.children(), root_list}
         ]),
         fn {block, page}, graph ->
-          text = if page == 10, do: "Page 10 DOI 10.1000/LAST.", else: "Page #{page}"
+          text =
+            if page == 10,
+              do: "Page 10 DOI 10.1000/LAST.",
+              else: "Page #{page}"
 
           graph
           |> RDF.Graph.add({block, RDF.type(), DOC.ExtractedBlock})
           |> RDF.Graph.add({block, DOC.sourcePage(), RDF.literal(page)})
-          |> RDF.Graph.add({block, DOC.sourceHtml(), RDF.literal("<p>#{text}</p>")})
+          |> RDF.Graph.add(
+            {block, DOC.sourceHtml(), RDF.literal("<p>#{text}</p>")}
+          )
         end
       )
       |> then(fn graph ->
@@ -322,12 +387,18 @@ defmodule Sheaf.DocumentTest do
     assert Document.bibliographic_text(graph, paper, first_pages: 2) ==
              "Page 1\n\nPage 2"
 
-    assert Document.bibliographic_text(graph, paper, first_pages: 2, last_pages: 2) ==
+    assert Document.bibliographic_text(graph, paper,
+             first_pages: 2,
+             last_pages: 2
+           ) ==
              "Page 1\n\nPage 2\n\nPage 9\n\nPage 10 DOI 10.1000/LAST."
 
     assert Document.doi_candidates(graph, paper, first_pages: 1) == []
 
-    assert Document.doi_candidates(graph, paper, first_pages: 1, last_pages: 1) == [
+    assert Document.doi_candidates(graph, paper,
+             first_pages: 1,
+             last_pages: 1
+           ) == [
              "10.1000/last"
            ]
   end
@@ -353,7 +424,9 @@ defmodule Sheaf.DocumentTest do
         fn {block, index}, graph ->
           graph
           |> RDF.Graph.add({block, RDF.type(), DOC.ExtractedBlock})
-          |> RDF.Graph.add({block, DOC.sourceHtml(), RDF.literal("<p>Chunk #{index}</p>")})
+          |> RDF.Graph.add(
+            {block, DOC.sourceHtml(), RDF.literal("<p>Chunk #{index}</p>")}
+          )
         end
       )
       |> then(fn graph ->
@@ -363,7 +436,10 @@ defmodule Sheaf.DocumentTest do
     assert Document.bibliographic_text(graph, paper, first_chunks: 2) ==
              "Chunk 1\n\nChunk 2"
 
-    assert Document.bibliographic_text(graph, paper, first_chunks: 2, last_chunks: 2) ==
+    assert Document.bibliographic_text(graph, paper,
+             first_chunks: 2,
+             last_chunks: 2
+           ) ==
              "Chunk 1\n\nChunk 2\n\nChunk 4\n\nChunk 5"
   end
 end

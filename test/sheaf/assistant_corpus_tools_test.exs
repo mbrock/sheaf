@@ -75,14 +75,27 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert Keyword.get(opts, :limit) == 5
     assert Keyword.get(opts, :document_id) == "DOC123"
     assert Keyword.get(opts, :document_kind) == "literature"
-    assert Keyword.get(opts, :kinds) == ["paragraph", "sourceHtml", "row", "note"]
+
+    assert Keyword.get(opts, :kinds) == [
+             "paragraph",
+             "sourceHtml",
+             "row",
+             "note"
+           ]
+
     assert Keyword.get(opts, :exact_limit) == 0
 
     assert_received {:exact_search_args, "plastic", exact_opts}
     assert Keyword.get(exact_opts, :limit) == 5
     assert Keyword.get(exact_opts, :document_id) == "DOC123"
     assert Keyword.get(exact_opts, :document_kind) == "literature"
-    assert Keyword.get(exact_opts, :kinds) == ["paragraph", "sourceHtml", "row", "note"]
+
+    assert Keyword.get(exact_opts, :kinds) == [
+             "paragraph",
+             "sourceHtml",
+             "row",
+             "note"
+           ]
 
     assert exact_hit == %ToolResults.SearchHit{
              document_id: "DOC123",
@@ -199,7 +212,11 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     tool = Enum.find(tools, &(&1.name == "read_spreadsheet_query_result"))
 
     assert {:ok, result} =
-             Tool.execute(tool, %{"id" => "RES111", "offset" => 10, "limit" => 2})
+             Tool.execute(tool, %{
+               "id" => "RES111",
+               "offset" => 10,
+               "limit" => 2
+             })
 
     assert %ToolResults.SpreadsheetQueryResultPage{
              id: "RES111",
@@ -245,7 +262,10 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              })
 
     assert tool_text(result) =~ "Format: TSV"
-    assert tool_text(result) =~ "Intent: inspect a hugeint rendering edge case"
+
+    assert tool_text(result) =~
+             "Intent: inspect a hugeint rendering edge case"
+
     assert tool_text(result) =~ "{0, 6}"
   end
 
@@ -276,7 +296,9 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     tool = Enum.find(tools, &(&1.name == "present_spreadsheet_query_result"))
     assert tool.parameter_schema[:title][:required]
-    assert {:list, {:map, _column_schema}} = tool.parameter_schema[:columns][:type]
+
+    assert {:list, {:map, _column_schema}} =
+             tool.parameter_schema[:columns][:type]
 
     assert {:ok, result} =
              Tool.execute(tool, %{
@@ -286,7 +308,11 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
                "offset" => 5,
                "limit" => 25,
                "columns" => [
-                 %{"name" => "buyer_type", "label" => "Buyer type", "type" => "text"},
+                 %{
+                   "name" => "buyer_type",
+                   "label" => "Buyer type",
+                   "type" => "text"
+                 },
                  %{"name" => "missing", "label" => "Ignored"}
                ]
              })
@@ -300,7 +326,12 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert presented.description == "Grouped by buyer type."
 
     assert presented.column_specs == [
-             %{name: "buyer_type", label: "Buyer type", type: "text", unit: nil}
+             %{
+               name: "buyer_type",
+               label: "Buyer type",
+               type: "text",
+               unit: nil
+             }
            ]
 
     assert presented.rows == [%{"buyer_type" => "agency", "tenders" => 12}]
@@ -359,7 +390,8 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert tool.parameter_schema[:query]
     assert tool.parameter_schema[:limit]
 
-    assert {:ok, result} = Tool.execute(tool, %{"query" => "radio", "limit" => 1})
+    assert {:ok, result} =
+             Tool.execute(tool, %{"query" => "radio", "limit" => 1})
 
     assert %ToolResults.ListSpreadsheets{
              query: "radio",
@@ -451,7 +483,14 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert [
              type:
-               {:list, {:in, ["placeholder", "needs_evidence", "needs_revision", "fragment"]}},
+               {:list,
+                {:in,
+                 [
+                   "placeholder",
+                   "needs_evidence",
+                   "needs_revision",
+                   "fragment"
+                 ]}},
              required: true,
              doc: _doc
            ] = tool.parameter_schema[:tags]
@@ -462,7 +501,8 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
                "tags" => ["needs_evidence", "fragment"]
              })
 
-    assert_receive {:tag_args, ["PAR111", "PAR222"], ["needs_evidence", "fragment"]}
+    assert_receive {:tag_args, ["PAR111", "PAR222"],
+                    ["needs_evidence", "fragment"]}
 
     assert %ToolResults.ParagraphTags{
              block_ids: ["PAR111", "PAR222"],
@@ -522,7 +562,11 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
            %{
              block_ids: blocks,
              affected_blocks: blocks,
-             embedding: %{target_count: length(blocks), embedded_count: 1, skipped_count: 0},
+             embedding: %{
+               target_count: length(blocks),
+               embedded_count: 1,
+               skipped_count: 0
+             },
              search: %{count: 12, synced_at: "2026-05-04T12:00:00Z"}
            }}
         end
@@ -541,7 +585,10 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     update_tool = Enum.find(tools, &(&1.name == "update_block_text"))
 
     assert {:ok, update_result} =
-             Tool.execute(update_tool, %{"block" => "PAR111", "text" => "New."})
+             Tool.execute(update_tool, %{
+               "block" => "PAR111",
+               "text" => "New."
+             })
 
     assert_receive {:replace, "PAR111", "New."}
 
@@ -552,7 +599,9 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     delete_tool = Enum.find(tools, &(&1.name == "delete_block"))
 
-    assert {:ok, delete_result} = Tool.execute(delete_tool, %{"block" => "PAR111"})
+    assert {:ok, delete_result} =
+             Tool.execute(delete_tool, %{"block" => "PAR111"})
+
     assert_receive {:delete, "PAR111"}
 
     assert %ToolResults.BlockEdit{
@@ -563,7 +612,10 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
            } = sheaf_result(delete_result)
 
     index_tool = Enum.find(tools, &(&1.name == "update_search_index"))
-    assert {:ok, index_result} = Tool.execute(index_tool, %{"blocks" => ["PAR111"]})
+
+    assert {:ok, index_result} =
+             Tool.execute(index_tool, %{"blocks" => ["PAR111"]})
+
     assert_receive {:index, ["PAR111"]}
 
     assert %ToolResults.SearchIndexUpdate{
@@ -614,7 +666,8 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert {:ok, _note} =
              Notes.write(
                %{
-                 text: "String figures ask Sheaf to carry citation with care.",
+                 text:
+                   "String figures ask Sheaf to carry citation with care.",
                  title: "String figures and citation care",
                  agent_id: "AGT999",
                  session_id: "SES999"
@@ -623,9 +676,12 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
                published_at: ~U[2026-05-06 12:00:00Z]
              )
 
-    tool = CorpusTools.tools(include_notes?: false) |> Enum.find(&(&1.name == "read"))
+    tool =
+      CorpusTools.tools(include_notes?: false)
+      |> Enum.find(&(&1.name == "read"))
 
-    assert {:ok, %ToolResult{} = result} = Tool.execute(tool, %{"blocks" => ["NOTE99"]})
+    assert {:ok, %ToolResult{} = result} =
+             Tool.execute(tool, %{"blocks" => ["NOTE99"]})
 
     assert %ToolResults.Block{
              document_id: "NOTE99",
@@ -636,7 +692,9 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
            } = sheaf_result(result)
 
     assert tool_text(result) =~ "RESEARCH NOTE #NOTE99"
-    assert tool_text(result) =~ "String figures ask Sheaf to carry citation with care."
+
+    assert tool_text(result) =~
+             "String figures ask Sheaf to carry citation with care."
   end
 
   test "expanded read text keeps block tags on every rendered block" do
@@ -697,7 +755,9 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
         ],
         name: document
       )
-      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: list).graph end)
+      |> then(fn graph ->
+        RDF.list([paragraph], graph: graph, head: list).graph
+      end)
 
     workspace =
       RDF.Graph.new(
@@ -710,7 +770,9 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert :ok = Sheaf.Repo.assert(graph)
     assert :ok = Sheaf.Repo.assert(workspace)
 
-    tool = CorpusTools.tools(include_notes?: false) |> Enum.find(&(&1.name == "read"))
+    tool =
+      CorpusTools.tools(include_notes?: false)
+      |> Enum.find(&(&1.name == "read"))
 
     assert {:ok, %ToolResult{} = result} =
              Tool.execute(tool, %{"blocks" => ["RCT001"], "expand" => true})
@@ -728,9 +790,21 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
         text: "Selected paragraph text.",
         tags: [%{name: "fragment", label: "fragment"}],
         ancestry: [
-          %ToolResults.ContextEntry{id: "ABC123", type: :document, title: "Draft chapter"},
-          %ToolResults.ContextEntry{id: "SEC001", type: :section, title: "A section"},
-          %ToolResults.ContextEntry{id: "DEF456", type: :paragraph, title: "paragraph"}
+          %ToolResults.ContextEntry{
+            id: "ABC123",
+            type: :document,
+            title: "Draft chapter"
+          },
+          %ToolResults.ContextEntry{
+            id: "SEC001",
+            type: :section,
+            title: "A section"
+          },
+          %ToolResults.ContextEntry{
+            id: "DEF456",
+            type: :paragraph,
+            title: "paragraph"
+          }
         ]
       })
 
@@ -741,7 +815,9 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     refute text =~ "Draft chapter"
   end
 
-  defp sheaf_result(%ToolResult{metadata: %{sheaf_result: result}}), do: result
+  defp sheaf_result(%ToolResult{metadata: %{sheaf_result: result}}),
+    do: result
 
-  defp tool_text(%ToolResult{content: [%ContentPart{text: text} | _]}), do: text
+  defp tool_text(%ToolResult{content: [%ContentPart{text: text} | _]}),
+    do: text
 end

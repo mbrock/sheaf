@@ -30,7 +30,9 @@ defmodule SheafWeb.API.DocumentControllerTest do
         ],
         name: document
       )
-      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: list).graph end)
+      |> then(fn graph ->
+        RDF.list([paragraph], graph: graph, head: list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 
@@ -39,7 +41,8 @@ defmodule SheafWeb.API.DocumentControllerTest do
                RDF.Graph.new(
                  [
                    {document, FABIO.isRepresentationOf(), expression},
-                   {expression, DCTERMS.title(), RDF.literal("Metadata Export Title")}
+                   {expression, DCTERMS.title(),
+                    RDF.literal("Metadata Export Title")}
                  ],
                  name: Sheaf.Repo.metadata_graph()
                )
@@ -52,18 +55,28 @@ defmodule SheafWeb.API.DocumentControllerTest do
 
     assert response(conn, 200) =~ "\\title{Metadata Export Title}"
     assert response(conn, 200) =~ "Simple paragraph."
-    assert ["application/x-tex; charset=utf-8"] = get_resp_header(conn, "content-type")
-    assert [~s(inline; filename="LATEX1.tex")] = get_resp_header(conn, "content-disposition")
+
+    assert ["application/x-tex; charset=utf-8"] =
+             get_resp_header(conn, "content-type")
+
+    assert [~s(inline; filename="LATEX1.tex")] =
+             get_resp_header(conn, "content-disposition")
   end
 
   test "requires basic auth for document exports", %{conn: conn} do
     conn = get(conn, ~p"/api/documents/LATEX1/latex")
 
     assert response(conn, 401) == "Unauthorized"
-    assert ["Basic realm=\"Application\""] = get_resp_header(conn, "www-authenticate")
+
+    assert ["Basic realm=\"Application\""] =
+             get_resp_header(conn, "www-authenticate")
   end
 
   defp auth(conn) do
-    put_req_header(conn, "authorization", "Basic " <> Base.encode64("admin:sheaf"))
+    put_req_header(
+      conn,
+      "authorization",
+      "Basic " <> Base.encode64("admin:sheaf")
+    )
   end
 end

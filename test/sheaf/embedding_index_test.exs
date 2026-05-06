@@ -229,7 +229,8 @@ defmodule Sheaf.Embedding.IndexTest do
                  [
                    {thesis, RDF.type(), Sheaf.NS.DOC.Thesis},
                    {paragraph_block, Sheaf.NS.DOC.paragraph(), paragraph},
-                   {paragraph, Sheaf.NS.DOC.text(), "Shared search phrase in thesis."}
+                   {paragraph, Sheaf.NS.DOC.text(),
+                    "Shared search phrase in thesis."}
                  ],
                  name: thesis
                )
@@ -240,7 +241,8 @@ defmodule Sheaf.Embedding.IndexTest do
                RDF.Graph.new(
                  [
                    {paper, RDF.type(), Sheaf.NS.DOC.Paper},
-                   {paper_block, Sheaf.NS.DOC.sourceHtml(), "Shared search phrase in literature."}
+                   {paper_block, Sheaf.NS.DOC.sourceHtml(),
+                    "Shared search phrase in literature."}
                  ],
                  name: paper
                )
@@ -251,7 +253,8 @@ defmodule Sheaf.Embedding.IndexTest do
                RDF.Graph.new(
                  [
                    {spreadsheet, RDF.type(), Sheaf.NS.DOC.Spreadsheet},
-                   {row, Sheaf.NS.DOC.text(), "Shared search phrase in coded row."},
+                   {row, Sheaf.NS.DOC.text(),
+                    "Shared search phrase in coded row."},
                    {row, Sheaf.NS.DOC.spreadsheetRow(), 12}
                  ],
                  name: spreadsheet
@@ -357,7 +360,8 @@ defmodule Sheaf.Embedding.IndexTest do
                  [
                    {included_doc, RDF.type(), Sheaf.NS.DOC.Document},
                    {included_doc, RDF.NS.RDFS.label(), "Included"},
-                   {RDF.iri(included_block), Sheaf.NS.DOC.sourceHtml(), "<p>Text.</p>"}
+                   {RDF.iri(included_block), Sheaf.NS.DOC.sourceHtml(),
+                    "<p>Text.</p>"}
                  ],
                  name: included_doc
                )
@@ -369,7 +373,8 @@ defmodule Sheaf.Embedding.IndexTest do
                  [
                    {excluded_doc, RDF.type(), Sheaf.NS.DOC.Document},
                    {excluded_doc, RDF.NS.RDFS.label(), "Excluded"},
-                   {RDF.iri(excluded_block), Sheaf.NS.DOC.sourceHtml(), "<p>Text.</p>"}
+                   {RDF.iri(excluded_block), Sheaf.NS.DOC.sourceHtml(),
+                    "<p>Text.</p>"}
                  ],
                  name: excluded_doc
                )
@@ -379,8 +384,8 @@ defmodule Sheaf.Embedding.IndexTest do
              Sheaf.Repo.assert(
                RDF.Graph.new(
                  [
-                   {RDF.iri("https://less.rest/sheaf/workspace"), Sheaf.NS.DOC.excludesDocument(),
-                    excluded_doc}
+                   {RDF.iri("https://less.rest/sheaf/workspace"),
+                    Sheaf.NS.DOC.excludesDocument(), excluded_doc}
                  ],
                  name: Sheaf.Workspace.graph()
                )

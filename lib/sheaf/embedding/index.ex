@@ -41,16 +41,23 @@ defmodule Sheaf.Embedding.Index do
   @spec sync(keyword()) :: {:ok, map()} | {:error, term()}
   def sync(opts \\ []) do
     model = Sheaf.Embedding.model(opts)
-    dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
+    dimensions =
+      Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
     source = source(opts)
-    run_iri = opts |> Keyword.get_lazy(:run_iri, fn -> Sheaf.mint() |> to_string() end)
+
+    run_iri =
+      opts
+      |> Keyword.get_lazy(:run_iri, fn -> Sheaf.mint() |> to_string() end)
 
     with {:ok, conn} <- Store.open(opts) do
       try do
         if import_run_iri = Keyword.get(opts, :import_run) do
           import_batch_run(conn, import_run_iri, opts)
         else
-          with {:ok, units} <- text_units(Keyword.merge(opts, model: model, source: source)) do
+          with {:ok, units} <-
+                 text_units(Keyword.merge(opts, model: model, source: source)) do
             sync_run(conn, run_iri, units, model, dimensions, source, opts)
           end
         end
@@ -66,12 +73,19 @@ defmodule Sheaf.Embedding.Index do
   The units must have been built for the same model, dimensions, and source as
   the options passed here.
   """
-  @spec sync_units([text_unit()], keyword()) :: {:ok, map()} | {:error, term()}
+  @spec sync_units([text_unit()], keyword()) ::
+          {:ok, map()} | {:error, term()}
   def sync_units(units, opts \\ []) when is_list(units) do
     model = Sheaf.Embedding.model(opts)
-    dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
+    dimensions =
+      Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
     source = source(opts)
-    run_iri = opts |> Keyword.get_lazy(:run_iri, fn -> Sheaf.mint() |> to_string() end)
+
+    run_iri =
+      opts
+      |> Keyword.get_lazy(:run_iri, fn -> Sheaf.mint() |> to_string() end)
 
     with {:ok, conn} <- Store.open(opts) do
       try do
@@ -88,10 +102,14 @@ defmodule Sheaf.Embedding.Index do
   @spec plan(keyword()) :: {:ok, map()} | {:error, term()}
   def plan(opts \\ []) do
     model = Sheaf.Embedding.model(opts)
-    dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
+    dimensions =
+      Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
     source = source(opts)
 
-    with {:ok, units} <- text_units(Keyword.merge(opts, model: model, source: source)),
+    with {:ok, units} <-
+           text_units(Keyword.merge(opts, model: model, source: source)),
          {:ok, conn} <- Store.open(opts) do
       try do
         reusable = Store.reusable_hashes(conn, model, dimensions, source)
@@ -129,7 +147,11 @@ defmodule Sheaf.Embedding.Index do
       model = Keyword.get(opts, :model, Sheaf.Embedding.model())
       source = source(opts)
 
-      {:ok, units_from_rows(rows, Keyword.merge(opts, model: model, source: source))}
+      {:ok,
+       units_from_rows(
+         rows,
+         Keyword.merge(opts, model: model, source: source)
+       )}
     end
   end
 
@@ -139,7 +161,10 @@ defmodule Sheaf.Embedding.Index do
   @spec units_from_rows([map()], keyword()) :: [text_unit()]
   def units_from_rows(rows, opts \\ []) when is_list(rows) do
     model = Keyword.get(opts, :model, Sheaf.Embedding.model())
-    dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
+    dimensions =
+      Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
     source = source(opts)
 
     rows
@@ -174,7 +199,10 @@ defmodule Sheaf.Embedding.Index do
       {:ok, []}
     else
       model = Sheaf.Embedding.model(opts)
-      dimensions = Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
+      dimensions =
+        Keyword.get(opts, :output_dimensionality, @default_dimensions)
+
       source = source(opts)
       limit = Keyword.get(opts, :limit, 20)
 
@@ -205,7 +233,8 @@ defmodule Sheaf.Embedding.Index do
   Searches only exact lexical matches from the SQLite sidecar and hydrates them
   with RDF metadata.
   """
-  @spec exact_search(String.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
+  @spec exact_search(String.t(), keyword()) ::
+          {:ok, [map()]} | {:error, term()}
   def exact_search(query, opts \\ []) when is_binary(query) do
     query = String.trim(query)
 
@@ -220,7 +249,9 @@ defmodule Sheaf.Embedding.Index do
     reusable = Store.reusable_hashes(conn, model, dimensions, source)
 
     {missing, skipped} =
-      Enum.split_with(units, fn unit -> !MapSet.member?(reusable, {unit.iri, unit.text_hash}) end)
+      Enum.split_with(units, fn unit ->
+        !MapSet.member?(reusable, {unit.iri, unit.text_hash})
+      end)
 
     metadata = %{
       kinds: Enum.frequencies_by(units, & &1.kind),
@@ -246,7 +277,8 @@ defmodule Sheaf.Embedding.Index do
         "Embedding sync #{run_iri}: #{length(units)} current text units, #{length(skipped)} reusable, #{length(missing)} to embed"
       )
 
-      if async_batch_api_mode?(opts) and Keyword.get(opts, :submit_only, false) and missing != [] do
+      if async_batch_api_mode?(opts) and
+           Keyword.get(opts, :submit_only, false) and missing != [] do
         submit_batch_run(
           conn,
           run_iri,
@@ -272,7 +304,9 @@ defmodule Sheaf.Embedding.Index do
         }
 
         vector_current_hashes =
-          Keyword.get_lazy(opts, :current_hashes, fn -> current_hashes(units) end)
+          Keyword.get_lazy(opts, :current_hashes, fn ->
+            current_hashes(units)
+          end)
 
         with :ok <- Store.finish_run(conn, run_iri, finish_attrs),
              {:ok, vector_count} <-
@@ -345,7 +379,9 @@ defmodule Sheaf.Embedding.Index do
           metadata: batch_metadata
         })
 
-      Logger.info("Embedding sync #{run_iri}: submitted Gemini batch #{batch.name}")
+      Logger.info(
+        "Embedding sync #{run_iri}: submitted Gemini batch #{batch.name}"
+      )
 
       {:ok,
        %{
@@ -411,7 +447,9 @@ defmodule Sheaf.Embedding.Index do
         run.metadata
         |> Map.put(
           "imported_at",
-          DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+          DateTime.utc_now()
+          |> DateTime.truncate(:second)
+          |> DateTime.to_iso8601()
         )
         |> Map.put("imported_count", embedded)
         |> Map.put("import_skipped_current_count", current_skipped)
@@ -425,7 +463,11 @@ defmodule Sheaf.Embedding.Index do
                metadata: metadata
              }),
            {:ok, vector_count} <-
-             Store.sync_vector_index(conn, run.model, run.dimensions, run.source,
+             Store.sync_vector_index(
+               conn,
+               run.model,
+               run.dimensions,
+               run.source,
                current_hashes: current_hashes(units)
              ) do
         Logger.info(
@@ -461,7 +503,10 @@ defmodule Sheaf.Embedding.Index do
 
   defp embed_missing_with_sync_batches(conn, run_iri, units, dimensions, opts) do
     total = length(units)
-    concurrency = Keyword.get(opts, :max_concurrency, @default_max_concurrency)
+
+    concurrency =
+      Keyword.get(opts, :max_concurrency, @default_max_concurrency)
+
     batch_size = Keyword.get(opts, :batch_size, @default_batch_size)
 
     Logger.info(
@@ -475,7 +520,8 @@ defmodule Sheaf.Embedding.Index do
       ordered: false,
       timeout: Keyword.get(opts, :timeout, :infinity)
     )
-    |> Enum.reduce(%{embedded: 0, errors: 0, error_details: []}, fn result, stats ->
+    |> Enum.reduce(%{embedded: 0, errors: 0, error_details: []}, fn result,
+                                                                    stats ->
       case result do
         {:ok, {:ok, pairs}} ->
           Enum.each(pairs, fn {unit, embedding} ->
@@ -492,7 +538,10 @@ defmodule Sheaf.Embedding.Index do
           embedded = stats.embedded + length(pairs)
 
           if rem(embedded, 100) == 0 or embedded == total,
-            do: Logger.info("Embedding sync #{run_iri}: stored #{embedded}/#{total}")
+            do:
+              Logger.info(
+                "Embedding sync #{run_iri}: stored #{embedded}/#{total}"
+              )
 
           %{stats | embedded: embedded}
 
@@ -505,16 +554,21 @@ defmodule Sheaf.Embedding.Index do
             stats
             | errors: stats.errors + length(units),
               error_details:
-                Enum.map(units, &%{iri: &1.iri, reason: inspect(reason)}) ++ stats.error_details
+                Enum.map(units, &%{iri: &1.iri, reason: inspect(reason)}) ++
+                  stats.error_details
           }
 
         {:exit, reason} ->
-          Logger.warning("Embedding sync #{run_iri}: task exited: #{inspect(reason)}")
+          Logger.warning(
+            "Embedding sync #{run_iri}: task exited: #{inspect(reason)}"
+          )
 
           %{
             stats
             | errors: stats.errors + 1,
-              error_details: [%{reason: inspect(reason)} | stats.error_details]
+              error_details: [
+                %{reason: inspect(reason)} | stats.error_details
+              ]
           }
       end
     end)
@@ -560,7 +614,9 @@ defmodule Sheaf.Embedding.Index do
             })
         end)
 
-        Logger.info("Embedding sync #{run_iri}: stored #{length(embeddings)}/#{total}")
+        Logger.info(
+          "Embedding sync #{run_iri}: stored #{length(embeddings)}/#{total}"
+        )
 
         %{
           embedded: length(embeddings),
@@ -576,7 +632,8 @@ defmodule Sheaf.Embedding.Index do
         %{
           embedded: 0,
           errors: total,
-          error_details: Enum.map(units, &%{iri: &1.iri, reason: inspect(reason)})
+          error_details:
+            Enum.map(units, &%{iri: &1.iri, reason: inspect(reason)})
         }
     end
   end
@@ -600,27 +657,45 @@ defmodule Sheaf.Embedding.Index do
     }
   end
 
-  defp sync_vectors_after_run(conn, model, dimensions, source, current_hashes, opts) do
+  defp sync_vectors_after_run(
+         conn,
+         model,
+         dimensions,
+         source,
+         current_hashes,
+         opts
+       ) do
     case Keyword.get(opts, :vector_iris) do
       iris when is_list(iris) ->
-        Store.sync_vector_index_for_iris(conn, model, dimensions, source, iris,
+        Store.sync_vector_index_for_iris(
+          conn,
+          model,
+          dimensions,
+          source,
+          iris,
           current_hashes: current_hashes
         )
 
       _all ->
-        Store.sync_vector_index(conn, model, dimensions, source, current_hashes: current_hashes)
+        Store.sync_vector_index(conn, model, dimensions, source,
+          current_hashes: current_hashes
+        )
     end
   end
 
-  defp require_run(nil, run_iri), do: {:error, {:unknown_embedding_run, run_iri}}
+  defp require_run(nil, run_iri),
+    do: {:error, {:unknown_embedding_run, run_iri}}
+
   defp require_run(run, _run_iri), do: {:ok, run}
 
-  defp batch_name_from_run(%{metadata: %{"batch_name" => batch_name}}) when is_binary(batch_name),
-    do: {:ok, batch_name}
+  defp batch_name_from_run(%{metadata: %{"batch_name" => batch_name}})
+       when is_binary(batch_name),
+       do: {:ok, batch_name}
 
   defp batch_name_from_run(run), do: {:error, {:missing_batch_name, run.iri}}
 
-  defp batch_units_from_run(%{metadata: %{"batch_units" => units}}) when is_list(units) do
+  defp batch_units_from_run(%{metadata: %{"batch_units" => units}})
+       when is_list(units) do
     {:ok,
      Enum.map(units, fn unit ->
        %{
@@ -632,7 +707,8 @@ defmodule Sheaf.Embedding.Index do
      end)}
   end
 
-  defp batch_units_from_run(run), do: {:error, {:missing_batch_units, run.iri}}
+  defp batch_units_from_run(run),
+    do: {:error, {:missing_batch_units, run.iri}}
 
   defp current_import_pairs([], _opts), do: {:ok, [], 0}
 
@@ -670,7 +746,13 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp batch_api_mode?(opts) do
-    Keyword.get(opts, :api_mode) in [:batch, "batch", :batch_api, "batch_api", "async_batch"]
+    Keyword.get(opts, :api_mode) in [
+      :batch,
+      "batch",
+      :batch_api,
+      "batch_api",
+      "async_batch"
+    ]
   end
 
   defp async_batch_api_mode?(opts) do
@@ -712,7 +794,8 @@ defmodule Sheaf.Embedding.Index do
   end
 
   @doc false
-  def metadata_for_iris(iris, opts \\ []), do: descriptions_for_iris(iris, opts)
+  def metadata_for_iris(iris, opts \\ []),
+    do: descriptions_for_iris(iris, opts)
 
   @doc false
   def descriptions_for_iris(iris, opts \\ [])
@@ -720,17 +803,21 @@ defmodule Sheaf.Embedding.Index do
   def descriptions_for_iris([], _opts), do: {:ok, %{}}
 
   def descriptions_for_iris(iris, opts) when is_list(iris) do
-    with {:ok, dataset} <- Sheaf.fetch_dataset(),
-         {:ok, documents} <- document_metadata(opts) do
-      graph = graph_for_iris(dataset, iris)
-      docs_by_iri = docs_by_iri(dataset, iris)
+    with {:ok, rows} <- description_rows_for_iris(iris) do
+      graph = graph_for_rows(rows, iris)
+      docs_by_iri = docs_by_iri(rows, iris)
 
-      {:ok,
-       iris
-       |> Enum.uniq()
-       |> Enum.map(&unit_from_graph(graph, &1, docs_by_iri, documents))
-       |> Enum.reject(&is_nil/1)
-       |> Map.new(&{&1.iri, &1})}
+      doc_iris =
+        docs_by_iri |> Map.values() |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+      with {:ok, documents} <- document_metadata_for_doc_iris(doc_iris, opts) do
+        {:ok,
+         iris
+         |> Enum.uniq()
+         |> Enum.map(&unit_from_graph(graph, &1, docs_by_iri, documents))
+         |> Enum.reject(&is_nil/1)
+         |> Map.new(&{&1.iri, &1})}
+      end
     end
   end
 
@@ -789,7 +876,9 @@ defmodule Sheaf.Embedding.Index do
       docs
       |> Enum.map(fn {doc, graph} ->
         description = RDF.Data.description(graph, RDF.iri(doc))
-        expression = Description.first(description, FABIO.isRepresentationOf())
+
+        expression =
+          Description.first(description, FABIO.isRepresentationOf())
 
         expression =
           expression ||
@@ -799,8 +888,11 @@ defmodule Sheaf.Embedding.Index do
           metadata
           |> objects_for(expression, DCTERMS.creator())
           |> Enum.flat_map(fn
-            %RDF.Literal{} = literal -> [RDF.Literal.lexical(literal)]
-            author -> first_object(metadata, author, FOAF.name()) |> List.wrap()
+            %RDF.Literal{} = literal ->
+              [RDF.Literal.lexical(literal)]
+
+            author ->
+              first_object(metadata, author, FOAF.name()) |> List.wrap()
           end)
           |> Enum.reject(&is_nil/1)
           |> Enum.map(&term_value/1)
@@ -809,7 +901,8 @@ defmodule Sheaf.Embedding.Index do
 
         {doc,
          %{
-           title: description |> Description.first(RDFS.label()) |> term_value(),
+           title:
+             description |> Description.first(RDFS.label()) |> term_value(),
            kind: document_kind(description),
            excluded?: MapSet.member?(excluded, RDF.iri(doc)),
            authors: authors,
@@ -852,54 +945,34 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp load_document_metadata do
-    with {:ok, dataset} <- Sheaf.fetch_dataset() do
-      metadata = RDF.Dataset.graph(dataset, Sheaf.Repo.metadata_graph()) || Graph.new()
-      excluded = excluded_documents(dataset)
-
-      documents =
-        dataset
-        |> RDF.Dataset.graphs()
-        |> Enum.flat_map(fn graph ->
-          graph
-          |> Graph.descriptions()
-          |> Enum.filter(&document_description?/1)
-          |> Enum.map(fn description ->
-            doc = description.subject |> term_value()
-            expression = Description.first(description, FABIO.isRepresentationOf())
-
-            expression =
-              expression ||
-                first_object(metadata, RDF.iri(doc), FABIO.isRepresentationOf())
-
-            authors =
-              metadata
-              |> objects_for(expression, DCTERMS.creator())
-              |> Enum.flat_map(fn
-                %RDF.Literal{} = literal -> [RDF.Literal.lexical(literal)]
-                author -> first_object(metadata, author, FOAF.name()) |> List.wrap()
-              end)
-              |> Enum.reject(&is_nil/1)
-              |> Enum.map(&term_value/1)
-              |> Enum.uniq()
-              |> Enum.sort()
-
-            {doc,
-             %{
-               title: description |> Description.first(RDFS.label()) |> term_value(),
-               kind: document_kind(description),
-               excluded?: MapSet.member?(excluded, RDF.iri(doc)),
-               authors: authors
-             }}
-          end)
-        end)
-        |> Map.new()
-
-      {:ok, documents}
+    with {:ok, documents} <- Sheaf.Documents.list(include_excluded: true) do
+      documents
+      |> Map.new(fn document ->
+        {
+          document.iri,
+          %{
+            title: document.title,
+            kind: document.kind,
+            excluded?: document.excluded?,
+            authors: Map.get(document.metadata, :authors, [])
+          }
+        }
+      end)
+      |> then(&{:ok, &1})
     end
   end
 
-  defp search_loaded(conn, query_values, model, dimensions, source, limit, opts) do
-    exact_limit = Keyword.get(opts, :exact_limit, exact_candidate_limit(limit, opts))
+  defp search_loaded(
+         conn,
+         query_values,
+         model,
+         dimensions,
+         source,
+         limit,
+         opts
+       ) do
+    exact_limit =
+      Keyword.get(opts, :exact_limit, exact_candidate_limit(limit, opts))
 
     with {:ok, exact_results} <-
            exact_matches(
@@ -912,7 +985,15 @@ defmodule Sheaf.Embedding.Index do
              )
            ),
          {:ok, vector_results} <-
-           vector_results_until(conn, query_values, model, dimensions, source, limit, opts) do
+           vector_results_until(
+             conn,
+             query_values,
+             model,
+             dimensions,
+             source,
+             limit,
+             opts
+           ) do
       {:ok,
        (exact_results ++ vector_results)
        |> merge_ranked_results()
@@ -920,11 +1001,24 @@ defmodule Sheaf.Embedding.Index do
     end
   end
 
-  defp vector_results_until(conn, query_values, model, dimensions, source, limit, opts) do
-    initial_candidate_limit = Keyword.get(opts, :candidate_limit, max(limit * 4, 80))
+  defp vector_results_until(
+         conn,
+         query_values,
+         model,
+         dimensions,
+         source,
+         limit,
+         opts
+       ) do
+    initial_candidate_limit =
+      Keyword.get(opts, :candidate_limit, max(limit * 4, 80))
 
     max_candidate_limit =
-      Keyword.get(opts, :max_candidate_limit, max(initial_candidate_limit, 500))
+      Keyword.get(
+        opts,
+        :max_candidate_limit,
+        max(initial_candidate_limit, 500)
+      )
 
     do_vector_results_until(
       conn,
@@ -951,11 +1045,21 @@ defmodule Sheaf.Embedding.Index do
          opts
        ) do
     with {:ok, ranked} <-
-           Store.search_vectors(conn, query_values, model, dimensions, candidate_limit, source),
+           Store.search_vectors(
+             conn,
+             query_values,
+             model,
+             dimensions,
+             candidate_limit,
+             source
+           ),
          {:ok, metadata} <-
            sidecar_descriptions_for_iris(
              Enum.map(ranked, & &1.iri),
-             Keyword.merge(opts, model: model, output_dimensionality: dimensions)
+             Keyword.merge(opts,
+               model: model,
+               output_dimensionality: dimensions
+             )
            ) do
       results =
         ranked
@@ -1002,7 +1106,8 @@ defmodule Sheaf.Embedding.Index do
       |> Keyword.put(:limit, Keyword.get(opts, :limit, 60))
 
     with {:ok, hits} <- Sheaf.Search.Index.search(query, search_opts),
-         {:ok, metadata} <- sidecar_descriptions_for_iris(Enum.map(hits, & &1.iri), opts) do
+         {:ok, metadata} <-
+           sidecar_descriptions_for_iris(Enum.map(hits, & &1.iri), opts) do
       {:ok,
        hits
        |> Enum.flat_map(fn hit ->
@@ -1040,7 +1145,8 @@ defmodule Sheaf.Embedding.Index do
 
   defp searchable_result(result, opts) do
     if kind_allowed?(result, opts) and document_allowed?(result, opts) and
-         document_kind_allowed?(result, opts) and Map.get(result, :doc_excluded?, false) != true and
+         document_kind_allowed?(result, opts) and
+         Map.get(result, :doc_excluded?, false) != true and
          searchable_content?(result) do
       [result]
     else
@@ -1054,17 +1160,27 @@ defmodule Sheaf.Embedding.Index do
 
   defp document_allowed?(result, opts) do
     case Keyword.get(opts, :document_id) do
-      nil -> true
-      "" -> true
-      document_id -> result.doc_iri == document_id |> Sheaf.Id.iri() |> to_string()
+      nil ->
+        true
+
+      "" ->
+        true
+
+      document_id ->
+        result.doc_iri == document_id |> Sheaf.Id.iri() |> to_string()
     end
   end
 
   defp document_kind_allowed?(result, opts) do
     case Keyword.get(opts, :document_kind) do
-      nil -> true
-      "" -> true
-      kind -> normalize_kind(Map.get(result, :doc_kind)) == normalize_kind(kind)
+      nil ->
+        true
+
+      "" ->
+        true
+
+      kind ->
+        normalize_kind(Map.get(result, :doc_kind)) == normalize_kind(kind)
     end
   end
 
@@ -1081,7 +1197,8 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp base64_html?(text) when is_binary(text) do
-    String.contains?(text, ";base64,") or String.contains?(text, "data:image/")
+    String.contains?(text, ";base64,") or
+      String.contains?(text, "data:image/")
   end
 
   defp base64_html?(_text), do: false
@@ -1096,8 +1213,12 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp merge_result(left, right) do
-    lexical_score = max(score_value(left.lexical_score), score_value(right.lexical_score))
-    semantic_score = max(score_value(left.semantic_score), score_value(right.semantic_score))
+    lexical_score =
+      max(score_value(left.lexical_score), score_value(right.lexical_score))
+
+    semantic_score =
+      max(score_value(left.semantic_score), score_value(right.semantic_score))
+
     match = merged_match(left.match, right.match)
 
     Map.merge(left, %{
@@ -1132,30 +1253,45 @@ defmodule Sheaf.Embedding.Index do
   defp match_sort(%{match: :exact}), do: 1
   defp match_sort(_result), do: 2
 
-  defp graph_for_iris(dataset, iris) do
+  defp description_rows_for_iris(iris) do
+    wanted = iris |> Enum.map(&RDF.iri/1) |> Enum.uniq()
+
+    with {:ok, subject_rows} <- Sheaf.Repo.match_rows({wanted, nil, nil, nil}),
+         {:ok, owner_rows} <-
+           Sheaf.Repo.match_rows({nil, DOC.paragraph(), wanted, nil}) do
+      owners =
+        owner_rows
+        |> Enum.map(fn {_g, owner, _p, _o} -> owner end)
+        |> Enum.uniq()
+
+      with {:ok, owner_subject_rows} <- rows_for({owners, nil, nil, nil}) do
+        {:ok, subject_rows ++ owner_rows ++ owner_subject_rows}
+      end
+    end
+  end
+
+  defp rows_for({[], _predicate, _object, _graph}), do: {:ok, []}
+  defp rows_for(pattern), do: Sheaf.Repo.match_rows(pattern)
+
+  defp graph_for_rows(rows, iris) do
     wanted = iris |> Enum.map(&RDF.iri/1) |> MapSet.new()
+    paragraph_owners = paragraph_owners(rows, wanted)
 
-    dataset
-    |> RDF.Dataset.graphs()
-    |> Enum.reduce(Graph.new(), fn graph, acc ->
-      triples = Graph.triples(graph)
-      paragraph_owners = paragraph_owners(triples, wanted)
-
-      Enum.reduce(triples, acc, fn
-        {subject, _predicate, _object} = triple, acc ->
-          if MapSet.member?(wanted, subject) or MapSet.member?(paragraph_owners, subject) do
-            Graph.add(acc, triple)
-          else
-            acc
-          end
-      end)
+    Enum.reduce(rows, Graph.new(), fn {_graph, subject, predicate, object},
+                                      graph ->
+      if MapSet.member?(wanted, subject) or
+           MapSet.member?(paragraph_owners, subject) do
+        Graph.add(graph, {subject, predicate, object})
+      else
+        graph
+      end
     end)
   end
 
-  defp paragraph_owners(triples, wanted) do
-    triples
+  defp paragraph_owners(rows, wanted) do
+    rows
     |> Enum.reduce(MapSet.new(), fn
-      {subject, predicate, object}, acc ->
+      {_graph, subject, predicate, object}, acc ->
         if predicate == DOC.paragraph() and MapSet.member?(wanted, object) do
           MapSet.put(acc, subject)
         else
@@ -1164,21 +1300,16 @@ defmodule Sheaf.Embedding.Index do
     end)
   end
 
-  defp docs_by_iri(dataset, iris) do
+  defp docs_by_iri(rows, iris) do
     wanted = iris |> Enum.map(&RDF.iri/1) |> MapSet.new()
 
-    dataset
-    |> RDF.Dataset.graphs()
-    |> Enum.flat_map(fn graph ->
-      graph
-      |> Graph.triples()
-      |> Enum.flat_map(fn {subject, _predicate, _object} ->
-        if MapSet.member?(wanted, subject) do
-          [{term_value(subject), term_value(graph.name)}]
-        else
-          []
-        end
-      end)
+    rows
+    |> Enum.flat_map(fn {graph, subject, _predicate, _object} ->
+      if MapSet.member?(wanted, subject) do
+        [{term_value(subject), term_value(graph)}]
+      else
+        []
+      end
     end)
     |> Map.new()
   end
@@ -1190,7 +1321,13 @@ defmodule Sheaf.Embedding.Index do
 
     cond do
       text = first_value(description, Sheaf.NS.DOC.sourceHtml()) ->
-        unit_from_description(description, "sourceHtml", text, doc_iri, documents)
+        unit_from_description(
+          description,
+          "sourceHtml",
+          text,
+          doc_iri,
+          documents
+        )
 
       text = first_value(description, Sheaf.NS.DOC.text()) ->
         unit_from_description(description, "row", text, doc_iri, documents)
@@ -1199,8 +1336,17 @@ defmodule Sheaf.Embedding.Index do
         paragraph_description = RDF.Data.description(graph, paragraph)
 
         case first_value(paragraph_description, Sheaf.NS.DOC.text()) do
-          nil -> nil
-          text -> unit_from_description(description, "paragraph", text, doc_iri, documents)
+          nil ->
+            nil
+
+          text ->
+            unit_from_description(
+              description,
+              "paragraph",
+              text,
+              doc_iri,
+              documents
+            )
         end
 
       true ->
@@ -1208,7 +1354,13 @@ defmodule Sheaf.Embedding.Index do
     end
   end
 
-  defp unit_from_description(%Description{} = description, kind, text, doc_iri, documents) do
+  defp unit_from_description(
+         %Description{} = description,
+         kind,
+         text,
+         doc_iri,
+         documents
+       ) do
     model = Sheaf.Embedding.model()
     doc = Map.get(documents, doc_iri, %{})
     doc_title = Map.get(doc, :title)
@@ -1218,7 +1370,11 @@ defmodule Sheaf.Embedding.Index do
       kind: kind,
       text: text,
       text_hash:
-        text_hash(embedding_document_text(text, doc_title, model), model, @default_dimensions),
+        text_hash(
+          embedding_document_text(text, doc_title, model),
+          model,
+          @default_dimensions
+        ),
       text_chars: String.length(text),
       doc_iri: doc_iri,
       doc_title: doc_title,
@@ -1226,12 +1382,20 @@ defmodule Sheaf.Embedding.Index do
       doc_authors: Map.get(doc, :authors, []),
       doc_status: Map.get(doc, :status),
       doc_excluded?: Map.get(doc, :excluded?, false),
-      source_page: description |> Description.first(Sheaf.NS.DOC.sourcePage()) |> integer_value(),
-      source_block_type: first_value(description, Sheaf.NS.DOC.sourceBlockType()),
+      source_page:
+        description
+        |> Description.first(Sheaf.NS.DOC.sourcePage())
+        |> integer_value(),
+      source_block_type:
+        first_value(description, Sheaf.NS.DOC.sourceBlockType()),
       spreadsheet_row:
-        description |> Description.first(Sheaf.NS.DOC.spreadsheetRow()) |> integer_value(),
-      spreadsheet_source: first_value(description, Sheaf.NS.DOC.spreadsheetSource()),
-      code_category_title: first_value(description, Sheaf.NS.DOC.codeCategoryTitle())
+        description
+        |> Description.first(Sheaf.NS.DOC.spreadsheetRow())
+        |> integer_value(),
+      spreadsheet_source:
+        first_value(description, Sheaf.NS.DOC.spreadsheetSource()),
+      code_category_title:
+        first_value(description, Sheaf.NS.DOC.codeCategoryTitle())
     }
   end
 
@@ -1241,26 +1405,25 @@ defmodule Sheaf.Embedding.Index do
     |> term_value()
   end
 
-  defp document_description?(%Description{} = description) do
-    Enum.any?(
-      [
-        DOC.Document,
-        DOC.Paper,
-        DOC.Thesis,
-        DOC.Transcript,
-        DOC.Spreadsheet
-      ],
-      &Description.include?(description, {RDF.type(), RDF.iri(&1)})
-    )
-  end
-
   defp document_kind(%Description{} = description) do
     cond do
-      Description.include?(description, {RDF.type(), RDF.iri(DOC.Thesis)}) -> :thesis
-      Description.include?(description, {RDF.type(), RDF.iri(DOC.Paper)}) -> :literature
-      Description.include?(description, {RDF.type(), RDF.iri(DOC.Transcript)}) -> :transcript
-      Description.include?(description, {RDF.type(), RDF.iri(DOC.Spreadsheet)}) -> :spreadsheet
-      true -> :document
+      Description.include?(description, {RDF.type(), RDF.iri(DOC.Thesis)}) ->
+        :thesis
+
+      Description.include?(description, {RDF.type(), RDF.iri(DOC.Paper)}) ->
+        :literature
+
+      Description.include?(description, {RDF.type(), RDF.iri(DOC.Transcript)}) ->
+        :transcript
+
+      Description.include?(
+        description,
+        {RDF.type(), RDF.iri(DOC.Spreadsheet)}
+      ) ->
+        :spreadsheet
+
+      true ->
+        :document
     end
   end
 
@@ -1272,7 +1435,8 @@ defmodule Sheaf.Embedding.Index do
     end
   end
 
-  defp normalize_kind(kind) when is_atom(kind), do: kind |> Atom.to_string() |> normalize_kind()
+  defp normalize_kind(kind) when is_atom(kind),
+    do: kind |> Atom.to_string() |> normalize_kind()
 
   defp normalize_kind(kind) when is_binary(kind) do
     case kind |> String.trim() |> String.downcase() do
@@ -1282,11 +1446,6 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp normalize_kind(kind), do: kind |> to_string() |> normalize_kind()
-
-  defp excluded_documents(dataset) do
-    workspace = RDF.Dataset.graph(dataset, Sheaf.Repo.workspace_graph()) || Graph.new()
-    excluded_documents_from_workspace(workspace)
-  end
 
   defp excluded_documents_from_workspace(workspace) do
     excludes_document = DOC.excludesDocument()
@@ -1333,16 +1492,23 @@ defmodule Sheaf.Embedding.Index do
 
   defp integer_value(term) do
     case RDF.Term.value(term) do
-      value when is_integer(value) -> value
-      value when is_binary(value) -> value |> Integer.parse() |> integer_parse_value()
-      _ -> nil
+      value when is_integer(value) ->
+        value
+
+      value when is_binary(value) ->
+        value |> Integer.parse() |> integer_parse_value()
+
+      _ ->
+        nil
     end
   end
 
   defp integer_parse_value({value, _rest}), do: value
   defp integer_parse_value(:error), do: nil
 
-  defp source(opts), do: Keyword.get(opts, :source, Keyword.get(opts, :profile, @default_source))
+  defp source(opts),
+    do:
+      Keyword.get(opts, :source, Keyword.get(opts, :profile, @default_source))
 
   defp embedding_document_text(text, title, model) do
     Sheaf.Embedding.prepared_text(text,

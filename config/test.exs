@@ -4,7 +4,8 @@ import Config
 # you can enable the server option below.
 config :sheaf, SheafWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
-  secret_key_base: "Z2ZkvX8ko1S9+Zubart4+TnDiklyOpJOzpkOCXo/+PrUmbOGkyyAkFEJXNjtDFpR",
+  secret_key_base:
+    "Z2ZkvX8ko1S9+Zubart4+TnDiklyOpJOzpkOCXo/+PrUmbOGkyyAkFEJXNjtDFpR",
   server: false
 
 config :sheaf, Sheaf.Repo, start?: false, path: ":memory:"

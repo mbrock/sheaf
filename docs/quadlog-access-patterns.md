@@ -9,8 +9,8 @@ patterns and a small in-memory working set.
   or graph slices needed, merge those slices, then walk RDF graphs once.
 - Use `Sheaf.Repo.load_once/1` for request-time neighborhoods that should stay
   cached for repeated UI reads.
-- Avoid `Sheaf.fetch_dataset/0` in request-time code and derived index code
-  unless the actual operation is whole-dataset export, backup, or diagnostics.
+- Do not add whole-dataset helpers for request-time code or derived index code.
+  Use explicit quad patterns, graph slices, or streaming export paths instead.
 - Prefer graph-shaped helpers returning `RDF.Graph` or `RDF.Dataset` over
   SPARQL-like row maps. Only project to rows at module boundaries such as SQLite
   sidecar insertion.

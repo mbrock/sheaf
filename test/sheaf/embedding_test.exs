@@ -10,7 +10,10 @@ defmodule Sheaf.EmbeddingTest do
   test "posts raw embedContent requests for text" do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.method == "POST"
-      assert conn.request_path == "/v1beta/models/gemini-embedding-2:embedContent"
+
+      assert conn.request_path ==
+               "/v1beta/models/gemini-embedding-2:embedContent"
+
       assert Plug.Conn.get_req_header(conn, "x-goog-api-key") == ["secret"]
 
       assert %{
@@ -21,7 +24,12 @@ defmodule Sheaf.EmbeddingTest do
       Req.Test.json(conn, %{"embedding" => %{"values" => [0.1, 0.2, 0.3]}})
     end)
 
-    assert {:ok, %{dimensions: 3, model: "gemini-embedding-2", values: [0.1, 0.2, 0.3]}} =
+    assert {:ok,
+            %{
+              dimensions: 3,
+              model: "gemini-embedding-2",
+              values: [0.1, 0.2, 0.3]
+            }} =
              Embedding.embed_text("A paragraph.",
                provider: :gemini,
                api_key: "secret",
@@ -32,7 +40,8 @@ defmodule Sheaf.EmbeddingTest do
 
   test "embeds text lists with batchEmbedContents" do
     Req.Test.expect(__MODULE__, fn conn ->
-      assert conn.request_path == "/v1beta/models/gemini-embedding-2:batchEmbedContents"
+      assert conn.request_path ==
+               "/v1beta/models/gemini-embedding-2:batchEmbedContents"
 
       assert %{
                "requests" => [
@@ -68,7 +77,10 @@ defmodule Sheaf.EmbeddingTest do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.method == "POST"
       assert conn.request_path == "/v1/embeddings"
-      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer openai-secret"]
+
+      assert Plug.Conn.get_req_header(conn, "authorization") == [
+               "Bearer openai-secret"
+             ]
 
       assert %{
                "model" => "text-embedding-3-small",
@@ -83,7 +95,12 @@ defmodule Sheaf.EmbeddingTest do
       })
     end)
 
-    assert {:ok, %{dimensions: 3, model: "text-embedding-3-small", values: [0.1, 0.2, 0.3]}} =
+    assert {:ok,
+            %{
+              dimensions: 3,
+              model: "text-embedding-3-small",
+              values: [0.1, 0.2, 0.3]
+            }} =
              Embedding.embed_text("A paragraph.",
                provider: :openai,
                model: "text-embedding-3-small",
@@ -122,7 +139,9 @@ defmodule Sheaf.EmbeddingTest do
   test "embeds documents with async Batch API inline requests" do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.method == "POST"
-      assert conn.request_path == "/v1beta/models/gemini-embedding-001:asyncBatchEmbedContent"
+
+      assert conn.request_path ==
+               "/v1beta/models/gemini-embedding-001:asyncBatchEmbedContent"
 
       assert %{
                "batch" => %{
@@ -237,7 +256,8 @@ defmodule Sheaf.EmbeddingTest do
     Application.put_env(:sheaf, Embedding, api_key: nil)
 
     try do
-      assert {:error, :missing_openai_api_key} = Embedding.embed_text("No key.")
+      assert {:error, :missing_openai_api_key} =
+               Embedding.embed_text("No key.")
     after
       if previous do
         Application.put_env(:sheaf, Embedding, previous)

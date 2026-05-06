@@ -94,7 +94,8 @@ defmodule Sheaf.ResourcePreviews do
 
   defp document_entry(id, graph, iri) do
     with {:ok, documents} <- Documents.list(include_excluded: true),
-         document when not is_nil(document) <- Enum.find(documents, &(&1.id == id)) do
+         document when not is_nil(document) <-
+           Enum.find(documents, &(&1.id == id)) do
       document
     else
       _other ->

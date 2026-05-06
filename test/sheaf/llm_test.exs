@@ -37,7 +37,11 @@ defmodule Sheaf.LLMTest do
     message = LLM.user_message([LLM.text_part("extract metadata")])
     schema = [title: [type: :string, required: true]]
 
-    assert {:ok, result} = LLM.generate_object(message, schema, generate_object: generate_object)
+    assert {:ok, result} =
+             LLM.generate_object(message, schema,
+               generate_object: generate_object
+             )
+
     assert result.object == %{"title" => "A Paper"}
     assert result.model == LLM.default_model()
     assert result.usage == %{input_tokens: 10, output_tokens: 5}
@@ -56,22 +60,41 @@ defmodule Sheaf.LLMTest do
 
   test "resolves assistant provider choices to model specs" do
     assert [
-             %{provider: "claude", label: "Claude", model: "anthropic:claude-opus-4-7"},
+             %{
+               provider: "claude",
+               label: "Claude",
+               model: "anthropic:claude-opus-4-7"
+             },
              %{provider: "gpt", label: "GPT", model: "openai:gpt-5.5"}
            ] = LLM.assistant_model_options()
 
     assert LLM.default_assistant_provider() == "claude"
-    assert LLM.assistant_model_for_provider("claude") == "anthropic:claude-opus-4-7"
+
+    assert LLM.assistant_model_for_provider("claude") ==
+             "anthropic:claude-opus-4-7"
+
     assert LLM.assistant_model_for_provider("gpt") == "openai:gpt-5.5"
     assert LLM.assistant_provider_for_model("openai:gpt-5.5") == "gpt"
-    assert LLM.assistant_provider_for_model("anthropic:claude-opus-4-7") == "claude"
+
+    assert LLM.assistant_provider_for_model("anthropic:claude-opus-4-7") ==
+             "claude"
   end
 
   test "sets GPT assistant reasoning effort by conversation mode" do
-    assert LLM.assistant_llm_options("gpt", "quick") == [reasoning_effort: :medium]
-    assert LLM.assistant_llm_options("openai:gpt-5.5", :chat) == [reasoning_effort: :medium]
-    assert LLM.assistant_llm_options("gpt", "research") == [reasoning_effort: :high]
-    assert LLM.assistant_llm_options("anthropic:claude-opus-4-7", "research") == []
+    assert LLM.assistant_llm_options("gpt", "quick") == [
+             reasoning_effort: :medium
+           ]
+
+    assert LLM.assistant_llm_options("openai:gpt-5.5", :chat) == [
+             reasoning_effort: :medium
+           ]
+
+    assert LLM.assistant_llm_options("gpt", "research") == [
+             reasoning_effort: :high
+           ]
+
+    assert LLM.assistant_llm_options("anthropic:claude-opus-4-7", "research") ==
+             []
   end
 
   test "merges provider options and request overrides" do
@@ -146,7 +169,9 @@ defmodule Sheaf.LLMTest do
   end
 
   test "text request options only apply Opus adaptive thinking to Opus" do
-    sonnet_opts = LLM.text_request_options(model: "anthropic:claude-sonnet-4-6")
+    sonnet_opts =
+      LLM.text_request_options(model: "anthropic:claude-sonnet-4-6")
+
     opus_opts = LLM.text_request_options(model: "anthropic:claude-opus-4-7")
 
     refute Keyword.has_key?(sonnet_opts[:provider_options], :thinking)

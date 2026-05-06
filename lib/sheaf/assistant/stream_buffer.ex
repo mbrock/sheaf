@@ -62,14 +62,18 @@ defmodule Sheaf.Assistant.StreamBuffer do
 
   defp add_markdown_block_candidates(candidates, text) do
     Regex.scan(~r/\n{2,}/u, text, return: :index)
-    |> Enum.reduce(candidates, fn [{start, length}], acc -> [start + length | acc] end)
+    |> Enum.reduce(candidates, fn [{start, length}], acc ->
+      [start + length | acc]
+    end)
     |> then(fn acc ->
       Regex.scan(
         ~r/(?:^|\n)(?:\s{0,3}(?:\#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>\s?|```|~~~|[-*_]{3,}\s*$|\|).*\n)/u,
         text,
         return: :index
       )
-      |> Enum.reduce(acc, fn [{start, length}], acc -> [start + length | acc] end)
+      |> Enum.reduce(acc, fn [{start, length}], acc ->
+        [start + length | acc]
+      end)
     end)
   end
 
@@ -103,7 +107,9 @@ defmodule Sheaf.Assistant.StreamBuffer do
     |> String.split(~r/\s/u, include_captures: true, trim: false)
     |> Enum.reduce_while({0, nil}, fn part, {offset, last_space} ->
       next_offset = offset + byte_size(part)
-      last_space = if String.match?(part, ~r/^\s+$/u), do: next_offset, else: last_space
+
+      last_space =
+        if String.match?(part, ~r/^\s+$/u), do: next_offset, else: last_space
 
       if next_offset >= div(@max_buffer_bytes, 2) and last_space do
         {:halt, last_space}

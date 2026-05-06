@@ -63,7 +63,9 @@ defmodule Datalab do
     output_format = output_format(opts)
 
     output_path =
-      Keyword.get_lazy(opts, :output_path, fn -> output_path(path, output_format, opts) end)
+      Keyword.get_lazy(opts, :output_path, fn ->
+        output_path(path, output_format, opts)
+      end)
 
     with {:ok, result} <- convert(path, opts),
          :ok <- write_output(output_path, result.output, output_format) do
@@ -74,7 +76,8 @@ defmodule Datalab do
   @doc """
   Converts several PDFs sequentially with `convert_file/2`.
   """
-  @spec convert_files([Path.t()], keyword()) :: {:ok, [map()]} | {:error, term()}
+  @spec convert_files([Path.t()], keyword()) ::
+          {:ok, [map()]} | {:error, term()}
   def convert_files(paths, opts \\ []) when is_list(paths) do
     Enum.reduce_while(paths, {:ok, []}, fn path, {:ok, results} ->
       case convert_file(path, opts) do
@@ -106,13 +109,19 @@ defmodule Datalab do
          {:ok, bytes} <- File.read(path) do
       form =
         [
-          {"file", {bytes, filename: Path.basename(path), content_type: "application/pdf"}},
-          {"output_format", Keyword.get(opts, :output_format, @default_output_format)}
+          {"file",
+           {bytes,
+            filename: Path.basename(path), content_type: "application/pdf"}},
+          {"output_format",
+           Keyword.get(opts, :output_format, @default_output_format)}
         ]
         |> maybe_put("page_range", Keyword.get(opts, :page_range))
 
       client(api_key, opts)
-      |> Req.post(url: "/pipelines/#{pipeline_id(opts)}/run", form_multipart: form)
+      |> Req.post(
+        url: "/pipelines/#{pipeline_id(opts)}/run",
+        form_multipart: form
+      )
       |> handle_response()
     end
   end
@@ -168,7 +177,9 @@ defmodule Datalab do
 
     with {:ok, api_key} <- api_key(opts) do
       client(api_key, opts)
-      |> Req.get(url: "/pipelines/executions/#{execution_id}/steps/#{step}/result")
+      |> Req.get(
+        url: "/pipelines/executions/#{execution_id}/steps/#{step}/result"
+      )
       |> handle_response()
     end
   end
@@ -176,7 +187,8 @@ defmodule Datalab do
   @doc """
   Fetches the Markdown result for a completed conversion job.
   """
-  @spec markdown(execution_id(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  @spec markdown(execution_id(), keyword()) ::
+          {:ok, String.t()} | {:error, term()}
   def markdown(execution_id, opts \\ []) when is_binary(execution_id) do
     with {:ok, body} <- result(execution_id, opts),
          {:ok, markdown} <- fetch_markdown(body) do
@@ -285,35 +297,46 @@ defmodule Datalab do
   defp maybe_put(form, _key, ""), do: form
   defp maybe_put(form, key, value), do: form ++ [{key, value}]
 
-  defp handle_response({:ok, %{status: status, body: body}}) when status in 200..299,
-    do: {:ok, body}
+  defp handle_response({:ok, %{status: status, body: body}})
+       when status in 200..299,
+       do: {:ok, body}
 
   defp handle_response({:ok, %{status: status, body: body}}),
     do: {:error, %{status: status, body: body}}
 
   defp handle_response({:error, reason}), do: {:error, reason}
 
-  defp fetch_markdown(%{"markdown" => markdown}) when is_binary(markdown), do: {:ok, markdown}
-
-  defp fetch_markdown(%{"result" => %{"markdown" => markdown}}) when is_binary(markdown),
+  defp fetch_markdown(%{"markdown" => markdown}) when is_binary(markdown),
     do: {:ok, markdown}
+
+  defp fetch_markdown(%{"result" => %{"markdown" => markdown}})
+       when is_binary(markdown),
+       do: {:ok, markdown}
 
   defp fetch_markdown(body), do: {:error, {:missing_markdown, body}}
 
   defp extract_output(body, "markdown"), do: fetch_markdown(body)
-  defp extract_output(%{"html" => html}, "html") when is_binary(html), do: {:ok, html}
+
+  defp extract_output(%{"html" => html}, "html") when is_binary(html),
+    do: {:ok, html}
 
   defp extract_output(%{"result" => result}, "html") when is_map(result),
     do: extract_output(result, "html")
 
-  defp extract_output(%{"children" => _} = document, "json"), do: {:ok, document}
-  defp extract_output(%{"json" => document}, "json") when is_map(document), do: {:ok, document}
-  defp extract_output(%{"json" => json}, "json") when is_binary(json), do: Jason.decode(json)
+  defp extract_output(%{"children" => _} = document, "json"),
+    do: {:ok, document}
+
+  defp extract_output(%{"json" => document}, "json") when is_map(document),
+    do: {:ok, document}
+
+  defp extract_output(%{"json" => json}, "json") when is_binary(json),
+    do: Jason.decode(json)
 
   defp extract_output(%{"result" => result}, "json") when is_map(result),
     do: extract_output(result, "json")
 
-  defp extract_output(body, output_format), do: {:error, {:missing_output, output_format, body}}
+  defp extract_output(body, output_format),
+    do: {:error, {:missing_output, output_format, body}}
 
   defp write_output(path, output, "json") when is_map(output) do
     path
@@ -351,7 +374,9 @@ defmodule Datalab do
   defp job_status(%{"state" => status}) when is_binary(status),
     do: {:ok, String.downcase(status)}
 
-  defp job_status(%{"execution" => execution}) when is_map(execution), do: job_status(execution)
+  defp job_status(%{"execution" => execution}) when is_map(execution),
+    do: job_status(execution)
+
   defp job_status(body), do: {:error, {:missing_job_status, body}}
 
   defp blank_to_nil(value) when value in [nil, ""], do: nil

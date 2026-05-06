@@ -1,7 +1,15 @@
 defmodule Sheaf.AssistantTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.{Context, Response, StreamChunk, StreamResponse, Tool, ToolCall}
+  alias ReqLLM.{
+    Context,
+    Response,
+    StreamChunk,
+    StreamResponse,
+    Tool,
+    ToolCall
+  }
+
   alias ReqLLM.Message.ContentPart
   alias ReqLLM.StreamResponse.MetadataHandle
   alias Sheaf.Assistant
@@ -33,7 +41,8 @@ defmodule Sheaf.AssistantTest do
     assert {:ok, response} = Assistant.run(assistant, "hi", temperature: 0.9)
     assert Response.text(response) == "hello"
 
-    assert %{messages: [%{role: :user}, %{role: :assistant}]} = Assistant.context(assistant)
+    assert %{messages: [%{role: :user}, %{role: :assistant}]} =
+             Assistant.context(assistant)
   end
 
   test "streams response text through callbacks and returns the final response" do
@@ -58,7 +67,9 @@ defmodule Sheaf.AssistantTest do
          model: "openai:gpt-4",
          task_supervisor: Sheaf.Assistant.TaskSupervisor,
          stream_text: stream_text,
-         generate_text: fn _model, _context, _opts -> flunk("unexpected non-streaming call") end}
+         generate_text: fn _model, _context, _opts ->
+           flunk("unexpected non-streaming call")
+         end}
       )
 
     assert {:ok, response} =
@@ -72,7 +83,8 @@ defmodule Sheaf.AssistantTest do
     assert_receive {:delta, "lo"}
     assert Response.text(response) == "hello"
 
-    assert %{messages: [%{role: :user}, %{role: :assistant}]} = Assistant.context(assistant)
+    assert %{messages: [%{role: :user}, %{role: :assistant}]} =
+             Assistant.context(assistant)
   end
 
   test "executes requested tools and continues until final answer" do
@@ -98,7 +110,9 @@ defmodule Sheaf.AssistantTest do
           {:ok,
            response(
              Context.assistant("I will use the tool.",
-               tool_calls: [ToolCall.new("call_1", "add_numbers", ~s({"a":137,"b":284}))]
+               tool_calls: [
+                 ToolCall.new("call_1", "add_numbers", ~s({"a":137,"b":284}))
+               ]
              ),
              finish_reason: :tool_calls
            )}
@@ -124,12 +138,20 @@ defmodule Sheaf.AssistantTest do
          task_supervisor: Sheaf.Assistant.TaskSupervisor}
       )
 
-    assert {:ok, response} = Assistant.run(assistant, "Please add 137 and 284.")
+    assert {:ok, response} =
+             Assistant.run(assistant, "Please add 137 and 284.")
+
     assert Response.text(response) == "137 + 284 = 421"
     assert_receive {:tool_executed, 137, 284}
 
     assert %{messages: messages} = Assistant.context(assistant)
-    assert Enum.map(messages, & &1.role) == [:user, :assistant, :tool, :assistant]
+
+    assert Enum.map(messages, & &1.role) == [
+             :user,
+             :assistant,
+             :tool,
+             :assistant
+           ]
   end
 
   test "keeps streaming callbacks active after tool calls" do
@@ -173,7 +195,9 @@ defmodule Sheaf.AssistantTest do
          model: "openai:gpt-4",
          tools: [echo_tool],
          stream_text: stream_text,
-         generate_text: fn _model, _context, _opts -> flunk("unexpected non-streaming call") end,
+         generate_text: fn _model, _context, _opts ->
+           flunk("unexpected non-streaming call")
+         end,
          task_supervisor: Sheaf.Assistant.TaskSupervisor}
       )
 
@@ -195,7 +219,8 @@ defmodule Sheaf.AssistantTest do
       send(test_pid, {:inference_started, self()})
 
       receive do
-        :finish -> {:ok, response(Context.assistant("done"), finish_reason: :stop)}
+        :finish ->
+          {:ok, response(Context.assistant("done"), finish_reason: :stop)}
       end
     end
 
@@ -233,7 +258,9 @@ defmodule Sheaf.AssistantTest do
       {:ok,
        response(
          Context.assistant("again",
-           tool_calls: [ToolCall.new("call_1", "echo_value", ~s({"value":"x"}))]
+           tool_calls: [
+             ToolCall.new("call_1", "echo_value", ~s({"value":"x"}))
+           ]
          ),
          finish_reason: :tool_calls
        )}
@@ -249,7 +276,8 @@ defmodule Sheaf.AssistantTest do
          task_supervisor: Sheaf.Assistant.TaskSupervisor}
       )
 
-    assert {:error, {:max_tool_rounds, %Response{}}} = Assistant.run(assistant, "loop")
+    assert {:error, {:max_tool_rounds, %Response{}}} =
+             Assistant.run(assistant, "loop")
   end
 
   defp response(message, opts) do

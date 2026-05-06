@@ -85,13 +85,28 @@ defmodule Sheaf.Spreadsheet.Materializer do
     end
   end
 
-  defp materialize_sheets(conn, path, spreadsheet_id, file_key, sheet_names, opts) do
+  defp materialize_sheets(
+         conn,
+         path,
+         spreadsheet_id,
+         file_key,
+         sheet_names,
+         opts
+       ) do
     sheet_names
     |> Enum.with_index(1)
     |> Enum.reduce({[], []}, fn {sheet_name, index}, {sheets, errors} ->
       table = table_name(path, file_key, index)
 
-      case materialize_sheet(conn, path, spreadsheet_id, table, sheet_name, index, opts) do
+      case materialize_sheet(
+             conn,
+             path,
+             spreadsheet_id,
+             table,
+             sheet_name,
+             index,
+             opts
+           ) do
         {:ok, sheet} ->
           {[sheet | sheets], errors}
 
@@ -108,10 +123,20 @@ defmodule Sheaf.Spreadsheet.Materializer do
            ]}
       end
     end)
-    |> then(fn {sheets, errors} -> {:ok, Enum.reverse(sheets), Enum.reverse(errors)} end)
+    |> then(fn {sheets, errors} ->
+      {:ok, Enum.reverse(sheets), Enum.reverse(errors)}
+    end)
   end
 
-  defp materialize_sheet(conn, path, spreadsheet_id, table, sheet_name, index, opts) do
+  defp materialize_sheet(
+         conn,
+         path,
+         spreadsheet_id,
+         table,
+         sheet_name,
+         index,
+         opts
+       ) do
     source = """
     read_xlsx(
       #{literal(path)},
@@ -137,8 +162,10 @@ defmodule Sheaf.Spreadsheet.Materializer do
          {:ok, columns} <- table_columns(conn, table),
          :ok <- delete_empty_rows(conn, table, columns),
          :ok <- add_text_column(conn, table, columns),
-         {:ok, row_count} <- scalar(conn, "SELECT count(*) FROM #{identifier(table)}"),
-         {:ok, stored_file} <- write_sheet_parquet(conn, table, spreadsheet_id, index, opts) do
+         {:ok, row_count} <-
+           scalar(conn, "SELECT count(*) FROM #{identifier(table)}"),
+         {:ok, stored_file} <-
+           write_sheet_parquet(conn, table, spreadsheet_id, index, opts) do
       {:ok,
        %{
          spreadsheet_id: spreadsheet_id,
@@ -155,10 +182,19 @@ defmodule Sheaf.Spreadsheet.Materializer do
 
   defp write_sheet_parquet(conn, table, spreadsheet_id, index, opts) do
     filename = "#{spreadsheet_id}-sheet-#{index}.parquet"
-    path = Path.join(temp_dir(), "#{System.unique_integer([:positive])}-#{filename}")
+
+    path =
+      Path.join(
+        temp_dir(),
+        "#{System.unique_integer([:positive])}-#{filename}"
+      )
 
     with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- exec(conn, "COPY #{identifier(table)} TO #{literal(path)} (FORMAT parquet)"),
+         :ok <-
+           exec(
+             conn,
+             "COPY #{identifier(table)} TO #{literal(path)} (FORMAT parquet)"
+           ),
          {:ok, stored_file} <-
            BlobStore.put_file(path,
              root: Keyword.get(opts, :blob_root, configured_blob_root()),
@@ -191,7 +227,10 @@ defmodule Sheaf.Spreadsheet.Materializer do
         "coalesce(CAST(#{identifier(name)} AS VARCHAR), '') <> ''"
       end)
 
-    exec(conn, "DELETE FROM #{identifier(table)} WHERE NOT (#{nonempty_expression})")
+    exec(
+      conn,
+      "DELETE FROM #{identifier(table)} WHERE NOT (#{nonempty_expression})"
+    )
   end
 
   defp normalize_reserved_columns(conn, table) do
@@ -220,7 +259,11 @@ defmodule Sheaf.Spreadsheet.Materializer do
 
   defp table_column_names(conn, table) do
     with {:ok, result} <-
-           query_all(conn, "PRAGMA table_info(#{identifier(table)})", @max_metadata_rows) do
+           query_all(
+             conn,
+             "PRAGMA table_info(#{identifier(table)})",
+             @max_metadata_rows
+           ) do
       {:ok, Enum.map(result.rows, &Map.fetch!(&1, "name"))}
     end
   end
@@ -228,13 +271,19 @@ defmodule Sheaf.Spreadsheet.Materializer do
   defp add_text_column(conn, table, columns) do
     expressions =
       columns
-      |> Enum.map(fn %{name: name} -> "coalesce(CAST(#{identifier(name)} AS VARCHAR), '')" end)
+      |> Enum.map(fn %{name: name} ->
+        "coalesce(CAST(#{identifier(name)} AS VARCHAR), '')"
+      end)
       |> case do
         [] -> literal("")
         expressions -> Enum.join(expressions, ", ")
       end
 
-    with :ok <- exec(conn, "ALTER TABLE #{identifier(table)} ADD COLUMN __text VARCHAR") do
+    with :ok <-
+           exec(
+             conn,
+             "ALTER TABLE #{identifier(table)} ADD COLUMN __text VARCHAR"
+           ) do
       exec(
         conn,
         "UPDATE #{identifier(table)} SET __text = concat_ws(#{literal(" | ")}, #{expressions})"
@@ -246,7 +295,10 @@ defmodule Sheaf.Spreadsheet.Materializer do
     with {:ok, result} <- Duckdbex.query(conn, sql) do
       try do
         columns = Duckdbex.columns(result)
-        rows = result |> fetch_limited(limit) |> Enum.map(&row_map(columns, &1))
+
+        rows =
+          result |> fetch_limited(limit) |> Enum.map(&row_map(columns, &1))
+
         {:ok, %{columns: columns, rows: rows}}
       after
         Duckdbex.release(result)
@@ -255,7 +307,9 @@ defmodule Sheaf.Spreadsheet.Materializer do
   end
 
   defp fetch_limited(result, limit), do: fetch_limited(result, limit, [])
-  defp fetch_limited(_result, remaining, rows) when remaining <= 0, do: Enum.reverse(rows)
+
+  defp fetch_limited(_result, remaining, rows) when remaining <= 0,
+    do: Enum.reverse(rows)
 
   defp fetch_limited(result, remaining, rows) do
     case Duckdbex.fetch_chunk(result) do
@@ -264,7 +318,12 @@ defmodule Sheaf.Spreadsheet.Materializer do
 
       chunk ->
         {taken, _rest} = Enum.split(chunk, remaining)
-        fetch_limited(result, remaining - length(taken), Enum.reverse(taken) ++ rows)
+
+        fetch_limited(
+          result,
+          remaining - length(taken),
+          Enum.reverse(taken) ++ rows
+        )
     end
   end
 
@@ -289,7 +348,9 @@ defmodule Sheaf.Spreadsheet.Materializer do
   defp xlsx_sheet_names(path) do
     with {:ok, entries} <- :zip.extract(String.to_charlist(path), [:memory]),
          {_, bytes} <-
-           Enum.find(entries, fn {name, _bytes} -> List.to_string(name) == "xl/workbook.xml" end),
+           Enum.find(entries, fn {name, _bytes} ->
+             List.to_string(name) == "xl/workbook.xml"
+           end),
          {:ok, doc} <- parse_xml(bytes) do
       doc
       |> elements("sheet")

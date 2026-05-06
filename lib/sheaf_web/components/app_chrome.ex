@@ -51,7 +51,11 @@ defmodule SheafWeb.AppChrome do
           {render_slot(@inner_block)}
         </div>
 
-        <div :if={!@breadcrumb_id && @inner_block == []} class="hidden min-w-0 flex-1 sm:block"></div>
+        <div
+          :if={!@breadcrumb_id && @inner_block == []}
+          class="hidden min-w-0 flex-1 sm:block"
+        >
+        </div>
 
         <.link
           :if={@search?}

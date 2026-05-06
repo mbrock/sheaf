@@ -15,13 +15,15 @@ defmodule Sheaf.TextUnits do
   def fetch_rows(opts \\ []) do
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
 
-    with {:ok, dataset} <- fetch_dataset(kinds) do
+    with {:ok, dataset} <- fetch_text_dataset(kinds) do
       {:ok, rows(dataset, Keyword.put(opts, :kinds, kinds))}
     end
   end
 
   def rows(dataset, opts \\ []) do
-    kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap() |> MapSet.new()
+    kinds =
+      opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap() |> MapSet.new()
+
     excluded = excluded_documents(dataset)
 
     dataset
@@ -30,7 +32,7 @@ defmodule Sheaf.TextUnits do
     |> Enum.flat_map(&graph_rows(&1, kinds))
   end
 
-  defp fetch_dataset(kinds) do
+  defp fetch_text_dataset(kinds) do
     kinds = MapSet.new(kinds)
 
     patterns =
@@ -52,8 +54,10 @@ defmodule Sheaf.TextUnits do
         end ++
         if MapSet.member?(kinds, "note") do
           [
-            {nil, RDF.type(), RDF.iri(AS.Note), RDF.iri(Sheaf.Workspace.graph())},
-            {nil, RDF.type(), RDF.iri(DOC.ResearchNote), RDF.iri(Sheaf.Workspace.graph())},
+            {nil, RDF.type(), RDF.iri(AS.Note),
+             RDF.iri(Sheaf.Workspace.graph())},
+            {nil, RDF.type(), RDF.iri(DOC.ResearchNote),
+             RDF.iri(Sheaf.Workspace.graph())},
             {nil, AS.content(), nil, RDF.iri(Sheaf.Workspace.graph())},
             {nil, AS.context(), nil, RDF.iri(Sheaf.Workspace.graph())},
             {nil, AS.published(), nil, RDF.iri(Sheaf.Workspace.graph())},
@@ -118,7 +122,9 @@ defmodule Sheaf.TextUnits do
                   "kind" => RDF.literal("note"),
                   "text" => text,
                   "doc" => iri,
-                  "docTitle" => first(index, iri, RDFS.label()) || RDF.literal("Research note")
+                  "docTitle" =>
+                    first(index, iri, RDFS.label()) ||
+                      RDF.literal("Research note")
                 }
               ]
           end
@@ -152,8 +158,10 @@ defmodule Sheaf.TextUnits do
       {iri, ^source_html_predicate, text} ->
         source_block_type = first(index, iri, DOC.sourceBlockType())
 
-        if MapSet.member?(kinds, "sourceHtml") and active?(active_subjects, iri) and
-             source_block_type in [nil, RDF.literal("Text")] and not source_html_noise?(text) do
+        if MapSet.member?(kinds, "sourceHtml") and
+             active?(active_subjects, iri) and
+             source_block_type in [nil, RDF.literal("Text")] and
+             not source_html_noise?(text) do
           [
             %{
               "iri" => iri,
@@ -164,8 +172,10 @@ defmodule Sheaf.TextUnits do
               "sourcePage" => first(index, iri, DOC.sourcePage()),
               "sourceBlockType" => source_block_type,
               "spreadsheetRow" => first(index, iri, DOC.spreadsheetRow()),
-              "spreadsheetSource" => first(index, iri, DOC.spreadsheetSource()),
-              "codeCategoryTitle" => first(index, iri, DOC.codeCategoryTitle())
+              "spreadsheetSource" =>
+                first(index, iri, DOC.spreadsheetSource()),
+              "codeCategoryTitle" =>
+                first(index, iri, DOC.codeCategoryTitle())
             }
           ]
         else
@@ -173,7 +183,8 @@ defmodule Sheaf.TextUnits do
         end
 
       {iri, ^text_predicate, text} ->
-        if MapSet.member?(kinds, "row") and active?(active_subjects, iri) and row?(index, iri) do
+        if MapSet.member?(kinds, "row") and active?(active_subjects, iri) and
+             row?(index, iri) do
           [
             %{
               "iri" => iri,
@@ -182,8 +193,10 @@ defmodule Sheaf.TextUnits do
               "doc" => graph.name,
               "docTitle" => doc_title,
               "spreadsheetRow" => first(index, iri, DOC.spreadsheetRow()),
-              "spreadsheetSource" => first(index, iri, DOC.spreadsheetSource()),
-              "codeCategoryTitle" => first(index, iri, DOC.codeCategoryTitle())
+              "spreadsheetSource" =>
+                first(index, iri, DOC.spreadsheetSource()),
+              "codeCategoryTitle" =>
+                first(index, iri, DOC.codeCategoryTitle())
             }
           ]
         else
@@ -207,7 +220,8 @@ defmodule Sheaf.TextUnits do
     |> List.first()
   end
 
-  defp present?(index, subject, predicate), do: Map.has_key?(index, {subject, predicate})
+  defp present?(index, subject, predicate),
+    do: Map.has_key?(index, {subject, predicate})
 
   defp active_subjects(%Graph{name: nil}, _index), do: nil
 
@@ -251,11 +265,15 @@ defmodule Sheaf.TextUnits do
 
   defp row?(index, iri) do
     present?(index, iri, DOC.spreadsheetRow()) or
-      index |> Map.get({iri, RDF.type()}, []) |> Enum.member?(RDF.iri(DOC.Row))
+      index
+      |> Map.get({iri, RDF.type()}, [])
+      |> Enum.member?(RDF.iri(DOC.Row))
   end
 
   defp excluded_documents(dataset) do
-    workspace = RDF.Dataset.graph(dataset, Sheaf.Workspace.graph()) || Graph.new()
+    workspace =
+      RDF.Dataset.graph(dataset, Sheaf.Workspace.graph()) || Graph.new()
+
     excludes_document = DOC.excludesDocument()
 
     workspace
@@ -271,7 +289,8 @@ defmodule Sheaf.TextUnits do
     text = term_value(term)
 
     is_binary(text) and
-      (String.contains?(text, ";base64,") or String.contains?(text, "data:image/"))
+      (String.contains?(text, ";base64,") or
+         String.contains?(text, "data:image/"))
   end
 
   defp term_value(nil), do: nil

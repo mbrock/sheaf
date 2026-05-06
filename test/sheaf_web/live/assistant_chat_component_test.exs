@@ -101,7 +101,10 @@ defmodule SheafWeb.AssistantChatComponentTest do
         variant: :full_page,
         chat: %{messages: [], pending: false, titles: %{}},
         selected_chat_id: "CHAT01",
-        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        form:
+          Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"},
+            as: :chat
+          ),
         mode: "quick",
         model_provider: "claude",
         myself: %Phoenix.LiveComponent.CID{cid: 1}
@@ -119,13 +122,22 @@ defmodule SheafWeb.AssistantChatComponentTest do
         id: "assistant-conversation-CHAT01",
         variant: :full_page,
         chat: %{
-          messages: [%{role: :assistant, text: "A complete sentence. ", streaming?: true}],
+          messages: [
+            %{
+              role: :assistant,
+              text: "A complete sentence. ",
+              streaming?: true
+            }
+          ],
           pending: true,
           status_line: "Writing",
           titles: %{}
         },
         selected_chat_id: "CHAT01",
-        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        form:
+          Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"},
+            as: :chat
+          ),
         mode: "quick",
         model_provider: "claude",
         myself: %Phoenix.LiveComponent.CID{cid: 1}
@@ -161,7 +173,10 @@ defmodule SheafWeb.AssistantChatComponentTest do
           titles: %{}
         },
         selected_chat_id: "CHAT01",
-        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        form:
+          Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"},
+            as: :chat
+          ),
         mode: "quick",
         model_provider: "claude",
         myself: %Phoenix.LiveComponent.CID{cid: 1}
@@ -213,7 +228,10 @@ defmodule SheafWeb.AssistantChatComponentTest do
           titles: %{}
         },
         selected_chat_id: "CHAT01",
-        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        form:
+          Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"},
+            as: :chat
+          ),
         mode: "quick",
         model_provider: "claude",
         myself: %Phoenix.LiveComponent.CID{cid: 1}
@@ -257,7 +275,10 @@ defmodule SheafWeb.AssistantChatComponentTest do
           titles: %{}
         },
         selected_chat_id: "CHAT01",
-        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        form:
+          Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"},
+            as: :chat
+          ),
         mode: "quick",
         model_provider: "claude",
         myself: %Phoenix.LiveComponent.CID{cid: 1}
@@ -278,7 +299,9 @@ defmodule SheafWeb.AssistantChatComponentTest do
       row_count: 42,
       offset: 5,
       limit: 25,
-      column_specs: [%{name: "buyer_type", label: "Buyer type", type: "text", unit: nil}]
+      column_specs: [
+        %{name: "buyer_type", label: "Buyer type", type: "text", unit: nil}
+      ]
     }
 
     html =
@@ -300,7 +323,10 @@ defmodule SheafWeb.AssistantChatComponentTest do
           titles: %{}
         },
         selected_chat_id: "CHAT01",
-        form: Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"}, as: :chat),
+        form:
+          Phoenix.Component.to_form(%{"message" => "", "mode" => "quick"},
+            as: :chat
+          ),
         mode: "quick",
         model_provider: "claude",
         myself: %Phoenix.LiveComponent.CID{cid: 1}
@@ -327,7 +353,11 @@ defmodule SheafWeb.AssistantChatComponentTest do
         selected_id: "PL9BXR",
         form:
           Phoenix.Component.to_form(
-            %{"message" => "", "mode" => "quick", "model_provider" => "claude"},
+            %{
+              "message" => "",
+              "mode" => "quick",
+              "model_provider" => "claude"
+            },
             as: :chat
           ),
         mode: "quick",

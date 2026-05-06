@@ -66,7 +66,10 @@ defmodule SheafWeb.BlockPreviewComponent do
                 <span :if={preview_year(@preview)} class="shrink-0 tabular-nums">
                   {preview_year(@preview)}
                 </span>
-                <span :if={preview_authors(@preview) != []} class="min-w-0 truncate">
+                <span
+                  :if={preview_authors(@preview) != []}
+                  class="min-w-0 truncate"
+                >
                   {Enum.join(preview_authors(@preview), ", ")}
                 </span>
                 <a
@@ -147,7 +150,8 @@ defmodule SheafWeb.BlockPreviewComponent do
     if present?(title), do: title
   end
 
-  defp preview_section_number(preview), do: Map.get(preview, :section_number) |> blank_to_nil()
+  defp preview_section_number(preview),
+    do: Map.get(preview, :section_number) |> blank_to_nil()
 
   defp preview_document(preview) do
     case Map.get(preview, :document) do
@@ -156,7 +160,8 @@ defmodule SheafWeb.BlockPreviewComponent do
     end
   end
 
-  defp preview_kind(preview), do: Map.get(preview, :document_kind) |> blank_to_nil()
+  defp preview_kind(preview),
+    do: Map.get(preview, :document_kind) |> blank_to_nil()
 
   defp preview_year(preview) do
     case Map.get(preview, :document_year) do

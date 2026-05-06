@@ -72,7 +72,8 @@ defmodule Datalab.Document do
 
   defp build_tree(blocks) do
     {sections, children_by_parent} =
-      Enum.reduce(blocks, {%{}, %{}}, fn block, {sections, children_by_parent} ->
+      Enum.reduce(blocks, {%{}, %{}}, fn block,
+                                         {sections, children_by_parent} ->
         case heading_level(block) do
           nil ->
             node = block_node(block)
@@ -84,7 +85,8 @@ defmodule Datalab.Document do
             node = section_node(block, level)
             parent_id = parent_section_id(block, {:section, level})
 
-            {Map.put(sections, node.id, true), append_child(children_by_parent, parent_id, node)}
+            {Map.put(sections, node.id, true),
+             append_child(children_by_parent, parent_id, node)}
         end
       end)
 
@@ -95,7 +97,9 @@ defmodule Datalab.Document do
       |> Enum.reject(fn {parent_id, _children} ->
         is_nil(parent_id) or Map.has_key?(sections, parent_id)
       end)
-      |> Enum.flat_map(fn {_parent_id, children} -> Enum.reverse(children) end)
+      |> Enum.flat_map(fn {_parent_id, children} ->
+        Enum.reverse(children)
+      end)
 
     Enum.map(roots ++ orphans, &attach_children(&1, children_by_parent))
   end
@@ -179,7 +183,8 @@ defmodule Datalab.Document do
 
   defp heading_level(_block), do: nil
 
-  defp block_id(block), do: Map.get(block, "id") || Map.fetch!(block, "_reader_source_id")
+  defp block_id(block),
+    do: Map.get(block, "id") || Map.fetch!(block, "_reader_source_id")
 
   defp dom_id(id) do
     id

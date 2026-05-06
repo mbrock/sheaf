@@ -36,7 +36,9 @@ http_port = String.to_integer(System.get_env("PORT", "4000"))
 ontology_base =
   System.get_env("SHEAF_ONTOLOGY_BASE", "https://less.rest/sheaf/")
   |> String.trim()
-  |> then(fn value -> if String.ends_with?(value, "/"), do: value, else: value <> "/" end)
+  |> then(fn value ->
+    if String.ends_with?(value, "/"), do: value, else: value <> "/"
+  end)
 
 resource_base =
   System.get_env("SHEAF_RESOURCE_BASE") ||
@@ -49,7 +51,9 @@ resource_base =
 resource_base =
   resource_base
   |> String.trim()
-  |> then(fn value -> if String.ends_with?(value, "/"), do: value, else: value <> "/" end)
+  |> then(fn value ->
+    if String.ends_with?(value, "/"), do: value, else: value <> "/"
+  end)
 
 gemini_api_key =
   ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
@@ -74,9 +78,14 @@ config :sheaf, Sheaf.Embedding,
       "SHEAF_GEMINI_EMBEDDING_BASE_URL",
       "https://generativelanguage.googleapis.com/v1beta"
     ),
-  openai_base_url: System.get_env("SHEAF_OPENAI_EMBEDDING_BASE_URL", "https://api.openai.com/v1"),
+  openai_base_url:
+    System.get_env(
+      "SHEAF_OPENAI_EMBEDDING_BASE_URL",
+      "https://api.openai.com/v1"
+    ),
   model: System.get_env("SHEAF_GEMINI_EMBEDDING_MODEL", "gemini-embedding-2"),
-  openai_model: System.get_env("SHEAF_OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
+  openai_model:
+    System.get_env("SHEAF_OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
 
 config :sheaf, Sheaf.Embedding.Store,
   path: System.get_env("SHEAF_EMBEDDINGS_DB", "var/sheaf-embeddings.sqlite3")
@@ -94,7 +103,27 @@ config :sheaf, Sheaf.Spreadsheets,
 config :sheaf, Sheaf.GoogleDocsImporter,
   source_url: System.get_env("SHEAF_GOOGLE_DOCS_SOURCE_URL")
 
-config :sheaf, Sheaf.Repo, path: System.get_env("SHEAF_QUADLOG_DB", "var/sheaf-quadlog.sqlite3")
+config :sheaf, Sheaf.Repo,
+  path: System.get_env("SHEAF_QUADLOG_DB", "var/sheaf-quadlog.sqlite3")
+
+config :sheaf, Sheaf.Expert,
+  enabled:
+    (if config_env() == :test do
+       System.get_env("SHEAF_EXPERT_TEST_ENABLED", "")
+     else
+       System.get_env(
+         "SHEAF_EXPERT_ENABLED",
+         System.get_env("SHEAF_EXPERT_BRIDGE_ENABLED", "")
+       )
+     end)
+    |> String.downcase()
+    |> String.trim()
+    |> then(&(&1 in ~w(1 true yes on))),
+  root:
+    System.get_env(
+      "SHEAF_EXPERT_ROOT",
+      System.get_env("SHEAF_EXPERT_BRIDGE_ROOT", File.cwd!())
+    )
 
 anthropic_api_key = System.get_env("ANTHROPIC_API_KEY")
 
@@ -105,21 +134,11 @@ end
 config :sheaf, SheafWeb.Endpoint, http: [ip: http_ip, port: http_port]
 config :sheaf, :resource_base, resource_base
 
-config :sheaf_rdf_browser, SheafRDFBrowser.Snapshot,
-  dataset: {Sheaf, :fetch_dataset, []},
-  load_on_start:
-    System.get_env("SHEAF_RDF_BROWSER_LOAD_ON_START", "true")
-    |> String.downcase()
-    |> Kernel.in(["1", "true", "yes", "on"]),
-  refresh_max_concurrency:
-    System.get_env("SHEAF_RDF_BROWSER_REFRESH_MAX_CONCURRENCY", "2")
-    |> String.to_integer(),
-  pubsub: Sheaf.PubSub
-
 config :sheaf, Datalab,
   api_key: System.get_env("DATALAB_API_KEY"),
   pipeline_id: System.get_env("DATALAB_PIPELINE_ID", "pl_QWhrjJhpUUoo"),
-  base_url: System.get_env("DATALAB_BASE_URL", "https://www.datalab.to/api/v1")
+  base_url:
+    System.get_env("DATALAB_BASE_URL", "https://www.datalab.to/api/v1")
 
 # OpenTelemetry is opt-in: it only turns on when `SHEAF_OTEL_REDIS_URL` is set
 # in the environment. When enabled, every ended span is shipped to a Redis
@@ -146,7 +165,9 @@ otel_force_disabled? =
   otel_truthy.(System.get_env("OTEL_SDK_DISABLED")) or
     otel_truthy.(System.get_env("SHEAF_OTEL_DISABLED"))
 
-otel_enabled? = config_env() != :test and is_binary(otel_redis_url) and not otel_force_disabled?
+otel_enabled? =
+  config_env() != :test and is_binary(otel_redis_url) and
+    not otel_force_disabled?
 
 if otel_enabled? do
   otel_service_name =
@@ -178,7 +199,10 @@ if otel_enabled? do
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
 
   config :opentelemetry, resource: otel_resource_attributes
-  config :opentelemetry, :processors, [{Sheaf.Tracing.RedisSinkProcessor, %{}}]
+
+  config :opentelemetry, :processors, [
+    {Sheaf.Tracing.RedisSinkProcessor, %{}}
+  ]
 
   # Per-instance stream so a shared Redis on a single host (e.g. staging and
   # production both writing to localhost:6379) doesn't have one instance evict

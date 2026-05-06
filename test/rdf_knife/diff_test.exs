@@ -75,7 +75,12 @@ defmodule RDFKnife.DiffTest do
   test "dry-run apply returns summary and update text without calling an update target" do
     diff = Jason.encode!(@patch) |> Diff.read_string() |> elem(1)
 
-    assert {:ok, %{applied?: false, summary: %{positive: 2, negative: 1}, sparql: sparql}} =
+    assert {:ok,
+            %{
+              applied?: false,
+              summary: %{positive: 2, negative: 1},
+              sparql: sparql
+            }} =
              Diff.apply(diff, dry_run: true)
 
     assert sparql =~ "DELETE DATA"

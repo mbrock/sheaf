@@ -35,9 +35,18 @@ defmodule Sheaf.Assistant.ContextStore do
 
       with {:ok, existing_indices} <- existing_indices(context_iri, opts),
            %Graph{} = graph <-
-             build_append_graph(context_iri, session_iri, context, existing_indices),
+             build_append_graph(
+               context_iri,
+               session_iri,
+               context,
+               existing_indices
+             ),
            :ok <- persist(graph, opts) do
-        Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(graph))
+        Tracer.set_attribute(
+          "sheaf.statement_count",
+          RDF.Data.statement_count(graph)
+        )
+
         :ok
       end
     end
@@ -58,8 +67,16 @@ defmodule Sheaf.Assistant.ContextStore do
 
       with {:ok, graph} <- context_graph(opts),
            messages when messages != [] <- graph_messages(graph, context_iri) do
-        Tracer.set_attribute("sheaf.llm_context.message_count", length(messages))
-        payload = %{"messages" => Enum.map(messages, & &1.payload), "tools" => []}
+        Tracer.set_attribute(
+          "sheaf.llm_context.message_count",
+          length(messages)
+        )
+
+        payload = %{
+          "messages" => Enum.map(messages, & &1.payload),
+          "tools" => []
+        }
+
         ContextCodec.decode_context(payload)
       else
         [] -> {:error, :not_found}
@@ -77,34 +94,49 @@ defmodule Sheaf.Assistant.ContextStore do
     |> RDF.iri()
   end
 
-  defp build_append_graph(context_iri, session_iri, %Context{} = context, existing_indices) do
+  defp build_append_graph(
+         context_iri,
+         session_iri,
+         %Context{} = context,
+         existing_indices
+       ) do
     context_graph = RDF.iri(@graph)
     session_iri = normalize_iri!(session_iri)
 
     messages =
       context.messages
       |> Enum.with_index()
-      |> Enum.reject(fn {_message, index} -> MapSet.member?(existing_indices, index) end)
+      |> Enum.reject(fn {_message, index} ->
+        MapSet.member?(existing_indices, index)
+      end)
 
     if messages == [] do
       Graph.new(name: context_graph)
     else
       messages
-      |> Enum.reduce(context_base_graph(context_graph, context_iri, session_iri, context), fn
-        {message, index}, graph ->
-          message_node = RDF.bnode()
-          payload = ContextCodec.encode_message(message)
+      |> Enum.reduce(
+        context_base_graph(context_graph, context_iri, session_iri, context),
+        fn
+          {message, index}, graph ->
+            message_node = RDF.bnode()
+            payload = ContextCodec.encode_message(message)
 
-          graph
-          |> add(context_iri, DOC.hasContextMessage(), message_node)
-          |> add(message_node, RDF.type(), DOC.LLMContextMessage)
-          |> add(message_node, DOC.messageIndex(), index)
-          |> add(message_node, DOC.reqLLMMessage(), RDF.json(payload))
-      end)
+            graph
+            |> add(context_iri, DOC.hasContextMessage(), message_node)
+            |> add(message_node, RDF.type(), DOC.LLMContextMessage)
+            |> add(message_node, DOC.messageIndex(), index)
+            |> add(message_node, DOC.reqLLMMessage(), RDF.json(payload))
+        end
+      )
     end
   end
 
-  defp context_base_graph(context_graph, context_iri, session_iri, %Context{} = context) do
+  defp context_base_graph(
+         context_graph,
+         context_iri,
+         session_iri,
+         %Context{} = context
+       ) do
     Graph.new(name: context_graph)
     |> add(context_iri, RDF.type(), DOC.LLMContext)
     |> add(context_iri, DOC.forAssistantConversation(), session_iri)
@@ -115,8 +147,11 @@ defmodule Sheaf.Assistant.ContextStore do
 
   defp add_tool_schema_list(graph, context_iri, tools) when is_list(tools) do
     case ContextCodec.encode_tool_schemas(tools) do
-      [] -> graph
-      schemas -> add(graph, context_iri, DOC.toolSchemaList(), RDF.json(schemas))
+      [] ->
+        graph
+
+      schemas ->
+        add(graph, context_iri, DOC.toolSchemaList(), RDF.json(schemas))
     end
   end
 
@@ -153,8 +188,10 @@ defmodule Sheaf.Assistant.ContextStore do
 
   defp message_from_description(graph, node) do
     with %Description{} = message <- Graph.description(graph, node),
-         index when is_integer(index) <- first_value(message, DOC.messageIndex()),
-         %RDF.Literal{} = payload <- Description.first(message, DOC.reqLLMMessage()) do
+         index when is_integer(index) <-
+           first_value(message, DOC.messageIndex()),
+         %RDF.Literal{} = payload <-
+           Description.first(message, DOC.reqLLMMessage()) do
       %{index: index, payload: RDF.Term.value(payload)}
     else
       _other -> nil
@@ -173,7 +210,8 @@ defmodule Sheaf.Assistant.ContextStore do
           with :ok <- Sheaf.Repo.load_once({nil, nil, nil, graph_name}) do
             graph =
               Sheaf.Repo.ask(fn dataset ->
-                RDF.Dataset.graph(dataset, graph_name) || Graph.new(name: graph_name)
+                RDF.Dataset.graph(dataset, graph_name) ||
+                  Graph.new(name: graph_name)
               end)
 
             {:ok, graph}

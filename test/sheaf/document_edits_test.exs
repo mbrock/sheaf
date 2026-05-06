@@ -36,7 +36,8 @@ defmodule Sheaf.DocumentEditsTest do
 
     assert :ok = Sheaf.Repo.assert(graph)
 
-    assert {:ok, result} = DocumentEdits.replace_block_text("PART01", "New paragraph.")
+    assert {:ok, result} =
+             DocumentEdits.replace_block_text("PART01", "New paragraph.")
 
     assert result.action == :replace_paragraph_text
     assert result.affected_blocks == ["PART01"]
@@ -45,7 +46,11 @@ defmodule Sheaf.DocumentEditsTest do
     assert {:ok, updated} = Sheaf.fetch_graph(doc)
     assert Document.paragraph_text(updated, block) == "New paragraph."
     assert Document.paragraph_markup(updated, block) == nil
-    assert RDF.Data.include?(updated, {old_revision, PROV.wasInvalidatedBy(), nil})
+
+    assert RDF.Data.include?(
+             updated,
+             {old_revision, PROV.wasInvalidatedBy(), nil}
+           )
   end
 
   test "replaces paragraph markup with sanitized markup and a matching text revision" do
@@ -84,7 +89,11 @@ defmodule Sheaf.DocumentEditsTest do
     assert {:ok, updated} = Sheaf.fetch_graph(doc)
     assert Document.paragraph_markup(updated, block) == result.markup
     assert Document.paragraph_text(updated, block) == "New paragraph bad()."
-    assert RDF.Data.include?(updated, {old_revision, PROV.wasInvalidatedBy(), nil})
+
+    assert RDF.Data.include?(
+             updated,
+             {old_revision, PROV.wasInvalidatedBy(), nil}
+           )
   end
 
   test "changes section headings" do
@@ -103,14 +112,19 @@ defmodule Sheaf.DocumentEditsTest do
 
     assert :ok = Sheaf.Repo.assert(graph)
 
-    assert {:ok, result} = DocumentEdits.replace_block_text("SECS01", "New heading")
+    assert {:ok, result} =
+             DocumentEdits.replace_block_text("SECS01", "New heading")
 
     assert result.action == :change_section_heading
     assert result.previous_text == "Old heading"
 
     assert {:ok, updated} = Sheaf.fetch_graph(doc)
     assert Document.heading(updated, section) == "New heading"
-    refute RDF.Data.include?(updated, {section, RDFS.label(), RDF.literal("Old heading")})
+
+    refute RDF.Data.include?(
+             updated,
+             {section, RDFS.label(), RDF.literal("Old heading")}
+           )
   end
 
   test "moves existing blocks and inserts new paragraph blocks by placement" do
@@ -148,10 +162,17 @@ defmodule Sheaf.DocumentEditsTest do
         name: doc
       )
       |> then(fn graph ->
-        RDF.list([first_section, second_section], graph: graph, head: root_list).graph
+        RDF.list([first_section, second_section],
+          graph: graph,
+          head: root_list
+        ).graph
       end)
-      |> then(fn graph -> RDF.list([first_paragraph], graph: graph, head: first_list).graph end)
-      |> then(fn graph -> RDF.list([second_paragraph], graph: graph, head: second_list).graph end)
+      |> then(fn graph ->
+        RDF.list([first_paragraph], graph: graph, head: first_list).graph
+      end)
+      |> then(fn graph ->
+        RDF.list([second_paragraph], graph: graph, head: second_list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 
@@ -160,16 +181,26 @@ defmodule Sheaf.DocumentEditsTest do
 
     assert {:ok, moved} = Sheaf.fetch_graph(doc)
     assert Document.children(moved, first_section) == []
-    assert Document.children(moved, second_section) == [second_paragraph, first_paragraph]
+
+    assert Document.children(moved, second_section) == [
+             second_paragraph,
+             first_paragraph
+           ]
 
     assert {:ok, insert} =
-             DocumentEdits.insert_paragraph("SEC001", "first_child", "Inserted paragraph.")
+             DocumentEdits.insert_paragraph(
+               "SEC001",
+               "first_child",
+               "Inserted paragraph."
+             )
 
     inserted = Id.iri(insert.block_id)
 
     assert {:ok, inserted_graph} = Sheaf.fetch_graph(doc)
     assert Document.children(inserted_graph, first_section) == [inserted]
-    assert Document.paragraph_text(inserted_graph, inserted) == "Inserted paragraph."
+
+    assert Document.paragraph_text(inserted_graph, inserted) ==
+             "Inserted paragraph."
 
     assert {:ok, delete} = DocumentEdits.delete_block("SEC002")
     assert delete.action == :delete_block
@@ -181,8 +212,20 @@ defmodule Sheaf.DocumentEditsTest do
     assert Document.block_type(deleted_graph, second_section) == nil
     assert Document.block_type(deleted_graph, first_paragraph) == nil
     assert Document.block_type(deleted_graph, second_paragraph) == nil
-    refute RDF.Data.include?(deleted_graph, {first_paragraph, DOC.paragraph(), first_revision})
-    refute RDF.Data.include?(deleted_graph, {first_revision, RDF.type(), DOC.Paragraph})
-    refute RDF.Data.include?(deleted_graph, {second_revision, RDF.type(), DOC.Paragraph})
+
+    refute RDF.Data.include?(
+             deleted_graph,
+             {first_paragraph, DOC.paragraph(), first_revision}
+           )
+
+    refute RDF.Data.include?(
+             deleted_graph,
+             {first_revision, RDF.type(), DOC.Paragraph}
+           )
+
+    refute RDF.Data.include?(
+             deleted_graph,
+             {second_revision, RDF.type(), DOC.Paragraph}
+           )
   end
 end

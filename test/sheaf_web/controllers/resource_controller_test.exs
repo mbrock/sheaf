@@ -7,7 +7,10 @@ defmodule SheafWeb.ResourceControllerTest do
   alias Sheaf.NS.DOC
 
   @tag :tmp_dir
-  test "serves a resolved resource as JSON from /:id", %{conn: conn, tmp_dir: tmp_dir} do
+  test "serves a resolved resource as JSON from /:id", %{
+    conn: conn,
+    tmp_dir: tmp_dir
+  } do
     start_supervised!({Sheaf.Repo, path: Path.join(tmp_dir, "repo.sqlite3")})
 
     document = Id.iri("DOC123")
@@ -26,7 +29,9 @@ defmodule SheafWeb.ResourceControllerTest do
         ],
         name: document
       )
-      |> then(fn graph -> RDF.list([section], graph: graph, head: list).graph end)
+      |> then(fn graph ->
+        RDF.list([section], graph: graph, head: list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 

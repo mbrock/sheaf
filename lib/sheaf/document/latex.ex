@@ -45,7 +45,11 @@ defmodule Sheaf.Document.LaTeX do
     } do
       metadata = Keyword.get(opts, :metadata_graph) || fetch_metadata_graph()
       front_matter = front_matter(metadata, root)
-      title = Keyword.get(opts, :title) || front_matter.title || Document.title(graph, root)
+
+      title =
+        Keyword.get(opts, :title) || front_matter.title ||
+          Document.title(graph, root)
+
       author = Keyword.get(opts, :author) || front_matter.author || ""
 
       body =
@@ -77,7 +81,9 @@ defmodule Sheaf.Document.LaTeX do
   defp front_matter(nil, _root), do: empty_front_matter()
 
   defp front_matter(%Graph{} = metadata, root) do
-    expression = metadata |> Graph.description(root) |> first(FABIO.isRepresentationOf())
+    expression =
+      metadata |> Graph.description(root) |> first(FABIO.isRepresentationOf())
+
     author_names = names(metadata, expression, DCTERMS.creator())
     supervisor_names = names(metadata, expression, DOC.academicSupervisor())
 
@@ -89,9 +95,15 @@ defmodule Sheaf.Document.LaTeX do
           first(metadata, root, RDFS.label()),
       author: Enum.join(author_names, ", "),
       institution:
-        resource_name(metadata, first_resource(metadata, expression, DOC.awardingInstitution())),
+        resource_name(
+          metadata,
+          first_resource(metadata, expression, DOC.awardingInstitution())
+        ),
       academic_unit:
-        resource_name(metadata, first_resource(metadata, expression, DOC.academicUnit())),
+        resource_name(
+          metadata,
+          first_resource(metadata, expression, DOC.academicUnit())
+        ),
       degree_text: first(metadata, expression, DOC.thesisDegreeText()),
       supervisors: supervisor_names,
       place: first(metadata, expression, DOC.submissionPlace()),
@@ -235,7 +247,8 @@ defmodule Sheaf.Document.LaTeX do
   end
 
   defp thesis_front_matter?(front_matter) do
-    not blank?(front_matter.institution) or not blank?(front_matter.academic_unit) or
+    not blank?(front_matter.institution) or
+      not blank?(front_matter.academic_unit) or
       not blank?(front_matter.degree_text) or front_matter.supervisors != [] or
       not blank?(front_matter.declaration)
   end
@@ -295,7 +308,11 @@ defmodule Sheaf.Document.LaTeX do
       "\\vspace{1.5cm}\n",
       place_year(front_matter.place, front_matter.year),
       "\\end{center}\n",
-      declaration_block(author, front_matter.declaration, front_matter.declaration_date),
+      declaration_block(
+        author,
+        front_matter.declaration,
+        front_matter.declaration_date
+      ),
       "\\setcounter{page}{2}\n"
     ]
   end
@@ -341,10 +358,13 @@ defmodule Sheaf.Document.LaTeX do
   defp signature_line("", date),
     do: Enum.reject(["Signature", date], &blank?/1) |> Enum.join(", ")
 
-  defp signature_line(author, date), do: Enum.reject([author, date], &blank?/1) |> Enum.join(" ")
+  defp signature_line(author, date),
+    do: Enum.reject([author, date], &blank?/1) |> Enum.join(" ")
 
   defp optional_line(value, _before, _after) when value in [nil, ""], do: []
-  defp optional_line(value, before, after_), do: [before, latex_escape(value), after_]
+
+  defp optional_line(value, before, after_),
+    do: [before, latex_escape(value), after_]
 
   defp render_blocks(blocks, graph, depth) do
     blocks
@@ -378,7 +398,9 @@ defmodule Sheaf.Document.LaTeX do
   end
 
   defp section_command(depth) do
-    command = Enum.at(@section_commands, min(depth, length(@section_commands) - 1))
+    command =
+      Enum.at(@section_commands, min(depth, length(@section_commands) - 1))
+
     "\\#{command}"
   end
 
@@ -411,7 +433,9 @@ defmodule Sheaf.Document.LaTeX do
     {markup, tokens} = replace_footnote_markers(markup, footnotes)
 
     markup
-    |> then(&Regex.split(~r/<[^>]*>/, &1, include_captures: true, trim: false))
+    |> then(
+      &Regex.split(~r/<[^>]*>/, &1, include_captures: true, trim: false)
+    )
     |> Enum.map_join(&latex_inline_part/1)
     |> restore_tokens(tokens)
   end
@@ -424,7 +448,8 @@ defmodule Sheaf.Document.LaTeX do
 
     Regex.scan(~r/<span data-footnote="([^"]+)">.*?<\/span>/, markup)
     |> Enum.with_index()
-    |> Enum.reduce({markup, %{}}, fn {[match, marker], index}, {text, tokens} ->
+    |> Enum.reduce({markup, %{}}, fn {[match, marker], index},
+                                     {text, tokens} ->
       token = "SHEAF_LATEX_TOKEN_#{index}"
       footnote = Map.get(footnotes_by_marker, marker)
 
@@ -433,7 +458,8 @@ defmodule Sheaf.Document.LaTeX do
           do: render_footnote(footnote),
           else: "\\textsuperscript{#{latex_escape(marker)}}"
 
-      {String.replace(text, match, token, global: false), Map.put(tokens, token, latex)}
+      {String.replace(text, match, token, global: false),
+       Map.put(tokens, token, latex)}
     end)
   end
 

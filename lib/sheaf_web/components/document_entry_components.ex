@@ -12,8 +12,9 @@ defmodule SheafWeb.DocumentEntryComponents do
   def document_entry(assigns) do
     ~H"""
     <div class={[
-      "odd:bg-white bg-stone-100/70",
-      "border-l-4 border-b-1 border-stone-200 first:border-t-1 border-r-1",
+      "odd:bg-white bg-stone-100/70 dark:odd:bg-stone-900 dark:bg-stone-900/60",
+      "border-l-4 border-b-1 border-stone-200 first:border-t-1 border-r-1 dark:border-stone-700",
+      "text-stone-900 dark:text-stone-100",
       @document.excluded? && "opacity-45 grayscale",
       @document.cited? &&
         "border-amber-500 dark:border-amber-300",
@@ -22,7 +23,11 @@ defmodule SheafWeb.DocumentEntryComponents do
       @nested &&
         "border-stone-200 pl-2 dark:border-stone-700"
     ]}>
-      <.document_row document={@document} show_checkbox={@show_checkbox} nested={@nested} />
+      <.document_row
+        document={@document}
+        show_checkbox={@show_checkbox}
+        nested={@nested}
+      />
     </div>
     """
   end
@@ -50,7 +55,10 @@ defmodule SheafWeb.DocumentEntryComponents do
   attr :show_checkbox, :boolean, default: false
   attr :nested, :boolean, default: false
   attr :link_title, :boolean, default: true
-  attr :class, :string, default: "flex min-w-0 items-baseline gap-2 font-sans text-base/5"
+
+  attr :class, :string,
+    default: "flex min-w-0 items-baseline gap-2 font-sans text-base/5"
+
   attr :title_class, :string, default: "min-w-0 flex-1 truncate"
   attr :show_status_pills, :boolean, default: true
 
@@ -133,11 +141,15 @@ defmodule SheafWeb.DocumentEntryComponents do
   attr :status_class, :string, default: "shrink-0 font-micro"
 
   attr :authors_class, :string,
-    default: "min-w-0 font-serif flex-1 truncate text-stone-600 dark:text-stone-300"
+    default:
+      "min-w-0 font-serif flex-1 truncate text-stone-600 dark:text-stone-300"
 
   def document_metadata_lines(assigns) do
     ~H"""
-    <div :if={subline?(@document, @show_id, @show_kind, @show_status)} class={@subline_class}>
+    <div
+      :if={subline?(@document, @show_id, @show_kind, @show_status)}
+      class={@subline_class}
+    >
       <span :if={@show_id && id_str(@document) != ""} class={@id_class}>
         #{id_str(@document)}
       </span>
@@ -169,7 +181,9 @@ defmodule SheafWeb.DocumentEntryComponents do
       <span :if={@show_publisher && publisher_str(@document)} class="shrink-0">
         {publisher_str(@document)}
       </span>
-      <span :if={pages_str(@document)} class="shrink-0">{pages_str(@document)}</span>
+      <span :if={pages_str(@document)} class="shrink-0">
+        {pages_str(@document)}
+      </span>
     </div>
     """
   end
@@ -220,7 +234,10 @@ defmodule SheafWeb.DocumentEntryComponents do
           title="Open page"
           aria-label="Open page"
         >
-          <.icon name="hero-arrow-top-right-on-square-mini" class="size-[0.9em] align-[-0.08em]" />
+          <.icon
+            name="hero-arrow-top-right-on-square-mini"
+            class="size-[0.9em] align-[-0.08em]"
+          />
         </a>
       </div>
       <.document_metadata_lines
@@ -235,15 +252,22 @@ defmodule SheafWeb.DocumentEntryComponents do
     """
   end
 
-  defp checkbox_visible?(document), do: excludable?(document) or !has_document?(document)
+  defp checkbox_visible?(document),
+    do: excludable?(document) or !has_document?(document)
 
-  defp checkbox_checked?(document), do: excludable?(document) and !document.excluded?
+  defp checkbox_checked?(document),
+    do: excludable?(document) and !document.excluded?
 
   defp checkbox_label(document) do
     cond do
-      !has_document?(document) -> "Metadata-only entry cannot be excluded from workspace"
-      document.excluded? -> "Include in workspace"
-      true -> "Exclude from workspace"
+      !has_document?(document) ->
+        "Metadata-only entry cannot be excluded from workspace"
+
+      document.excluded? ->
+        "Include in workspace"
+
+      true ->
+        "Exclude from workspace"
     end
   end
 
@@ -260,8 +284,10 @@ defmodule SheafWeb.DocumentEntryComponents do
     do: Map.get(document, :workspace_owner_authored?, false)
 
   defp subline?(document, show_id, show_kind, show_status) do
-    authors_str(document) != nil or year_str(document) != "" or page_count_str(document) != "" or
-      (show_id && id_str(document) != "") or (show_kind && kind_str(document) != "") or
+    authors_str(document) != nil or year_str(document) != "" or
+      page_count_str(document) != "" or
+      (show_id && id_str(document) != "") or
+      (show_kind && kind_str(document) != "") or
       (show_status && status_str(document) != nil)
   end
 
@@ -322,7 +348,8 @@ defmodule SheafWeb.DocumentEntryComponents do
     end
   end
 
-  defp status_str(document), do: document |> Map.get(:metadata, %{}) |> Map.get(:status)
+  defp status_str(document),
+    do: document |> Map.get(:metadata, %{}) |> Map.get(:status)
 
   defp chapter_metadata?(document), do: chapter_venue(document) != nil
 
@@ -332,7 +359,8 @@ defmodule SheafWeb.DocumentEntryComponents do
 
   defp chapter_venue(_document), do: nil
 
-  defp publisher_str(document), do: document |> Map.get(:metadata, %{}) |> Map.get(:publisher)
+  defp publisher_str(document),
+    do: document |> Map.get(:metadata, %{}) |> Map.get(:publisher)
 
   defp pages_str(document) do
     case document |> Map.get(:metadata, %{}) |> Map.get(:pages) do

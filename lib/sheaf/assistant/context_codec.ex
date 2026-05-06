@@ -35,7 +35,9 @@ defmodule Sheaf.Assistant.ContextCodec do
     Sheaf.Assistant.ToolResults.ParagraphTags
   ]
 
-  @known_structs Map.new(@tool_result_modules, fn module -> {Atom.to_string(module), module} end)
+  @known_structs Map.new(@tool_result_modules, fn module ->
+                   {Atom.to_string(module), module}
+                 end)
 
   @doc """
   Converts a ReqLLM context to a JSON-compatible map.
@@ -85,7 +87,8 @@ defmodule Sheaf.Assistant.ContextCodec do
       "tool_call_id" => message.tool_call_id,
       "tool_calls" => encode_tool_calls(message.tool_calls),
       "metadata" => encode_value(message.metadata || %{}),
-      "reasoning_details" => encode_reasoning_details(message.reasoning_details)
+      "reasoning_details" =>
+        encode_reasoning_details(message.reasoning_details)
     }
   end
 
@@ -95,12 +98,14 @@ defmodule Sheaf.Assistant.ContextCodec do
   def decode_message(%{} = payload) do
     %Message{
       role: decode_role(Map.get(payload, "role")),
-      content: payload |> Map.get("content", []) |> Enum.map(&decode_content_part/1),
+      content:
+        payload |> Map.get("content", []) |> Enum.map(&decode_content_part/1),
       name: Map.get(payload, "name"),
       tool_call_id: Map.get(payload, "tool_call_id"),
       tool_calls: decode_tool_calls(Map.get(payload, "tool_calls")),
       metadata: payload |> Map.get("metadata", %{}) |> decode_value(),
-      reasoning_details: decode_reasoning_details(Map.get(payload, "reasoning_details"))
+      reasoning_details:
+        decode_reasoning_details(Map.get(payload, "reasoning_details"))
     }
   end
 
@@ -129,7 +134,9 @@ defmodule Sheaf.Assistant.ContextCodec do
   end
 
   defp encode_tool_calls(nil), do: nil
-  defp encode_tool_calls(tool_calls), do: Enum.map(tool_calls, &encode_tool_call/1)
+
+  defp encode_tool_calls(tool_calls),
+    do: Enum.map(tool_calls, &encode_tool_call/1)
 
   defp encode_tool_call(%ToolCall{} = tool_call) do
     %{
@@ -158,16 +165,20 @@ defmodule Sheaf.Assistant.ContextCodec do
 
   defp encode_reasoning_details(nil), do: nil
 
-  defp encode_reasoning_details(reasoning_details) when is_list(reasoning_details) do
+  defp encode_reasoning_details(reasoning_details)
+       when is_list(reasoning_details) do
     Enum.map(reasoning_details, &encode_value/1)
   end
 
   defp decode_reasoning_details(nil), do: nil
 
-  defp decode_reasoning_details(reasoning_details) when is_list(reasoning_details) do
+  defp decode_reasoning_details(reasoning_details)
+       when is_list(reasoning_details) do
     Enum.map(reasoning_details, fn
       %{"__struct__" => "Elixir.ReqLLM.Message.ReasoningDetails"} = payload ->
-        payload |> decode_struct_payload() |> then(&struct(ReasoningDetails, &1))
+        payload
+        |> decode_struct_payload()
+        |> then(&struct(ReasoningDetails, &1))
 
       %{} = payload ->
         %ReasoningDetails{
@@ -216,7 +227,9 @@ defmodule Sheaf.Assistant.ContextCodec do
 
   defp encode_value(list) when is_list(list) do
     if Keyword.keyword?(list) do
-      Map.new(list, fn {key, value} -> {encode_key(key), encode_value(value)} end)
+      Map.new(list, fn {key, value} ->
+        {encode_key(key), encode_value(value)}
+      end)
     else
       Enum.map(list, &encode_value/1)
     end
@@ -262,10 +275,14 @@ defmodule Sheaf.Assistant.ContextCodec do
   defp decode_value(%{} = map),
     do: Map.new(map, fn {key, value} -> {key, decode_value(value)} end)
 
-  defp decode_value(list) when is_list(list), do: Enum.map(list, &decode_value/1)
+  defp decode_value(list) when is_list(list),
+    do: Enum.map(list, &decode_value/1)
+
   defp decode_value(value), do: value
 
-  defp decode_struct_payload(%{"fields" => fields}) when is_map(fields), do: decode_value(fields)
+  defp decode_struct_payload(%{"fields" => fields}) when is_map(fields),
+    do: decode_value(fields)
+
   defp decode_struct_payload(_payload), do: %{}
 
   defp atomize_known_keys(module, fields) when is_map(fields) do

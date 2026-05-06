@@ -2,7 +2,6 @@
 @source "../css";
 @source "../js";
 @source "../../lib/sheaf_web";
-@source "../../apps/sheaf_rdf_browser/lib";
 @plugin "../vendor/heroicons";
 @plugin "../vendor/daisyui" {
   themes: false;

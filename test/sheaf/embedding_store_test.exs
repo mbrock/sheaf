@@ -118,7 +118,13 @@ defmodule Sheaf.Embedding.StoreTest do
     assert {:ok, 2} = Store.sync_vector_index(conn, "gemini-embedding-2", 3)
 
     assert {:ok, [first, second]} =
-             Store.search_vectors(conn, [1.0, 0.0, 0.0], "gemini-embedding-2", 3, 2)
+             Store.search_vectors(
+               conn,
+               [1.0, 0.0, 0.0],
+               "gemini-embedding-2",
+               3,
+               2
+             )
 
     assert first.iri == "https://sheaf.less.rest/BLOCK3"
     assert first.score > second.score
@@ -183,7 +189,13 @@ defmodule Sheaf.Embedding.StoreTest do
              )
 
     assert {:ok, [hit]} =
-             Store.search_vectors(conn, [1.0, 0.0, 0.0], "gemini-embedding-2", 3, 1)
+             Store.search_vectors(
+               conn,
+               [1.0, 0.0, 0.0],
+               "gemini-embedding-2",
+               3,
+               1
+             )
 
     assert hit.iri == block
     assert hit.run_iri == "https://sheaf.less.rest/RUN-NEW"

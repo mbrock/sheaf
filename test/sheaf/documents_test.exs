@@ -45,7 +45,12 @@ defmodule Sheaf.DocumentsTest do
     ]
 
     assert [
-             %{id: "THESIS", kind: :thesis, path: "/THESIS", title: "Example Thesis"},
+             %{
+               id: "THESIS",
+               kind: :thesis,
+               path: "/THESIS",
+               title: "Example Thesis"
+             },
              %{
                id: "PAPER1",
                kind: :paper,
@@ -67,7 +72,10 @@ defmodule Sheaf.DocumentsTest do
              }
            ] = Documents.from_rows(rows)
 
-    refute Enum.any?(Documents.from_rows(rows, include_excluded: false), &(&1.id == "PAPER1"))
+    refute Enum.any?(
+             Documents.from_rows(rows, include_excluded: false),
+             &(&1.id == "PAPER1")
+           )
   end
 
   test "prefers specific document kinds over generic document rows" do
@@ -101,7 +109,14 @@ defmodule Sheaf.DocumentsTest do
   end
 
   test "falls back to the short id for untitled documents" do
-    assert [%{title: "UNTITLED", kind: :document, metadata: %{}, path: "/UNTITLED"}] =
+    assert [
+             %{
+               title: "UNTITLED",
+               kind: :document,
+               metadata: %{},
+               path: "/UNTITLED"
+             }
+           ] =
              Documents.from_rows([
                %{"doc" => ~I<https://example.com/sheaf/UNTITLED>}
              ])
@@ -292,7 +307,8 @@ defmodule Sheaf.DocumentsTest do
                title: "Article title",
                year: "2020"
              }
-           } = Enum.find(Documents.from_dataset(dataset), &(&1.id == "PAPER1"))
+           } =
+             Enum.find(Documents.from_dataset(dataset), &(&1.id == "PAPER1"))
   end
 
   test "ignores citations from excluded thesis documents when creating metadata-only rows" do

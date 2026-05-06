@@ -35,8 +35,16 @@ defmodule Sheaf.BlockTagsTest do
 
     assert_receive {:persist, graph}
     assert graph.name == RDF.iri(Sheaf.Workspace.graph())
-    assert RDF.Data.include?(graph, {block, AS.tag(), RDF.iri(DOC.NeedsEvidenceTag)})
-    assert RDF.Data.include?(graph, {block, AS.tag(), RDF.iri(DOC.FragmentTag)})
+
+    assert RDF.Data.include?(
+             graph,
+             {block, AS.tag(), RDF.iri(DOC.NeedsEvidenceTag)}
+           )
+
+    assert RDF.Data.include?(
+             graph,
+             {block, AS.tag(), RDF.iri(DOC.FragmentTag)}
+           )
   end
 
   test "returns tags for reachable paragraph blocks in document order" do
@@ -56,8 +64,12 @@ defmodule Sheaf.BlockTagsTest do
         {paragraph, RDF.type(), DOC.ParagraphBlock},
         {other_paragraph, RDF.type(), DOC.ParagraphBlock}
       ])
-      |> then(fn graph -> RDF.list([section], graph: graph, head: root_list).graph end)
-      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: section_list).graph end)
+      |> then(fn graph ->
+        RDF.list([section], graph: graph, head: root_list).graph
+      end)
+      |> then(fn graph ->
+        RDF.list([paragraph], graph: graph, head: section_list).graph
+      end)
 
     workspace =
       Graph.new(
@@ -75,7 +87,10 @@ defmodule Sheaf.BlockTagsTest do
                 %{name: "needs_evidence", label: "needs evidence"},
                 %{name: "fragment", label: "fragment"}
               ]
-            }} = BlockTags.for_document(graph, document, workspace_graph: workspace)
+            }} =
+             BlockTags.for_document(graph, document,
+               workspace_graph: workspace
+             )
   end
 
   test "toggles a writing tag on when it is absent" do
@@ -106,7 +121,11 @@ defmodule Sheaf.BlockTagsTest do
 
     assert_receive {:transact, [{:assert, graph}], metadata}
     assert {"sheaf.change", "toggle writing tag"} in metadata
-    assert RDF.Data.include?(graph, {block, AS.tag(), RDF.iri(DOC.FragmentTag)})
+
+    assert RDF.Data.include?(
+             graph,
+             {block, AS.tag(), RDF.iri(DOC.FragmentTag)}
+           )
   end
 
   test "toggles a writing tag off when it is present" do
@@ -121,7 +140,9 @@ defmodule Sheaf.BlockTagsTest do
       ])
 
     workspace =
-      Graph.new([{block, AS.tag(), RDF.iri(DOC.FragmentTag)}], name: Sheaf.Workspace.graph())
+      Graph.new([{block, AS.tag(), RDF.iri(DOC.FragmentTag)}],
+        name: Sheaf.Workspace.graph()
+      )
 
     transact = fn _tx, changes, metadata ->
       send(test_pid, {:transact, changes, metadata})
@@ -138,7 +159,11 @@ defmodule Sheaf.BlockTagsTest do
 
     assert_receive {:transact, [{:retract, graph}], metadata}
     assert {"sheaf.tag_action", "remove"} in metadata
-    assert RDF.Data.include?(graph, {block, AS.tag(), RDF.iri(DOC.FragmentTag)})
+
+    assert RDF.Data.include?(
+             graph,
+             {block, AS.tag(), RDF.iri(DOC.FragmentTag)}
+           )
   end
 
   test "rejects non-paragraph blocks" do
@@ -161,6 +186,8 @@ defmodule Sheaf.BlockTagsTest do
 
   test "rejects unknown writing tags" do
     assert {:error, "unknown writing tag(s): urgent"} =
-             BlockTags.attach(["PAR111"], ["urgent"], persist: fn _graph -> :ok end)
+             BlockTags.attach(["PAR111"], ["urgent"],
+               persist: fn _graph -> :ok end
+             )
   end
 end

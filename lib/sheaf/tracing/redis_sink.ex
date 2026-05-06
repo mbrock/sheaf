@@ -25,7 +25,10 @@ defmodule Sheaf.Tracing.RedisSink do
   @default_maxlen 1_000_000
   @default_max_batch 200
 
-  Record.defrecord(:span, Record.extract(:span, from_lib: "opentelemetry/include/otel_span.hrl"))
+  Record.defrecord(
+    :span,
+    Record.extract(:span, from_lib: "opentelemetry/include/otel_span.hrl")
+  )
 
   @typep span_record :: tuple()
 
@@ -64,7 +67,8 @@ defmodule Sheaf.Tracing.RedisSink do
     maxlen = Keyword.get(opts, :maxlen, @default_maxlen)
     max_batch = Keyword.get(opts, :max_batch, @default_max_batch)
 
-    {:ok, redix} = Redix.start_link(redis_url, name: nil, exit_on_disconnection: false)
+    {:ok, redix} =
+      Redix.start_link(redis_url, name: nil, exit_on_disconnection: false)
 
     {:ok,
      %{

@@ -3,7 +3,8 @@ defmodule Sheaf.Files do
   RDF-backed files stored in the local blob store.
   """
 
-  alias RDF.Description
+  alias RDF.{Description, Graph}
+  alias RDF.NS.RDFS
   alias Sheaf.BlobStore
   require RDF.Graph
 
@@ -20,38 +21,23 @@ defmodule Sheaf.Files do
   Returns a graph describing stored `fabio:ComputerFile` resources.
   """
   def list_graph do
-    with {:ok, dataset} <- Sheaf.fetch_dataset() do
-      graph =
-        dataset
-        |> RDF.Dataset.graphs()
-        |> Enum.reduce(RDF.Graph.new(), fn source_graph, acc ->
-          files =
-            source_graph
-            |> RDF.Graph.descriptions()
-            |> Enum.filter(&file?/1)
-            |> Enum.map(& &1.subject)
-            |> MapSet.new()
+    with {:ok, type_rows} <-
+           Sheaf.Repo.match_rows(
+             {nil, RDF.type(), RDF.iri(Sheaf.NS.FABIO.ComputerFile), nil}
+           ) do
+      files =
+        type_rows |> Enum.map(fn {_g, s, _p, _o} -> s end) |> Enum.uniq()
 
-          source_graph
-          |> RDF.Graph.triples()
-          |> Enum.reduce(acc, fn
-            {subject, predicate, object} = triple, acc ->
-              cond do
-                MapSet.member?(files, subject) ->
-                  RDF.Graph.add(acc, triple)
-
-                predicate == Sheaf.NS.DOC.sourceFile() and MapSet.member?(files, object) ->
-                  acc
-                  |> RDF.Graph.add(triple)
-                  |> add_document_label(source_graph, subject)
-
-                true ->
-                  acc
-              end
-          end)
-        end)
-
-      {:ok, graph}
+      with {:ok, file_rows} <- rows_for({files, nil, nil, nil}),
+           {:ok, source_rows} <-
+             rows_for({nil, Sheaf.NS.DOC.sourceFile(), files, nil}),
+           docs =
+             source_rows
+             |> Enum.map(fn {_g, s, _p, _o} -> s end)
+             |> Enum.uniq(),
+           {:ok, label_rows} <- rows_for({docs, RDFS.label(), nil, nil}) do
+        {:ok, rows_graph(file_rows ++ source_rows ++ label_rows)}
+      end
     end
   end
 
@@ -124,8 +110,14 @@ defmodule Sheaf.Files do
   """
   def local_path(%Description{} = file, opts \\ []) do
     with hash when is_binary(hash) <- first_value(file, Sheaf.NS.DOC.sha256()),
-         filename when is_binary(filename) <- first_value(file, Sheaf.NS.DOC.originalFilename()) do
-      {:ok, BlobStore.path_for(hash, filename, blob_opts(Keyword.put(opts, :filename, filename)))}
+         filename when is_binary(filename) <-
+           first_value(file, Sheaf.NS.DOC.originalFilename()) do
+      {:ok,
+       BlobStore.path_for(
+         hash,
+         filename,
+         blob_opts(Keyword.put(opts, :filename, filename))
+       )}
     else
       _ -> {:error, :missing_blob_metadata}
     end
@@ -158,12 +150,11 @@ defmodule Sheaf.Files do
       @prefix Sheaf.NS.DOC
       @prefix Sheaf.NS.FABIO
       @prefix Sheaf.NS.PROV
-      @prefix RDF.NS.RDFS
 
       file
       |> a(FABIO.ComputerFile)
       |> a(PROV.Entity)
-      |> RDFS.label(stored.original_filename)
+      |> RDF.NS.RDFS.label(stored.original_filename)
       |> DOC.sha256(stored.hash)
       |> DOC.sourceKey(stored.storage_key)
       |> DOC.mimeType(stored.mime_type)
@@ -179,20 +170,21 @@ defmodule Sheaf.Files do
   end
 
   defp file?(%Description{} = description) do
-    Description.include?(description, {RDF.type(), Sheaf.NS.FABIO.ComputerFile})
+    Description.include?(
+      description,
+      {RDF.type(), Sheaf.NS.FABIO.ComputerFile}
+    )
   end
 
-  defp add_document_label(graph, source_graph, document) do
-    case RDF.Graph.description(source_graph, document) do
-      nil ->
-        graph
+  defp rows_for({[], _predicate, _object, _graph}), do: {:ok, []}
+  defp rows_for({_subject, _predicate, [], _graph}), do: {:ok, []}
+  defp rows_for(pattern), do: Sheaf.Repo.match_rows(pattern)
 
-      description ->
-        case Description.first(description, RDF.NS.RDFS.label()) do
-          nil -> graph
-          label -> RDF.Graph.add(graph, {document, RDF.NS.RDFS.label(), label})
-        end
-    end
+  defp rows_graph(rows) do
+    Enum.reduce(rows, Graph.new(), fn {_graph, subject, predicate, object},
+                                      graph ->
+      Graph.add(graph, {subject, predicate, object})
+    end)
   end
 
   defp blob_opts(opts) do

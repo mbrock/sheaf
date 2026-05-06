@@ -28,7 +28,12 @@ defmodule Sheaf.Document.PDFTest do
   end
 
   test "runs xelatex twice so generated tables of contents are populated" do
-    dir = Path.join(System.tmp_dir!(), "sheaf-pdf-test-#{System.unique_integer([:positive])}")
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-pdf-test-#{System.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(dir)
 
     compiler = Path.join(dir, "fake-xelatex")

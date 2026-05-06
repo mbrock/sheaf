@@ -12,15 +12,24 @@ defmodule SheafWeb.DocumentLiveTest do
     first_section = RDF.IRI.new!("https://example.com/sheaf/SEC111")
     first_section_list = RDF.IRI.new!("https://example.com/sheaf/LST111")
     first_paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR111")
-    first_paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV1111")
+
+    first_paragraph_revision =
+      RDF.IRI.new!("https://example.com/sheaf/PV1111")
+
     nested_section = RDF.IRI.new!("https://example.com/sheaf/SEC222")
     nested_section_list = RDF.IRI.new!("https://example.com/sheaf/LST222")
     nested_paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR222")
-    nested_paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV2222")
+
+    nested_paragraph_revision =
+      RDF.IRI.new!("https://example.com/sheaf/PV2222")
+
     second_section = RDF.IRI.new!("https://example.com/sheaf/SEC333")
     second_section_list = RDF.IRI.new!("https://example.com/sheaf/LST333")
     second_paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR333")
-    second_paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV3333")
+
+    second_paragraph_revision =
+      RDF.IRI.new!("https://example.com/sheaf/PV3333")
+
     root_paragraph = RDF.IRI.new!("https://example.com/sheaf/PAR444")
     root_paragraph_revision = RDF.IRI.new!("https://example.com/sheaf/PV4444")
 
@@ -35,31 +44,40 @@ defmodule SheafWeb.DocumentLiveTest do
         {first_paragraph, RDF.type(), DOC.ParagraphBlock},
         {first_paragraph, DOC.paragraph(), first_paragraph_revision},
         {first_paragraph_revision, RDF.type(), DOC.Paragraph},
-        {first_paragraph_revision, DOC.text(), RDF.literal("First paragraph.")},
+        {first_paragraph_revision, DOC.text(),
+         RDF.literal("First paragraph.")},
         {nested_section, RDF.type(), DOC.Section},
         {nested_section, RDFS.label(), RDF.literal("Nested")},
         {nested_section, DOC.children(), nested_section_list},
         {nested_paragraph, RDF.type(), DOC.ParagraphBlock},
         {nested_paragraph, DOC.paragraph(), nested_paragraph_revision},
         {nested_paragraph_revision, RDF.type(), DOC.Paragraph},
-        {nested_paragraph_revision, DOC.text(), RDF.literal("Nested paragraph.")},
+        {nested_paragraph_revision, DOC.text(),
+         RDF.literal("Nested paragraph.")},
         {second_section, RDF.type(), DOC.Section},
         {second_section, RDFS.label(), RDF.literal("Second")},
         {second_section, DOC.children(), second_section_list},
         {second_paragraph, RDF.type(), DOC.ParagraphBlock},
         {second_paragraph, DOC.paragraph(), second_paragraph_revision},
         {second_paragraph_revision, RDF.type(), DOC.Paragraph},
-        {second_paragraph_revision, DOC.text(), RDF.literal("Second paragraph.")},
+        {second_paragraph_revision, DOC.text(),
+         RDF.literal("Second paragraph.")},
         {root_paragraph, RDF.type(), DOC.ParagraphBlock},
         {root_paragraph, DOC.paragraph(), root_paragraph_revision},
         {root_paragraph_revision, RDF.type(), DOC.Paragraph},
         {root_paragraph_revision, DOC.text(), RDF.literal("Root paragraph.")}
       ])
       |> then(fn graph ->
-        RDF.list([first_section, root_paragraph, second_section], graph: graph, head: root_list).graph
+        RDF.list([first_section, root_paragraph, second_section],
+          graph: graph,
+          head: root_list
+        ).graph
       end)
       |> then(fn graph ->
-        RDF.list([first_paragraph, nested_section], graph: graph, head: first_section_list).graph
+        RDF.list([first_paragraph, nested_section],
+          graph: graph,
+          head: first_section_list
+        ).graph
       end)
       |> then(fn graph ->
         RDF.list([nested_paragraph], graph: graph, head: nested_section_list).graph
@@ -81,7 +99,11 @@ defmodule SheafWeb.DocumentLiveTest do
 
     [
       %{type: :paragraph, number: 1},
-      %{type: :section, number: [1, 1], children: [%{type: :paragraph, number: 1}]}
+      %{
+        type: :section,
+        number: [1, 1],
+        children: [%{type: :paragraph, number: 1}]
+      }
     ] = first_children
 
     [%{type: :paragraph, number: 1}] = second_children
@@ -111,15 +133,21 @@ defmodule SheafWeb.DocumentLiveTest do
         {block, DOC.sourceHtml(), RDF.literal("<p>Extracted text.</p>")},
         {picture, RDF.type(), DOC.ExtractedBlock},
         {picture, DOC.sourceBlockType(), RDF.literal("Picture")},
-        {picture, DOC.sourceHtml(), RDF.literal("<p><img src=\"figure.png\"></p>")},
+        {picture, DOC.sourceHtml(),
+         RDF.literal("<p><img src=\"figure.png\"></p>")},
         {paragraph, RDF.type(), DOC.ParagraphBlock},
         {paragraph, DOC.paragraph(), paragraph_revision},
         {paragraph_revision, RDF.type(), DOC.Paragraph},
         {paragraph_revision, DOC.text(), RDF.literal("Paragraph text.")}
       ])
-      |> then(fn graph -> RDF.list([section], graph: graph, head: root_list).graph end)
       |> then(fn graph ->
-        RDF.list([block, picture, paragraph], graph: graph, head: section_list).graph
+        RDF.list([section], graph: graph, head: root_list).graph
+      end)
+      |> then(fn graph ->
+        RDF.list([block, picture, paragraph],
+          graph: graph,
+          head: section_list
+        ).graph
       end)
 
     [
@@ -161,8 +189,12 @@ defmodule SheafWeb.DocumentLiveTest do
         {paragraph_revision, RDF.type(), DOC.Paragraph},
         {paragraph_revision, DOC.text(), RDF.literal("Needs evidence.")}
       ])
-      |> then(fn graph -> RDF.list([section], graph: graph, head: root_list).graph end)
-      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: section_list).graph end)
+      |> then(fn graph ->
+        RDF.list([section], graph: graph, head: root_list).graph
+      end)
+      |> then(fn graph ->
+        RDF.list([paragraph], graph: graph, head: section_list).graph
+      end)
 
     [entry] =
       graph
@@ -212,7 +244,9 @@ defmodule SheafWeb.DocumentLiveTest do
         ],
         name: thesis
       )
-      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: root_list).graph end)
+      |> then(fn graph ->
+        RDF.list([paragraph], graph: graph, head: root_list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 
@@ -231,11 +265,14 @@ defmodule SheafWeb.DocumentLiveTest do
       }
     }
 
-    socket = DocumentLive.save_paragraph_edit(socket, "DLVP01", "New paragraph.")
+    socket =
+      DocumentLive.save_paragraph_edit(socket, "DLVP01", "New paragraph.")
 
     assert socket.assigns.editing_block_id == nil
     assert socket.assigns.selected_block_id == "DLVP01"
-    assert Sheaf.Document.paragraph_text(socket.assigns.graph, paragraph) == "New paragraph."
+
+    assert Sheaf.Document.paragraph_text(socket.assigns.graph, paragraph) ==
+             "New paragraph."
   end
 
   test "saves a section label edit" do
@@ -267,7 +304,9 @@ defmodule SheafWeb.DocumentLiveTest do
         ],
         name: thesis
       )
-      |> then(fn graph -> RDF.list([section], graph: graph, head: root_list).graph end)
+      |> then(fn graph ->
+        RDF.list([section], graph: graph, head: root_list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 
@@ -290,7 +329,9 @@ defmodule SheafWeb.DocumentLiveTest do
 
     assert socket.assigns.editing_block_id == nil
     assert socket.assigns.selected_block_id == "DLSS01"
-    assert Sheaf.Document.heading(socket.assigns.graph, section) == "New heading"
+
+    assert Sheaf.Document.heading(socket.assigns.graph, section) ==
+             "New heading"
   end
 
   test "saves a markup paragraph edit" do
@@ -326,7 +367,9 @@ defmodule SheafWeb.DocumentLiveTest do
         ],
         name: thesis
       )
-      |> then(fn graph -> RDF.list([paragraph], graph: graph, head: root_list).graph end)
+      |> then(fn graph ->
+        RDF.list([paragraph], graph: graph, head: root_list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 
@@ -358,7 +401,8 @@ defmodule SheafWeb.DocumentLiveTest do
     assert Sheaf.Document.paragraph_markup(socket.assigns.graph, paragraph) ==
              "<strong>New</strong> <mark>paragraph</mark>."
 
-    assert Sheaf.Document.paragraph_text(socket.assigns.graph, paragraph) == "New paragraph."
+    assert Sheaf.Document.paragraph_text(socket.assigns.graph, paragraph) ==
+             "New paragraph."
   end
 
   test "deletes a selected paragraph block" do
@@ -399,7 +443,9 @@ defmodule SheafWeb.DocumentLiveTest do
         ],
         name: thesis
       )
-      |> then(fn graph -> RDF.list([first, second], graph: graph, head: root_list).graph end)
+      |> then(fn graph ->
+        RDF.list([first, second], graph: graph, head: root_list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 
@@ -424,7 +470,9 @@ defmodule SheafWeb.DocumentLiveTest do
     assert socket.assigns.selected_block_id == nil
     assert Sheaf.Document.children(socket.assigns.graph, thesis) == [second]
     assert Sheaf.Document.block_type(socket.assigns.graph, first) == nil
-    assert Sheaf.Document.paragraph_text(socket.assigns.graph, second) == "Keep me."
+
+    assert Sheaf.Document.paragraph_text(socket.assigns.graph, second) ==
+             "Keep me."
   end
 
   test "creates a new paragraph block below the selected block and starts editing it" do
@@ -465,7 +513,9 @@ defmodule SheafWeb.DocumentLiveTest do
         ],
         name: thesis
       )
-      |> then(fn graph -> RDF.list([first, second], graph: graph, head: root_list).graph end)
+      |> then(fn graph ->
+        RDF.list([first, second], graph: graph, head: root_list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 
@@ -488,7 +538,13 @@ defmodule SheafWeb.DocumentLiveTest do
     inserted = Id.iri(socket.assigns.selected_block_id)
 
     assert socket.assigns.editing_block_id == socket.assigns.selected_block_id
-    assert Sheaf.Document.children(socket.assigns.graph, thesis) == [first, inserted, second]
+
+    assert Sheaf.Document.children(socket.assigns.graph, thesis) == [
+             first,
+             inserted,
+             second
+           ]
+
     assert Sheaf.Document.paragraph_text(socket.assigns.graph, inserted) == ""
   end
 
@@ -553,12 +609,17 @@ defmodule SheafWeb.DocumentLiveTest do
         name: thesis
       )
       |> then(fn graph ->
-        RDF.list([intro_section, section, outside], graph: graph, head: root_list).graph
+        RDF.list([intro_section, section, outside],
+          graph: graph,
+          head: root_list
+        ).graph
       end)
       |> then(fn graph ->
         RDF.list([intro_paragraph], graph: graph, head: intro_list).graph
       end)
-      |> then(fn graph -> RDF.list([first, second], graph: graph, head: section_list).graph end)
+      |> then(fn graph ->
+        RDF.list([first, second], graph: graph, head: section_list).graph
+      end)
 
     assert :ok = Sheaf.Repo.assert(graph)
 
@@ -580,7 +641,10 @@ defmodule SheafWeb.DocumentLiveTest do
     socket = DocumentLive.assign_document_view(socket, graph, thesis, %{})
     socket = DocumentLive.move_document_block(socket, "DLMP01", "up")
 
-    assert Sheaf.Document.children(socket.assigns.graph, section) == [first, second]
+    assert Sheaf.Document.children(socket.assigns.graph, section) == [
+             first,
+             second
+           ]
 
     assert Sheaf.Document.children(socket.assigns.graph, thesis) == [
              intro_section,
@@ -591,7 +655,11 @@ defmodule SheafWeb.DocumentLiveTest do
     socket = DocumentLive.move_document_block(socket, "DLMP02", "up")
 
     assert socket.assigns.selected_block_id == "DLMP02"
-    assert Sheaf.Document.children(socket.assigns.graph, section) == [second, first]
+
+    assert Sheaf.Document.children(socket.assigns.graph, section) == [
+             second,
+             first
+           ]
 
     assert Sheaf.Document.children(socket.assigns.graph, thesis) == [
              intro_section,

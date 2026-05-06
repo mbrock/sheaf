@@ -7,7 +7,9 @@ defmodule Sheaf.ResourceResolverTest do
   alias Sheaf.ResourceResolver
 
   @tag :tmp_dir
-  test "resolves documents, assistant conversations, and blocks", %{tmp_dir: tmp_dir} do
+  test "resolves documents, assistant conversations, and blocks", %{
+    tmp_dir: tmp_dir
+  } do
     path = Path.join(tmp_dir, "repo.sqlite3")
     document = Sheaf.Id.iri("DOC001")
     section = Sheaf.Id.iri("SEC001")
@@ -22,12 +24,14 @@ defmodule Sheaf.ResourceResolverTest do
         [
           {conversation, RDF.type(), DOC.AssistantConversation},
           {conversation, RDF.type(), AS.OrderedCollection},
-          {conversation, RDFS.label(), RDF.literal("Assistant conversation CHAT01")},
+          {conversation, RDFS.label(),
+           RDF.literal("Assistant conversation CHAT01")},
           {note, RDF.type(), DOC.ResearchNote},
           {note, RDF.type(), AS.Note},
           {note, AS.content(), RDF.literal("A durable note.")},
           {query_result, RDF.type(), DOC.SpreadsheetQueryResult},
-          {query_result, RDFS.label(), RDF.literal("Spreadsheet query result")}
+          {query_result, RDFS.label(),
+           RDF.literal("Spreadsheet query result")}
         ],
         name: workspace_graph
       )
@@ -53,7 +57,8 @@ defmodule Sheaf.ResourceResolverTest do
 
     start_supervised!({Sheaf.Repo, path: path})
 
-    assert {:ok, %{kind: :document, id: "DOC001"}} = ResourceResolver.resolve("DOC001")
+    assert {:ok, %{kind: :document, id: "DOC001"}} =
+             ResourceResolver.resolve("DOC001")
 
     assert {:ok, %{kind: :assistant_conversation, id: "CHAT01"}} =
              ResourceResolver.resolve("CHAT01")

@@ -57,7 +57,8 @@ defmodule SheafWeb.ResourceLive do
 
     case target_document_id(block_id, socket) do
       nil ->
-        {:noreply, put_flash(socket, :error, "Block #{block_id} was not found.")}
+        {:noreply,
+         put_flash(socket, :error, "Block #{block_id} was not found.")}
 
       ^current_document_id ->
         {:noreply,
@@ -73,7 +74,8 @@ defmodule SheafWeb.ResourceLive do
     end
   end
 
-  def handle_event("assistant_block_link", _params, socket), do: {:noreply, socket}
+  def handle_event("assistant_block_link", _params, socket),
+    do: {:noreply, socket}
 
   def handle_event("edit_paragraph", %{"id" => id}, socket) do
     {:noreply, DocumentLive.start_paragraph_edit(socket, id)}
@@ -87,7 +89,11 @@ defmodule SheafWeb.ResourceLive do
     {:noreply, DocumentLive.insert_document_block_after(socket, id)}
   end
 
-  def handle_event("move_block", %{"id" => id, "direction" => direction}, socket) do
+  def handle_event(
+        "move_block",
+        %{"id" => id, "direction" => direction},
+        socket
+      ) do
     {:noreply, DocumentLive.move_document_block(socket, id, direction)}
   end
 
@@ -99,20 +105,30 @@ defmodule SheafWeb.ResourceLive do
     {:noreply, DocumentLive.clear_paragraph_edit(socket)}
   end
 
-  def handle_event("save_paragraph_edit", %{"id" => id, "text" => text}, socket) do
+  def handle_event(
+        "save_paragraph_edit",
+        %{"id" => id, "text" => text},
+        socket
+      ) do
     {:noreply, DocumentLive.save_paragraph_edit(socket, id, text)}
   end
 
-  def handle_event("save_paragraph_edit", %{"id" => id, "markup" => markup}, socket) do
+  def handle_event(
+        "save_paragraph_edit",
+        %{"id" => id, "markup" => markup},
+        socket
+      ) do
     {:noreply, DocumentLive.save_paragraph_markup_edit(socket, id, markup)}
   end
 
-  def handle_event("save_paragraph_edit", _params, socket), do: {:noreply, socket}
+  def handle_event("save_paragraph_edit", _params, socket),
+    do: {:noreply, socket}
 
   @impl true
   def handle_info(
         {:document_changed, %{document_id: document_id}},
-        %{assigns: %{resource_kind: :document, document_id: document_id}} = socket
+        %{assigns: %{resource_kind: :document, document_id: document_id}} =
+          socket
       ) do
     {:noreply, DocumentLive.reload_document_assigns(socket)}
   end
@@ -120,7 +136,8 @@ defmodule SheafWeb.ResourceLive do
   def handle_info({:document_changed, _event}, socket), do: {:noreply, socket}
 
   @impl true
-  def render(%{resource_kind: :document} = assigns), do: DocumentLive.render(assigns)
+  def render(%{resource_kind: :document} = assigns),
+    do: DocumentLive.render(assigns)
 
   def render(%{resource_kind: :assistant_conversation} = assigns) do
     ~H"""
@@ -145,7 +162,10 @@ defmodule SheafWeb.ResourceLive do
       <AppChrome.toolbar section={:document} search?={false} />
 
       <section class="w-full py-5">
-        <DataTableComponents.data_table columns={@query_result_columns} rows={@query_result_rows} />
+        <DataTableComponents.data_table
+          columns={@query_result_columns}
+          rows={@query_result_rows}
+        />
       </section>
 
       <pre class="overflow-x-auto border-t border-stone-200 bg-stone-50 p-4 font-mono text-xs leading-5 text-stone-800 dark:border-stone-800 dark:bg-stone-950 dark:text-stone-100"><code>{@query_result_sql}</code></pre>
@@ -176,7 +196,10 @@ defmodule SheafWeb.ResourceLive do
         </header>
 
         <div class="assistant-prose text-stone-900 dark:text-stone-100">
-          <AssistantMarkdownComponents.markdown text={@note_text} resolve_block_previews={false} />
+          <AssistantMarkdownComponents.markdown
+            text={@note_text}
+            resolve_block_previews={false}
+          />
         </div>
 
         <footer :if={@note_mentions != []} class="mt-6 flex flex-wrap gap-1.5">
@@ -288,7 +311,8 @@ defmodule SheafWeb.ResourceLive do
     root = Id.iri(document_id)
 
     with {:ok, graph} <- Sheaf.fetch_graph(root),
-         {:ok, references_by_block} <- Documents.references_for_document(root, graph),
+         {:ok, references_by_block} <-
+           Documents.references_for_document(root, graph),
          {:ok, tags_by_block} <- BlockTags.for_document(graph, root) do
       document = sidebar_document(document_id, root, graph)
 
@@ -341,7 +365,8 @@ defmodule SheafWeb.ResourceLive do
     |> assign(:not_found_reason, reason)
   end
 
-  defp selected_block_id(%{"block" => block_id}) when is_binary(block_id) and block_id != "" do
+  defp selected_block_id(%{"block" => block_id})
+       when is_binary(block_id) and block_id != "" do
     block_id
   end
 
@@ -409,15 +434,19 @@ defmodule SheafWeb.ResourceLive do
   end
 
   defp maybe_scroll_reader(
-         %{assigns: %{resource_kind: :document, selected_block_id: block_id}} = socket,
+         %{assigns: %{resource_kind: :document, selected_block_id: block_id}} =
+           socket,
          _resource_changed?
        )
        when is_binary(block_id) and block_id != "" do
     push_event(socket, "scroll-to-block", %{id: block_id})
   end
 
-  defp maybe_scroll_reader(%{assigns: %{resource_kind: :document}} = socket, true),
-    do: push_event(socket, "scroll-reader-to-top", %{})
+  defp maybe_scroll_reader(
+         %{assigns: %{resource_kind: :document}} = socket,
+         true
+       ),
+       do: push_event(socket, "scroll-reader-to-top", %{})
 
   defp maybe_scroll_reader(socket, _resource_changed?), do: socket
 
@@ -428,7 +457,8 @@ defmodule SheafWeb.ResourceLive do
       Map.get(socket.assigns, :root) == iri ->
         socket.assigns.document_id
 
-      Map.has_key?(socket.assigns, :graph) and Document.block_type(socket.assigns.graph, iri) ->
+      Map.has_key?(socket.assigns, :graph) and
+          Document.block_type(socket.assigns.graph, iri) ->
         socket.assigns.document_id
 
       true ->

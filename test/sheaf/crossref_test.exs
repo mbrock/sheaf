@@ -24,7 +24,11 @@ defmodule Sheaf.CrossrefTest do
       })
     end)
 
-    assert {:ok, %{"DOI" => "10.1177/1749975520923521", "title" => ["After Practice?"]}} =
+    assert {:ok,
+            %{
+              "DOI" => "10.1177/1749975520923521",
+              "title" => ["After Practice?"]
+            }} =
              Crossref.work("10.1177/1749975520923521",
                req_options: [plug: {Req.Test, __MODULE__}]
              )
@@ -33,7 +37,10 @@ defmodule Sheaf.CrossrefTest do
   test "fetches Crossref Turtle from the transform endpoint" do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.method == "GET"
-      assert conn.request_path == "/v1/works/10.1177%2F1749975520923521/transform"
+
+      assert conn.request_path ==
+               "/v1/works/10.1177%2F1749975520923521/transform"
+
       assert Plug.Conn.get_req_header(conn, "accept") == ["text/turtle"]
 
       conn
@@ -56,7 +63,10 @@ defmodule Sheaf.CrossrefTest do
     Req.Test.expect(__MODULE__, fn conn ->
       assert conn.method == "GET"
       assert conn.request_path == "/works"
-      assert Plug.Conn.Query.decode(conn.query_string)["filter"] == "isbn:9781452260151"
+
+      assert Plug.Conn.Query.decode(conn.query_string)["filter"] ==
+               "isbn:9781452260151"
+
       assert Plug.Conn.Query.decode(conn.query_string)["rows"] == "2"
 
       Req.Test.json(conn, %{
@@ -100,11 +110,19 @@ defmodule Sheaf.CrossrefTest do
 
   test "merges Crossref RDF into a metadata graph with local links" do
     metadata_graph = RDF.Graph.new()
-    doi = DOI |> RDF.IRI.coerce_base() |> RDF.IRI.append("10.1177/1749975520923521")
+
+    doi =
+      DOI
+      |> RDF.IRI.coerce_base()
+      |> RDF.IRI.append("10.1177/1749975520923521")
+
     expression = ~I<https://sheaf.less.rest/FF4RVL>
     paper = ~I<https://sheaf.less.rest/4EFC4F>
     work = ~I<https://sheaf.less.rest/XP3G2H>
-    author = ~I<https://id.crossref.org/contributor/david-m-evans-1kle5nn4fd917>
+
+    author =
+      ~I<https://id.crossref.org/contributor/david-m-evans-1kle5nn4fd917>
+
     journal = ~I<https://id.crossref.org/issn/1749-9755>
 
     crossref_graph =
@@ -207,7 +225,11 @@ defmodule Sheaf.CrossrefTest do
 
   test "mints local expression and work resources for a paper import" do
     paper = ~I<https://sheaf.less.rest/4EFC4F>
-    doi = DOI |> RDF.IRI.coerce_base() |> RDF.IRI.append("10.1177/1749975520923521")
+
+    doi =
+      DOI
+      |> RDF.IRI.coerce_base()
+      |> RDF.IRI.append("10.1177/1749975520923521")
 
     crossref_graph =
       RDF.Graph.new({doi, DCTERMS.title(), "After Practice?"})
@@ -241,13 +263,24 @@ defmodule Sheaf.CrossrefTest do
     assert work != doi
 
     assert RDF.Data.include?(graph, {expression, FRBR.realizationOf(), work})
-    assert RDF.Data.include?(graph, {work, RDF.type(), RDF.iri(FABIO.ScholarlyWork)})
-    assert RDF.Data.include?(graph, {expression, FABIO.hasDOI(), "10.1177/1749975520923521"})
+
+    assert RDF.Data.include?(
+             graph,
+             {work, RDF.type(), RDF.iri(FABIO.ScholarlyWork)}
+           )
+
+    assert RDF.Data.include?(
+             graph,
+             {expression, FABIO.hasDOI(), "10.1177/1749975520923521"}
+           )
   end
 
   test "calculates metadata additions without rewriting existing triples" do
     graph_name = ~I<https://less.rest/sheaf/metadata>
-    existing = {~I<https://example.com/article>, DCTERMS.title(), "Existing title"}
+
+    existing =
+      {~I<https://example.com/article>, DCTERMS.title(), "Existing title"}
+
     added = {~I<https://example.com/article>, BIBO.doi(), "10.1000/example"}
 
     additions =
@@ -270,6 +303,8 @@ defmodule Sheaf.CrossrefTest do
     end)
 
     assert {:error, %{status: 404, body: "Resource not found."}} =
-             Crossref.work("10.0000/missing", req_options: [plug: {Req.Test, __MODULE__}])
+             Crossref.work("10.0000/missing",
+               req_options: [plug: {Req.Test, __MODULE__}]
+             )
   end
 end

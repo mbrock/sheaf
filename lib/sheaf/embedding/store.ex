@@ -237,7 +237,8 @@ defmodule Sheaf.Embedding.Store do
   @doc """
   Returns `{iri, text_hash}` pairs already available for a model/dimensions.
   """
-  @spec reusable_hashes(conn(), String.t(), pos_integer(), String.t() | nil) :: MapSet.t()
+  @spec reusable_hashes(conn(), String.t(), pos_integer(), String.t() | nil) ::
+          MapSet.t()
   def reusable_hashes(conn, model, dimensions, source \\ nil) do
     {:ok, rows} =
       query(
@@ -262,7 +263,13 @@ defmodule Sheaf.Embedding.Store do
   @doc """
   Returns the newest matching embedding for `iri` and `text_hash`.
   """
-  @spec latest_embedding(conn(), String.t(), String.t(), String.t(), pos_integer()) ::
+  @spec latest_embedding(
+          conn(),
+          String.t(),
+          String.t(),
+          String.t(),
+          pos_integer()
+        ) ::
           {:ok, map() | nil} | {:error, term()}
   def latest_embedding(conn, iri, text_hash, model, dimensions, source \\ nil) do
     with {:ok, rows} <-
@@ -341,7 +348,13 @@ defmodule Sheaf.Embedding.Store do
     sync_vector_index(conn, model, dimensions, source, [])
   end
 
-  @spec sync_vector_index(conn(), String.t(), pos_integer(), String.t() | nil, keyword()) ::
+  @spec sync_vector_index(
+          conn(),
+          String.t(),
+          pos_integer(),
+          String.t() | nil,
+          keyword()
+        ) ::
           {:ok, non_neg_integer()} | {:error, term()}
   def sync_vector_index(conn, model, dimensions, source, opts) do
     current_hashes = Keyword.get(opts, :current_hashes)
@@ -369,7 +382,14 @@ defmodule Sheaf.Embedding.Store do
           [String.t()],
           keyword()
         ) :: {:ok, non_neg_integer()} | {:error, term()}
-  def sync_vector_index_for_iris(conn, model, dimensions, source, iris, opts \\ [])
+  def sync_vector_index_for_iris(
+        conn,
+        model,
+        dimensions,
+        source,
+        iris,
+        opts \\ []
+      )
       when is_binary(source) or is_nil(source) do
     iris = iris |> List.wrap() |> Enum.filter(&is_binary/1) |> Enum.uniq()
     current_hashes = Keyword.get(opts, :current_hashes)
@@ -382,7 +402,14 @@ defmodule Sheaf.Embedding.Store do
         |> filter_current_hashes(current_hashes)
 
       transaction(conn, fn ->
-        with :ok <- delete_vector_index_for_iris(conn, model, dimensions, source, iris) do
+        with :ok <-
+               delete_vector_index_for_iris(
+                 conn,
+                 model,
+                 dimensions,
+                 source,
+                 iris
+               ) do
           insert_vector_rows(conn, model, dimensions, source, rows)
         end
       end)
@@ -401,10 +428,18 @@ defmodule Sheaf.Embedding.Store do
           String.t() | nil
         ) ::
           {:ok, [map()]} | {:error, term()}
-  def search_vectors(conn, query_values, model, dimensions, limit, source \\ nil) do
+  def search_vectors(
+        conn,
+        query_values,
+        model,
+        dimensions,
+        limit,
+        source \\ nil
+      ) do
     with :ok <- ensure_vector_table(conn, dimensions),
          {:ok, count} <- vector_index_count(conn, model, dimensions, source),
-         {:ok, _count} <- maybe_sync_vector_index(conn, model, dimensions, source, count),
+         {:ok, _count} <-
+           maybe_sync_vector_index(conn, model, dimensions, source, count),
          {:ok, rows} <-
            query(
              conn,
@@ -419,11 +454,23 @@ defmodule Sheaf.Embedding.Store do
                AND (? IS NULL OR i.source = ?)
              ORDER BY v.distance
              """,
-             [{:blob, encode_vector(query_values)}, limit, model, dimensions, source, source]
+             [
+               {:blob, encode_vector(query_values)},
+               limit,
+               model,
+               dimensions,
+               source,
+               source
+             ]
            ) do
       {:ok,
        Enum.map(rows, fn [iri, run_iri, distance] ->
-         %{iri: iri, run_iri: run_iri, score: 1.0 - distance, distance: distance}
+         %{
+           iri: iri,
+           run_iri: run_iri,
+           score: 1.0 - distance,
+           distance: distance
+         }
        end)}
     end
   end
@@ -513,7 +560,8 @@ defmodule Sheaf.Embedding.Store do
     )
   end
 
-  defp vector_table_name(dimensions) when is_integer(dimensions) and dimensions > 0 do
+  defp vector_table_name(dimensions)
+       when is_integer(dimensions) and dimensions > 0 do
     "embedding_vec_#{dimensions}"
   end
 
@@ -537,7 +585,8 @@ defmodule Sheaf.Embedding.Store do
   defp maybe_sync_vector_index(conn, model, dimensions, source, 0),
     do: sync_vector_index(conn, model, dimensions, source)
 
-  defp maybe_sync_vector_index(_conn, _model, _dimensions, _source, count), do: {:ok, count}
+  defp maybe_sync_vector_index(_conn, _model, _dimensions, _source, count),
+    do: {:ok, count}
 
   defp delete_vector_index(conn, model, dimensions, source) do
     table = vector_table_name(dimensions)
@@ -606,7 +655,14 @@ defmodule Sheaf.Embedding.Store do
     table = vector_table_name(dimensions)
 
     rows
-    |> Enum.reduce_while({:ok, 0}, fn [iri, run_iri, text_hash, text_chars, blob], {:ok, count} ->
+    |> Enum.reduce_while({:ok, 0}, fn [
+                                        iri,
+                                        run_iri,
+                                        text_hash,
+                                        text_chars,
+                                        blob
+                                      ],
+                                      {:ok, count} ->
       case insert_vector_row(
              conn,
              table,
@@ -705,7 +761,8 @@ defmodule Sheaf.Embedding.Store do
   end
 
   defp ensure_vector_items_source_column(conn) do
-    with {:ok, statement} <- Sqlite3.prepare(conn, "PRAGMA table_info(embedding_vector_items)") do
+    with {:ok, statement} <-
+           Sqlite3.prepare(conn, "PRAGMA table_info(embedding_vector_items)") do
       try do
         {:ok, rows} = Sqlite3.fetch_all(conn, statement)
 
@@ -717,7 +774,10 @@ defmodule Sheaf.Embedding.Store do
         if has_source? do
           :ok
         else
-          Sqlite3.execute(conn, "ALTER TABLE embedding_vector_items ADD COLUMN source TEXT")
+          Sqlite3.execute(
+            conn,
+            "ALTER TABLE embedding_vector_items ADD COLUMN source TEXT"
+          )
         end
       after
         Sqlite3.release(conn, statement)
@@ -744,8 +804,11 @@ defmodule Sheaf.Embedding.Store do
   end
 
   defp runs_sql do
-    statuses = ["running", "completed", "partial", "failed"] ++ @valid_read_statuses
-    status_check = statuses |> Enum.uniq() |> Enum.map(&"'#{&1}'") |> Enum.join(", ")
+    statuses =
+      ["running", "completed", "partial", "failed"] ++ @valid_read_statuses
+
+    status_check =
+      statuses |> Enum.uniq() |> Enum.map(&"'#{&1}'") |> Enum.join(", ")
 
     """
     CREATE TABLE IF NOT EXISTS embedding_runs (

@@ -13,7 +13,8 @@ defmodule Sheaf.AdminTest do
 
     graph =
       RDF.Graph.new(
-        {~I<https://example.com/subject>, ~I<https://example.com/predicate>, "value"},
+        {~I<https://example.com/subject>, ~I<https://example.com/predicate>,
+         "value"},
         name: RDF.iri(Sheaf.Repo.workspace_graph())
       )
 

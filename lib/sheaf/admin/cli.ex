@@ -58,9 +58,14 @@ defmodule Sheaf.Admin.CLI do
   defp dispatch(["--help" | _]), do: :help
   defp dispatch(["-h" | _]), do: :help
 
-  defp dispatch(["backup" | args]), do: run(fn -> Sheaf.Admin.backup(args) end)
-  defp dispatch(["schema", "upload" | args]), do: run(fn -> Sheaf.Admin.upload_schema(args) end)
-  defp dispatch(["ingest", "files" | args]), do: run(fn -> Sheaf.Admin.ingest_files(args) end)
+  defp dispatch(["backup" | args]),
+    do: run(fn -> Sheaf.Admin.backup(args) end)
+
+  defp dispatch(["schema", "upload" | args]),
+    do: run(fn -> Sheaf.Admin.upload_schema(args) end)
+
+  defp dispatch(["ingest", "files" | args]),
+    do: run(fn -> Sheaf.Admin.ingest_files(args) end)
 
   defp dispatch(["import", "datalab-json" | args]),
     do: run(fn -> Sheaf.Admin.import_datalab_json(args) end)
@@ -89,12 +94,14 @@ defmodule Sheaf.Admin.CLI do
   defp dispatch(["embeddings", "plan" | args]),
     do: run(fn -> Sheaf.Admin.plan_embeddings(args) end)
 
-  defp dispatch(["datalab" | args]), do: run(fn -> Sheaf.Admin.Datalab.run(args) end)
+  defp dispatch(["datalab" | args]),
+    do: run(fn -> Sheaf.Admin.Datalab.run(args) end)
 
   defp dispatch(["metadata", "enqueue" | args]),
     do: run(fn -> Sheaf.Admin.enqueue_metadata(args) end)
 
-  defp dispatch(["metadata", "work" | args]), do: run(fn -> Sheaf.Admin.work_metadata(args) end)
+  defp dispatch(["metadata", "work" | args]),
+    do: run(fn -> Sheaf.Admin.work_metadata(args) end)
 
   defp dispatch(["metadata", "list" | args]),
     do: run(fn -> Sheaf.Admin.list_metadata_tasks(args) end)
@@ -108,8 +115,11 @@ defmodule Sheaf.Admin.CLI do
 
   defp start_app! do
     case Application.ensure_all_started(:sheaf) do
-      {:ok, _apps} -> :ok
-      {:error, reason} -> raise Sheaf.Admin.Error, "could not start Sheaf: #{inspect(reason)}"
+      {:ok, _apps} ->
+        :ok
+
+      {:error, reason} ->
+        raise Sheaf.Admin.Error, "could not start Sheaf: #{inspect(reason)}"
     end
   end
 

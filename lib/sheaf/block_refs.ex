@@ -62,7 +62,9 @@ defmodule Sheaf.BlockRefs do
 
   def linkify_markdown(text, opts) when is_binary(text) do
     exists? = Keyword.get(opts, :exists?, fn _id -> true end)
-    url_for = Keyword.get(opts, :url_for, fn id -> if exists?.(id), do: "/b/#{id}" end)
+
+    url_for =
+      Keyword.get(opts, :url_for, fn id -> if exists?.(id), do: "/b/#{id}" end)
 
     text
     |> split_fenced_code()
@@ -78,8 +80,11 @@ defmodule Sheaf.BlockRefs do
     text
     |> split_inline_code()
     |> Enum.map_join(fn
-      {:code, segment} -> linkify_code_span(segment, url_for)
-      {:text, segment} -> segment |> normalize_spacing() |> linkify_plain_markdown(url_for)
+      {:code, segment} ->
+        linkify_code_span(segment, url_for)
+
+      {:text, segment} ->
+        segment |> normalize_spacing() |> linkify_plain_markdown(url_for)
     end)
   end
 

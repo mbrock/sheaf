@@ -18,7 +18,9 @@ defmodule Sheaf.Assistant.ChatTest do
       receive do
         :finish ->
           {:ok,
-           response(Context.assistant("Use this paragraph as the anchor."), finish_reason: :stop)}
+           response(Context.assistant("Use this paragraph as the anchor."),
+             finish_reason: :stop
+           )}
       end
     end
 
@@ -29,7 +31,8 @@ defmodule Sheaf.Assistant.ChatTest do
        id: id,
        model: "test-model",
        titles: %{},
-       workspace_instructions: "This workspace is for a test thesis about public procurement.",
+       workspace_instructions:
+         "This workspace is for a test thesis about public procurement.",
        activity_writer: nil,
        generate_text: generate_text,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
@@ -39,8 +42,16 @@ defmodule Sheaf.Assistant.ChatTest do
 
     assert :ok =
              Chat.send_user_message(id, "What should I do next?", %{
-               open_document: %{title: "Draft chapter", kind: :thesis, id: "ABC123"},
-               working_document: %{title: "Draft chapter", kind: :thesis, id: "ABC123"},
+               open_document: %{
+                 title: "Draft chapter",
+                 kind: :thesis,
+                 id: "ABC123"
+               },
+               working_document: %{
+                 title: "Draft chapter",
+                 kind: :thesis,
+                 id: "ABC123"
+               },
                selected_id: "DEF456",
                selected_block_context: """
                The user has selected paragraph #DEF456:
@@ -58,7 +69,10 @@ defmodule Sheaf.Assistant.ChatTest do
     refute user_text(context) =~ "Workspace:"
     refute user_text(context) =~ "Document: #ABC123 Draft chapter"
     refute system_text(context) =~ "write_note"
-    assert system_text(context) =~ "Do not end by offering optional follow-up help"
+
+    assert system_text(context) =~
+             "Do not end by offering optional follow-up help"
+
     assert system_text(context) =~ "test thesis about public procurement"
     refute system_text(context) =~ "Ieva"
     refute system_text(context) =~ "brīvbode"
@@ -95,7 +109,8 @@ defmodule Sheaf.Assistant.ChatTest do
               send(test_pid, {:stream_waiting, self()})
 
               receive do
-                :finish_stream -> {[StreamChunk.text("lo. Next")], :before_done}
+                :finish_stream ->
+                  {[StreamChunk.text("lo. Next")], :before_done}
               end
 
             :before_done ->
@@ -125,14 +140,17 @@ defmodule Sheaf.Assistant.ChatTest do
        workspace_instructions: "Testing streaming chat output.",
        activity_writer: nil,
        stream_text: stream_text,
-       generate_text: fn _model, _context, _opts -> flunk("unexpected non-streaming call") end,
+       generate_text: fn _model, _context, _opts ->
+         flunk("unexpected non-streaming call")
+       end,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )
 
     assert :ok = Chat.send_user_message(id, "Stream this.")
     assert_receive {:stream_waiting, stream_pid}
 
-    assert %{messages: [%{role: :user, text: "Stream this."}]} = Chat.snapshot(id)
+    assert %{messages: [%{role: :user, text: "Stream this."}]} =
+             Chat.snapshot(id)
 
     send(stream_pid, :finish_stream)
     assert_receive {:stream_after_sentence, ^stream_pid}
@@ -166,7 +184,10 @@ defmodule Sheaf.Assistant.ChatTest do
 
       receive do
         :finish ->
-          {:ok, response(Context.assistant("I wrote the durable notes."), finish_reason: :stop)}
+          {:ok,
+           response(Context.assistant("I wrote the durable notes."),
+             finish_reason: :stop
+           )}
       end
     end
 
@@ -178,21 +199,28 @@ defmodule Sheaf.Assistant.ChatTest do
        kind: :research,
        model: "test-model",
        titles: %{},
-       workspace_instructions: "This workspace is for a research-mode test thesis.",
+       workspace_instructions:
+         "This workspace is for a research-mode test thesis.",
        activity_writer: nil,
        generate_text: generate_text,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )
 
-    assert %{title: "Assistant conversation", kind: :research, pending: false} = Chat.snapshot(id)
+    assert %{title: "Assistant conversation", kind: :research, pending: false} =
+             Chat.snapshot(id)
 
-    assert :ok = Chat.send_user_message(id, "Read the circular economy papers.")
+    assert :ok =
+             Chat.send_user_message(id, "Read the circular economy papers.")
 
     assert_receive {:research_inference_started, task_pid, context}
     assert system_text(context) =~ "Research mode:"
     assert system_text(context) =~ "write durable"
 
-    assert %{title: "Read the circular economy papers.", kind: :research, pending: true} =
+    assert %{
+             title: "Read the circular economy papers.",
+             kind: :research,
+             pending: true
+           } =
              Chat.snapshot(id)
 
     send(task_pid, :finish)
@@ -223,7 +251,10 @@ defmodule Sheaf.Assistant.ChatTest do
 
       receive do
         :finish ->
-          {:ok, response(Context.assistant("Updated #PAR111."), finish_reason: :stop)}
+          {:ok,
+           response(Context.assistant("Updated #PAR111."),
+             finish_reason: :stop
+           )}
       end
     end
 
@@ -235,15 +266,21 @@ defmodule Sheaf.Assistant.ChatTest do
        kind: :edit,
        model: "test-model",
        titles: %{},
-       workspace_instructions: "This workspace is for an edit-mode test thesis.",
+       workspace_instructions:
+         "This workspace is for an edit-mode test thesis.",
        activity_writer: nil,
        generate_text: generate_text,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )
 
-    assert %{title: "Assistant conversation", kind: :edit, pending: false} = Chat.snapshot(id)
+    assert %{title: "Assistant conversation", kind: :edit, pending: false} =
+             Chat.snapshot(id)
 
-    assert :ok = Chat.send_user_message(id, "Replace #PAR111 with this paragraph.")
+    assert :ok =
+             Chat.send_user_message(
+               id,
+               "Replace #PAR111 with this paragraph."
+             )
 
     assert_receive {:edit_inference_started, task_pid, context, _opts}
     assert system_text(context) =~ "Edit mode:"
@@ -287,7 +324,9 @@ defmodule Sheaf.Assistant.ChatTest do
     assert %{model: "anthropic:claude-opus-4-7"} = Chat.snapshot(id)
     assert :ok = Chat.put_model(id, "openai:gpt-5.5")
     assert :ok = Chat.put_llm_options(id, reasoning_effort: :high)
-    assert %{model: "openai:gpt-5.5", llm_options: [reasoning_effort: :high]} = Chat.snapshot(id)
+
+    assert %{model: "openai:gpt-5.5", llm_options: [reasoning_effort: :high]} =
+             Chat.snapshot(id)
 
     assert :ok = Chat.send_user_message(id, "Use GPT for this.")
     assert_receive {:inference_started, "openai:gpt-5.5", _context, opts}
@@ -337,9 +376,17 @@ defmodule Sheaf.Assistant.ChatTest do
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )
 
-    assert :ok = Chat.send_user_message(id, "Persist this before the model answers.")
+    assert :ok =
+             Chat.send_user_message(
+               id,
+               "Persist this before the model answers."
+             )
+
     assert_receive {:persisted_context_graph, graph}
-    assert {:ok, persisted} = ContextStore.read(Sheaf.Id.iri(id), graph: graph)
+
+    assert {:ok, persisted} =
+             ContextStore.read(Sheaf.Id.iri(id), graph: graph)
+
     assert Enum.map(persisted.messages, & &1.role) == [:system, :user]
 
     assert List.last(persisted.messages).metadata["sheaf_user_text"] ==
@@ -384,7 +431,9 @@ defmodule Sheaf.Assistant.ChatTest do
        workspace_instructions: "Testing context hydration.",
        activity_writer: nil,
        context_store: {ContextStore, graph: graph},
-       generate_text: fn _model, _context, _opts -> flunk("unexpected inference") end,
+       generate_text: fn _model, _context, _opts ->
+         flunk("unexpected inference")
+       end,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )
 
@@ -410,7 +459,11 @@ defmodule Sheaf.Assistant.ChatTest do
        titles: %{},
        workspace_instructions: "Testing manual context persistence.",
        activity_writer: nil,
-       context: Context.new([Context.system("System prompt."), Context.user("Keep this.")]),
+       context:
+         Context.new([
+           Context.system("System prompt."),
+           Context.user("Keep this.")
+         ]),
        context_store:
          {ContextStore,
           [
@@ -420,18 +473,25 @@ defmodule Sheaf.Assistant.ChatTest do
               :ok
             end
           ]},
-       generate_text: fn _model, _context, _opts -> flunk("unexpected inference") end,
+       generate_text: fn _model, _context, _opts ->
+         flunk("unexpected inference")
+       end,
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )
 
     assert :ok = Chat.persist_context(id)
     assert_receive {:persisted_context_graph, graph}
-    assert {:ok, persisted} = ContextStore.read(Sheaf.Id.iri(id), graph: graph)
+
+    assert {:ok, persisted} =
+             ContextStore.read(Sheaf.Id.iri(id), graph: graph)
+
     assert Enum.map(persisted.messages, & &1.role) == [:system, :user]
   end
 
   @tag :tmp_dir
-  test "chat sessions expose per-chat DuckDB spreadsheet tools", %{tmp_dir: tmp_dir} do
+  test "chat sessions expose per-chat DuckDB spreadsheet tools", %{
+    tmp_dir: tmp_dir
+  } do
     xlsx_path = Path.join(tmp_dir, "inventory.xlsx")
 
     XLSXFixture.write_xlsx!(xlsx_path, [
@@ -463,7 +523,9 @@ defmodule Sheaf.Assistant.ChatTest do
       assert %Tool{} = query_tool
 
       {:ok, list_result} = Tool.execute(list_tool, %{})
-      [%{sheets: [%{table_name: table}]}] = list_result.metadata.sheaf_result.spreadsheets
+
+      [%{sheets: [%{table_name: table}]}] =
+        list_result.metadata.sheaf_result.spreadsheets
 
       {:ok, query_result} =
         Tool.execute(query_tool, %{
@@ -476,8 +538,15 @@ defmodule Sheaf.Assistant.ChatTest do
           """
         })
 
-      send(test_pid, {:spreadsheet_rows, query_result.metadata.sheaf_result.rows})
-      {:ok, response(Context.assistant("Spreadsheet checked."), finish_reason: :stop)}
+      send(
+        test_pid,
+        {:spreadsheet_rows, query_result.metadata.sheaf_result.rows}
+      )
+
+      {:ok,
+       response(Context.assistant("Spreadsheet checked."),
+         finish_reason: :stop
+       )}
     end
 
     id = Sheaf.Id.generate()
@@ -497,11 +566,21 @@ defmodule Sheaf.Assistant.ChatTest do
     )
 
     assert :ok = Chat.send_user_message(id, "Check the spreadsheet.")
-    assert_receive {:spreadsheet_rows, [%{"amount" => "3", "buyer_type" => "agency"}]}
+
+    assert_receive {:spreadsheet_rows,
+                    [%{"amount" => "3", "buyer_type" => "agency"}]}
 
     assert %{pending: false, messages: messages} = wait_for_messages(id, 4)
-    assert List.first(messages) == %{role: :user, text: "Check the spreadsheet."}
-    assert List.last(messages) == %{role: :assistant, text: "Spreadsheet checked."}
+
+    assert List.first(messages) == %{
+             role: :user,
+             text: "Check the spreadsheet."
+           }
+
+    assert List.last(messages) == %{
+             role: :assistant,
+             text: "Spreadsheet checked."
+           }
   end
 
   defp wait_for_messages(id, count) do
@@ -548,7 +627,8 @@ defmodule Sheaf.Assistant.ChatTest do
         Process.sleep(20)
         {:cont, nil}
       end
-    end) || flunk("timed out waiting for final chat message text #{inspect(text)}")
+    end) ||
+      flunk("timed out waiting for final chat message text #{inspect(text)}")
   end
 
   defp user_text(%Context{} = context) do

@@ -25,7 +25,9 @@ defmodule Sheaf.BlockPreviews do
           :error -> []
         end
       end)
-      |> Enum.group_by(fn {_id, doc_id} -> doc_id end, fn {id, _doc_id} -> id end)
+      |> Enum.group_by(fn {_id, doc_id} -> doc_id end, fn {id, _doc_id} ->
+        id
+      end)
       |> previews_for_documents()
       |> Map.new()
     end
@@ -43,7 +45,8 @@ defmodule Sheaf.BlockPreviews do
     end
   end
 
-  defp previews_for_documents(grouped_ids) when map_size(grouped_ids) == 0, do: []
+  defp previews_for_documents(grouped_ids) when map_size(grouped_ids) == 0,
+    do: []
 
   defp previews_for_documents(grouped_ids) do
     metadata_graph = metadata_graph()
@@ -59,7 +62,9 @@ defmodule Sheaf.BlockPreviews do
         document_metadata = document_metadata(graph, metadata_graph, doc_id)
 
         ids
-        |> Enum.map(fn id -> {id, preview_from_graph(graph, doc_id, id, document_metadata)} end)
+        |> Enum.map(fn id ->
+          {id, preview_from_graph(graph, doc_id, id, document_metadata)}
+        end)
         |> Enum.reject(fn {_id, preview} -> is_nil(preview) end)
 
       {:error, _reason} ->
@@ -73,7 +78,9 @@ defmodule Sheaf.BlockPreviews do
          text when text != "" <- block_text(graph, iri, type) do
       ancestry = Corpus.ancestry(graph, Id.iri(doc_id), iri)
       document = Enum.find(ancestry, &(&1.type == :document))
-      section = ancestry |> Enum.reverse() |> Enum.find(&(&1.type == :section))
+
+      section =
+        ancestry |> Enum.reverse() |> Enum.find(&(&1.type == :section))
 
       %{
         id: id,
@@ -85,7 +92,8 @@ defmodule Sheaf.BlockPreviews do
         document_year: document_year(document_metadata),
         document_status: document_status(document_metadata),
         section_id: entry_id(section),
-        section_number: section_number(graph, Id.iri(doc_id), entry_id(section)),
+        section_number:
+          section_number(graph, Id.iri(doc_id), entry_id(section)),
         section_title: entry_title(section, nil),
         path: block_path(doc_id, id)
       }
@@ -105,16 +113,22 @@ defmodule Sheaf.BlockPreviews do
     doc = Id.iri(doc_id)
     description = RDF.Data.description(graph, doc)
     expression = Description.first(description, FABIO.isRepresentationOf())
-    expression = expression || first_object(metadata, doc, FABIO.isRepresentationOf())
+
+    expression =
+      expression || first_object(metadata, doc, FABIO.isRepresentationOf())
 
     %{
       authors: author_names(metadata, expression),
       status: document_status(metadata, expression),
-      year: first_object(metadata, expression, FABIO.hasPublicationYear()) |> term_value()
+      year:
+        first_object(metadata, expression, FABIO.hasPublicationYear())
+        |> term_value()
     }
   end
 
-  defp document_authors(%{authors: authors}) when is_list(authors), do: authors
+  defp document_authors(%{authors: authors}) when is_list(authors),
+    do: authors
+
   defp document_authors(_metadata), do: []
 
   defp document_year(%{year: year}) when not is_nil(year), do: to_string(year)
@@ -206,10 +220,15 @@ defmodule Sheaf.BlockPreviews do
 
   defp bibo_status, do: RDF.iri("http://purl.org/ontology/bibo/status")
 
-  defp block_text(graph, iri, :paragraph), do: Document.paragraph_text(graph, iri)
+  defp block_text(graph, iri, :paragraph),
+    do: Document.paragraph_text(graph, iri)
+
   defp block_text(graph, iri, :section), do: section_text(graph, iri)
   defp block_text(graph, iri, :row), do: Document.text(graph, iri)
-  defp block_text(graph, iri, :extracted), do: graph |> Document.source_html(iri) |> plain_text()
+
+  defp block_text(graph, iri, :extracted),
+    do: graph |> Document.source_html(iri) |> plain_text()
+
   defp block_text(_graph, _iri, _type), do: ""
 
   defp section_text(graph, iri) do
@@ -232,11 +251,20 @@ defmodule Sheaf.BlockPreviews do
 
   defp block_text_blocks(graph, iri) do
     case Document.block_type(graph, iri) do
-      :section -> section_text_blocks(graph, iri)
-      :paragraph -> [Document.paragraph_text(graph, iri) |> normalize_plain_text()]
-      :row -> [Document.text(graph, iri) |> normalize_plain_text()]
-      :extracted -> [graph |> Document.source_html(iri) |> plain_text()]
-      _other -> []
+      :section ->
+        section_text_blocks(graph, iri)
+
+      :paragraph ->
+        [Document.paragraph_text(graph, iri) |> normalize_plain_text()]
+
+      :row ->
+        [Document.text(graph, iri) |> normalize_plain_text()]
+
+      :extracted ->
+        [graph |> Document.source_html(iri) |> plain_text()]
+
+      _other ->
+        []
     end
   end
 
@@ -247,7 +275,10 @@ defmodule Sheaf.BlockPreviews do
   defp entry_id(%{id: id}), do: id
 
   defp entry_title(nil, fallback), do: fallback
-  defp entry_title(%{title: title}, fallback) when title in [nil, ""], do: fallback
+
+  defp entry_title(%{title: title}, fallback) when title in [nil, ""],
+    do: fallback
+
   defp entry_title(%{title: title}, _fallback), do: title
 
   defp plain_text(html) do

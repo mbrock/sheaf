@@ -37,10 +37,22 @@ defmodule Sheaf.DocumentEdits do
            block = Id.iri(block_id),
            {:ok, type} <- editable_block_type(graph, block_id, block),
            {:ok, result} <-
-             replace_block_text_by_type(graph, document_id, block, type, text, opts) do
+             replace_block_text_by_type(
+               graph,
+               document_id,
+               block,
+               type,
+               text,
+               opts
+             ) do
         Tracer.set_attribute("sheaf.document", document_id)
         Tracer.set_attribute("sheaf.block_type", Atom.to_string(type))
-        Tracer.set_attribute("sheaf.statement_count", Map.get(result, :statement_count, 0))
+
+        Tracer.set_attribute(
+          "sheaf.statement_count",
+          Map.get(result, :statement_count, 0)
+        )
+
         notify_document_changed(result)
         {:ok, result}
       end
@@ -50,7 +62,8 @@ defmodule Sheaf.DocumentEdits do
   @doc """
   Replaces a paragraph block's inline markup and matching plain-text revision.
   """
-  def replace_block_markup(block_id, markup, opts \\ []) when is_binary(markup) do
+  def replace_block_markup(block_id, markup, opts \\ [])
+      when is_binary(markup) do
     block_id = normalize_id(block_id)
 
     Tracer.with_span "sheaf.document_edits.replace_block_markup", %{
@@ -65,10 +78,17 @@ defmodule Sheaf.DocumentEdits do
       with :ok <- require_id(block_id, "block is required"),
            {:ok, document_id, graph} <- graph_for_block(block_id, opts),
            block = Id.iri(block_id),
-           {:ok, :paragraph} <- editable_markup_block_type(graph, block_id, block),
-           {:ok, result} <- replace_block_markup(graph, document_id, block, markup, opts) do
+           {:ok, :paragraph} <-
+             editable_markup_block_type(graph, block_id, block),
+           {:ok, result} <-
+             replace_block_markup(graph, document_id, block, markup, opts) do
         Tracer.set_attribute("sheaf.document", document_id)
-        Tracer.set_attribute("sheaf.statement_count", Map.get(result, :statement_count, 0))
+
+        Tracer.set_attribute(
+          "sheaf.statement_count",
+          Map.get(result, :statement_count, 0)
+        )
+
         notify_document_changed(result)
         {:ok, result}
       end
@@ -97,7 +117,8 @@ defmodule Sheaf.DocumentEdits do
            :ok <- require_id(target_id, "target is required"),
            {:ok, position} <- require_position(position),
            {:ok, document_id, graph} <- graph_for_block(block_id, opts),
-           {:ok, ^document_id, _target_graph} <- graph_for_block(target_id, opts),
+           {:ok, ^document_id, _target_graph} <-
+             graph_for_block(target_id, opts),
            block = Id.iri(block_id),
            target = Id.iri(target_id),
            :ok <- require_document_block(graph, block_id, block),
@@ -107,8 +128,16 @@ defmodule Sheaf.DocumentEdits do
            {:ok, old_parent} <- parent_of(graph, block),
            {:ok, new_parent} <- placement_parent(graph, target, position),
            {:ok, changes} <-
-             move_children_changes(graph, old_parent, new_parent, block, target, position),
-           {:ok, statement_count} <- transact(changes, opts, "move document block") do
+             move_children_changes(
+               graph,
+               old_parent,
+               new_parent,
+               block,
+               target,
+               position
+             ),
+           {:ok, statement_count} <-
+             transact(changes, opts, "move document block") do
         result = %{
           action: :move_block,
           document_id: document_id,
@@ -128,7 +157,8 @@ defmodule Sheaf.DocumentEdits do
   @doc """
   Inserts a new paragraph block relative to an existing block.
   """
-  def insert_paragraph(target_id, position, text, opts \\ []) when is_binary(text) do
+  def insert_paragraph(target_id, position, text, opts \\ [])
+      when is_binary(text) do
     target_id = normalize_id(target_id)
     position = normalize_position(position)
 
@@ -150,7 +180,8 @@ defmodule Sheaf.DocumentEdits do
            {:ok, parent} <- placement_parent(graph, target, position),
            {:ok, changes, block_id} <-
              insert_paragraph_changes(graph, parent, target, position, text),
-           {:ok, statement_count} <- transact(changes, opts, "insert paragraph block") do
+           {:ok, statement_count} <-
+             transact(changes, opts, "insert paragraph block") do
         result = %{
           action: :insert_paragraph,
           document_id: document_id,
@@ -190,9 +221,15 @@ defmodule Sheaf.DocumentEdits do
            {:ok, parent} <- parent_of(graph, block),
            affected_blocks = text_block_ids_in_subtree(graph, block),
            {:ok, changes} <- delete_block_changes(graph, parent, block),
-           {:ok, statement_count} <- transact(changes, opts, "delete document block") do
+           {:ok, statement_count} <-
+             transact(changes, opts, "delete document block") do
         Tracer.set_attribute("sheaf.document", document_id)
-        Tracer.set_attribute("sheaf.affected_blocks", Enum.join(affected_blocks, ","))
+
+        Tracer.set_attribute(
+          "sheaf.affected_blocks",
+          Enum.join(affected_blocks, ",")
+        )
+
         Tracer.set_attribute("sheaf.statement_count", statement_count)
 
         result = %{
@@ -234,7 +271,14 @@ defmodule Sheaf.DocumentEdits do
     end
   end
 
-  defp replace_block_text_by_type(graph, document_id, block, :paragraph, text, opts) do
+  defp replace_block_text_by_type(
+         graph,
+         document_id,
+         block,
+         :paragraph,
+         text,
+         opts
+       ) do
     active_revisions = active_paragraphs(graph, block)
     revision = mint(opts)
     activity = mint(opts)
@@ -246,9 +290,13 @@ defmodule Sheaf.DocumentEdits do
       |> Graph.add({revision, RDF.type(), DOC.Paragraph})
       |> Graph.add({revision, DOC.text(), RDF.literal(text)})
       |> Graph.add({revision, PROV.wasGeneratedBy(), activity})
-      |> Graph.add({revision, PROV.generatedAtTime(), RDF.literal(generated_at)})
+      |> Graph.add(
+        {revision, PROV.generatedAtTime(), RDF.literal(generated_at)}
+      )
       |> Graph.add({activity, RDF.type(), PROV.Activity})
-      |> Graph.add({activity, RDFS.label(), RDF.literal("Assistant paragraph edit")})
+      |> Graph.add(
+        {activity, RDFS.label(), RDF.literal("Assistant paragraph edit")}
+      )
       |> add_revision_links(revision, active_revisions)
       |> add_invalidations(activity, active_revisions, generated_at)
 
@@ -256,7 +304,8 @@ defmodule Sheaf.DocumentEdits do
 
     changes = compact_changes([{:retract, retract}, {:assert, assert}])
 
-    with {:ok, statement_count} <- transact(changes, opts, "replace paragraph text") do
+    with {:ok, statement_count} <-
+           transact(changes, opts, "replace paragraph text") do
       {:ok,
        %{
          action: :replace_paragraph_text,
@@ -271,15 +320,25 @@ defmodule Sheaf.DocumentEdits do
     end
   end
 
-  defp replace_block_text_by_type(graph, document_id, block, :section, text, opts) do
+  defp replace_block_text_by_type(
+         graph,
+         document_id,
+         block,
+         :section,
+         text,
+         opts
+       ) do
     retract = predication_graph(graph, block, RDFS.label())
 
     assert =
-      Graph.new({block, RDFS.label(), RDF.literal(text)}, name: Graph.name(graph))
+      Graph.new({block, RDFS.label(), RDF.literal(text)},
+        name: Graph.name(graph)
+      )
 
     changes = compact_changes([{:retract, retract}, {:assert, assert}])
 
-    with {:ok, statement_count} <- transact(changes, opts, "change section heading") do
+    with {:ok, statement_count} <-
+           transact(changes, opts, "change section heading") do
       {:ok,
        %{
          action: :change_section_heading,
@@ -309,9 +368,13 @@ defmodule Sheaf.DocumentEdits do
       |> Graph.add({revision, RDF.type(), DOC.Paragraph})
       |> Graph.add({revision, DOC.text(), RDF.literal(text)})
       |> Graph.add({revision, PROV.wasGeneratedBy(), activity})
-      |> Graph.add({revision, PROV.generatedAtTime(), RDF.literal(generated_at)})
+      |> Graph.add(
+        {revision, PROV.generatedAtTime(), RDF.literal(generated_at)}
+      )
       |> Graph.add({activity, RDF.type(), PROV.Activity})
-      |> Graph.add({activity, RDFS.label(), RDF.literal("Paragraph markup edit")})
+      |> Graph.add(
+        {activity, RDFS.label(), RDF.literal("Paragraph markup edit")}
+      )
       |> add_revision_links(revision, active_revisions)
       |> add_invalidations(activity, active_revisions, generated_at)
 
@@ -319,7 +382,8 @@ defmodule Sheaf.DocumentEdits do
 
     changes = compact_changes([{:retract, retract}, {:assert, assert}])
 
-    with {:ok, statement_count} <- transact(changes, opts, "replace paragraph markup") do
+    with {:ok, statement_count} <-
+           transact(changes, opts, "replace paragraph markup") do
       {:ok,
        %{
          action: :replace_paragraph_markup,
@@ -338,17 +402,27 @@ defmodule Sheaf.DocumentEdits do
 
   defp editable_markup_block_type(graph, block_id, block) do
     case Document.block_type(graph, block) do
-      :paragraph -> {:ok, :paragraph}
-      nil -> {:error, "block #{block_id} is not a document block"}
-      type -> {:error, "block #{block_id} is a #{type}, not a markup paragraph"}
+      :paragraph ->
+        {:ok, :paragraph}
+
+      nil ->
+        {:error, "block #{block_id} is not a document block"}
+
+      type ->
+        {:error, "block #{block_id} is a #{type}, not a markup paragraph"}
     end
   end
 
   defp editable_block_type(graph, block_id, block) do
     case Document.block_type(graph, block) do
-      type when type in [:paragraph, :section] -> {:ok, type}
-      nil -> {:error, "block #{block_id} is not a document block"}
-      type -> {:error, "block #{block_id} is a #{type}, not a paragraph or section"}
+      type when type in [:paragraph, :section] ->
+        {:ok, type}
+
+      nil ->
+        {:error, "block #{block_id} is not a document block"}
+
+      type ->
+        {:error, "block #{block_id} is a #{type}, not a paragraph or section"}
     end
   end
 
@@ -358,7 +432,8 @@ defmodule Sheaf.DocumentEdits do
     |> Enum.reject(&invalidated?(graph, &1))
   end
 
-  defp invalidated?(graph, iri), do: objects(graph, iri, PROV.wasInvalidatedBy()) != []
+  defp invalidated?(graph, iri),
+    do: objects(graph, iri, PROV.wasInvalidatedBy()) != []
 
   defp add_revision_links(graph, _revision, []), do: graph
 
@@ -374,23 +449,37 @@ defmodule Sheaf.DocumentEdits do
     Enum.reduce(old_revisions, graph, fn old_revision, graph ->
       graph
       |> Graph.add({old_revision, PROV.wasInvalidatedBy(), activity})
-      |> Graph.add({old_revision, PROV.invalidatedAtTime(), RDF.literal(generated_at)})
+      |> Graph.add(
+        {old_revision, PROV.invalidatedAtTime(), RDF.literal(generated_at)}
+      )
     end)
   end
 
-  defp move_children_changes(graph, old_parent, new_parent, block, target, position) do
+  defp move_children_changes(
+         graph,
+         old_parent,
+         new_parent,
+         block,
+         target,
+         position
+       ) do
     old_children = Document.children(graph, old_parent)
     new_children = Document.children(graph, new_parent)
 
     old_children_after_remove = Enum.reject(old_children, &(&1 == block))
 
     base_new_children =
-      if old_parent == new_parent, do: old_children_after_remove, else: new_children
+      if old_parent == new_parent,
+        do: old_children_after_remove,
+        else: new_children
 
     with {:ok, new_children_after_insert} <-
            insert_child(base_new_children, block, target, position) do
       parent_children =
-        [{old_parent, old_children_after_remove}, {new_parent, new_children_after_insert}]
+        [
+          {old_parent, old_children_after_remove},
+          {new_parent, new_children_after_insert}
+        ]
         |> Enum.reverse()
         |> Enum.uniq_by(&elem(&1, 0))
 
@@ -417,7 +506,12 @@ defmodule Sheaf.DocumentEdits do
       |> Graph.add({revision, DOC.text(), RDF.literal(text)})
 
     with {:ok, children} <-
-           insert_child(Document.children(graph, parent), block, target, position) do
+           insert_child(
+             Document.children(graph, parent),
+             block,
+             target,
+             position
+           ) do
       changes =
         graph
         |> replace_children_changes(parent, children)
@@ -434,7 +528,10 @@ defmodule Sheaf.DocumentEdits do
     if block in children do
       changes =
         graph
-        |> replace_children_changes(parent, Enum.reject(children, &(&1 == block)))
+        |> replace_children_changes(
+          parent,
+          Enum.reject(children, &(&1 == block))
+        )
         |> Kernel.++([{:retract, deleted_subtree_graph(graph, block)}])
         |> compact_changes()
 
@@ -452,7 +549,9 @@ defmodule Sheaf.DocumentEdits do
 
     graph
     |> Graph.triples()
-    |> Enum.filter(fn {subject, _predicate, _object} -> MapSet.member?(subjects, subject) end)
+    |> Enum.filter(fn {subject, _predicate, _object} ->
+      MapSet.member?(subjects, subject)
+    end)
     |> Graph.new(name: Graph.name(graph))
   end
 
@@ -481,7 +580,9 @@ defmodule Sheaf.DocumentEdits do
     blocks ++ list_subjects ++ paragraph_revisions ++ provenance_activities
   end
 
-  defp list_node_subjects(graph, list), do: list_node_subjects(graph, list, MapSet.new())
+  defp list_node_subjects(graph, list),
+    do: list_node_subjects(graph, list, MapSet.new())
+
   defp list_node_subjects(_graph, nil, _visited), do: []
 
   defp list_node_subjects(graph, list, visited) do
@@ -506,8 +607,11 @@ defmodule Sheaf.DocumentEdits do
     insert_adjacent(children, child, target, :after)
   end
 
-  defp insert_child(children, child, _target, "first_child"), do: {:ok, [child | children]}
-  defp insert_child(children, child, _target, "last_child"), do: {:ok, children ++ [child]}
+  defp insert_child(children, child, _target, "first_child"),
+    do: {:ok, [child | children]}
+
+  defp insert_child(children, child, _target, "last_child"),
+    do: {:ok, children ++ [child]}
 
   defp insert_adjacent(children, child, target, side) do
     if target in children do
@@ -520,11 +624,13 @@ defmodule Sheaf.DocumentEdits do
 
       {:ok, children}
     else
-      {:error, "target block #{Id.id_from_iri(target)} is not a child of the destination parent"}
+      {:error,
+       "target block #{Id.id_from_iri(target)} is not a child of the destination parent"}
     end
   end
 
-  defp placement_parent(graph, target, position) when position in ["before", "after"] do
+  defp placement_parent(graph, target, position)
+       when position in ["before", "after"] do
     parent_of(graph, target)
   end
 
@@ -537,7 +643,8 @@ defmodule Sheaf.DocumentEdits do
     graph
     |> Graph.triples()
     |> Enum.find_value(fn {subject, predicate, _object} ->
-      if predicate == DOC.children() and child in Document.children(graph, subject) do
+      if predicate == DOC.children() and
+           child in Document.children(graph, subject) do
         subject
       end
     end)
@@ -570,7 +677,8 @@ defmodule Sheaf.DocumentEdits do
 
     children
     |> RDF.list(
-      graph: Graph.new({parent, DOC.children(), list}, name: Graph.name(graph)),
+      graph:
+        Graph.new({parent, DOC.children(), list}, name: Graph.name(graph)),
       head: list
     )
     |> Map.fetch!(:graph)
@@ -627,7 +735,11 @@ defmodule Sheaf.DocumentEdits do
     transact = Keyword.get(opts, :transact, &Sheaf.Repo.transact/3)
 
     statement_count =
-      Enum.sum(Enum.map(changes, fn {_op, graph} -> RDF.Data.statement_count(graph) end))
+      Enum.sum(
+        Enum.map(changes, fn {_op, graph} ->
+          RDF.Data.statement_count(graph)
+        end)
+      )
 
     case transact.(tx, changes, [
            {"sheaf.change", label},
@@ -642,7 +754,11 @@ defmodule Sheaf.DocumentEdits do
 
   defp notify_document_changed(%{document_id: document_id} = result) do
     if Process.whereis(Sheaf.PubSub) do
-      Phoenix.PubSub.broadcast(Sheaf.PubSub, topic(document_id), {:document_changed, result})
+      Phoenix.PubSub.broadcast(
+        Sheaf.PubSub,
+        topic(document_id),
+        {:document_changed, result}
+      )
     end
 
     :ok
@@ -655,9 +771,15 @@ defmodule Sheaf.DocumentEdits do
     case resolver.(block_id) do
       id when is_binary(id) and id != "" ->
         case graph_fetcher.(id) do
-          {:ok, %Graph{} = graph} -> {:ok, id, graph}
-          {:error, reason} -> {:error, "could not fetch document #{id}: #{inspect(reason)}"}
-          other -> {:error, "could not fetch document #{id}: unexpected result #{inspect(other)}"}
+          {:ok, %Graph{} = graph} ->
+            {:ok, id, graph}
+
+          {:error, reason} ->
+            {:error, "could not fetch document #{id}: #{inspect(reason)}"}
+
+          other ->
+            {:error,
+             "could not fetch document #{id}: unexpected result #{inspect(other)}"}
         end
 
       nil ->
@@ -667,7 +789,8 @@ defmodule Sheaf.DocumentEdits do
         {:error, "could not resolve block #{block_id}: #{inspect(reason)}"}
 
       other ->
-        {:error, "could not resolve block #{block_id}: unexpected result #{inspect(other)}"}
+        {:error,
+         "could not resolve block #{block_id}: unexpected result #{inspect(other)}"}
     end
   end
 
@@ -717,7 +840,9 @@ defmodule Sheaf.DocumentEdits do
   defp descendant_blocks(graph, block) do
     graph
     |> Document.children(block)
-    |> Enum.flat_map(fn child -> [child | descendant_blocks(graph, child)] end)
+    |> Enum.flat_map(fn child ->
+      [child | descendant_blocks(graph, child)]
+    end)
   end
 
   defp object(graph, subject, predicate) do
@@ -763,10 +888,18 @@ defmodule Sheaf.DocumentEdits do
     end
   end
 
-  defp normalize_position(value) when value in [:before, :previous_sibling], do: "before"
-  defp normalize_position(value) when value in [:after, :next_sibling], do: "after"
-  defp normalize_position(value) when value in [:first_child, :prepend_child], do: "first_child"
-  defp normalize_position(value) when value in [:last_child, :append_child], do: "last_child"
+  defp normalize_position(value) when value in [:before, :previous_sibling],
+    do: "before"
+
+  defp normalize_position(value) when value in [:after, :next_sibling],
+    do: "after"
+
+  defp normalize_position(value) when value in [:first_child, :prepend_child],
+    do: "first_child"
+
+  defp normalize_position(value) when value in [:last_child, :append_child],
+    do: "last_child"
+
   defp normalize_position(_value), do: nil
 
   defp require_position(nil),

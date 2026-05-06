@@ -43,12 +43,16 @@ defmodule SheafWeb.AssistantActivityComponents do
       @classes.row,
       @class
     ]}>
+      <span class={[@icon, "mr-2 mt-0.5 size-3.5 shrink-0", @classes.meta]} />
       <span class="min-w-0 flex-1">
         <span class="flex min-w-0 items-baseline gap-2">
           <span class={["min-w-0 flex-1 truncate", @classes.title]}>
             {@title}
           </span>
-          <span :if={present?(@status)} class={["shrink-0 uppercase", @classes.badge]}>
+          <span
+            :if={present?(@status)}
+            class={["shrink-0 uppercase", @classes.badge]}
+          >
             {@status}
           </span>
         </span>
@@ -114,7 +118,10 @@ defmodule SheafWeb.AssistantActivityComponents do
               </span>
             </span>
           </span>
-          <span :if={present?(@status)} class={["shrink-0 uppercase", @classes.badge]}>
+          <span
+            :if={present?(@status)}
+            class={["shrink-0 uppercase", @classes.badge]}
+          >
             {@status}
           </span>
         </summary>
@@ -149,7 +156,10 @@ defmodule SheafWeb.AssistantActivityComponents do
             </span>
           </div>
         </div>
-        <span :if={present?(@status)} class={["shrink-0 uppercase", @classes.badge]}>
+        <span
+          :if={present?(@status)}
+          class={["shrink-0 uppercase", @classes.badge]}
+        >
           {@status}
         </span>
       </header>
@@ -178,7 +188,10 @@ defmodule SheafWeb.AssistantActivityComponents do
           <span class={[@classes.title]}>
             {@title}
           </span>
-          <span :if={present?(@detail)} class="min-w-0 truncate text-stone-500 dark:text-stone-400">
+          <span
+            :if={present?(@detail)}
+            class="min-w-0 truncate text-stone-500 dark:text-stone-400"
+          >
             {@detail}
           </span>
         </div>
@@ -226,7 +239,8 @@ defmodule SheafWeb.AssistantActivityComponents do
   defp activity_preview_classes(:pending) do
     %{
       frame: "border-amber-300 dark:border-amber-800",
-      header: "border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20",
+      header:
+        "border-amber-200 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/20",
       icon: "text-amber-600 dark:text-amber-300",
       badge: "text-amber-700 dark:text-amber-300"
     }
@@ -235,7 +249,8 @@ defmodule SheafWeb.AssistantActivityComponents do
   defp activity_preview_classes(:danger) do
     %{
       frame: "border-red-300 dark:border-red-900",
-      header: "border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20",
+      header:
+        "border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20",
       icon: "text-red-700 dark:text-red-300",
       badge: "text-red-700 dark:text-red-300"
     }
@@ -252,7 +267,8 @@ defmodule SheafWeb.AssistantActivityComponents do
 
   defp activity_panel_classes(:note) do
     %{
-      panel: "border-emerald-500 bg-emerald-50/50 dark:border-emerald-700 dark:bg-emerald-950/20",
+      panel:
+        "border-emerald-500 bg-emerald-50/50 dark:border-emerald-700 dark:bg-emerald-950/20",
       icon: "text-emerald-700 dark:text-emerald-300",
       title: "text-emerald-800 dark:text-emerald-200"
     }

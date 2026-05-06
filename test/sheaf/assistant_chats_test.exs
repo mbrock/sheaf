@@ -12,7 +12,9 @@ defmodule Sheaf.Assistant.ChatsTest do
                listed?: false,
                model: "test-model",
                titles: %{},
-               generate_text: fn _model, _context, _opts -> flunk("unexpected inference") end
+               generate_text: fn _model, _context, _opts ->
+                 flunk("unexpected inference")
+               end
              )
 
     assert Chat.exists?(id)

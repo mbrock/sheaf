@@ -35,7 +35,11 @@ defmodule SheafWeb.DocumentIndexLive do
   end
 
   @impl true
-  def handle_event("toggle_document_exclusion", %{"id" => id, "included" => included}, socket) do
+  def handle_event(
+        "toggle_document_exclusion",
+        %{"id" => id, "included" => included},
+        socket
+      ) do
     excluded? = included not in ["true", true]
 
     case Sheaf.Workspace.set_document_excluded(id, excluded?) do
@@ -53,7 +57,9 @@ defmodule SheafWeb.DocumentIndexLive do
   end
 
   defp fetch_documents do
-    Tracer.with_span "SheafWeb.DocumentIndexLive.fetch_documents", %{kind: :internal} do
+    Tracer.with_span "SheafWeb.DocumentIndexLive.fetch_documents", %{
+      kind: :internal
+    } do
       case Sheaf.Documents.list() do
         {:ok, documents} ->
           index_documents = Enum.filter(documents, &index_document?/1)
@@ -72,7 +78,9 @@ defmodule SheafWeb.DocumentIndexLive do
     end
   end
 
-  defp index_document?(%{kind: kind}) when kind in [:transcript, :spreadsheet], do: false
+  defp index_document?(%{kind: kind})
+       when kind in [:transcript, :spreadsheet], do: false
+
   defp index_document?(_document), do: true
 
   @impl true
@@ -83,8 +91,17 @@ defmodule SheafWeb.DocumentIndexLive do
         {"sheaf.document_count", length(assigns.documents)}
       ]
     } do
-      assigns = assign(assigns, :document_groups, grouped_documents(assigns.documents))
-      Tracer.set_attribute("sheaf.document_group_count", length(assigns.document_groups))
+      assigns =
+        assign(
+          assigns,
+          :document_groups,
+          grouped_documents(assigns.documents)
+        )
+
+      Tracer.set_attribute(
+        "sheaf.document_group_count",
+        length(assigns.document_groups)
+      )
 
       ~H"""
       <main class="min-h-dvh max-w-full overflow-x-hidden bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
@@ -125,12 +142,17 @@ defmodule SheafWeb.DocumentIndexLive do
       attributes: [{"sheaf.document_count", length(documents)}]
     } do
       owner_documents = Enum.filter(documents, & &1.workspace_owner_authored?)
-      library_documents = Enum.reject(documents, & &1.workspace_owner_authored?)
+
+      library_documents =
+        Enum.reject(documents, & &1.workspace_owner_authored?)
 
       owner_group =
         case owner_documents do
-          [] -> []
-          documents -> [{:thesis, Enum.sort_by(documents, &document_sort_key/1)}]
+          [] ->
+            []
+
+          documents ->
+            [{:thesis, Enum.sort_by(documents, &document_sort_key/1)}]
         end
 
       library_groups =
@@ -159,7 +181,9 @@ defmodule SheafWeb.DocumentIndexLive do
 
   defp document_group(%{kind: kind}), do: kind
 
-  defp first_title([document | _documents]), do: String.downcase(document.title)
+  defp first_title([document | _documents]),
+    do: String.downcase(document.title)
+
   defp first_title([]), do: ""
 
   defp kind_label({:expression, kind}), do: pluralize_expression_kind(kind)

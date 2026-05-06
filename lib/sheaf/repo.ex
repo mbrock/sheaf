@@ -32,7 +32,11 @@ defmodule Sheaf.Repo do
                pattern: {nil, nil, nil, RDF.iri(@workspace_graph)}
              ),
            :ok <- load({nil, nil, nil, RDF.iri(@metadata_graph)}) do
-        Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(dataset()))
+        Tracer.set_attribute(
+          "sheaf.statement_count",
+          RDF.Data.statement_count(dataset())
+        )
+
         {:ok, pid}
       end
     end
@@ -41,7 +45,12 @@ defmodule Sheaf.Repo do
   def dataset do
     Tracer.with_span "sheaf.repo.dataset", %{kind: :internal} do
       dataset = Quadlog.dataset(__MODULE__)
-      Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(dataset))
+
+      Tracer.set_attribute(
+        "sheaf.statement_count",
+        RDF.Data.statement_count(dataset)
+      )
+
       dataset
     end
   end
@@ -61,7 +70,11 @@ defmodule Sheaf.Repo do
     } do
       case Quadlog.match(__MODULE__, pattern) do
         {:ok, dataset} = ok ->
-          Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(dataset))
+          Tracer.set_attribute(
+            "sheaf.statement_count",
+            RDF.Data.statement_count(dataset)
+          )
+
           ok
 
         error ->
@@ -126,13 +139,22 @@ defmodule Sheaf.Repo do
   def assert(graph), do: assert(Sheaf.mint(), graph)
 
   def assert(tx, graph),
-    do: transact(tx, [{:assert, graph}], [{"sheaf.change", "assert"}] ++ graph_attributes(graph))
+    do:
+      transact(
+        tx,
+        [{:assert, graph}],
+        [{"sheaf.change", "assert"}] ++ graph_attributes(graph)
+      )
 
   def retract(graph), do: retract(Sheaf.mint(), graph)
 
   def retract(tx, graph),
     do:
-      transact(tx, [{:retract, graph}], [{"sheaf.change", "retract"}] ++ graph_attributes(graph))
+      transact(
+        tx,
+        [{:retract, graph}],
+        [{"sheaf.change", "retract"}] ++ graph_attributes(graph)
+      )
 
   def transact(changes), do: transact(Sheaf.mint(), changes)
   def transact(tx, changes), do: transact(tx, changes, [])
@@ -163,7 +185,11 @@ defmodule Sheaf.Repo do
   end
 
   defp tx_attributes(tx),
-    do: [{"db.system", "quadlog"}, {"db.operation", "transact"}, {"sheaf.tx", value(tx)}]
+    do: [
+      {"db.system", "quadlog"},
+      {"db.operation", "transact"},
+      {"sheaf.tx", value(tx)}
+    ]
 
   defp graph_attributes(graph) do
     [

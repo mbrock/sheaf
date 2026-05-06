@@ -34,7 +34,12 @@ defmodule Sheaf.Assistant.Notes do
     } do
       with :ok <- load_notes_cache() do
         graph = Sheaf.Repo.ask(&from_dataset/1)
-        Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(graph))
+
+        Tracer.set_attribute(
+          "sheaf.statement_count",
+          RDF.Data.statement_count(graph)
+        )
+
         {:ok, graph}
       end
     end
@@ -124,7 +129,8 @@ defmodule Sheaf.Assistant.Notes do
                         title: optional_text(attrs, :title),
                         agent_label: optional_text(attrs, :agent_label),
                         session_label: optional_text(attrs, :session_label),
-                        conversation_mode: optional_text(attrs, :conversation_mode) do
+                        conversation_mode:
+                          optional_text(attrs, :conversation_mode) do
           @prefix Sheaf.NS.AS
           @prefix Sheaf.NS.DOC
           @prefix Sheaf.NS.PROV
@@ -191,16 +197,25 @@ defmodule Sheaf.Assistant.Notes do
   def from_dataset(dataset, _limit \\ @default_limit) do
     Tracer.with_span "Sheaf.Assistant.Notes.from_dataset", %{
       kind: :internal,
-      attributes: [{"sheaf.statement_count", RDF.Data.statement_count(dataset)}]
+      attributes: [
+        {"sheaf.statement_count", RDF.Data.statement_count(dataset)}
+      ]
     } do
       graph = workspace_graph(dataset)
-      Tracer.set_attribute("sheaf.statement_count", RDF.Data.statement_count(graph))
+
+      Tracer.set_attribute(
+        "sheaf.statement_count",
+        RDF.Data.statement_count(graph)
+      )
+
       graph
     end
   end
 
   defp load_notes_cache do
-    Sheaf.Repo.load_once({nil, nil, nil, RDF.iri(Sheaf.Repo.workspace_graph())})
+    Sheaf.Repo.load_once(
+      {nil, nil, nil, RDF.iri(Sheaf.Repo.workspace_graph())}
+    )
   end
 
   defp workspace_graph(dataset) do
@@ -252,7 +267,8 @@ defmodule Sheaf.Assistant.Notes do
   end
 
   defp note_iri(attrs, opts) do
-    case Keyword.get(opts, :note_iri) || arg(attrs, :note_iri) || arg(attrs, :note_id) do
+    case Keyword.get(opts, :note_iri) || arg(attrs, :note_iri) ||
+           arg(attrs, :note_id) do
       nil -> {:ok, Sheaf.mint()}
       value -> normalize_iri(value, :note)
     end
@@ -315,9 +331,14 @@ defmodule Sheaf.Assistant.Notes do
       |> String.trim_leading("#")
 
     cond do
-      value == "" -> []
-      String.starts_with?(value, ["http://", "https://"]) -> [Id.id_from_iri(value)]
-      true -> [value]
+      value == "" ->
+        []
+
+      String.starts_with?(value, ["http://", "https://"]) ->
+        [Id.id_from_iri(value)]
+
+      true ->
+        [value]
     end
   end
 
@@ -334,5 +355,6 @@ defmodule Sheaf.Assistant.Notes do
     |> Enum.map_join("\n", &(padding <> &1))
   end
 
-  defp arg(attrs, key), do: Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
+  defp arg(attrs, key),
+    do: Map.get(attrs, key) || Map.get(attrs, Atom.to_string(key))
 end

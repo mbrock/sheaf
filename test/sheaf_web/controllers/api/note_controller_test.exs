@@ -21,7 +21,8 @@ defmodule SheafWeb.API.NoteControllerTest do
           {note, RDF.type(), AS.Note},
           {note, RDF.type(), DOC.ResearchNote},
           {note, RDFS.label(), RDF.literal("Evidence map note")},
-          {note, AS.content(), RDF.literal("Strongest evidence sits in #BLOCK1.")},
+          {note, AS.content(),
+           RDF.literal("Strongest evidence sits in #BLOCK1.")},
           {note, AS.published(), RDF.literal(~U[2026-04-26 13:13:46Z])},
           {note, AS.context(), session},
           {note, AS.attributedTo(), agent},
@@ -52,7 +53,10 @@ defmodule SheafWeb.API.NoteControllerTest do
                    "iri" => "https://sheaf.less.rest/AGENT1"
                  },
                  "mentions" => [
-                   %{"id" => "BLOCK1", "iri" => "https://sheaf.less.rest/BLOCK1"}
+                   %{
+                     "id" => "BLOCK1",
+                     "iri" => "https://sheaf.less.rest/BLOCK1"
+                   }
                  ]
                }
              ]

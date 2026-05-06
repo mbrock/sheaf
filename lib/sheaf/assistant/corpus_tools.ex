@@ -22,7 +22,14 @@ defmodule Sheaf.Assistant.CorpusTools do
   }
 
   alias Sheaf.Assistant.Notes
-  alias Sheaf.Assistant.{QueryResults, SpreadsheetSession, ToolResultText, ToolResults}
+
+  alias Sheaf.Assistant.{
+    QueryResults,
+    SpreadsheetSession,
+    ToolResultText,
+    ToolResults
+  }
+
   alias Sheaf.NS.AS
 
   @search_result_limit 10
@@ -42,27 +49,55 @@ defmodule Sheaf.Assistant.CorpusTools do
   def tools(opts) when is_list(opts) do
     notify = Keyword.get(opts, :notify, fn _event -> :ok end)
     search = Keyword.get(opts, :search, &Sheaf.Embedding.Index.search/2)
-    exact_search = Keyword.get(opts, :exact_search, &Sheaf.Embedding.Index.exact_search/2)
-    paragraph_tagger = Keyword.get(opts, :paragraph_tagger, &BlockTags.attach/2)
+
+    exact_search =
+      Keyword.get(opts, :exact_search, &Sheaf.Embedding.Index.exact_search/2)
+
+    paragraph_tagger =
+      Keyword.get(opts, :paragraph_tagger, &BlockTags.attach/2)
+
     include_notes? = Keyword.get(opts, :include_notes?, true)
     tool_set = Keyword.get(opts, :tool_set, :default)
     spreadsheet_session = Keyword.get(opts, :spreadsheet_session)
     query_result_context = Keyword.get(opts, :query_result_context, [])
-    query_result_reader = Keyword.get(opts, :query_result_reader, &QueryResults.read/2)
+
+    query_result_reader =
+      Keyword.get(opts, :query_result_reader, &QueryResults.read/2)
 
     block_text_replacer =
-      Keyword.get(opts, :block_text_replacer, &DocumentEdits.replace_block_text/2)
+      Keyword.get(
+        opts,
+        :block_text_replacer,
+        &DocumentEdits.replace_block_text/2
+      )
 
     block_mover = Keyword.get(opts, :block_mover, &DocumentEdits.move_block/3)
-    paragraph_inserter = Keyword.get(opts, :paragraph_inserter, &DocumentEdits.insert_paragraph/3)
-    block_deleter = Keyword.get(opts, :block_deleter, &DocumentEdits.delete_block/1)
+
+    paragraph_inserter =
+      Keyword.get(
+        opts,
+        :paragraph_inserter,
+        &DocumentEdits.insert_paragraph/3
+      )
+
+    block_deleter =
+      Keyword.get(opts, :block_deleter, &DocumentEdits.delete_block/1)
 
     search_index_updater =
-      Keyword.get(opts, :search_index_updater, &update_search_index_for_blocks/1)
+      Keyword.get(
+        opts,
+        :search_index_updater,
+        &update_search_index_for_blocks/1
+      )
 
-    {spreadsheet_lister, spreadsheet_query, spreadsheet_search, spreadsheet_dialect,
-     spreadsheet_result_reader} =
-      spreadsheet_backend(opts, spreadsheet_session, query_result_context, query_result_reader)
+    {spreadsheet_lister, spreadsheet_query, spreadsheet_search,
+     spreadsheet_dialect, spreadsheet_result_reader} =
+      spreadsheet_backend(
+        opts,
+        spreadsheet_session,
+        query_result_context,
+        query_result_reader
+      )
 
     tools = [
       Tool.new!(
@@ -78,7 +113,11 @@ defmodule Sheaf.Assistant.CorpusTools do
           "Return a document's metadata and full section outline. " <>
             "Call this before drilling into a document so you know the structure.",
         parameter_schema: [
-          id: [type: :string, required: true, doc: "Document id (6-char block id)"]
+          id: [
+            type: :string,
+            required: true,
+            doc: "Document id (6-char block id)"
+          ]
         ],
         callback: instrument(notify, "get_document", &get_document_tool/1)
       ),
@@ -125,11 +164,21 @@ defmodule Sheaf.Assistant.CorpusTools do
           document_id: [type: :string, doc: "Optional: scope to one document"],
           document_kind: [
             type: :string,
-            doc: "Optional: scope to one document kind, e.g. thesis, literature, spreadsheet."
+            doc:
+              "Optional: scope to one document kind, e.g. thesis, literature, spreadsheet."
           ],
-          limit: [type: :integer, default: @search_result_limit, doc: "Maximum hits per category"]
+          limit: [
+            type: :integer,
+            default: @search_result_limit,
+            doc: "Maximum hits per category"
+          ]
         ],
-        callback: instrument(notify, "search_text", &search_text_tool(&1, search, exact_search))
+        callback:
+          instrument(
+            notify,
+            "search_text",
+            &search_text_tool(&1, search, exact_search)
+          )
       ),
       Tool.new!(
         name: "tag_paragraphs",
@@ -147,7 +196,8 @@ defmodule Sheaf.Assistant.CorpusTools do
             type: {:list, {:in, BlockTags.tag_names()}},
             required: true,
             doc:
-              "Writing tags to attach. Allowed values: " <> Enum.join(BlockTags.tag_names(), ", ")
+              "Writing tags to attach. Allowed values: " <>
+                Enum.join(BlockTags.tag_names(), ", ")
           ]
         ],
         callback:
@@ -181,7 +231,10 @@ defmodule Sheaf.Assistant.CorpusTools do
       end
 
     if include_notes? and tool_set != :edit do
-      note_context = Keyword.get_lazy(opts, :note_context, &default_note_context/0) |> Map.new()
+      note_context =
+        Keyword.get_lazy(opts, :note_context, &default_note_context/0)
+        |> Map.new()
+
       note_writer = Keyword.get(opts, :note_writer, &Notes.write/1)
 
       tools ++
@@ -210,11 +263,16 @@ defmodule Sheaf.Assistant.CorpusTools do
             "For a section block, this changes the heading title. Only paragraph and " <>
             "section blocks are accepted.",
         parameter_schema: [
-          block: [type: :string, required: true, doc: "Paragraph or section block id."],
+          block: [
+            type: :string,
+            required: true,
+            doc: "Paragraph or section block id."
+          ],
           text: [
             type: :string,
             required: true,
-            doc: "Complete replacement paragraph text or complete replacement heading title."
+            doc:
+              "Complete replacement paragraph text or complete replacement heading title."
           ]
         ],
         callback:
@@ -231,7 +289,11 @@ defmodule Sheaf.Assistant.CorpusTools do
             "to reparent it under a section or document block.",
         parameter_schema: [
           block: [type: :string, required: true, doc: "Block id to move."],
-          target: [type: :string, required: true, doc: "Block id used as the placement target."],
+          target: [
+            type: :string,
+            required: true,
+            doc: "Block id used as the placement target."
+          ],
           position: [
             type: {:in, ["before", "after", "first_child", "last_child"]},
             required: true,
@@ -251,7 +313,11 @@ defmodule Sheaf.Assistant.CorpusTools do
             "position=before for previous sibling, or first_child/last_child under " <>
             "a section or document block.",
         parameter_schema: [
-          target: [type: :string, required: true, doc: "Block id used as the placement target."],
+          target: [
+            type: :string,
+            required: true,
+            doc: "Block id used as the placement target."
+          ],
           position: [
             type: {:in, ["before", "after", "first_child", "last_child"]},
             required: true,
@@ -304,7 +370,12 @@ defmodule Sheaf.Assistant.CorpusTools do
     ]
   end
 
-  defp spreadsheet_backend(opts, nil, _query_result_context, query_result_reader) do
+  defp spreadsheet_backend(
+         opts,
+         nil,
+         _query_result_context,
+         query_result_reader
+       ) do
     {
       Keyword.get(opts, :spreadsheet_lister, &Spreadsheets.list/0),
       Keyword.get(opts, :spreadsheet_query, &Spreadsheets.query/2),
@@ -314,7 +385,12 @@ defmodule Sheaf.Assistant.CorpusTools do
     }
   end
 
-  defp spreadsheet_backend(opts, spreadsheet_session, query_result_context, query_result_reader) do
+  defp spreadsheet_backend(
+         opts,
+         spreadsheet_session,
+         query_result_context,
+         query_result_reader
+       ) do
     {
       Keyword.get(opts, :spreadsheet_lister, fn ->
         SpreadsheetSession.list(spreadsheet_session)
@@ -345,10 +421,24 @@ defmodule Sheaf.Assistant.CorpusTools do
     case spreadsheet_lister.() do
       {:ok, [_spreadsheet | _spreadsheets]} ->
         [
-          list_spreadsheets_tool_definition(notify, spreadsheet_lister, spreadsheet_dialect),
-          query_spreadsheets_tool_definition(notify, spreadsheet_query, spreadsheet_dialect),
-          read_spreadsheet_query_result_tool_definition(notify, spreadsheet_result_reader),
-          present_spreadsheet_query_result_tool_definition(notify, spreadsheet_result_reader),
+          list_spreadsheets_tool_definition(
+            notify,
+            spreadsheet_lister,
+            spreadsheet_dialect
+          ),
+          query_spreadsheets_tool_definition(
+            notify,
+            spreadsheet_query,
+            spreadsheet_dialect
+          ),
+          read_spreadsheet_query_result_tool_definition(
+            notify,
+            spreadsheet_result_reader
+          ),
+          present_spreadsheet_query_result_tool_definition(
+            notify,
+            spreadsheet_result_reader
+          ),
           search_spreadsheets_tool_definition(notify, spreadsheet_search)
         ]
 
@@ -357,7 +447,10 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp read_spreadsheet_query_result_tool_definition(notify, query_result_reader) do
+  defp read_spreadsheet_query_result_tool_definition(
+         notify,
+         query_result_reader
+       ) do
     Tool.new!(
       name: "read_spreadsheet_query_result",
       description:
@@ -387,7 +480,10 @@ defmodule Sheaf.Assistant.CorpusTools do
     )
   end
 
-  defp present_spreadsheet_query_result_tool_definition(notify, query_result_reader) do
+  defp present_spreadsheet_query_result_tool_definition(
+         notify,
+         query_result_reader
+       ) do
     Tool.new!(
       name: "present_spreadsheet_query_result",
       description:
@@ -423,8 +519,15 @@ defmodule Sheaf.Assistant.CorpusTools do
             {:list,
              {:map,
               [
-                name: [type: :string, required: true, doc: "Actual SQL result column name."],
-                label: [type: :string, doc: "Optional human-facing column label."],
+                name: [
+                  type: :string,
+                  required: true,
+                  doc: "Actual SQL result column name."
+                ],
+                label: [
+                  type: :string,
+                  doc: "Optional human-facing column label."
+                ],
                 type: [
                   type:
                     {:in,
@@ -441,10 +544,14 @@ defmodule Sheaf.Assistant.CorpusTools do
                      ]},
                   doc: "Optional display type hint."
                 ],
-                unit: [type: :string, doc: "Optional unit, such as EUR or kg."]
+                unit: [
+                  type: :string,
+                  doc: "Optional unit, such as EUR or kg."
+                ]
               ]}},
           default: [],
-          doc: "Optional advisory column display hints. Unknown columns are ignored."
+          doc:
+            "Optional advisory column display hints. Unknown columns are ignored."
         ]
       ],
       callback:
@@ -454,7 +561,11 @@ defmodule Sheaf.Assistant.CorpusTools do
     )
   end
 
-  defp list_spreadsheets_tool_definition(notify, spreadsheet_lister, spreadsheet_dialect) do
+  defp list_spreadsheets_tool_definition(
+         notify,
+         spreadsheet_lister,
+         spreadsheet_dialect
+       ) do
     Tool.new!(
       name: "list_spreadsheets",
       description:
@@ -480,7 +591,11 @@ defmodule Sheaf.Assistant.CorpusTools do
     )
   end
 
-  defp query_spreadsheets_tool_definition(notify, spreadsheet_query, spreadsheet_dialect) do
+  defp query_spreadsheets_tool_definition(
+         notify,
+         spreadsheet_query,
+         spreadsheet_dialect
+       ) do
     Tool.new!(
       name: "query_spreadsheets",
       description:
@@ -526,7 +641,11 @@ defmodule Sheaf.Assistant.CorpusTools do
           required: true,
           doc: "Words or phrase to find in spreadsheet rows."
         ],
-        limit: [type: :integer, default: 20, doc: "Maximum matching rows returned."]
+        limit: [
+          type: :integer,
+          default: 20,
+          doc: "Maximum matching rows returned."
+        ]
       ],
       callback:
         instrument(notify, "search_spreadsheets", fn args ->
@@ -575,7 +694,8 @@ defmodule Sheaf.Assistant.CorpusTools do
         block_ids: [
           type: {:list, :string},
           default: [],
-          doc: "Block ids mentioned or related by this note, without the leading #."
+          doc:
+            "Block ids mentioned or related by this note, without the leading #."
         ],
         title: [type: :string, doc: "Optional short title for the note."]
       ],
@@ -606,7 +726,8 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  def block_context_text(_graph, _root, _block_id), do: {:error, :invalid_block_id}
+  def block_context_text(_graph, _root, _block_id),
+    do: {:error, :invalid_block_id}
 
   def selected_block_context_text(graph, root, block_id)
       when is_binary(block_id) and block_id != "" do
@@ -621,7 +742,8 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  def selected_block_context_text(_graph, _root, _block_id), do: {:error, :invalid_block_id}
+  def selected_block_context_text(_graph, _root, _block_id),
+    do: {:error, :invalid_block_id}
 
   def humanize("list_documents", _args, _titles), do: "Checking the library"
 
@@ -691,9 +813,14 @@ defmodule Sheaf.Assistant.CorpusTools do
     block_ids = requested_blocks(args)
 
     case block_ids do
-      [block_id] -> "Tagging ##{block_id}"
-      ids when is_list(ids) and ids != [] -> "Tagging #{length(ids)} paragraphs"
-      _ids -> "Tagging paragraphs"
+      [block_id] ->
+        "Tagging ##{block_id}"
+
+      ids when is_list(ids) and ids != [] ->
+        "Tagging #{length(ids)} paragraphs"
+
+      _ids ->
+        "Tagging paragraphs"
     end
   end
 
@@ -731,9 +858,14 @@ defmodule Sheaf.Assistant.CorpusTools do
     block_ids = requested_blocks(args)
 
     case block_ids do
-      [block_id] -> "Updating search indexes for ##{block_id}"
-      ids when is_list(ids) and ids != [] -> "Updating search indexes for #{length(ids)} blocks"
-      _ids -> "Updating search indexes"
+      [block_id] ->
+        "Updating search indexes for ##{block_id}"
+
+      ids when is_list(ids) and ids != [] ->
+        "Updating search indexes for #{length(ids)} blocks"
+
+      _ids ->
+        "Updating search indexes"
     end
   end
 
@@ -743,16 +875,26 @@ defmodule Sheaf.Assistant.CorpusTools do
   Builds a short human-readable summary of a finished tool result,
   suitable for the right-hand side of a compact tool-call row.
   """
-  def result_summary(name, {:ok, %ToolResult{metadata: %{sheaf_result: result}}}) do
+  def result_summary(
+        name,
+        {:ok, %ToolResult{metadata: %{sheaf_result: result}}}
+      ) do
     result_summary(name, {:ok, result})
   end
 
-  def result_summary("list_documents", {:ok, %ToolResults.ListDocuments{documents: docs}}) do
+  def result_summary(
+        "list_documents",
+        {:ok, %ToolResults.ListDocuments{documents: docs}}
+      ) do
     pluralize(length(docs), "document", "documents")
   end
 
-  def result_summary("get_document", {:ok, %ToolResults.Document{title: title, outline: outline}}) do
-    sections = "outline with " <> pluralize(length(outline), "section", "sections")
+  def result_summary(
+        "get_document",
+        {:ok, %ToolResults.Document{title: title, outline: outline}}
+      ) do
+    sections =
+      "outline with " <> pluralize(length(outline), "section", "sections")
 
     case title do
       nil -> sections
@@ -761,40 +903,68 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  def result_summary("read", {:ok, %ToolResults.Block{type: :section, children: children}}) do
+  def result_summary(
+        "read",
+        {:ok, %ToolResults.Block{type: :section, children: children}}
+      ) do
     "section with " <> pluralize(length(children), "child", "children")
   end
 
-  def result_summary("read", {:ok, %ToolResults.Block{type: :paragraph, text: text}})
+  def result_summary(
+        "read",
+        {:ok, %ToolResults.Block{type: :paragraph, text: text}}
+      )
       when is_binary(text) do
     excerpt_or_kind(text, "paragraph")
   end
 
-  def result_summary("read", {:ok, %ToolResults.Block{type: :extracted, text: text}})
+  def result_summary(
+        "read",
+        {:ok, %ToolResults.Block{type: :extracted, text: text}}
+      )
       when is_binary(text) do
     excerpt_or_kind(text, "extracted block")
   end
 
-  def result_summary("read", {:ok, %ToolResults.Block{type: :row, text: text}})
+  def result_summary(
+        "read",
+        {:ok, %ToolResults.Block{type: :row, text: text}}
+      )
       when is_binary(text) do
     excerpt_or_kind(text, "row")
   end
 
-  def result_summary("read", {:ok, %ToolResults.Block{type: :document, title: title}}) do
-    "document" <> if(title in [nil, ""], do: "", else: ": " <> ellipsize(title, 60))
+  def result_summary(
+        "read",
+        {:ok, %ToolResults.Block{type: :document, title: title}}
+      ) do
+    "document" <>
+      if(title in [nil, ""], do: "", else: ": " <> ellipsize(title, 60))
   end
 
-  def result_summary("read", {:ok, %ToolResults.Block{type: :note, title: title}}) do
-    "note" <> if(title in [nil, ""], do: "", else: ": " <> ellipsize(title, 60))
+  def result_summary(
+        "read",
+        {:ok, %ToolResults.Block{type: :note, title: title}}
+      ) do
+    "note" <>
+      if(title in [nil, ""], do: "", else: ": " <> ellipsize(title, 60))
   end
 
-  def result_summary("read", {:ok, %ToolResults.Blocks{blocks: blocks, expanded?: expanded?}}) do
+  def result_summary(
+        "read",
+        {:ok, %ToolResults.Blocks{blocks: blocks, expanded?: expanded?}}
+      ) do
     summary = pluralize(length(blocks), "resource", "resources")
     if expanded?, do: summary <> " expanded", else: summary
   end
 
-  def result_summary("search_text", {:ok, %ToolResults.SearchResults{} = results}) do
-    count = length(results.exact_results) + length(results.approximate_results)
+  def result_summary(
+        "search_text",
+        {:ok, %ToolResults.SearchResults{} = results}
+      ) do
+    count =
+      length(results.exact_results) + length(results.approximate_results)
+
     pluralize(count, "hit", "hits")
   end
 
@@ -805,7 +975,10 @@ defmodule Sheaf.Assistant.CorpusTools do
     pluralize(length(docs), "spreadsheet", "spreadsheets")
   end
 
-  def result_summary("query_spreadsheets", {:ok, %ToolResults.SpreadsheetQuery{rows: rows}}) do
+  def result_summary(
+        "query_spreadsheets",
+        {:ok, %ToolResults.SpreadsheetQuery{rows: rows}}
+      ) do
     pluralize(length(rows), "row", "rows")
   end
 
@@ -818,30 +991,49 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   def result_summary(
         "present_spreadsheet_query_result",
-        {:ok, %ToolResults.PresentedSpreadsheetQueryResult{rows: rows, title: title}}
+        {:ok,
+         %ToolResults.PresentedSpreadsheetQueryResult{
+           rows: rows,
+           title: title
+         }}
       ) do
     [title, pluralize(length(rows), "row", "rows")]
     |> Enum.reject(&is_nil/1)
     |> Enum.join("; ")
   end
 
-  def result_summary("search_spreadsheets", {:ok, %ToolResults.SpreadsheetSearch{hits: hits}}) do
+  def result_summary(
+        "search_spreadsheets",
+        {:ok, %ToolResults.SpreadsheetSearch{hits: hits}}
+      ) do
     pluralize(length(hits), "hit", "hits")
   end
 
-  def result_summary("write_note", {:ok, %ToolResults.Note{}}), do: "note saved"
+  def result_summary("write_note", {:ok, %ToolResults.Note{}}),
+    do: "note saved"
 
-  def result_summary("tag_paragraphs", {:ok, %ToolResults.ParagraphTags{} = result}) do
+  def result_summary(
+        "tag_paragraphs",
+        {:ok, %ToolResults.ParagraphTags{} = result}
+      ) do
     "#{pluralize(length(result.tags), "tag", "tags")} on " <>
       pluralize(length(result.block_ids), "paragraph", "paragraphs")
   end
 
   def result_summary(name, {:ok, %ToolResults.BlockEdit{} = result})
-      when name in ["update_block_text", "move_block", "insert_paragraph", "delete_block"] do
+      when name in [
+             "update_block_text",
+             "move_block",
+             "insert_paragraph",
+             "delete_block"
+           ] do
     "changed " <> pluralize(result.statement_count, "statement", "statements")
   end
 
-  def result_summary("update_search_index", {:ok, %ToolResults.SearchIndexUpdate{} = result}) do
+  def result_summary(
+        "update_search_index",
+        {:ok, %ToolResults.SearchIndexUpdate{} = result}
+      ) do
     "#{pluralize(length(result.affected_blocks), "affected block", "affected blocks")}, " <>
       "#{pluralize(result.embedding_embedded_count, "embedding", "embeddings")} refreshed"
   end
@@ -968,11 +1160,15 @@ defmodule Sheaf.Assistant.CorpusTools do
         |> Keyword.put(:kinds, @default_search_kinds)
 
       with {:ok, exact_results} <- exact_search.(query, opts),
-           {:ok, approximate_results} <- search.(query, Keyword.put(opts, :exact_limit, 0)) do
+           {:ok, approximate_results} <-
+             search.(query, Keyword.put(opts, :exact_limit, 0)) do
         %ToolResults.SearchResults{
-          exact_results: exact_results |> Enum.map(&search_hit/1) |> add_search_contexts(),
+          exact_results:
+            exact_results |> Enum.map(&search_hit/1) |> add_search_contexts(),
           approximate_results:
-            approximate_results |> Enum.map(&search_hit/1) |> add_search_contexts()
+            approximate_results
+            |> Enum.map(&search_hit/1)
+            |> add_search_contexts()
         }
         |> rendered_result()
         |> then(&{:ok, &1})
@@ -993,7 +1189,11 @@ defmodule Sheaf.Assistant.CorpusTools do
         total_spreadsheets = length(spreadsheets)
 
         total_sheets =
-          Enum.sum(Enum.map(spreadsheets, fn spreadsheet -> length(spreadsheet.sheets) end))
+          Enum.sum(
+            Enum.map(spreadsheets, fn spreadsheet ->
+              length(spreadsheet.sheets)
+            end)
+          )
 
         {spreadsheets, truncated?} =
           spreadsheets
@@ -1009,7 +1209,9 @@ defmodule Sheaf.Assistant.CorpusTools do
             total_sheets: total_sheets,
             returned_spreadsheets: length(&1),
             returned_sheets:
-              Enum.sum(Enum.map(&1, fn spreadsheet -> length(spreadsheet.sheets) end)),
+              Enum.sum(
+                Enum.map(&1, fn spreadsheet -> length(spreadsheet.sheets) end)
+              ),
             limit: limit,
             truncated?: truncated?
           }
@@ -1091,7 +1293,8 @@ defmodule Sheaf.Assistant.CorpusTools do
           |> then(&{:ok, &1})
 
         {:error, reason} ->
-          {:error, "could not read spreadsheet query result: #{inspect(reason)}"}
+          {:error,
+           "could not read spreadsheet query result: #{inspect(reason)}"}
       end
     else
       {:error, "id is required"}
@@ -1110,7 +1313,10 @@ defmodule Sheaf.Assistant.CorpusTools do
         {:error, "title is required"}
 
       true ->
-        opts = [offset: arg(args, :offset) || 0, limit: arg(args, :limit) || 100]
+        opts = [
+          offset: arg(args, :offset) || 0,
+          limit: arg(args, :limit) || 100
+        ]
 
         case query_result_reader.(id, opts) do
           {:ok, result} ->
@@ -1120,19 +1326,22 @@ defmodule Sheaf.Assistant.CorpusTools do
               file_iri: result.file_iri,
               sql: result.sql,
               title: title,
-              description: args |> arg(:description) |> normalize_optional_text(),
+              description:
+                args |> arg(:description) |> normalize_optional_text(),
               columns: result.columns,
               rows: result.rows,
               row_count: result.row_count,
               offset: result.offset,
               limit: result.limit,
-              column_specs: presentation_column_specs(arg(args, :columns), result.columns)
+              column_specs:
+                presentation_column_specs(arg(args, :columns), result.columns)
             }
             |> rendered_result()
             |> then(&{:ok, &1})
 
           {:error, reason} ->
-            {:error, "could not present spreadsheet query result: #{inspect(reason)}"}
+            {:error,
+             "could not present spreadsheet query result: #{inspect(reason)}"}
         end
     end
   end
@@ -1209,7 +1418,12 @@ defmodule Sheaf.Assistant.CorpusTools do
           block_ids: block_ids,
           tags: tags,
           tag_iris: Map.get(result, :tag_iris, []),
-          statement_count: Map.get(result, :statement_count, length(block_ids) * length(tags))
+          statement_count:
+            Map.get(
+              result,
+              :statement_count,
+              length(block_ids) * length(tags)
+            )
         }
         |> rendered_result()
         |> then(&{:ok, &1})
@@ -1221,7 +1435,8 @@ defmodule Sheaf.Assistant.CorpusTools do
         {:error, "could not tag paragraphs: #{inspect(reason)}"}
 
       other ->
-        {:error, "could not tag paragraphs: unexpected result #{inspect(other)}"}
+        {:error,
+         "could not tag paragraphs: unexpected result #{inspect(other)}"}
     end
   end
 
@@ -1251,7 +1466,8 @@ defmodule Sheaf.Assistant.CorpusTools do
             {:error, "could not update block text: #{inspect(reason)}"}
 
           other ->
-            {:error, "could not update block text: unexpected result #{inspect(other)}"}
+            {:error,
+             "could not update block text: unexpected result #{inspect(other)}"}
         end
     end
   end
@@ -1286,7 +1502,8 @@ defmodule Sheaf.Assistant.CorpusTools do
             {:error, "could not move block: #{inspect(reason)}"}
 
           other ->
-            {:error, "could not move block: unexpected result #{inspect(other)}"}
+            {:error,
+             "could not move block: unexpected result #{inspect(other)}"}
         end
     end
   end
@@ -1321,7 +1538,8 @@ defmodule Sheaf.Assistant.CorpusTools do
             {:error, "could not insert paragraph: #{inspect(reason)}"}
 
           other ->
-            {:error, "could not insert paragraph: unexpected result #{inspect(other)}"}
+            {:error,
+             "could not insert paragraph: unexpected result #{inspect(other)}"}
         end
     end
   end
@@ -1348,7 +1566,8 @@ defmodule Sheaf.Assistant.CorpusTools do
             {:error, "could not delete block: #{inspect(reason)}"}
 
           other ->
-            {:error, "could not delete block: unexpected result #{inspect(other)}"}
+            {:error,
+             "could not delete block: unexpected result #{inspect(other)}"}
         end
     end
   end
@@ -1373,7 +1592,8 @@ defmodule Sheaf.Assistant.CorpusTools do
           {:error, "could not update search indexes: #{inspect(reason)}"}
 
         other ->
-          {:error, "could not update search indexes: unexpected result #{inspect(other)}"}
+          {:error,
+           "could not update search indexes: unexpected result #{inspect(other)}"}
       end
     end
   end
@@ -1393,7 +1613,8 @@ defmodule Sheaf.Assistant.CorpusTools do
     }
   end
 
-  defp search_index_update_result(result, requested_blocks) when is_map(result) do
+  defp search_index_update_result(result, requested_blocks)
+       when is_map(result) do
     embedding = Map.get(result, :embedding, %{})
     search = Map.get(result, :search, %{})
 
@@ -1471,7 +1692,12 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   defp spreadsheet_match_text(spreadsheet, nil) do
     Enum.join(
-      [spreadsheet.id, spreadsheet.title, spreadsheet.path, Map.get(spreadsheet, :basename)],
+      [
+        spreadsheet.id,
+        spreadsheet.title,
+        spreadsheet.path,
+        Map.get(spreadsheet, :basename)
+      ],
       " "
     )
   end
@@ -1487,35 +1713,58 @@ defmodule Sheaf.Assistant.CorpusTools do
         other -> [to_string(other)]
       end)
 
-    [spreadsheet_match_text(spreadsheet, nil), sheet.name, sheet.table_name, columns]
+    [
+      spreadsheet_match_text(spreadsheet, nil),
+      sheet.name,
+      sheet.table_name,
+      columns
+    ]
     |> List.flatten()
     |> Enum.join(" ")
   end
 
   defp contains_all_terms?(_text, []), do: true
-  defp contains_all_terms?(text, terms), do: Enum.all?(terms, &String.contains?(text, &1))
+
+  defp contains_all_terms?(text, terms),
+    do: Enum.all?(terms, &String.contains?(text, &1))
 
   defp take_spreadsheet_sheets(spreadsheets, limit) do
     {kept, _remaining} =
-      Enum.reduce_while(spreadsheets, {[], limit}, fn spreadsheet, {kept, remaining} ->
+      Enum.reduce_while(spreadsheets, {[], limit}, fn spreadsheet,
+                                                      {kept, remaining} ->
         cond do
           remaining <= 0 ->
             {:halt, {kept, remaining}}
 
           length(spreadsheet.sheets) <= remaining ->
-            {:cont, {[spreadsheet | kept], remaining - length(spreadsheet.sheets)}}
+            {:cont,
+             {[spreadsheet | kept], remaining - length(spreadsheet.sheets)}}
 
           true ->
-            spreadsheet = Map.put(spreadsheet, :sheets, Enum.take(spreadsheet.sheets, remaining))
+            spreadsheet =
+              Map.put(
+                spreadsheet,
+                :sheets,
+                Enum.take(spreadsheet.sheets, remaining)
+              )
+
             {:halt, {[spreadsheet | kept], 0}}
         end
       end)
 
     kept = Enum.reverse(kept)
-    returned_sheets = Enum.sum(Enum.map(kept, fn spreadsheet -> length(spreadsheet.sheets) end))
+
+    returned_sheets =
+      Enum.sum(
+        Enum.map(kept, fn spreadsheet -> length(spreadsheet.sheets) end)
+      )
 
     total_sheets =
-      Enum.sum(Enum.map(spreadsheets, fn spreadsheet -> length(spreadsheet.sheets) end))
+      Enum.sum(
+        Enum.map(spreadsheets, fn spreadsheet ->
+          length(spreadsheet.sheets)
+        end)
+      )
 
     {kept, returned_sheets < total_sheets}
   end
@@ -1553,7 +1802,9 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp search_hit_kind(kind) when is_binary(kind), do: String.to_atom(kind)
   defp search_hit_kind(kind), do: kind
 
-  defp search_hit_text(%{kind: "sourceHtml", text: text}), do: plain_text(text)
+  defp search_hit_text(%{kind: "sourceHtml", text: text}),
+    do: plain_text(text)
+
   defp search_hit_text(%{text: text}), do: normalize_text(text)
 
   defp maybe_add_search_coding(hit, %{kind: "row"} = result) do
@@ -1575,7 +1826,9 @@ defmodule Sheaf.Assistant.CorpusTools do
     end)
   end
 
-  defp add_document_contexts([%ToolResults.SearchHit{document_id: document_id} | _] = hits)
+  defp add_document_contexts(
+         [%ToolResults.SearchHit{document_id: document_id} | _] = hits
+       )
        when is_binary(document_id) and document_id != "" do
     try do
       case Corpus.graph(document_id) do
@@ -1628,7 +1881,8 @@ defmodule Sheaf.Assistant.CorpusTools do
       status: Map.get(doc.metadata, :status),
       cited?: Map.get(doc, :cited?, false),
       has_document?: Map.get(doc, :has_document?, true),
-      workspace_owner_authored?: Map.get(doc, :workspace_owner_authored?, false)
+      workspace_owner_authored?:
+        Map.get(doc, :workspace_owner_authored?, false)
     }
   end
 
@@ -1650,7 +1904,12 @@ defmodule Sheaf.Assistant.CorpusTools do
     |> Enum.reject(&(&1 == ""))
   end
 
-  defp outline_entry(%{id: id, title: title, number: number, children: children}) do
+  defp outline_entry(%{
+         id: id,
+         title: title,
+         number: number,
+         children: children
+       }) do
     %ToolResults.OutlineEntry{
       id: id,
       number: Enum.join(number, "."),
@@ -1687,7 +1946,12 @@ defmodule Sheaf.Assistant.CorpusTools do
 
       if expanded? do
         graph
-        |> expanded_blocks_from_graph(document_id, root, Id.iri(block_id), tags_by_block)
+        |> expanded_blocks_from_graph(
+          document_id,
+          root,
+          Id.iri(block_id),
+          tags_by_block
+        )
         |> prepend_document_header(graph, document_id, root)
       else
         block_from_graph(graph, document_id, root, block_id, tags_by_block)
@@ -1772,7 +2036,13 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
-  defp expanded_blocks_from_graph(graph, document_id, root, iri, tags_by_block) do
+  defp expanded_blocks_from_graph(
+         graph,
+         document_id,
+         root,
+         iri,
+         tags_by_block
+       ) do
     block_id = Id.id_from_iri(iri)
 
     case block_from_graph(graph, document_id, root, block_id, tags_by_block) do
@@ -1781,7 +2051,13 @@ defmodule Sheaf.Assistant.CorpusTools do
           graph
           |> Document.children(iri)
           |> Enum.flat_map(fn child ->
-            case expanded_blocks_from_graph(graph, document_id, root, child, tags_by_block) do
+            case expanded_blocks_from_graph(
+                   graph,
+                   document_id,
+                   root,
+                   child,
+                   tags_by_block
+                 ) do
               {:ok, blocks} -> blocks
               {:error, _reason} -> []
             end
@@ -1795,7 +2071,13 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp block_from_graph(graph, document_id, root, block_id) do
-    block_from_graph(graph, document_id, root, block_id, tags_for_document(graph, root))
+    block_from_graph(
+      graph,
+      document_id,
+      root,
+      block_id,
+      tags_for_document(graph, root)
+    )
   end
 
   defp block_from_graph(graph, document_id, root, block_id, tags_by_block) do
@@ -1891,7 +2173,9 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp block_preview(graph, iri, :extracted),
     do: graph |> Document.source_html(iri) |> plain_text() |> preview()
 
-  defp block_preview(graph, iri, :row), do: graph |> Document.text(iri) |> preview()
+  defp block_preview(graph, iri, :row),
+    do: graph |> Document.text(iri) |> preview()
+
   defp block_preview(_graph, _iri, _type), do: nil
 
   defp block_source(graph, iri) do
@@ -1922,7 +2206,9 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp ellipsize(text, limit) do
-    if String.length(text) <= limit, do: text, else: String.slice(text, 0, limit - 1) <> "…"
+    if String.length(text) <= limit,
+      do: text,
+      else: String.slice(text, 0, limit - 1) <> "…"
   end
 
   defp preview(nil), do: nil

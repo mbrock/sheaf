@@ -21,7 +21,8 @@ defmodule Sheaf.TaskQueue.StoreTest do
                    kind: "metadata.scan_identifiers",
                    subject_iri: "https://sheaf.less.rest/DOC1",
                    identifier: "DOC1",
-                   unique_key: "metadata.scan_identifiers:https://sheaf.less.rest/DOC1",
+                   unique_key:
+                     "metadata.scan_identifiers:https://sheaf.less.rest/DOC1",
                    input: %{document: "https://sheaf.less.rest/DOC1"}
                  }
                ]
@@ -29,16 +30,23 @@ defmodule Sheaf.TaskQueue.StoreTest do
 
     assert batch.target_count == 1
 
-    assert {:ok, task} = Store.claim_task(conn, queue: "metadata", worker: "test")
+    assert {:ok, task} =
+             Store.claim_task(conn, queue: "metadata", worker: "test")
+
     assert task.status == "running"
     assert task.attempts == 1
 
-    assert :ok = Store.complete_task(conn, task.id, %{found: ["10.1000/example"]})
-    assert {:ok, batch} = Store.get_batch(conn, "https://sheaf.less.rest/BATCH1")
+    assert :ok =
+             Store.complete_task(conn, task.id, %{found: ["10.1000/example"]})
+
+    assert {:ok, batch} =
+             Store.get_batch(conn, "https://sheaf.less.rest/BATCH1")
+
     assert batch.status == "completed"
     assert batch.completed_count == 1
 
-    assert {:ok, nil} = Store.claim_task(conn, queue: "metadata", worker: "test")
+    assert {:ok, nil} =
+             Store.claim_task(conn, queue: "metadata", worker: "test")
   end
 
   test "retries failed tasks until max attempts" do
@@ -63,13 +71,17 @@ defmodule Sheaf.TaskQueue.StoreTest do
                ]
              )
 
-    assert {:ok, task} = Store.claim_task(conn, queue: "metadata", worker: "test")
+    assert {:ok, task} =
+             Store.claim_task(conn, queue: "metadata", worker: "test")
+
     assert :ok = Store.fail_task(conn, task.id, :nope)
 
     assert {:ok, [task]} = Store.list_tasks(conn, status: "failed")
     assert task.error["message"] =~ ":nope"
 
-    assert {:ok, batch} = Store.get_batch(conn, "https://sheaf.less.rest/BATCH2")
+    assert {:ok, batch} =
+             Store.get_batch(conn, "https://sheaf.less.rest/BATCH2")
+
     assert batch.status == "failed"
     assert batch.failed_count == 1
   end
@@ -89,7 +101,8 @@ defmodule Sheaf.TaskQueue.StoreTest do
                [
                  %{
                    kind: "metadata.extract_identifiers",
-                   unique_key: "metadata.extract_identifiers:https://sheaf.less.rest/DOC1",
+                   unique_key:
+                     "metadata.extract_identifiers:https://sheaf.less.rest/DOC1",
                    subject_iri: "https://sheaf.less.rest/DOC1"
                  }
                ]
@@ -115,7 +128,9 @@ defmodule Sheaf.TaskQueue.StoreTest do
     assert task.kind == "metadata.crossref.lookup"
     assert task.input["doi"] == "10.1000/example"
 
-    assert {:ok, batch} = Store.get_batch(conn, "https://sheaf.less.rest/BATCH3")
+    assert {:ok, batch} =
+             Store.get_batch(conn, "https://sheaf.less.rest/BATCH3")
+
     assert batch.target_count == 2
   end
 
@@ -134,7 +149,8 @@ defmodule Sheaf.TaskQueue.StoreTest do
                [
                  %{
                    kind: "metadata.extract_identifiers",
-                   unique_key: "metadata.extract_identifiers:https://sheaf.less.rest/DOC1"
+                   unique_key:
+                     "metadata.extract_identifiers:https://sheaf.less.rest/DOC1"
                  },
                  %{
                    kind: "metadata.crossref.lookup",

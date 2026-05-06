@@ -19,7 +19,8 @@ defmodule Sheaf.Document.PDF do
       kind: :internal,
       attributes: [
         {"sheaf.document", to_string(document_iri)},
-        {"sheaf.pdf.timeout_ms", Keyword.get(opts, :timeout, @default_timeout)},
+        {"sheaf.pdf.timeout_ms",
+         Keyword.get(opts, :timeout, @default_timeout)},
         {"sheaf.pdf.xelatex_runs", xelatex_runs(opts)}
       ]
     } do
@@ -108,7 +109,12 @@ defmodule Sheaf.Document.PDF do
   end
 
   defp with_tmp_dir(fun) do
-    dir = Path.join(System.tmp_dir!(), "sheaf-latex-#{System.unique_integer([:positive])}")
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-latex-#{System.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(dir)
 
     try do
