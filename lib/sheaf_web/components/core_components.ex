@@ -360,7 +360,7 @@ defmodule SheafWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="fieldset">
       <label>
         <span :if={@label} class="label mb-1">{@label}</span>
         <textarea

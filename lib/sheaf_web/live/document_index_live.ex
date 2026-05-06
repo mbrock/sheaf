@@ -90,7 +90,7 @@ defmodule SheafWeb.DocumentIndexLive do
       <main class="min-h-dvh max-w-full overflow-x-hidden bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
         <AppChrome.toolbar section={:index} />
 
-        <div class="min-w-0 px-6 py-6">
+        <div class="min-w-0 ">
           <p
             :if={@document_error}
             class="py-2 text-sm text-rose-700"
@@ -98,22 +98,19 @@ defmodule SheafWeb.DocumentIndexLive do
             {@document_error}
           </p>
 
-          <div :if={@documents != []} class="space-y-5">
+          <div :if={@documents != []} class="space-y-2 py-2">
             <section :for={{kind, documents} <- @document_groups}>
-              <div :if={kind} class="mb-1 flex items-baseline justify-between gap-3">
-                <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+              <div :if={kind} class="pl-4 flex items-baseline justify-between gap-3">
+                <h2 class="font-sans text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                   {kind_label(kind)}
                 </h2>
                 <span class="shrink-0 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
                   {length(documents)}
                 </span>
               </div>
-
-              <ul class="space-y-0.5">
-                <li :for={document <- documents}>
-                  <.document_entry document={document} show_checkbox />
-                </li>
-              </ul>
+              <div>
+                <.document_entry :for={document <- documents} document={document} />
+              </div>
             </section>
           </div>
         </div>
@@ -133,7 +130,7 @@ defmodule SheafWeb.DocumentIndexLive do
       owner_group =
         case owner_documents do
           [] -> []
-          documents -> [{nil, Enum.sort_by(documents, &document_sort_key/1)}]
+          documents -> [{:thesis, Enum.sort_by(documents, &document_sort_key/1)}]
         end
 
       library_groups =

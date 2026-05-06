@@ -124,7 +124,7 @@ defmodule SheafWeb.ResourceLive do
 
   def render(%{resource_kind: :assistant_conversation} = assigns) do
     ~H"""
-    <main class="min-h-dvh bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
+    <main class="min-h-dvh bg-white text-stone-950 dark:bg-stone-950 dark:text-stone-50">
       <AppChrome.toolbar section={:document} search?={false} />
 
       <section class="min-w-0">

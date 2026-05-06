@@ -10,7 +10,7 @@ defmodule SheafWeb.BlockPreviewComponent do
 
   @impl true
   def mount(socket) do
-    {:ok, assign(socket, :preview, nil)}
+    {:ok, assign(socket, preview: nil, preview_id: nil)}
   end
 
   @impl true
@@ -23,7 +23,7 @@ defmodule SheafWeb.BlockPreviewComponent do
   end
 
   def handle_event("hide_block_preview", _params, socket) do
-    {:noreply, assign(socket, :preview, nil)}
+    {:noreply, assign(socket, preview: nil, preview_id: nil)}
   end
 
   @impl true
@@ -33,11 +33,12 @@ defmodule SheafWeb.BlockPreviewComponent do
       <div :if={@preview} class="contents">
         <aside
           role="tooltip"
-          class="block-preview-popover flex max-h-[min(22rem,calc(100dvh-5rem))] w-[min(24rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-sm border border-stone-200 bg-stone-100 text-left shadow-lg ring-1 ring-stone-950/5 dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
+          class="block-preview-popover flex max-h-[min(22rem,calc(100dvh-5rem))] w-[min(24rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-sm border border-stone-200 bg-stone-100 text-left shadow-xl ring-1 ring-stone-950/5 dark:border-stone-700 dark:bg-stone-900 dark:ring-white/10"
+          data-preview-id={@preview_id}
           phx-click-away="hide_block_preview"
           phx-target={@myself}
         >
-          <div class="shrink-0 border-b border-stone-200 bg-stone-50 px-2.5 py-1.5 font-sans text-[0.82rem] leading-4 dark:border-stone-800 dark:bg-stone-900">
+          <div class="shrink-0 border-b border-stone-200 bg-stone-100 px-2.5 py-1.5 font-sans text-[0.82rem] leading-4 dark:border-stone-800 dark:bg-stone-900">
             <div class="min-w-0 flex-1">
               <.document_metadata_heading
                 :if={preview_document(@preview)}
@@ -112,7 +113,7 @@ defmodule SheafWeb.BlockPreviewComponent do
           </div>
           <div
             :if={preview_section_label(@preview)}
-            class="flex shrink-0 items-center gap-1.5 border-t border-stone-200 bg-stone-50 px-2.5 py-0.5 font-sans text-[0.72rem] leading-4 text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400"
+            class="flex shrink-0 font-bold items-center gap-1.5 border-t border-stone-200 bg-stone-50 px-2.5 py-0.5 font-sans text-[0.72rem] leading-4 text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400"
           >
             <span class="shrink-0 text-stone-400 dark:text-stone-500">from</span>
             <span
@@ -196,7 +197,7 @@ defmodule SheafWeb.BlockPreviewComponent do
 
   defp show_preview(socket, id) do
     socket
-    |> assign(:preview, Sheaf.ResourcePreviews.get(id))
+    |> assign(preview: Sheaf.ResourcePreviews.get(id), preview_id: id)
     |> push_event("sheaf:block-preview-rendered", %{id: id})
   end
 end

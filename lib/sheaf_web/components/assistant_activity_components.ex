@@ -16,7 +16,7 @@ defmodule SheafWeb.AssistantActivityComponents do
     ~H"""
     <ol
       class={[
-        "my-3 space-y-1.5 rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900",
+        "border-l-6 text-xs border-orange-200 bg-white px-3 py-2 dark:border-stone-800 dark:bg-stone-900",
         @class
       ]}
       aria-label={@label}
@@ -54,11 +54,11 @@ defmodule SheafWeb.AssistantActivityComponents do
         </span>
         <span
           :if={present?(@summary)}
-          class={["block break-words", @classes.summary]}
+          class={["hidden break-words", @classes.summary]}
         >
           {@summary}
         </span>
-        <span :if={@meta != []} class="flex min-w-0 gap-2 overflow-hidden">
+        <span :if={@meta != []} class="flex min-w-0 gap-2 pl-2 overflow-hidden">
           <span :for={item <- @meta} class={["shrink-0", @classes.meta]}>
             {item}
           </span>
@@ -86,13 +86,13 @@ defmodule SheafWeb.AssistantActivityComponents do
 
     ~H"""
     <li class={[
-      "overflow-hidden rounded-md text-left",
+      "overflow-hidden text-left",
       @classes.frame,
       @class
     ]}>
       <details :if={@body?} open={@open} class="group">
         <summary class={[
-          "relative flex min-w-0 cursor-pointer list-none items-start gap-2 px-2 py-1 [&::-webkit-details-marker]:hidden",
+          "relative flex min-w-0 cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden",
           @classes.header
         ]}>
           <span class="min-w-0 flex-1">
@@ -101,13 +101,13 @@ defmodule SheafWeb.AssistantActivityComponents do
             </span>
             <span
               :if={present?(@subtitle)}
-              class="block truncate text-stone-500 dark:text-stone-400"
+              class="truncate text-stone-500 dark:text-stone-400"
             >
               {@subtitle}
             </span>
             <span
               :if={@meta != []}
-              class="flex min-w-0 gap-2 overflow-hidden text-stone-500 dark:text-stone-400"
+              class="flex min-w-0 gap-2 pl-2 overflow-hidden text-stone-500 dark:text-stone-400"
             >
               <span :for={item <- @meta} class="shrink-0">
                 {item}
@@ -117,10 +117,6 @@ defmodule SheafWeb.AssistantActivityComponents do
           <span :if={present?(@status)} class={["shrink-0 uppercase", @classes.badge]}>
             {@status}
           </span>
-          <.icon
-            name="hero-chevron-right"
-            class="mt-1 size-3.5 shrink-0 text-stone-400 transition-transform group-open:rotate-90 dark:text-stone-500"
-          />
         </summary>
         <div class="min-w-0 border-t border-stone-200 px-2 py-1 dark:border-stone-800">
           {render_slot(@inner_block)}
@@ -247,7 +243,7 @@ defmodule SheafWeb.AssistantActivityComponents do
 
   defp activity_preview_classes(_tone) do
     %{
-      frame: "bg-stone-50 dark:bg-stone-950/40",
+      frame: "",
       header: "dark:bg-stone-950/40",
       icon: "text-stone-500 dark:text-stone-400",
       badge: "text-stone-500 dark:text-stone-400"

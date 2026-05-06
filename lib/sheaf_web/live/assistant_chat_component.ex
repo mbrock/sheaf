@@ -210,13 +210,12 @@ defmodule SheafWeb.AssistantChatComponent do
   @impl true
   def render(%{variant: :full_page} = assigns) do
     ~H"""
-    <section class="min-w-0">
+    <section class="min-w-0 py-3">
       <.live_component module={BlockPreviewComponent} id={block_preview_id(@id)} />
       <div
         id={"assistant-timeline-#{@id}"}
-        class="min-w-0 px-3 py-4 sm:px-4 sm:py-6"
         phx-hook="ScrollContainer"
-        data-scroll-stick-bottom="true"
+        data-scroll-stick-bottom="false"
         data-scroll-target="window"
       >
         <div
@@ -241,25 +240,17 @@ defmodule SheafWeb.AssistantChatComponent do
             <span class="min-w-0 flex-1 truncate">{@chat.status_line || "Thinking"}</span>
           </div>
 
-          <div
-            :if={@selected_chat_id == nil}
-            class="rounded-sm border border-stone-200 bg-white p-4 text-stone-500 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-400"
-          >
-            This conversation is not active in the current app process.
-          </div>
-
-          <div class="min-w-0 pt-2">
-            <.composer_form
-              form={@form}
-              mode={@mode}
-              model_provider={@model_provider}
-              selected_chat_id={@selected_chat_id}
-              selected_id={Map.get(assigns, :selected_id)}
-              pending={@chat.pending}
-              myself={@myself}
-              id={@id}
-            />
-          </div>
+          <.composer_form
+            :if={!@chat.pending}
+            form={@form}
+            mode={@mode}
+            model_provider={@model_provider}
+            selected_chat_id={@selected_chat_id}
+            selected_id={Map.get(assigns, :selected_id)}
+            pending={@chat.pending}
+            myself={@myself}
+            id={@id}
+          />
         </div>
       </div>
 
@@ -389,21 +380,18 @@ defmodule SheafWeb.AssistantChatComponent do
     >
       <div
         :if={@options_locked?}
-        class="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm shadow-stone-950/5 transition-colors focus-within:border-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20 dark:focus-within:border-stone-600"
+        class="grid grid-cols-[1fr_auto] overflow-hidden border border-l-6  border-emerald-300/80 bg-white transition-colors focus-within:border-stone-400 dark:border-stone-800 dark:bg-stone-900 dark:shadow-black/20 dark:focus-within:border-stone-600"
       >
         <.input
           field={@form[:message]}
           type="textarea"
           rows="1"
-          class="block max-h-32 min-h-12 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-base leading-6 text-stone-950 outline-none [field-sizing:content] placeholder:text-stone-400 focus:ring-0 sm:sm dark:text-stone-50 dark:placeholder:text-stone-500"
+          class="block w-full overflow-y-auto border-0 bg-transparent px-3 text-base leading-6 text-stone-950 outline-none [field-sizing:content] [resize:none] placeholder:text-stone-400 focus:ring-0 sm:sm dark:text-stone-50 dark:placeholder:text-stone-500"
           placeholder={input_placeholder(@mode, @selected_chat_id)}
           disabled={@pending}
           phx-hook="SubmitShortcut"
         />
-        <div class="flex min-w-0 items-center gap-1 border-t border-stone-200 bg-stone-50/80 px-1.5 font-sans dark:border-stone-800 dark:bg-stone-950/30">
-          <span class="min-w-0 flex-1 truncate px-1.5 text-stone-500 dark:text-stone-400">
-            Reply
-          </span>
+        <div class="flex min-w-0 items-center gap-1bg-stone-50/80 font-sans dark:border-stone-800 dark:bg-stone-950/30">
           <.selected_context_badge selected_id={@selected_id} />
           <button
             type="submit"
@@ -1111,7 +1099,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :user}} = assigns) do
     ~H"""
-    <div class="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 font-text text-stone-950 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-stone-50">
+    <div class=" border-l-6 border-sky-200 px-3 py-2 font-text text-stone-950 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-stone-50">
       <AssistantMarkdownComponents.markdown
         text={@message.text}
         block_ref_target={@block_ref_target}
@@ -1125,7 +1113,7 @@ defmodule SheafWeb.AssistantChatComponent do
     ~H"""
     <div
       id={@id}
-      class="group relative rounded-lg bg-white px-3 py-2 text-stone-900 dark:bg-stone-900 dark:text-stone-100"
+      class="group relative  border-l-6 border-stone-200 px-3 py-2 text-stone-900 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-stone-50"
       phx-hook="AssistantTypeWriter"
       data-typewriter-streaming={Map.get(@message, :streaming?, false)}
     >
@@ -1136,7 +1124,7 @@ defmodule SheafWeb.AssistantChatComponent do
           resolve_block_previews={false}
         />
       </div>
-      <div class="mt-2 flex items-center justify-end gap-1 font-sans text-xs">
+      <div class="flex items-center justify-end gap-1 font-sans text-xs">
         <.link
           :if={promoted_note_id(@message)}
           navigate={~p"/#{promoted_note_id(@message)}"}
@@ -1154,7 +1142,7 @@ defmodule SheafWeb.AssistantChatComponent do
           phx-click="promote_note"
           phx-value-index={@message_index}
           phx-target={@myself}
-          class="inline-flex items-center gap-1 rounded-sm px-1.5 py-1 text-stone-400 opacity-0 transition hover:bg-stone-100 hover:text-stone-950 group-hover:opacity-100 focus:opacity-100 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-50"
+          class="inline-flex items-center gap-1 rounded-sm px-1.5 text-stone-400 opacity-0 transition hover:bg-stone-100 hover:text-stone-950 group-hover:opacity-100 focus:opacity-100 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-50"
           title="Promote response to note"
           aria-label="Promote response to note"
         >
@@ -1310,7 +1298,7 @@ defmodule SheafWeb.AssistantChatComponent do
     query = tool_arg(input, :query) || ""
     scope = tool_arg(input, :document_id)
     scope = if scope, do: title_or_id(scope, titles), else: "the corpus"
-    target = "Searching for “#{query}” in #{scope}"
+    target = query
 
     tool_phrase(target, message)
   end
@@ -1731,7 +1719,7 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp tool_meta(%{result: %ToolResults.Blocks{} = result}) do
-    [count_label("blocks", length(result.blocks))]
+    result.blocks |> Enum.map(&block_type_label/1)
   end
 
   defp tool_meta(%{result: %ToolResults.Block{} = result}) do
@@ -1740,8 +1728,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp tool_meta(%{result: %ToolResults.SearchResults{} = result}) do
     [
-      count_label("exact", length(result.exact_results)),
-      count_label("related", length(result.approximate_results))
+      count_label("hits", length(result.exact_results) + length(result.approximate_results)),
     ]
   end
 

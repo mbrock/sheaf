@@ -12,13 +12,15 @@ defmodule SheafWeb.DocumentEntryComponents do
   def document_entry(assigns) do
     ~H"""
     <div class={[
+      "odd:bg-white bg-stone-100/70",
+      "border-l-4 border-b-1 border-stone-200 first:border-t-1 border-r-1",
       @document.excluded? && "opacity-45 grayscale",
       @document.cited? &&
-        "rounded-sm border-l-2 border-amber-500 bg-amber-50/70 dark:border-amber-300 dark:bg-amber-950/25",
+        "border-amber-500 dark:border-amber-300",
       workspace_owner_authored?(@document) &&
-        "rounded-sm border-l-2 border-sky-500 bg-sky-50/70 dark:border-sky-300 dark:bg-sky-950/25",
+        "border-sky-500 dark:border-sky-300",
       @nested &&
-        "border-l border-stone-200 bg-stone-100/60 pl-2 dark:border-stone-700 dark:bg-stone-900/50"
+        "border-stone-200 pl-2 dark:border-stone-700"
     ]}>
       <.document_row document={@document} show_checkbox={@show_checkbox} nested={@nested} />
     </div>
@@ -32,7 +34,7 @@ defmodule SheafWeb.DocumentEntryComponents do
 
   def document_row(assigns) do
     ~H"""
-    <div class={["leading-snug", if(@nested, do: "px-2 py-1.5", else: "px-2 py-1")]}>
+    <div class={["leading-5", if(@nested, do: "px-2 py-1.5", else: "px-2 py-0.5")]}>
       <.document_title_line
         document={@document}
         show_checkbox={@show_checkbox}
@@ -48,7 +50,7 @@ defmodule SheafWeb.DocumentEntryComponents do
   attr :show_checkbox, :boolean, default: false
   attr :nested, :boolean, default: false
   attr :link_title, :boolean, default: true
-  attr :class, :string, default: "flex min-w-0 items-baseline gap-2 font-sans"
+  attr :class, :string, default: "flex min-w-0 items-baseline gap-2 font-sans text-base/5"
   attr :title_class, :string, default: "min-w-0 flex-1 truncate"
   attr :show_status_pills, :boolean, default: true
 
@@ -85,25 +87,25 @@ defmodule SheafWeb.DocumentEntryComponents do
       </span>
       <span
         :if={@show_status_pills && !has_document?(@document)}
-        class="shrink-0 rounded-sm border border-stone-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-stone-500 dark:border-stone-700 dark:text-stone-400"
+        class="shrink-0 rounded-sm border border-stone-300 px-1.5 font-sans text-xs uppercase tracking-wide text-stone-500 dark:border-stone-700 dark:text-stone-400"
       >
         metadata only
       </span>
       <span
         :if={@show_status_pills && @document.cited? && !@nested}
-        class="shrink-0 rounded-sm border border-amber-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-amber-800 dark:border-amber-700 dark:text-amber-200"
+        class="shrink-0 rounded-sm border border-amber-300 px-1.5 font-sans text-xs uppercase tracking-wide text-amber-800 dark:border-amber-700 dark:text-amber-200"
       >
         cited
       </span>
       <span
         :if={@show_status_pills && status_str(@document) == "draft"}
-        class="shrink-0 rounded-sm border border-sky-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-sky-800 dark:border-sky-700 dark:text-sky-200"
+        class="shrink-0 rounded-sm border border-sky-300 px-1.5 font-sans text-xs uppercase tracking-wide text-sky-800 dark:border-sky-700 dark:text-sky-200"
       >
         draft
       </span>
       <span
         :if={@show_status_pills && status_str(@document) == "mikael"}
-        class="shrink-0 rounded-sm border border-emerald-300 px-1.5 py-0.5 font-sans text-[0.6875rem] uppercase tracking-wide text-emerald-800 dark:border-emerald-900/70 dark:text-emerald-300"
+        class="shrink-0 rounded-sm border border-emerald-300 px-1.5 font-sans text-xs uppercase tracking-wide text-emerald-800 dark:border-emerald-900/70 dark:text-emerald-300"
       >
         MIKAEL
       </span>
@@ -119,19 +121,19 @@ defmodule SheafWeb.DocumentEntryComponents do
 
   attr :subline_class, :string,
     default:
-      "flex min-w-0 items-baseline gap-3 text-[0.9375rem] text-stone-500 dark:text-stone-400"
+      "flex min-w-0 items-baseline gap-3 text-stone-500 dark:text-stone-400"
 
   attr :detail_class, :string,
     default:
-      "flex min-w-0 items-baseline gap-2 truncate font-sans text-xs text-stone-500 dark:text-stone-400"
+      "flex min-w-0 items-baseline gap-2 truncate font-sans text-stone-500 dark:text-stone-400"
 
-  attr :numeric_class, :string, default: "shrink-0 tabular-nums"
+  attr :numeric_class, :string, default: "shrink-0 tabular-nums text-sm"
   attr :id_class, :string, default: "shrink-0 font-micro tabular-nums"
   attr :kind_class, :string, default: "shrink-0"
   attr :status_class, :string, default: "shrink-0 font-micro"
 
   attr :authors_class, :string,
-    default: "small-caps min-w-0 flex-1 truncate text-stone-600 dark:text-stone-300"
+    default: "min-w-0 font-serif flex-1 truncate text-stone-600 dark:text-stone-300"
 
   def document_metadata_lines(assigns) do
     ~H"""

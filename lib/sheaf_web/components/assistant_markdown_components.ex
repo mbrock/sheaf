@@ -473,7 +473,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       |> assign(:trailing_punctuation, trailing_punctuation)
 
     ~H"""
-    <span class="whitespace-nowrap">
+    <span class="whitespace-nowrap small-caps">
       {@leading_punctuation}<button
         type="button"
         title={@title}

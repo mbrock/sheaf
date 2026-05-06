@@ -77,6 +77,7 @@ window.addEventListener("sheaf:copy-text", event => {
 })
 
 installCopyNormalizer()
+installAnchorPositioningPolyfill()
 installBlockPreviewAnchors()
 
 // connect if there are any LiveViews on the page
@@ -117,4 +118,12 @@ if (process.env.NODE_ENV === "development") {
 
     window.liveReloader = reloader
   })
+}
+
+function installAnchorPositioningPolyfill() {
+  if ("anchorName" in document.documentElement.style) return
+
+  import("@oddbird/css-anchor-positioning/fn")
+    .then(({default: polyfill}) => polyfill())
+    .catch(error => console.warn("CSS anchor positioning polyfill failed to load", error))
 }
