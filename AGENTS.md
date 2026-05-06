@@ -1,7 +1,6 @@
 # Sheaf Agent Notes
 
-Sheaf is a Phoenix LiveView app backed by RDF data in Fuseki. It is small, but
-it has real runtime state, so orient yourself before changing behavior.
+Sheaf is a collaborative research workspace.
 
 ## Start Here
 
@@ -13,11 +12,6 @@ sourcing `.env` with `set -a; . .env; set +a` before running Sheaf commands.
 Normal commands run `bin/env check` and fail
 immediately if the current environment is missing or diverges from `.env`, so
 agents do not accidentally operate against default or stale endpoints.
-
-Run `bin/status` early. It prints the facts an agent usually needs: service
-mode, node name, URLs, health, RDF base IRIs, related deployed instances,
-SPARQL/Fuseki endpoints, dataset diagnostics, triple count, and current
-process status.
 
 ```console
 $ bin/status
@@ -38,23 +32,12 @@ production
   App root:          /home/mbrock/sheaf
   Env file:          /home/mbrock/sheaf/.env
   Service:           systemd sheaf.service
-  SPARQL dataset:    http://localhost:3030/sheaf
-  Fuseki container:  fuseki
 staging
   Public URL:        https://devsheaf.less.rest/
   SSH host:          igloo
   App root:          /home/mbrock/sheaf.dev
   Env file:          /home/mbrock/sheaf.dev/.env
   Service:           systemd sheaf-dev.service
-  SPARQL dataset:    http://localhost:3031/sheaf
-  Fuseki container:  sheaf-fuseki-dev
-
-SPARQL / Fuseki
-  Dataset:           http://localhost:3030/sheaf
-  Fuseki server:     reachable http://localhost:3030
-  Fuseki version:    5.1.0
-  Datasets:          /kg, /sheaf
-  Triples:           197
 
 Service process
 Sheaf is running in tmux session: sheaf-dev
@@ -85,17 +68,13 @@ Client JavaScript assets are installed with Bun.
 Bun is also the preferred JS runtime rather than Node in case you want to run
 JS code in the shell.
 
-Sheaf's triple store is Dockerized Fuseki. Use `bin/triplestore` rather than
-inventing ad hoc Docker commands when checking status, logs, datasets, or
-restarting it.
+Sheaf's RDF store is called Quadlog and is backed by SQLite.
+
+Do not use `mix run`, use `bin/rpc` to run code on the actual service.
 
 In tests, prefer `start_supervised!/1` for OTP processes so ExUnit owns
 cleanup. Avoid fixed sleeps when a monitor, message assertion, or explicit
 readiness check will do.
-
-Codex agents: note that your shell tool lets you run commands in parallel,
-which is efficient but only makes sense when the commands are causally
-independent.
 
 Keep deployment-specific hosts and secrets out of tracked files. See `.env`
 for local `PHX_HOST`, ports, SPARQL endpoints, and other machine-specific
@@ -234,9 +213,8 @@ For quick browser screenshots, prefer `wd screenshot` against the service URL.
 It can navigate, set a viewport, and capture the full page in one command:
 `wd screenshot --url http://127.0.0.1:4042/PATH --page --viewport md`. The
 `--viewport` value can be a Tailwind-style breakpoint such as `sm` or `md`, or
-an explicit size such as `390x844`. Use Playwright with Chrome via `uvx`/`uv`
-when you need richer browser automation beyond screenshots and simple DOM
-checks.
+an explicit size such as `390x844`.  Run `wd help` or just read the `wd` script
+to learn how to do more cool stuff.
 
 `bin/show [count]` captures one or more screenshots from the running service
 and sends them to the configured Telegram chat using the Bot API. If the user
@@ -285,77 +263,3 @@ schema graph and the external extension graph.
 To change RDF data or its schema, there is no need to write enduring migration
 modules. Run `bin/sheaf-admin backup`, then alter the dataset in whatever way
 is most convenient.
-
-Mutating RDF data is mostly for migrations and error corrections. Design
-actual domain operations so they add new facts to the graph monotonically
-rather than relying on destructive mutation.
-
-## RDF Data Backup and Comparison
-
-When comparing or backing up real data, run backup commands on the host that
-owns the target Fuseki container. `bin/triplestore backup` accepts named
-instances and uses SSH plus SCP for remote backups.
-
-The custom `bin/rdf` tool can diff such N-Quads files with blank-node
-normalization.
-
-## RDF Data Access Patterns
-
-Wide multi-way joins with `OPTIONAL` branches and embedded subqueries are
-exactly the kind of plan that a general-purpose triple store handles poorly
-compared with retrieving a bounded graph neighborhood and reading it.
-
-In practice it is often faster to pull a larger but simpler patch of graph and
-walk it in Elixir than to ask SPARQL to compute exactly the answer through a
-clever narrow query.
-
-Complex SPARQL queries are also usually hard to understand and debug.
-
-We don't need to optimize our system for web scale, but the real dataset even
-with a single user has hundreds of thousands of triples across hundreds of
-named graphs.
-
-Code quality is more important than performance, but since SPARQL queries so
-easily become tediously slow, we should (1) look at the telemetry to see how
-our queries perform; and (2) stick to simple access patterns that don't cause
-extreme stupidity in Fuseki's query planner.
-
-Domain modules should have code that is mostly meaningful logic about the
-domain. If you find yourself writing or working with a domain model that has
-pages of code just translating data between different shapes, take this
-seriously and flag it to the programmer so you can make decisions about how to
-restructure it.
-
-It is often not necessary to invent domain model struct representations that
-mirror the graph data. Instead the domain model can use an `RDF.Data` subset
-as its representation and provide functions that access it.
-
-There is no particular reason why even Phoenix views can't use such models in
-assigns, etc.
-
-A common RDF operation should be boring:
-
-1. Start with one resource, a set of resources, or all resources of a type.
-2. Construct a graph containing their direct descriptions.
-3. Optionally include direct inbound links to those resources.
-4. Optionally include a bounded neighborhood: labels, parents, children,
-   source files, agent/session context, work/expression links, or provenance
-   activity.
-5. Return one of the `RDF.Data` structures (description, graph, or dataset)
-   that the caller can use to continue working with the data.
-
-In that pattern, a query does not need to flatten the world into columns. It
-retrieves a useful patch of graph, and the rest of the code continues to speak
-RDF.
-
-Prefer:
-
-- RDF graphs and descriptions inside domain modules.
-- `CONSTRUCT` when the result is knowledge.
-- `SELECT` when the result is a search table, aggregate, or intentionally flat
-  projection.
-
-Be suspicious of:
-
-- `SELECT` queries that merely rebuild resource descriptions.
-- Row grouping code that recreates graph structure by hand.

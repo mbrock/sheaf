@@ -84,6 +84,8 @@ BASE_URL="${SHEAF_SHOW_URL:-http://${SHEAF_HTTP_IP:-127.0.0.1}:${PORT:-4000}/}"
 OUT_DIR="${SHEAF_SHOW_DIR:-$APP_ROOT/output/playwright/show-$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$OUT_DIR"
 
+# TODO: rewrite this using `wd` instead of playwright
+
 uvx --from playwright python - "$BASE_URL" "$COUNT" "$OUT_DIR" <<'PY'
 import sys
 from pathlib import Path

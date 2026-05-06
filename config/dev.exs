@@ -14,7 +14,7 @@ watchers =
   end
 
 live_reload =
-  if steady_dev_server? do
+  if true or steady_dev_server? do
     []
   else
     [
@@ -44,8 +44,8 @@ config :sheaf, SheafWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}],
   check_origin: false,
   code_reloader: not steady_dev_server?,
-  reloadable_apps: [:sheaf, :sheaf_rdf_browser],
-  debug_errors: not steady_dev_server?,
+  reloadable_apps: [:sheaf],
+  # debug_errors: not steady_dev_server?,
   secret_key_base: "EZd+P1fNcVZFqt1rjqJ8sm+U6xvhE09n6hcPmky7kWWAUq9KLR9Crh8GXd8lwwnC",
   watchers: watchers
 
@@ -76,7 +76,7 @@ config :sheaf, SheafWeb.Endpoint,
 config :sheaf, SheafWeb.Endpoint, live_reload: live_reload
 
 # Enable dev routes for dashboard and mailbox
-config :sheaf, dev_routes: true
+config :sheaf, dev_routes: false
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
@@ -91,7 +91,7 @@ config :phoenix, :plug_init_mode, if(steady_dev_server?, do: :compile, else: :ru
 config :phoenix_live_view,
   # Include debug annotations and locations in rendered markup.
   # Changing this configuration will require mix clean and a full recompile.
-  debug_heex_annotations: not steady_dev_server?,
-  debug_attributes: not steady_dev_server?,
+  debug_heex_annotations: true, # not steady_dev_server?,
+  debug_attributes: true, # not steady_dev_server?,
   # Enable helpful, but potentially expensive runtime checks
-  enable_expensive_runtime_checks: not steady_dev_server?
+  enable_expensive_runtime_checks: false # not steady_dev_server?
