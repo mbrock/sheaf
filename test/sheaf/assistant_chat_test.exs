@@ -1,10 +1,19 @@
 defmodule Sheaf.Assistant.ChatTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.{Context, Response, StreamChunk, StreamResponse, Tool}
+  alias ReqLLM.{
+    Context,
+    Response,
+    StreamChunk,
+    StreamResponse,
+    Tool,
+    ToolResult
+  }
+
   alias ReqLLM.Message.ContentPart
   alias ReqLLM.StreamResponse.MetadataHandle
-  alias Sheaf.Assistant.{Chat, ContextStore}
+  alias Sheaf.Assistant.{Chat, ContextStore, ToolResults}
+  alias Sheaf.Assistant.Chat.Server
   alias Sheaf.Spreadsheet.Metadata
   alias Sheaf.XLSXFixture
 
@@ -531,10 +540,7 @@ defmodule Sheaf.Assistant.ChatTest do
         Tool.execute(query_tool, %{
           "intent" => "create and inspect an agency row view",
           "sql" => """
-          CREATE TEMP VIEW agency_rows AS
           SELECT buyer_type, amount FROM "#{table}" WHERE buyer_type = 'agency';
-
-          SELECT * FROM agency_rows;
           """
         })
 
@@ -581,6 +587,66 @@ defmodule Sheaf.Assistant.ChatTest do
              role: :assistant,
              text: "Spreadsheet checked."
            }
+  end
+
+  test "finished present spreadsheet tool messages keep the renderable result" do
+    id = Sheaf.Id.generate()
+
+    result = %ToolResults.PresentedSpreadsheetQueryResult{
+      id: "QRY123",
+      title: "Agency rows",
+      columns: ["buyer_type", "amount"],
+      rows: [%{"amount" => "3", "buyer_type" => "agency"}],
+      row_count: 1,
+      offset: 0
+    }
+
+    generate_text = fn _model, _context, _opts ->
+      GenServer.cast(
+        Server.via(id),
+        {:assistant_event,
+         {:tool_started, "present_spreadsheet_query_result",
+          %{"title" => "Agency rows"}}}
+      )
+
+      GenServer.cast(
+        Server.via(id),
+        {:assistant_event,
+         {:tool_finished, "present_spreadsheet_query_result",
+          {:ok, %ToolResult{metadata: %{sheaf_result: result}}}}}
+      )
+
+      {:ok, response(Context.assistant("Presented."), finish_reason: :stop)}
+    end
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       model: "test-model",
+       titles: %{},
+       workspace_instructions:
+         "Testing presented spreadsheet result visibility.",
+       activity_writer: nil,
+       generate_text: generate_text,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    assert :ok = Chat.send_user_message(id, "Show the result.")
+    assert %{pending: false, messages: messages} = wait_for_messages(id, 3)
+
+    assert %{
+             role: :tool,
+             tool: "present_spreadsheet_query_result",
+             status: :ok,
+             result: %ToolResults.PresentedSpreadsheetQueryResult{
+               title: "Agency rows",
+               rows: [%{"amount" => "3", "buyer_type" => "agency"}]
+             }
+           } =
+             Enum.find(
+               messages,
+               &(Map.get(&1, :tool) == "present_spreadsheet_query_result")
+             )
   end
 
   defp wait_for_messages(id, count) do

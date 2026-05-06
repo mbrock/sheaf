@@ -280,44 +280,16 @@ defmodule SheafWeb.AssistantToolResultComponents do
     assigns = assign(assigns, :table, presented_table(assigns.result))
 
     ~H"""
-    <article class="overflow-hidden border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900">
-      <header class="flex min-w-0 items-start justify-between gap-2 border-b border-stone-200 bg-stone-50 px-2 dark:border-stone-800 dark:bg-stone-950/40">
-        <div class="min-w-0">
-          <p class="font-sans font-semibold uppercase text-stone-500 dark:text-stone-400">
-            Spreadsheet query result
-            <span class={["ml-1 font-normal normal-case", @tool_view.status_class]}>
-              {@tool_view.detail}
-            </span>
-          </p>
-          <h3 class="font-semibold text-stone-950 dark:text-stone-50">
-            {@table.title}
-          </h3>
-          <p
-            :if={@table.description != ""}
-            class="text-stone-600 dark:text-stone-300"
-          >
-            {@table.description}
-          </p>
-        </div>
-        <a
-          :if={@table.result_path}
-          href={@table.result_path}
-          class="grid size-7 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-50"
-          title="Open result"
-          aria-label="Open result"
-        >
-          <.icon name="hero-arrow-top-right-on-square" class="size-4" />
-        </a>
-      </header>
-      <div class="overflow-x-auto px-2">
+    <article class="w-full py-2">
+      <div class="overflow-x-auto py-2">
         <DataTableComponents.data_table
           columns={@table.columns}
           rows={@table.rows}
+          title={@table.title}
+          subtitle={@table.description}
+          href={@table.result_path}
         />
       </div>
-      <footer class="border-t border-stone-200 px-2 font-sans text-stone-500 dark:border-stone-800 dark:text-stone-400">
-        Showing {@table.returned} {@table.row_label} from offset {@table.offset} of {@table.row_count}
-      </footer>
     </article>
     """
   end

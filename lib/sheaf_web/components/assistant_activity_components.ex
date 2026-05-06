@@ -43,7 +43,10 @@ defmodule SheafWeb.AssistantActivityComponents do
       @classes.row,
       @class
     ]}>
-      <span class={[@icon, "mr-2 mt-0.5 size-3.5 shrink-0", @classes.meta]} />
+      <.icon
+        name={@icon}
+        class={["mt-0.5 mr-2 size-3.5 shrink-0", @classes.icon]}
+      />
       <span class="min-w-0 flex-1">
         <span class="flex min-w-0 items-baseline gap-2">
           <span class={["min-w-0 flex-1 truncate", @classes.title]}>
@@ -99,6 +102,7 @@ defmodule SheafWeb.AssistantActivityComponents do
           "relative flex min-w-0 cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden",
           @classes.header
         ]}>
+          <.icon name={@icon} class={["mt-0.5 size-3.5 shrink-0", @classes.icon]} />
           <span class="min-w-0 flex-1">
             <span class="block truncate text-stone-900 dark:text-stone-50">
               {@title}
@@ -137,6 +141,7 @@ defmodule SheafWeb.AssistantActivityComponents do
           @classes.header
         ]}
       >
+        <.icon name={@icon} class={["mt-0.5 size-3.5 shrink-0", @classes.icon]} />
         <div class="min-w-0 flex-1">
           <div class="truncate text-stone-900 dark:text-stone-50">
             {@title}
@@ -184,7 +189,8 @@ defmodule SheafWeb.AssistantActivityComponents do
       @class
     ]}>
       <div class="min-w-0 flex-1">
-        <div class="flex min-w-0 items-baseline">
+        <div class="flex min-w-0 items-baseline gap-2">
+          <.icon name={@icon} class={["size-3.5 shrink-0", @classes.icon]} />
           <span class={[@classes.title]}>
             {@title}
           </span>

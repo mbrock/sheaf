@@ -241,7 +241,7 @@ defmodule SheafWeb.AssistantChatComponent do
       >
         <div
           id={"assistant-timeline-#{@id}-body"}
-          class="mx-auto flex min-h-full w-full max-w-prose min-w-0 flex-col justify-end"
+          class="mx-auto flex min-h-full w-full min-w-0 flex-col justify-end gap-4 sm:gap-5"
         >
           <.chat_item
             :for={
@@ -615,7 +615,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_message(%{message: %{role: :user}} = assigns) do
     ~H"""
-    <div class=" border-l-6 border-sky-200 px-3 py-2 font-text text-stone-950 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-stone-50">
+    <div class="mx-auto w-full max-w-prose rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 font-text text-stone-950 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-stone-50">
       <AssistantMarkdownComponents.markdown
         text={@message.text}
         block_ref_target={@block_ref_target}
@@ -629,7 +629,7 @@ defmodule SheafWeb.AssistantChatComponent do
     ~H"""
     <div
       id={@id}
-      class="group relative  border-l-6 border-stone-200 px-3 py-2 text-stone-900 dark:border-sky-900/70 dark:bg-sky-950/30 dark:text-stone-50"
+      class="assistant-prose mx-auto w-full max-w-prose rounded-lg bg-white px-3 py-2 text-stone-900 dark:bg-stone-900 dark:text-stone-100"
       phx-hook="AssistantTypeWriter"
       data-typewriter-streaming={Map.get(@message, :streaming?, false)}
     >
@@ -1009,6 +1009,8 @@ defmodule SheafWeb.AssistantChatComponent do
   defp tool_body?(%{result: %ToolResults.SearchIndexUpdate{}}), do: false
   defp tool_body?(%{result: %ToolResults.ParagraphTags{}}), do: false
   defp tool_body?(%{result: %ToolResults.Note{}}), do: false
+  defp tool_body?(%{result: %ToolResults.Blocks{}}), do: true
+  defp tool_body?(%{result: %ToolResults.Block{}}), do: true
   defp tool_body?(%{result: nil}), do: false
   defp tool_body?(%{result: _result}), do: true
   defp tool_body?(_message), do: false
