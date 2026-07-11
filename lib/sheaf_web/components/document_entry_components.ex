@@ -6,6 +6,71 @@ defmodule SheafWeb.DocumentEntryComponents do
   use SheafWeb, :html
 
   attr :document, :map, required: true
+
+  def document_card(assigns) do
+    ~H"""
+    <article class={[
+      "group min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm",
+      "transition duration-150 hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md",
+      "dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-600",
+      @document.excluded? && "opacity-45 grayscale",
+      @document.cited? && "border-amber-400 dark:border-amber-500",
+      workspace_owner_authored?(@document) && "border-sky-400 dark:border-sky-500"
+    ]}>
+      <.link
+        :if={@document.path}
+        navigate={@document.path}
+        class="flex h-full min-w-0 flex-col focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 dark:focus-visible:outline-stone-200"
+      >
+        <.document_card_content document={@document} />
+      </.link>
+      <div :if={is_nil(@document.path)} class="flex h-full min-w-0 flex-col">
+        <.document_card_content document={@document} />
+      </div>
+    </article>
+    """
+  end
+
+  attr :document, :map, required: true
+
+  defp document_card_content(assigns) do
+    ~H"""
+    <div class="aspect-[16/8.4] w-full overflow-hidden bg-stone-100 dark:bg-stone-800">
+      <img
+        :if={Map.get(@document, :cover_path)}
+        src={@document.cover_path}
+        alt=""
+        loading="lazy"
+        class="size-full object-cover transition duration-300 group-hover:scale-[1.015]"
+      />
+      <div
+        :if={is_nil(Map.get(@document, :cover_path))}
+        class="flex size-full items-center justify-center text-stone-300 dark:text-stone-600"
+      >
+        <.icon name="hero-document-text" class="size-10" />
+      </div>
+    </div>
+
+    <div class="flex min-h-32 flex-1 flex-col px-3 pb-3 pt-2.5">
+      <h3 class="font-sans text-base/5 font-medium text-stone-950 dark:text-stone-50">
+        {@document.title}
+      </h3>
+
+      <div class="mt-1 min-w-0 font-sans text-xs/4 text-stone-500 dark:text-stone-400">
+        <span class="line-clamp-2 font-serif text-stone-600 dark:text-stone-300">
+          {authors_str(@document) || ""}
+        </span>
+      </div>
+
+      <div class="mt-auto flex items-end justify-between gap-3 pt-3 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
+        <span>{year_str(@document)}</span>
+        <span>{page_count_str(@document)}</span>
+      </div>
+    </div>
+    """
+  end
+
+  attr :document, :map, required: true
   attr :show_checkbox, :boolean, default: false
   attr :nested, :boolean, default: false
 

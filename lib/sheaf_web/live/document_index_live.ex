@@ -8,7 +8,7 @@ defmodule SheafWeb.DocumentIndexLive do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias SheafWeb.AppChrome
-  import SheafWeb.DocumentEntryComponents, only: [document_entry: 1]
+  import SheafWeb.DocumentEntryComponents, only: [document_card: 1]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -107,7 +107,7 @@ defmodule SheafWeb.DocumentIndexLive do
       <main class="min-h-dvh max-w-full overflow-x-hidden bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
         <AppChrome.toolbar section={:index} />
 
-        <div class="min-w-0 ">
+        <div class="min-w-0">
           <p
             :if={@document_error}
             class="py-2 text-sm text-rose-700"
@@ -115,9 +115,9 @@ defmodule SheafWeb.DocumentIndexLive do
             {@document_error}
           </p>
 
-          <div :if={@documents != []} class="space-y-2 py-2">
-            <section :for={{kind, documents} <- @document_groups}>
-              <div :if={kind} class="pl-4 flex items-baseline justify-between gap-3">
+          <div :if={@documents != []} class="space-y-8 px-3 py-4 sm:px-4 lg:px-6">
+            <section :for={{kind, documents} <- @document_groups} class="min-w-0">
+              <div :if={kind} class="mb-3 flex items-baseline gap-3">
                 <h2 class="font-sans text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                   {kind_label(kind)}
                 </h2>
@@ -125,8 +125,8 @@ defmodule SheafWeb.DocumentIndexLive do
                   {length(documents)}
                 </span>
               </div>
-              <div>
-                <.document_entry :for={document <- documents} document={document} />
+              <div class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <.document_card :for={document <- documents} document={document} />
               </div>
             </section>
           </div>

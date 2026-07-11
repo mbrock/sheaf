@@ -87,6 +87,32 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     assert html =~ "sm:text-2xl/7"
   end
 
+  test "renders an index card with landscape cover and bottom metadata" do
+    html =
+      render_component(&document_card/1,
+        document: %{
+          id: "DOC2A2",
+          kind: :paper,
+          path: "/DOC2A2",
+          cover_path: "/covers/DOC2A2",
+          title: "A covered paper",
+          metadata: %{year: 2026, authors: ["Ada Lovelace"], page_count: 12},
+          excluded?: false,
+          cited?: false,
+          has_document?: true,
+          workspace_owner_authored?: false
+        }
+      )
+
+    assert html =~ ~s(href="/DOC2A2")
+    assert html =~ ~s(src="/covers/DOC2A2")
+    assert html =~ "aspect-[16/8.4]"
+    assert html =~ "A covered paper"
+    assert html =~ "Ada Lovelace"
+    assert html =~ "2026"
+    assert html =~ "12 pp."
+  end
+
   test "metadata heading uses plain compact metadata" do
     html =
       render_component(&document_metadata_heading/1,
