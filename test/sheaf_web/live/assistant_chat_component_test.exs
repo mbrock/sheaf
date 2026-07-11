@@ -17,14 +17,14 @@ defmodule SheafWeb.AssistantChatComponentTest do
                  "chat" => %{
                    "message" => "Keep this draft.",
                    "mode" => "research",
-                   "model_provider" => "claude"
+                   "model_provider" => "claude-opus-4-8"
                  }
                },
                socket
              )
 
     assert socket.assigns.mode == "research"
-    assert socket.assigns.model_provider == "claude"
+    assert socket.assigns.model_provider == "claude-opus-4-8"
     assert socket.assigns.form.params["message"] == "Keep this draft."
 
     assert {:noreply, socket} =
@@ -65,7 +65,7 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert socket.assigns.form.params["message"] == "Move this paragraph."
   end
 
-  test "GPT model and reasoning effort can be selected independently" do
+  test "model and documented reasoning effort can be selected independently" do
     {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
 
     assert {:noreply, socket} =
@@ -87,9 +87,26 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert socket.assigns.reasoning_effort == "max"
     assert socket.assigns.form.params["reasoning_effort"] == "max"
     assert socket.assigns.form.params["message"] == "Compare this draft."
+
+    assert {:noreply, socket} =
+             AssistantChatComponent.handle_event(
+               "set_options",
+               %{
+                 "chat" => %{
+                   "message" => "Compare this draft.",
+                   "mode" => "research",
+                   "model_provider" => "claude-opus-4-6",
+                   "reasoning_effort" => "xhigh"
+                 }
+               },
+               socket
+             )
+
+    assert socket.assigns.model == "anthropic:claude-opus-4-6"
+    assert socket.assigns.reasoning_effort == "high"
   end
 
-  test "import mode routes through GPT with high-reasoning defaults" do
+  test "import mode preserves the selected Claude model and reasoning effort" do
     {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
 
     assert {:noreply, socket} =
@@ -99,21 +116,46 @@ defmodule SheafWeb.AssistantChatComponentTest do
                  "chat" => %{
                    "message" => "Import this PDF.",
                    "mode" => "import",
-                   "model_provider" => "claude"
+                   "model_provider" => "claude-sonnet-5",
+                   "reasoning_effort" => "xhigh"
                  }
                },
                socket
              )
 
     assert socket.assigns.mode == "import"
-    assert socket.assigns.model_provider == "gpt-sol"
-    assert socket.assigns.model == "openai:gpt-5.6-sol"
+    assert socket.assigns.model_provider == "claude-sonnet-5"
+    assert socket.assigns.model == "anthropic:claude-sonnet-5"
+    assert socket.assigns.reasoning_effort == "xhigh"
+  end
 
-    assert Sheaf.LLM.assistant_llm_options(socket.assigns.model, "import") ==
-             [
-               reasoning_effort: :high,
-               provider_options: [reasoning_summary: :auto]
-             ]
+  test "upload updates preserve a draft's model and reasoning effort" do
+    {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
+
+    assert {:noreply, socket} =
+             AssistantChatComponent.handle_event(
+               "set_options",
+               %{
+                 "chat" => %{
+                   "message" => "Keep this import draft.",
+                   "mode" => "import",
+                   "model_provider" => "claude-fable-5",
+                   "reasoning_effort" => "xhigh"
+                 }
+               },
+               socket
+             )
+
+    assert {:ok, socket} =
+             AssistantChatComponent.update(
+               %{import_uploads: [%{id: "PDF01"}]},
+               socket
+             )
+
+    assert socket.assigns.mode == "import"
+    assert socket.assigns.model_provider == "claude-fable-5"
+    assert socket.assigns.reasoning_effort == "xhigh"
+    assert socket.assigns.form.params["message"] == "Keep this import draft."
   end
 
   test "existing conversations keep their original mode and model options" do
@@ -123,7 +165,7 @@ defmodule SheafWeb.AssistantChatComponentTest do
       socket
       |> Phoenix.Component.assign(:selected_chat_id, "CHAT01")
       |> Phoenix.Component.assign(:mode, "quick")
-      |> Phoenix.Component.assign(:model_provider, "claude")
+      |> Phoenix.Component.assign(:model_provider, "claude-opus-4-8")
       |> Phoenix.Component.assign(:model, Sheaf.LLM.default_model())
 
     assert {:noreply, socket} =
@@ -140,7 +182,7 @@ defmodule SheafWeb.AssistantChatComponentTest do
              )
 
     assert socket.assigns.mode == "quick"
-    assert socket.assigns.model_provider == "claude"
+    assert socket.assigns.model_provider == "claude-opus-4-8"
     assert socket.assigns.model == Sheaf.LLM.default_model()
     assert socket.assigns.form.params["message"] == "Reply draft."
   end

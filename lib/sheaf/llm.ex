@@ -9,7 +9,7 @@ defmodule Sheaf.LLM do
   alias ReqLLM.{Context, Response}
   alias ReqLLM.Message.ContentPart
 
-  @claude_assistant_model "anthropic:claude-opus-4-7"
+  @claude_assistant_model "anthropic:claude-opus-4-8"
   @gpt_assistant_model "openai:gpt-5.6-sol"
   @default_model @claude_assistant_model
   @default_max_tokens 65_536
@@ -28,64 +28,117 @@ defmodule Sheaf.LLM do
   @spec default_model() :: String.t()
   def default_model, do: @default_model
 
-  @doc """
-  The assistant provider choices Sheaf exposes in the chat UI.
-  """
+  @assistant_models [
+    %{
+      provider: "claude-opus-4-6",
+      label: "Claude Opus 4.6",
+      model: "anthropic:claude-opus-4-6"
+    },
+    %{
+      provider: "claude-opus-4-8",
+      label: "Claude Opus 4.8",
+      model: "anthropic:claude-opus-4-8"
+    },
+    %{
+      provider: "claude-sonnet-5",
+      label: "Claude Sonnet 5",
+      model: "anthropic:claude-sonnet-5"
+    },
+    %{
+      provider: "claude-fable-5",
+      label: "Claude Fable 5",
+      model: "anthropic:claude-fable-5"
+    },
+    %{provider: "gpt-sol", label: "GPT Sol", model: @gpt_assistant_model},
+    %{
+      provider: "gpt-terra",
+      label: "GPT Terra",
+      model: "openai:gpt-5.6-terra"
+    },
+    %{provider: "gpt-luna", label: "GPT Luna", model: "openai:gpt-5.6-luna"}
+  ]
+
+  @doc "The assistant model choices Sheaf exposes in the chat UI."
   @spec assistant_model_options() :: [
           %{provider: String.t(), label: String.t(), model: String.t()}
         ]
   def assistant_model_options do
-    [
-      %{provider: "claude", label: "Claude", model: @claude_assistant_model},
-      %{provider: "gpt-sol", label: "GPT Sol", model: @gpt_assistant_model},
-      %{
-        provider: "gpt-terra",
-        label: "GPT Terra",
-        model: "openai:gpt-5.6-terra"
-      },
-      %{provider: "gpt-luna", label: "GPT Luna", model: "openai:gpt-5.6-luna"}
-    ]
+    @assistant_models
   end
 
   @doc """
   The default assistant provider key.
   """
   @spec default_assistant_provider() :: String.t()
-  def default_assistant_provider, do: "claude"
+  def default_assistant_provider, do: "claude-opus-4-8"
 
-  @doc "The reasoning effort levels supported by GPT-5.6 assistant models."
-  def assistant_reasoning_effort_options,
-    do: ~w(none low medium high xhigh max)
+  @doc "The reasoning effort levels supported by a selected assistant model."
+  @spec assistant_reasoning_effort_options(term()) :: [String.t()]
+  def assistant_reasoning_effort_options(provider_or_model \\ @default_model)
+
+  def assistant_reasoning_effort_options(provider_or_model)
+      when provider_or_model in [
+             "claude-opus-4-6",
+             "anthropic:claude-opus-4-6"
+           ],
+      do: ~w(low medium high max)
+
+  def assistant_reasoning_effort_options(provider_or_model)
+      when provider_or_model in [
+             "claude-opus-4-8",
+             "claude-sonnet-5",
+             "claude-fable-5",
+             "anthropic:claude-opus-4-8",
+             "anthropic:claude-sonnet-5",
+             "anthropic:claude-fable-5"
+           ],
+      do: ~w(low medium high xhigh max)
+
+  def assistant_reasoning_effort_options(provider_or_model)
+      when provider_or_model in ["gpt", "gpt-sol", "gpt-terra", "gpt-luna"],
+      do: ~w(none low medium high xhigh max)
+
+  def assistant_reasoning_effort_options(_provider_or_model), do: []
+
+  @doc "The documented default reasoning effort for a selected assistant model."
+  @spec default_assistant_reasoning_effort(term()) :: String.t()
+  def default_assistant_reasoning_effort(provider_or_model \\ @default_model) do
+    if String.starts_with?(to_string(provider_or_model), "gpt") or
+         String.starts_with?(to_string(provider_or_model), "openai:") do
+      "medium"
+    else
+      "high"
+    end
+  end
 
   @doc """
   Resolves a chat UI provider key to the ReqLLM model spec used for assistant turns.
   """
   @spec assistant_model_for_provider(term()) :: String.t()
-  def assistant_model_for_provider(provider)
-      when provider in ["gpt", "gpt-sol", :gpt, :gpt_sol],
-      do: @gpt_assistant_model
+  def assistant_model_for_provider(provider) do
+    provider =
+      if provider in ["gpt", :gpt, :gpt_sol],
+        do: "gpt-sol",
+        else: to_string(provider)
 
-  def assistant_model_for_provider(provider)
-      when provider in ["gpt-terra", :gpt_terra],
-      do: "openai:gpt-5.6-terra"
-
-  def assistant_model_for_provider(provider)
-      when provider in ["gpt-luna", :gpt_luna],
-      do: "openai:gpt-5.6-luna"
-
-  def assistant_model_for_provider(_provider), do: @claude_assistant_model
+    case Enum.find(@assistant_models, &(&1.provider == provider)) do
+      %{model: model} -> model
+      nil -> @claude_assistant_model
+    end
+  end
 
   @doc """
   Returns the chat UI provider key for an assistant model spec.
   """
   @spec assistant_provider_for_model(term()) :: String.t()
-  def assistant_provider_for_model(model)
-      when model in ["openai:gpt-5.6", @gpt_assistant_model],
-      do: "gpt-sol"
+  def assistant_provider_for_model("openai:gpt-5.6"), do: "gpt-sol"
 
-  def assistant_provider_for_model("openai:gpt-5.6-terra"), do: "gpt-terra"
-  def assistant_provider_for_model("openai:gpt-5.6-luna"), do: "gpt-luna"
-  def assistant_provider_for_model(_model), do: "claude"
+  def assistant_provider_for_model(model) do
+    case Enum.find(@assistant_models, &(&1.model == model)) do
+      %{provider: provider} -> provider
+      nil -> default_assistant_provider()
+    end
+  end
 
   @doc """
   Default LLM options for an assistant provider and conversation mode.
@@ -104,7 +157,7 @@ defmodule Sheaf.LLM do
   def default_max_tokens, do: @default_max_tokens
 
   @doc """
-  The default thinking configuration used for Claude Opus 4.7.
+  The default thinking configuration used for Claude Opus 4.8.
   """
   @spec default_thinking() :: map()
   def default_thinking, do: @default_thinking
@@ -148,9 +201,9 @@ defmodule Sheaf.LLM do
 
   Options:
 
-    * `:model` - ReqLLM model spec, defaulting to Claude Opus 4.7.
+    * `:model` - ReqLLM model spec, defaulting to Claude Opus 4.8.
     * `:max_tokens` - response length limit, defaulting to 65,536.
-    * `:thinking` - thinking configuration. Claude Opus 4.7 defaults to
+    * `:thinking` - thinking configuration. Claude Opus 4.8 defaults to
       `%{type: "adaptive", display: "omitted"}`; pass `nil` or `false`
       to omit it. This is sent in `:provider_options`, which is the shape
       ReqLLM's Anthropic provider accepts.
@@ -266,20 +319,16 @@ defmodule Sheaf.LLM do
   def response_usage(%{usage: usage}) when is_map(usage), do: usage
   def response_usage(_), do: nil
 
-  defp assistant_provider_key(provider)
-       when provider in ["gpt", "gpt-sol", "gpt-terra", "gpt-luna", :gpt],
-       do: "gpt"
+  defp assistant_provider_key(provider_or_model) do
+    value = to_string(provider_or_model)
 
-  defp assistant_provider_key(provider_or_model),
-    do:
-      if(
-        String.starts_with?(
-          assistant_provider_for_model(provider_or_model),
-          "gpt"
-        ),
-        do: "gpt",
-        else: "claude"
-      )
+    if String.starts_with?(value, "gpt") or
+         String.starts_with?(value, "openai:") do
+      "gpt"
+    else
+      "claude"
+    end
+  end
 
   defp normalize_assistant_mode(:research), do: :research
   defp normalize_assistant_mode("research"), do: :research
@@ -302,8 +351,17 @@ defmodule Sheaf.LLM do
     ]
   end
 
-  defp anthropic_adaptive_model?("anthropic:claude-opus-4-7"), do: true
-  defp anthropic_adaptive_model?("claude-opus-4-7"), do: true
+  defp anthropic_adaptive_model?(model)
+       when model in [
+              "anthropic:claude-opus-4-6",
+              "claude-opus-4-6",
+              "anthropic:claude-opus-4-7",
+              "claude-opus-4-7",
+              "anthropic:claude-opus-4-8",
+              "claude-opus-4-8"
+            ],
+       do: true
+
   defp anthropic_adaptive_model?(_model), do: false
 
   defp anthropic_model?(model) when is_binary(model) do

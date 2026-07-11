@@ -107,9 +107,24 @@ defmodule Sheaf.LLMTest do
   test "resolves assistant provider choices to model specs" do
     assert [
              %{
-               provider: "claude",
-               label: "Claude",
-               model: "anthropic:claude-opus-4-7"
+               provider: "claude-opus-4-6",
+               label: "Claude Opus 4.6",
+               model: "anthropic:claude-opus-4-6"
+             },
+             %{
+               provider: "claude-opus-4-8",
+               label: "Claude Opus 4.8",
+               model: "anthropic:claude-opus-4-8"
+             },
+             %{
+               provider: "claude-sonnet-5",
+               label: "Claude Sonnet 5",
+               model: "anthropic:claude-sonnet-5"
+             },
+             %{
+               provider: "claude-fable-5",
+               label: "Claude Fable 5",
+               model: "anthropic:claude-fable-5"
              },
              %{
                provider: "gpt-sol",
@@ -128,10 +143,10 @@ defmodule Sheaf.LLMTest do
              }
            ] = LLM.assistant_model_options()
 
-    assert LLM.default_assistant_provider() == "claude"
+    assert LLM.default_assistant_provider() == "claude-opus-4-8"
 
-    assert LLM.assistant_model_for_provider("claude") ==
-             "anthropic:claude-opus-4-7"
+    assert LLM.assistant_model_for_provider("claude-opus-4-8") ==
+             "anthropic:claude-opus-4-8"
 
     assert LLM.assistant_model_for_provider("gpt-sol") ==
              "openai:gpt-5.6-sol"
@@ -145,11 +160,32 @@ defmodule Sheaf.LLMTest do
     assert LLM.assistant_provider_for_model("openai:gpt-5.6-sol") ==
              "gpt-sol"
 
-    assert LLM.assistant_reasoning_effort_options() ==
+    assert LLM.assistant_reasoning_effort_options("gpt-sol") ==
              ~w(none low medium high xhigh max)
 
-    assert LLM.assistant_provider_for_model("anthropic:claude-opus-4-7") ==
-             "claude"
+    assert LLM.assistant_reasoning_effort_options("claude-opus-4-6") ==
+             ~w(low medium high max)
+
+    assert LLM.assistant_reasoning_effort_options("claude-opus-4-8") ==
+             ~w(low medium high xhigh max)
+
+    assert LLM.assistant_reasoning_effort_options("claude-sonnet-5") ==
+             ~w(low medium high xhigh max)
+
+    assert LLM.assistant_reasoning_effort_options("claude-fable-5") ==
+             ~w(low medium high xhigh max)
+
+    assert LLM.assistant_provider_for_model("anthropic:claude-opus-4-8") ==
+             "claude-opus-4-8"
+
+    for model <- ~w(
+          anthropic:claude-opus-4-6
+          anthropic:claude-opus-4-8
+          anthropic:claude-sonnet-5
+          anthropic:claude-fable-5
+        ) do
+      assert {:ok, _model} = ReqLLM.model(model)
+    end
   end
 
   test "sets GPT assistant reasoning effort by conversation mode" do
@@ -168,8 +204,29 @@ defmodule Sheaf.LLMTest do
              provider_options: [reasoning_summary: :auto]
            ]
 
-    assert LLM.assistant_llm_options("anthropic:claude-opus-4-7", "research") ==
+    assert LLM.assistant_llm_options("anthropic:claude-opus-4-8", "research") ==
              []
+  end
+
+  test "enables adaptive thinking and maps Claude effort into output configuration" do
+    options =
+      LLM.text_request_options(
+        model: "anthropic:claude-opus-4-8",
+        reasoning_effort: :xhigh
+      )
+
+    assert options[:provider_options][:thinking] == %{
+             type: "adaptive",
+             display: "omitted"
+           }
+
+    {:ok, model} = ReqLLM.model("anthropic:claude-opus-4-8")
+
+    {translated, []} =
+      ReqLLM.Providers.Anthropic.translate_options(:chat, model, options)
+
+    assert translated[:thinking] == %{type: "adaptive", display: "summarized"}
+    assert translated[:output_config] == %{effort: "max"}
   end
 
   test "requests and decodes streamed OpenAI reasoning summaries" do
