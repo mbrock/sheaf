@@ -334,3 +334,84 @@ bounded context windows to models.
   raw HTML, normalized rows, and generated textual records.
 - Add telemetry spans around import repair passes with document id, candidate
   counts, model, token counts, accepted edits, and review counts.
+
+## Field Trial: Three Papers From Open Browser Tabs
+
+On 2026-07-11, a first end-to-end agentic import trial started from three PDF
+URLs supplied without any accompanying metadata. The papers concerned
+procedural street modeling, procedural road generation, and active-walker
+models of trail formation.
+
+The trial used the existing pieces rather than a purpose-built orchestrator:
+
+1. Download and hash the PDFs.
+2. Inspect PDF metadata and first-page text.
+3. Independently search arXiv and Crossref for bibliographic identity.
+4. Ingest the source files into the content-addressed blob store.
+5. Submit them to Datalab and inspect the extracted headings before import.
+6. Import the raw document graphs.
+7. Run the queued metadata extraction workflow.
+8. Continue the investigation manually when that workflow stopped.
+9. Import confirmed Crossref records.
+10. Build exact and semantic indexes, exercise discriminating corpus queries,
+    and inspect rendered pages in a browser.
+
+The exercise found several issues that a fixed pipeline would have missed or
+handled poorly:
+
+- One URL had initially been given a plausible but incorrect local filename.
+  Reading the first page and checking the arXiv record established that it was
+  Helbing et al.'s _Active Walker Model for the Formation of Human and Animal
+  Trail Systems_, not the Watts-Strogatz small-world paper. URL intake should
+  not treat a caller's filename or tab description as authoritative metadata.
+- Datalab recovered the correct title as an `h1` for all three papers, but left
+  its top-level `metadata.title` empty. The importer therefore created untitled
+  documents even though the title was present in the extraction. Import
+  planning needs ranked title evidence and an explicit choice, not a single
+  hard-coded field.
+- The bounded LLM metadata pass recovered good titles and authors, but no DOI
+  was printed in the extracted text. The fixed queue consequently stopped
+  before lookup. An investigating agent could search by title, compare authors,
+  venue, year, and page ranges, notice Crossref aliases, and select the correct
+  DOI with an evidence trail.
+- A graph-construction bug placed PDF metadata in the RDF default graph rather
+  than the named metadata graph. This hid all three papers from the index and
+  caused reader requests to fail while resolving blocks. Post-import checks for
+  graph names, document counts, resource resolution, and HTTP status would have
+  caught this immediately even without knowing the implementation.
+- Datalab represented each paper title as a section wrapping the entire paper.
+  The desired repair was to unwrap that section. Repeated generic `move_block`
+  calls were not atomic and failed after partially changing RDF lists. The
+  pre-edit backup made rollback safe, but the experience argues for a dedicated
+  atomic `unwrap section` operation and dry-run validation.
+- Once metadata placement was repaired, the document index, full reader,
+  lightweight reader, exact search, semantic search, figures, captions,
+  breadcrumbs, and page references all worked well. Three discriminating test
+  queries selected the intended paper and relevant passages.
+
+This trial suggests that the orchestrator should be goal-directed rather than
+merely a longer fixed pipeline. It needs tools and durable state for:
+
+- recording the supplied URL and retrieval response as source provenance;
+- inspecting PDF properties and bounded page text before extraction;
+- proposing bibliographic candidates from multiple providers;
+- comparing candidates against observed title, authors, venue, date, pages,
+  DOI, ISBN, and repository identifiers;
+- accepting a candidate with explicit evidence and confidence;
+- choosing among extraction fields when they disagree or are incomplete;
+- validating RDF graph placement and required document invariants;
+- applying compound structural edits atomically, with preview and rollback;
+- running post-import acceptance checks over APIs, rendered pages, search, and
+  stored source-file access;
+- using the lightweight `wd screenshot` workflow for ordinary visual acceptance
+  checks, and reserving heavier browser automation for interactions or
+  assertions that `wd` cannot express;
+- ending in `accepted`, `needs review`, or `failed safely`, rather than treating
+  a technically completed extraction as a successful import.
+
+The most important practical lesson is that model reasoning was useful between
+the existing stages, not as a replacement for them. Datalab, Crossref, arXiv,
+RDF transactions, search indexes, and browser checks each provided bounded
+evidence or actions. The agent's role was to decide what evidence to seek next,
+recognize when a stage's success did not satisfy the overall goal, and stop a
+dangerous repair when the available mutation tool was not adequate.
