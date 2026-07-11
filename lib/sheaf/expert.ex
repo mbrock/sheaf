@@ -480,7 +480,7 @@ defmodule Sheaf.Expert do
         )
 
         with {:ok, ebin_paths} <- expert_ebin_paths() do
-          Enum.each(ebin_paths, &Code.prepend_path(String.to_charlist(&1)))
+          Enum.each(ebin_paths, &Code.append_path(String.to_charlist(&1)))
           :ok
         end
     end

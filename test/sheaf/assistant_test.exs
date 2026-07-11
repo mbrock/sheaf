@@ -233,8 +233,8 @@ defmodule Sheaf.AssistantTest do
 
     task = Task.async(fn -> Assistant.run(assistant, "Search twice.") end)
 
-    assert_receive {:search_started, "first", first_pid}
-    assert_receive {:search_started, "second", second_pid}
+    assert_receive {:search_started, "first", first_pid}, 1_000
+    assert_receive {:search_started, "second", second_pid}, 1_000
     send(first_pid, :release)
     send(second_pid, :release)
 
@@ -325,7 +325,7 @@ defmodule Sheaf.AssistantTest do
         Assistant.run(assistant, "wait", timeout: 1_000)
       end)
 
-    assert_receive {:inference_started, task_pid}
+    assert_receive {:inference_started, task_pid}, 1_000
     assert {:error, :busy} = Assistant.run(assistant, "second")
 
     send(task_pid, :finish)
