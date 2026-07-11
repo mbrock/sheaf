@@ -34,7 +34,9 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
                        "urls" => ["https://example.com/paper.pdf"]
                      }}
 
-    refute Enum.any?(tools, &(&1.name == "update_block_text"))
+    assert Enum.any?(tools, &(&1.name == "update_block_text"))
+    assert Enum.any?(tools, &(&1.name == "unwrap_section"))
+    assert Enum.any?(tools, &(&1.name == "web_search"))
   end
 
   test "search_text tool uses embedding index search and preserves assistant hit shape" do
@@ -608,6 +610,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert "move_block" in tool_names
     assert "insert_paragraph" in tool_names
     assert "delete_block" in tool_names
+    assert "unwrap_section" in tool_names
     assert "update_search_index" in tool_names
     refute "write_note" in tool_names
     refute "query_spreadsheets" in tool_names

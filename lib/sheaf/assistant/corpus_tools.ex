@@ -86,6 +86,12 @@ defmodule Sheaf.Assistant.CorpusTools do
     block_deleter =
       Keyword.get(opts, :block_deleter, &DocumentEdits.delete_block/1)
 
+    section_unwrapper =
+      Keyword.get(opts, :section_unwrapper, &DocumentEdits.unwrap_section/1)
+
+    web_searcher =
+      Keyword.get(opts, :web_searcher, &Sheaf.OpenAI.WebSearch.search/1)
+
     search_index_updater =
       Keyword.get(
         opts,
@@ -212,13 +218,17 @@ defmodule Sheaf.Assistant.CorpusTools do
 
     tools =
       if tool_set == :import do
-        tools ++ [document_import_tool(notify, document_importer)]
+        tools ++
+          [
+            document_import_tool(notify, document_importer),
+            web_search_tool(notify, web_searcher)
+          ]
       else
         tools
       end
 
     tools =
-      if tool_set == :edit do
+      if tool_set in [:edit, :import] do
         tools ++
           edit_tool_definitions(
             notify,
@@ -226,9 +236,15 @@ defmodule Sheaf.Assistant.CorpusTools do
             block_mover,
             paragraph_inserter,
             block_deleter,
+            section_unwrapper,
             search_index_updater
           )
       else
+        tools
+      end
+
+    tools =
+      if tool_set != :edit do
         tools ++
           sidecar_spreadsheet_tools(
             notify,
@@ -238,6 +254,8 @@ defmodule Sheaf.Assistant.CorpusTools do
             spreadsheet_result_reader,
             spreadsheet_dialect
           )
+      else
+        tools
       end
 
     if include_notes? and tool_set != :edit do
@@ -300,12 +318,50 @@ defmodule Sheaf.Assistant.CorpusTools do
     )
   end
 
+  defp web_search_tool(notify, searcher) do
+    Tool.new!(
+      name: "web_search",
+      description:
+        "Search the public web using OpenAI's server-side web search. " <>
+          "Use it to verify bibliographic metadata, find canonical publication pages, " <>
+          "DOIs, author lists, venues, and other current external evidence. " <>
+          "Returns an answer and the source URLs consulted.",
+      parameter_schema: [
+        query: [
+          type: :string,
+          required: true,
+          doc: "A focused web research question or search query."
+        ]
+      ],
+      callback:
+        instrument(notify, "web_search", fn args ->
+          query = arg(args, :query)
+
+          if is_binary(query) and String.trim(query) != "" do
+            case searcher.(query) do
+              {:ok, result} ->
+                {:ok, rendered_result(result)}
+
+              {:error, reason} ->
+                {:error, "web search failed: #{inspect(reason)}"}
+
+              other ->
+                {:error, "web search returned: #{inspect(other)}"}
+            end
+          else
+            {:error, "query is required"}
+          end
+        end)
+    )
+  end
+
   defp edit_tool_definitions(
          notify,
          block_text_replacer,
          block_mover,
          paragraph_inserter,
          block_deleter,
+         section_unwrapper,
          search_index_updater
        ) do
     [
@@ -400,6 +456,24 @@ defmodule Sheaf.Assistant.CorpusTools do
         callback:
           instrument(notify, "delete_block", fn args ->
             delete_block_tool(args, block_deleter)
+          end)
+      ),
+      Tool.new!(
+        name: "unwrap_section",
+        description:
+          "Remove a redundant section wrapper without deleting its contents. " <>
+            "The section's children are atomically spliced into its parent at the " <>
+            "same position and in the same order. Only section blocks are accepted.",
+        parameter_schema: [
+          block: [
+            type: :string,
+            required: true,
+            doc: "Section block id to unwrap."
+          ]
+        ],
+        callback:
+          instrument(notify, "unwrap_section", fn args ->
+            unwrap_section_tool(args, section_unwrapper)
           end)
       ),
       Tool.new!(
@@ -1120,7 +1194,8 @@ defmodule Sheaf.Assistant.CorpusTools do
              "update_block_text",
              "move_block",
              "insert_paragraph",
-             "delete_block"
+             "delete_block",
+             "unwrap_section"
            ] do
     "changed " <> pluralize(result.statement_count, "statement", "statements")
   end
@@ -1675,6 +1750,32 @@ defmodule Sheaf.Assistant.CorpusTools do
             {:error,
              "could not delete block: unexpected result #{inspect(other)}"}
         end
+    end
+  end
+
+  defp unwrap_section_tool(args, section_unwrapper) do
+    block = arg(args, :block)
+
+    if is_binary(block) and String.trim(block) != "" do
+      case section_unwrapper.(block) do
+        {:ok, result} ->
+          result
+          |> block_edit_result()
+          |> rendered_result()
+          |> then(&{:ok, &1})
+
+        {:error, reason} when is_binary(reason) ->
+          {:error, "could not unwrap section: #{reason}"}
+
+        {:error, reason} ->
+          {:error, "could not unwrap section: #{inspect(reason)}"}
+
+        other ->
+          {:error,
+           "could not unwrap section: unexpected result #{inspect(other)}"}
+      end
+    else
+      {:error, "block is required"}
     end
   end
 

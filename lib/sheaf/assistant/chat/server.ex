@@ -1302,7 +1302,7 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp note_tool_prompt(false), do: ""
 
-  defp edit_tool_prompt(:edit) do
+  defp edit_tool_prompt(kind) when kind in [:edit, :import] do
     """
       * Use update_block_text to replace a paragraph's full text or change a
         section heading title when the user asks for a concrete edit.
@@ -1311,10 +1311,13 @@ defmodule Sheaf.Assistant.Chat.Server do
       * Use insert_paragraph to add a new paragraph block at a specified place.
       * Use delete_block to remove an existing block. Deleting a section also
         deletes all descendant blocks.
-      * After update_block_text, move_block, insert_paragraph, or delete_block,
+      * Use unwrap_section when a redundant section wrapper should disappear
+        but all of its contents should remain in order under its parent.
+      * After update_block_text, move_block, insert_paragraph, delete_block, or
+        unwrap_section,
         call update_search_index with the edited, moved, inserted, or deleted
         affected block ids so embeddings and full-text search reflect the
-        changed draft.
+        changed document.
     """
   end
 
@@ -1366,6 +1369,11 @@ defmodule Sheaf.Assistant.Chat.Server do
         validate. Always inspect extraction evidence before import. Stop safely if
         the source is not a PDF, extraction fails, or the evidence is ambiguous.
       * A staged upload is identified by a Sheaf file id in the user message.
+      * Use the normal corpus reading and search tools to inspect imported
+        results. Use web_search to verify metadata against public sources.
+      * Repair obvious structural extraction artifacts with the editing tools.
+        Prefer unwrap_section for a useless title-level wrapper whose children
+        should become top-level blocks; do not use delete_block for that case.
       * Keep the user informed through tool progress and finish with imported
         document ids or a precise needs-review explanation.
     """

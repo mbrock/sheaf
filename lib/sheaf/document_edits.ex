@@ -247,6 +247,53 @@ defmodule Sheaf.DocumentEdits do
   end
 
   @doc """
+  Removes a section wrapper while preserving its children in the same position.
+
+  The section's children are spliced into its parent list atomically. The
+  section itself and its now-unused RDF list nodes are removed, while every
+  descendant block is preserved.
+  """
+  def unwrap_section(block_id, opts \\ []) do
+    block_id = normalize_id(block_id)
+
+    Tracer.with_span "sheaf.document_edits.unwrap_section", %{
+      kind: :internal,
+      attributes: [
+        {"db.system", "quadlog"},
+        {"db.operation", "transact"},
+        {"sheaf.block_id", block_id}
+      ]
+    } do
+      with :ok <- require_id(block_id, "section is required"),
+           {:ok, document_id, graph} <- graph_for_block(block_id, opts),
+           block = Id.iri(block_id),
+           :ok <- require_document_block(graph, block_id, block),
+           :ok <- require_section(graph, block_id, block),
+           {:ok, parent} <- parent_of(graph, block),
+           children = Document.children(graph, block),
+           affected_blocks = text_block_ids_in_subtree(graph, block),
+           {:ok, changes} <-
+             unwrap_section_changes(graph, parent, block, children),
+           {:ok, statement_count} <-
+             transact(changes, opts, "unwrap document section") do
+        result = %{
+          action: :unwrap_section,
+          document_id: document_id,
+          block_id: block_id,
+          affected_blocks: affected_blocks,
+          statement_count: statement_count
+        }
+
+        Tracer.set_attribute("sheaf.document", document_id)
+        Tracer.set_attribute("sheaf.child_count", length(children))
+        Tracer.set_attribute("sheaf.statement_count", statement_count)
+        notify_document_changed(result)
+        {:ok, result}
+      end
+    end
+  end
+
+  @doc """
   Expands block ids to text-bearing blocks affected by search index updates.
   """
   def text_block_ids(block_ids, opts \\ []) do
@@ -541,6 +588,35 @@ defmodule Sheaf.DocumentEdits do
     end
   end
 
+  defp unwrap_section_changes(graph, parent, block, section_children) do
+    parent_children = Document.children(graph, parent)
+
+    if block in parent_children do
+      spliced_children =
+        Enum.flat_map(parent_children, fn
+          ^block -> section_children
+          child -> [child]
+        end)
+
+      section_graph =
+        graph
+        |> current_children_graph(block)
+        |> Graph.add(predication_graph(graph, block, RDF.type()))
+        |> Graph.add(predication_graph(graph, block, RDFS.label()))
+
+      changes =
+        graph
+        |> replace_children_changes(parent, spliced_children)
+        |> Kernel.++([{:retract, section_graph}])
+        |> compact_changes()
+
+      {:ok, changes}
+    else
+      {:error,
+       "section #{Id.id_from_iri(block)} is not a child of its parent"}
+    end
+  end
+
   defp deleted_subtree_graph(graph, block) do
     subjects =
       graph
@@ -651,6 +727,14 @@ defmodule Sheaf.DocumentEdits do
     |> case do
       nil -> {:error, "block #{Id.id_from_iri(child)} has no parent list"}
       parent -> {:ok, parent}
+    end
+  end
+
+  defp require_section(graph, block_id, block) do
+    if Document.block_type(graph, block) == :section do
+      :ok
+    else
+      {:error, "block #{block_id} is not a section"}
     end
   end
 

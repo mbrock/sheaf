@@ -1201,6 +1201,8 @@ defmodule SheafWeb.AssistantChatComponent do
   defp tool_icon("tag_paragraphs"), do: "hero-tag"
   defp tool_icon("update_block_text"), do: "hero-pencil-square"
   defp tool_icon("move_block"), do: "hero-arrows-up-down"
+  defp tool_icon("unwrap_section"), do: "hero-arrows-pointing-out"
+  defp tool_icon("web_search"), do: "hero-globe-alt"
   defp tool_icon("insert_paragraph"), do: "hero-plus"
   defp tool_icon("delete_block"), do: "hero-trash"
   defp tool_icon("update_search_index"), do: "hero-arrow-path"

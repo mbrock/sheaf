@@ -228,4 +228,89 @@ defmodule Sheaf.DocumentEditsTest do
              {second_revision, RDF.type(), DOC.Paragraph}
            )
   end
+
+  test "atomically unwraps a section and preserves its children in order" do
+    doc = Id.iri("DOCU01")
+    root_list = Id.iri("LSTU01")
+    before = Id.iri("PARU01")
+    section = Id.iri("SECU01")
+    section_list = Id.iri("LSTU02")
+    first = Id.iri("PARU02")
+    second = Id.iri("PARU03")
+    after_block = Id.iri("PARU04")
+
+    graph =
+      RDF.Graph.new(
+        [
+          {doc, RDF.type(), DOC.Document},
+          {doc, DOC.children(), root_list},
+          {section, RDF.type(), DOC.Section},
+          {section, RDFS.label(), RDF.literal("Redundant title")},
+          {section, DOC.children(), section_list}
+        ] ++
+          Enum.map([before, first, second, after_block], fn block ->
+            {block, RDF.type(), DOC.ParagraphBlock}
+          end),
+        name: doc
+      )
+      |> then(fn graph ->
+        RDF.list([before, section, after_block],
+          graph: graph,
+          head: root_list
+        ).graph
+      end)
+      |> then(fn graph ->
+        RDF.list([first, second], graph: graph, head: section_list).graph
+      end)
+
+    assert :ok = Sheaf.Repo.assert(graph)
+    assert {:ok, result} = DocumentEdits.unwrap_section("SECU01")
+    assert result.action == :unwrap_section
+
+    assert {:ok, updated} = Sheaf.fetch_graph(doc)
+
+    assert Document.children(updated, doc) == [
+             before,
+             first,
+             second,
+             after_block
+           ]
+
+    assert Document.block_type(updated, section) == nil
+    assert Document.block_type(updated, first) == :paragraph
+    assert Document.block_type(updated, second) == :paragraph
+    refute RDF.Data.include?(updated, {section_list, RDF.first(), nil})
+  end
+
+  test "unwrap section transaction failure leaves the graph unchanged" do
+    doc = Id.iri("DOCU02")
+    section = Id.iri("SECU02")
+    list = Id.iri("LSTU03")
+
+    graph =
+      RDF.Graph.new(
+        [
+          {doc, RDF.type(), DOC.Document},
+          {doc, DOC.children(), list},
+          {section, RDF.type(), DOC.Section}
+        ],
+        name: doc
+      )
+      |> then(fn graph ->
+        RDF.list([section], graph: graph, head: list).graph
+      end)
+
+    assert :ok = Sheaf.Repo.assert(graph)
+
+    assert {:error, :simulated_failure} =
+             DocumentEdits.unwrap_section("SECU02",
+               transact: fn _tx, _changes, _metadata ->
+                 {:error, :simulated_failure}
+               end
+             )
+
+    assert {:ok, unchanged} = Sheaf.fetch_graph(doc)
+    assert Document.children(unchanged, doc) == [section]
+    assert Document.block_type(unchanged, section) == :section
+  end
 end
