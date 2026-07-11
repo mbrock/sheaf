@@ -278,12 +278,23 @@ defmodule SheafWeb.AssistantChatComponent do
 
           <div
             :if={@chat.pending}
-            class="flex items-center gap-2 px-1 py-2 text-stone-500 dark:text-stone-400"
+            class="flex items-start gap-2 px-1 py-2 text-stone-500 dark:text-stone-400"
           >
-            <span class="size-2.5 shrink-0 animate-pulse rounded-full bg-stone-500 dark:bg-stone-300">
+            <span class="mt-1 size-2.5 shrink-0 animate-pulse rounded-full bg-stone-500 dark:bg-stone-300">
             </span>
-            <span class="min-w-0 flex-1 truncate">
-              {@chat.status_line || "Thinking"}
+            <span class="min-w-0 flex-1">
+              <span class="block truncate">
+                {@chat.status_line || "Thinking"}<span :if={
+                  Map.get(@chat, :elapsed_label)
+                }>
+                  · {@chat.elapsed_label}</span>
+              </span>
+              <span
+                :if={Map.get(@chat, :activity_detail)}
+                class="block truncate text-xs text-stone-400 dark:text-stone-500"
+              >
+                {Map.get(@chat, :activity_detail)}
+              </span>
             </span>
           </div>
 
@@ -401,12 +412,23 @@ defmodule SheafWeb.AssistantChatComponent do
 
         <div
           :if={@chat.pending}
-          class="flex items-center gap-2 px-1 py-2 text-stone-500 dark:text-stone-400"
+          class="flex items-start gap-2 px-1 py-2 text-stone-500 dark:text-stone-400"
         >
-          <span class="size-2.5 shrink-0 animate-pulse rounded-full bg-stone-500 dark:bg-stone-300">
+          <span class="mt-1 size-2.5 shrink-0 animate-pulse rounded-full bg-stone-500 dark:bg-stone-300">
           </span>
-          <span class="min-w-0 flex-1 truncate">
-            {@chat.status_line || "Thinking"}
+          <span class="min-w-0 flex-1">
+            <span class="block truncate">
+              {@chat.status_line || "Thinking"}<span :if={
+                Map.get(@chat, :elapsed_label)
+              }>
+                · {@chat.elapsed_label}</span>
+            </span>
+            <span
+              :if={Map.get(@chat, :activity_detail)}
+              class="block truncate text-xs text-stone-400 dark:text-stone-500"
+            >
+              {Map.get(@chat, :activity_detail)}
+            </span>
           </span>
         </div>
       </div>

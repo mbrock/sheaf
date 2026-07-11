@@ -155,6 +155,9 @@ defmodule SheafWeb.AssistantChatComponentTest do
           ],
           pending: true,
           status_line: "Writing",
+          elapsed_label: "12s",
+          activity_detail:
+            "18 reasoning characters received · last activity 2s ago",
           titles: %{}
         },
         selected_chat_id: "CHAT01",
@@ -170,6 +173,8 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert html =~ ~s(phx-hook="AssistantTypeWriter")
     assert html =~ ~s(data-typewriter-streaming)
     assert html =~ "A complete sentence."
+    assert html =~ "12s"
+    assert html =~ "18 reasoning characters received"
   end
 
   test "tool call groups render as compact activity rows" do

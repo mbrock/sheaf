@@ -42,6 +42,11 @@ defmodule Sheaf.Assistant.Chat.Server do
     :activity_writer,
     :context_store,
     :stream_buffer,
+    :turn_started_at,
+    :last_activity_at,
+    :activity_tick_ref,
+    thinking_chars: 0,
+    thinking_events: 0,
     title: @default_title,
     kind: @default_kind,
     messages: [],
@@ -65,6 +70,12 @@ defmodule Sheaf.Assistant.Chat.Server do
           pending: boolean(),
           active_tool: String.t() | nil,
           status_line: String.t() | nil,
+          elapsed_label: String.t() | nil,
+          activity_detail: String.t() | nil,
+          elapsed_seconds: non_neg_integer(),
+          idle_seconds: non_neg_integer(),
+          thinking_chars: non_neg_integer(),
+          thinking_events: non_neg_integer(),
           error: term()
         }
 
@@ -345,6 +356,15 @@ defmodule Sheaf.Assistant.Chat.Server do
   def handle_info({:assistant_result, _ref, _result}, state),
     do: {:noreply, state}
 
+  def handle_info(:activity_tick, %{pending_ref: ref} = state)
+      when not is_nil(ref) do
+    state = %{state | activity_tick_ref: schedule_activity_tick()}
+    {:noreply, broadcast_snapshot(state)}
+  end
+
+  def handle_info(:activity_tick, state),
+    do: {:noreply, %{state | activity_tick_ref: nil}}
+
   def handle_info({:DOWN, monitor_ref, :process, _pid, _reason}, state) do
     subscribers =
       state.subscribers
@@ -369,10 +389,17 @@ defmodule Sheaf.Assistant.Chat.Server do
            send(chat, {:assistant_result, ref, result})
          end) do
       {:ok, _pid} ->
+        now = monotonic_ms()
+
         state
         |> Map.put(:pending_ref, ref)
         |> Map.put(:status_line, "Thinking")
         |> Map.put(:stream_buffer, StreamBuffer.new())
+        |> Map.put(:turn_started_at, now)
+        |> Map.put(:last_activity_at, now)
+        |> Map.put(:thinking_chars, 0)
+        |> Map.put(:thinking_events, 0)
+        |> Map.put(:activity_tick_ref, schedule_activity_tick())
         |> append_message(:user, text)
         |> touch_index()
         |> broadcast_snapshot()
@@ -397,6 +424,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     text = Response.text(response) |> blank_to_default()
 
     state
+    |> stop_activity_tick()
     |> persist_assistant_message(text)
     |> persist_context()
     |> Map.put(:pending_ref, nil)
@@ -410,6 +438,7 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp handle_assistant_result(state, {:error, reason}) do
     state
+    |> stop_activity_tick()
     |> persist_context()
     |> Map.put(:pending_ref, nil)
     |> Map.put(:active_tool, nil)
@@ -431,6 +460,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     line = CorpusTools.humanize(name, args, state.titles)
 
     state
+    |> mark_activity()
     |> Map.put(:active_tool, name)
     |> Map.put(:status_line, line)
     |> append_raw_message(%{
@@ -449,6 +479,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     visible_result = visible_tool_result(result)
 
     state
+    |> mark_activity()
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, "Thinking")
     |> update_last_pending_tool(name, status, summary, visible_result)
@@ -458,6 +489,7 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp handle_assistant_event(state, {:tool_progress, name, message})
        when is_binary(message) do
     state
+    |> mark_activity()
     |> Map.put(:active_tool, name)
     |> Map.put(:status_line, message)
     |> broadcast_snapshot()
@@ -469,7 +501,10 @@ defmodule Sheaf.Assistant.Chat.Server do
       {chunks, stream_buffer} =
         StreamBuffer.push(Map.get(state, :stream_buffer), text)
 
-      state = Map.put(state, :stream_buffer, stream_buffer)
+      state =
+        state
+        |> Map.put(:stream_buffer, stream_buffer)
+        |> mark_activity()
 
       case chunks do
         [] ->
@@ -486,6 +521,20 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
+  defp handle_assistant_event(state, {:thinking_delta, ref, text})
+       when is_reference(ref) and is_binary(text) do
+    if state.pending_ref == ref do
+      state
+      |> mark_activity()
+      |> Map.update!(:thinking_chars, &(&1 + String.length(text)))
+      |> Map.update!(:thinking_events, &(&1 + 1))
+      |> Map.put(:status_line, "Reasoning")
+      |> broadcast_snapshot()
+    else
+      state
+    end
+  end
+
   defp handle_assistant_event(state, _event), do: state
 
   defp assistant_run_options(%{stream?: true}, chat, ref) do
@@ -493,6 +542,9 @@ defmodule Sheaf.Assistant.Chat.Server do
       stream: true,
       on_text_delta: fn text ->
         GenServer.cast(chat, {:assistant_event, {:text_delta, ref, text}})
+      end,
+      on_thinking_delta: fn text ->
+        GenServer.cast(chat, {:assistant_event, {:thinking_delta, ref, text}})
       end
     ]
   end
@@ -1160,6 +1212,9 @@ defmodule Sheaf.Assistant.Chat.Server do
   end
 
   defp snapshot_from_state(state) do
+    elapsed_seconds = elapsed_seconds(state.turn_started_at)
+    idle_seconds = elapsed_seconds(state.last_activity_at)
+
     %{
       id: state.id,
       title: state.title,
@@ -1170,10 +1225,59 @@ defmodule Sheaf.Assistant.Chat.Server do
       pending: not is_nil(state.pending_ref),
       active_tool: state.active_tool,
       status_line: state.status_line,
+      elapsed_label: pending_duration(state, elapsed_seconds),
+      activity_detail: activity_detail(state, idle_seconds),
+      elapsed_seconds: elapsed_seconds,
+      idle_seconds: idle_seconds,
+      thinking_chars: state.thinking_chars,
+      thinking_events: state.thinking_events,
       titles: state.titles,
       error: state.error
     }
   end
+
+  defp pending_duration(%{pending_ref: nil}, _elapsed), do: nil
+  defp pending_duration(_state, elapsed), do: format_duration(elapsed)
+
+  defp activity_detail(%{pending_ref: nil}, _idle), do: nil
+
+  defp activity_detail(%{thinking_events: events} = state, idle)
+       when events > 0 do
+    "#{state.thinking_chars} reasoning characters received · last activity #{format_duration(idle)} ago"
+  end
+
+  defp activity_detail(_state, idle) do
+    "Waiting for the next model or tool event · last activity #{format_duration(idle)} ago"
+  end
+
+  defp mark_activity(state), do: %{state | last_activity_at: monotonic_ms()}
+
+  defp stop_activity_tick(state) do
+    if is_reference(state.activity_tick_ref) do
+      Process.cancel_timer(state.activity_tick_ref)
+    end
+
+    %{state | activity_tick_ref: nil}
+  end
+
+  defp schedule_activity_tick,
+    do: Process.send_after(self(), :activity_tick, 1_000)
+
+  defp elapsed_seconds(nil), do: 0
+
+  defp elapsed_seconds(started_at) do
+    max(div(monotonic_ms() - started_at, 1_000), 0)
+  end
+
+  defp format_duration(seconds) when seconds < 60, do: "#{seconds}s"
+
+  defp format_duration(seconds) do
+    minutes = div(seconds, 60)
+    remainder = rem(seconds, 60)
+    "#{minutes}m #{remainder}s"
+  end
+
+  defp monotonic_ms, do: System.monotonic_time(:millisecond)
 
   defp snapshot_messages(%{pending_ref: nil, messages: messages} = state) do
     if missing_visible_tool_results?(messages) do

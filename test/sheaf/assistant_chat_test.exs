@@ -112,7 +112,15 @@ defmodule Sheaf.Assistant.ChatTest do
           fn -> :first end,
           fn
             :first ->
-              {[StreamChunk.text("Hel")], :waiting}
+              {[StreamChunk.thinking("Checking the evidence.")],
+               :after_thinking}
+
+            :after_thinking ->
+              send(test_pid, {:stream_thinking, self()})
+
+              receive do
+                :continue_stream -> {[StreamChunk.text("Hel")], :waiting}
+              end
 
             :waiting ->
               send(test_pid, {:stream_waiting, self()})
@@ -156,6 +164,18 @@ defmodule Sheaf.Assistant.ChatTest do
     )
 
     assert :ok = Chat.send_user_message(id, "Stream this.")
+    assert_receive {:stream_thinking, stream_pid}
+
+    assert %{
+             pending: true,
+             status_line: "Reasoning",
+             thinking_chars: 22,
+             thinking_events: 1,
+             activity_detail:
+               "22 reasoning characters received · last activity 0s ago"
+           } = Chat.snapshot(id)
+
+    send(stream_pid, :continue_stream)
     assert_receive {:stream_waiting, stream_pid}
 
     assert %{messages: [%{role: :user, text: "Stream this."}]} =
