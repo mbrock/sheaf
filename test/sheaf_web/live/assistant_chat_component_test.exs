@@ -88,7 +88,6 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert Sheaf.LLM.assistant_llm_options(socket.assigns.model, "import") ==
              [
                reasoning_effort: :high,
-               parallel_tool_calls: true,
                provider_options: [reasoning_summary: :auto]
              ]
   end

@@ -84,19 +84,16 @@ defmodule Sheaf.LLMTest do
   test "sets GPT assistant reasoning effort by conversation mode" do
     assert LLM.assistant_llm_options("gpt", "quick") == [
              reasoning_effort: :medium,
-             parallel_tool_calls: true,
              provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("openai:gpt-5.6", :chat) == [
              reasoning_effort: :medium,
-             parallel_tool_calls: true,
              provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("gpt", "research") == [
              reasoning_effort: :high,
-             parallel_tool_calls: true,
              provider_options: [reasoning_summary: :auto]
            ]
 
@@ -120,7 +117,7 @@ defmodule Sheaf.LLMTest do
       )
 
     assert body["reasoning"] == %{"effort" => "high", "summary" => "auto"}
-    assert body["parallel_tool_calls"] == true
+    refute Map.has_key?(body, "parallel_tool_calls")
 
     {:ok, model} = ReqLLM.model("openai:gpt-5.6")
 
@@ -133,6 +130,16 @@ defmodule Sheaf.LLMTest do
                  }
                },
                model
+             )
+
+    {:ok, inline_model} = ReqLLM.model(%{provider: :openai, id: "gpt-5.6"})
+
+    assert {:ok, %Finch.Request{}} =
+             ResponsesAPI.attach_stream(
+               inline_model,
+               Context.new(),
+               options,
+               ReqLLM.Finch
              )
   end
 
