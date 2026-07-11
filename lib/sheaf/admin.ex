@@ -179,7 +179,13 @@ defmodule Sheaf.Admin do
   def import_datalab_json(args) do
     {opts, paths, invalid} =
       OptionParser.parse(args,
-        strict: [title: :string, pdf: :string, no_backup: :boolean]
+        strict: [
+          title: :string,
+          pdf: :string,
+          document: :string,
+          source_file: :string,
+          no_backup: :boolean
+        ]
       )
 
     reject_invalid!(invalid)
@@ -187,16 +193,20 @@ defmodule Sheaf.Admin do
     if length(paths) != 1,
       do:
         fail!(
-          "Usage: sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--no-backup]"
+          "Usage: sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--document IRI] [--source-file IRI] [--no-backup]"
         )
 
     unless opts[:no_backup], do: backup([])
     [path] = paths
 
-    case Sheaf.PDF.import_file(path,
-           title: opts[:title],
-           pdf_path: opts[:pdf]
-         ) do
+    import_opts =
+      []
+      |> put_present(:title, opts[:title])
+      |> put_present(:pdf_path, opts[:pdf])
+      |> put_iri(:document, opts[:document])
+      |> put_iri(:source_file_iri, opts[:source_file])
+
+    case Sheaf.PDF.import_file(path, import_opts) do
       {:ok, result} ->
         id = Sheaf.Id.id_from_iri(result.document)
         info("Imported #{result.title}")
@@ -211,6 +221,12 @@ defmodule Sheaf.Admin do
         fail!("Import failed: #{inspect(reason)}")
     end
   end
+
+  defp put_present(opts, _key, value) when value in [nil, ""], do: opts
+  defp put_present(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp put_iri(opts, _key, value) when value in [nil, ""], do: opts
+  defp put_iri(opts, key, value), do: Keyword.put(opts, key, RDF.iri(value))
 
   def inspect_datalab(args) do
     {opts, paths, invalid} =
@@ -236,6 +252,7 @@ defmodule Sheaf.Admin do
         info("  math expressions: #{report.math_expressions}")
         info("  pages with math: #{report.pages_with_math}")
         info("  empty equation blocks: #{report.empty_equation_blocks}")
+        info("  page continuations: #{report.page_continuations}")
 
         report.block_types
         |> Enum.sort()

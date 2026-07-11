@@ -277,6 +277,13 @@ defmodule Sheaf.Document do
     end
   end
 
+  def source_page_end(%Graph{} = graph, iri) do
+    case object(graph, iri, DOC.sourcePageEnd()) do
+      nil -> source_page(graph, iri)
+      term -> RDF.Term.value(term)
+    end
+  end
+
   def spreadsheet_row(%Graph{} = graph, iri) do
     case object(graph, iri, DOC.spreadsheetRow()) do
       nil -> nil

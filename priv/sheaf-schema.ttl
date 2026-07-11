@@ -435,6 +435,11 @@ sheaf:sourcePage a rdf:Property ;
   rdfs:range xsd:integer ;
   rdfs:comment "The source system's page number for an extracted block." .
 
+sheaf:sourcePageEnd a rdf:Property ;
+  rdfs:label "has source page end"@en ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "The final source-system page spanned by a reconstructed document block; equal to the source page for a block contained on one page." .
+
 sheaf:sourceHtml a rdf:Property ;
   rdfs:label "has source HTML"@en ;
   rdfs:range xsd:string ;

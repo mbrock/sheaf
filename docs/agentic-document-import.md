@@ -112,6 +112,112 @@ Using existing 768-dimensional embeddings for adjacent block pairs:
 The shift is real, but the distributions overlap. Embeddings are better used as
 a ranking or confidence feature than as the sole decision rule.
 
+### Conservative reconstruction
+
+Sheaf now reconstructs a bounded high-confidence subset during Datalab import.
+Two `Text` blocks are joined when they are adjacent in textual reading order,
+cross exactly one page, retain identical section ancestry, the first lacks
+sentence-final punctuation, and the second begins lowercase or with an opening
+delimiter followed by lowercase text. Intervening page headers, footers,
+figures, pictures, and captions are allowed; equations, lists, tables, and
+section headers prevent a join.
+
+The raw Datalab JSON remains unchanged. The reconstructed RDF block keeps every
+original `sourceKey`, the first `sourcePage`, and a `sourcePageEnd`. This makes
+the semantic reading unit coherent without throwing away extraction
+provenance. Hyphenated page seams such as `sec-` + `tion` are dehyphenated;
+ordinary seams receive one space.
+
+For the three-paper field trial this identifies 14 joins: 5 in the
+active-walker paper, 6 in the interactive street-modeling paper, and 3 in the
+procedural-roads paper. The import inspection report exposes this count before
+the graph is written.
+
+## Retrieval Audit And Improvement Plan
+
+The current hybrid retrieval is useful but still crude:
+
+- canonical units are individual paragraph, extracted-text, equation, row, or
+  note blocks;
+- the embedding input adds the document title but not section ancestry or
+  neighboring prose;
+- one vector is stored per unit;
+- lexical and semantic searches are executed separately and presented as two
+  result groups rather than fused into one calibrated ranking;
+- semantic search retrieves nearest vectors and filters them, but does not
+  rerank candidates against the full query;
+- the assistant receives section ancestry after retrieval, but not neighboring
+  paragraph text;
+- extracted HTML, LaTeX, tables, figures, and prose all need different useful
+  projections, while the current path is mostly one generic text field.
+
+The next retrieval work should be staged and evaluated rather than hidden in a
+single complicated agent prompt.
+
+### 1. Logical units and normalized projections
+
+Keep source blocks immutable, but derive coherent logical units. Page-spanning
+paragraph reconstruction is the first instance. Normalize HTML to readable
+text for lexical and semantic indexing while retaining raw HTML and LaTeX as
+separate source fields. Split abnormally long blocks by sentence windows and
+combine very short fragments when confidence is high.
+
+### 2. Contextual multi-vector indexing
+
+Give each logical paragraph at least two searchable representations:
+
+- a precise vector for the paragraph itself;
+- a contextual vector built from document title, section breadcrumb, the
+  paragraph, and bounded neighboring prose.
+
+The precise vector helps pinpoint an answer; the contextual vector helps when
+the query names a topic established in the previous paragraph or section. A
+starting experiment should target roughly 250–500 tokens per contextual window
+with one neighboring logical unit on each side, while returning the focal block
+as the citation target.
+
+Equations should have a math-specific representation containing LaTeX,
+equation number, nearby defining prose, and symbol descriptions. Tables should
+use normalized rows and generated claims rather than raw table HTML alone.
+
+### 3. True hybrid candidate fusion
+
+Over-fetch independently from FTS and vector search, deduplicate by logical
+unit, and combine ranks with reciprocal-rank fusion before applying filters.
+Cluster adjacent hits so one passage does not occupy most of the result budget.
+Keep exact phrase matches as a strong feature rather than a completely separate
+result category.
+
+### 4. Neighbor expansion and reranking
+
+After fusion, expand the top focal units with their immediate logical neighbors
+and section breadcrumb. Rerank a bounded candidate set against the original
+question using a query-aware reranker or a capable model. The reranker should
+choose passages, not generate answers, and record its scores and model in
+telemetry.
+
+### 5. Agentic query planning
+
+Let the research agent issue several explicit retrieval operations when a
+question benefits from them: exact terminology, paraphrases, author or citation
+constraints, equation symbols, and document-scoped searches. This is more
+auditable than silently asking one embedding query to express every intent.
+The agent should be able to read expanded passages and then request another
+search when evidence is incomplete.
+
+### 6. Evaluation before tuning
+
+Build a small judged set from real research questions and known passages in the
+current corpus. Track lexical and semantic recall at 5/10/20, reciprocal rank,
+adjacent-duplicate rate, citation correctness, and whether the answer-supporting
+passage survives the final context budget. Log the retrieval profile, embedding
+model, fusion weights, reranker, candidate counts, and timings in OpenTelemetry.
+
+The recommended next implementation after page reconstruction is contextual
+multi-vector indexing plus neighbor expansion and reciprocal-rank fusion. It is
+likely to improve recall substantially without making the agent responsible for
+repairing a weak retrieval substrate at answer time.
+
 ## Tables
 
 Datalab table output is often good enough to preserve. The imported table

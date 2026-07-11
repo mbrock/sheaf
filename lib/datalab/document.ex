@@ -14,6 +14,7 @@ defmodule Datalab.Document do
   def document_blocks(pages) when is_list(pages) do
     pages
     |> flatten_blocks()
+    |> coalesce_page_continuations()
     |> build_tree()
   end
 
@@ -92,11 +93,35 @@ defmodule Datalab.Document do
         Enum.count(blocks, fn block ->
           Map.get(block, "block_type") == "Equation" and
             math_expressions(block) == []
-        end)
+        end),
+      page_continuations: length(page_continuations(pages))
     }
   end
 
   def quality_report(_document), do: {:error, :invalid_datalab_document}
+
+  @doc """
+  Returns conservative text-fragment pairs that can be reconstructed across a
+  source page boundary.
+  """
+  def page_continuations(%{"children" => pages}),
+    do: page_continuations(pages)
+
+  def page_continuations(pages) when is_list(pages) do
+    pages
+    |> flatten_blocks()
+    |> continuation_pairs()
+    |> Enum.map(fn {previous, following} ->
+      %{
+        previous_id: block_id(previous),
+        following_id: block_id(following),
+        page_start: source_page_start(previous),
+        page_end: source_page_end(following),
+        previous_text: block_title(previous),
+        following_text: block_title(following)
+      }
+    end)
+  end
 
   def section_blocks(blocks) do
     Enum.filter(blocks, &match?(%{type: :section}, &1))
@@ -108,6 +133,22 @@ defmodule Datalab.Document do
       page when is_float(page) -> trunc(page)
       _ -> nil
     end
+  end
+
+  def source_page_end(block) do
+    case Map.get(block, "_reader_source_pages") do
+      pages when is_list(pages) and pages != [] -> List.last(pages)
+      _other -> source_page(block)
+    end
+  end
+
+  def source_keys(block) do
+    case Map.get(block, "_reader_source_ids") do
+      ids when is_list(ids) and ids != [] -> ids
+      _other -> [Map.get(block, "id")]
+    end
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
   end
 
   defp flatten_blocks(pages) do
@@ -124,8 +165,142 @@ defmodule Datalab.Document do
         |> Map.put("_reader_page", page_number)
         |> Map.put("_reader_dom_id", dom_id(id))
         |> Map.put("_reader_source_id", id)
+        |> Map.put("_reader_source_ids", [id])
+        |> Map.put("_reader_source_pages", source_pages(block))
       end)
     end)
+  end
+
+  defp coalesce_page_continuations(blocks) do
+    {done, last_text, between} =
+      Enum.reduce(blocks, {[], nil, []}, fn block,
+                                            {done, last_text, between} ->
+        if text_block?(block) do
+          if last_text && continuation?(last_text, block, between) do
+            {done, merge_text_blocks(last_text, block), between}
+          else
+            {flush_pending(done, last_text, between), block, []}
+          end
+        else
+          {done, last_text, between ++ [block]}
+        end
+      end)
+
+    flush_pending(done, last_text, between)
+  end
+
+  defp continuation_pairs(blocks) do
+    {_last_text, _between, pairs} =
+      Enum.reduce(blocks, {nil, [], []}, fn block,
+                                            {last_text, between, pairs} ->
+        if text_block?(block) do
+          pairs =
+            if last_text && continuation?(last_text, block, between),
+              do: [{last_text, block} | pairs],
+              else: pairs
+
+          {block, [], pairs}
+        else
+          {last_text, [block | between], pairs}
+        end
+      end)
+
+    Enum.reverse(pairs)
+  end
+
+  defp flush_pending(done, nil, between), do: done ++ between
+
+  defp flush_pending(done, last_text, between),
+    do: done ++ [last_text] ++ between
+
+  defp continuation?(previous, following, between) do
+    consecutive_pages?(previous, following) and
+      same_section_hierarchy?(previous, following) and
+      Enum.all?(between, &continuation_furniture?/1) and
+      not sentence_terminal?(block_title(previous)) and
+      continuation_start?(block_title(following))
+  end
+
+  defp consecutive_pages?(previous, following) do
+    case {source_page_end(previous), source_page_start(following)} do
+      {previous_page, following_page}
+      when is_integer(previous_page) and is_integer(following_page) ->
+        previous_page + 1 == following_page
+
+      _other ->
+        false
+    end
+  end
+
+  defp text_block?(%{"block_type" => "Text"}), do: true
+  defp text_block?(_block), do: false
+
+  defp continuation_furniture?(block) do
+    Map.get(block, "block_type") in ~w(PageHeader PageFooter Picture Figure Caption)
+  end
+
+  defp same_section_hierarchy?(left, right) do
+    Map.get(left, "section_hierarchy", %{}) ==
+      Map.get(right, "section_hierarchy", %{})
+  end
+
+  defp sentence_terminal?(text) do
+    Regex.match?(~r/[.!?][\"”’')\]]*$/u, String.trim(text))
+  end
+
+  defp continuation_start?(text) do
+    Regex.match?(~r/^[\s\"“‘'(\[]*[[:lower:]]/u, text)
+  end
+
+  defp merge_text_blocks(previous, following) do
+    previous_html = Map.get(previous, "html", "")
+    following_html = Map.get(following, "html", "")
+
+    previous
+    |> Map.put("html", merge_text_html(previous_html, following_html))
+    |> Map.put(
+      "images",
+      Map.merge(
+        Map.get(previous, "images", %{}),
+        Map.get(following, "images", %{})
+      )
+    )
+    |> Map.put(
+      "_reader_source_ids",
+      Enum.uniq(source_keys(previous) ++ source_keys(following))
+    )
+    |> Map.put(
+      "_reader_source_pages",
+      Enum.uniq(source_pages(previous) ++ source_pages(following))
+    )
+  end
+
+  defp merge_text_html(previous, following) do
+    previous = Regex.replace(~r/\s*<\/p>\s*$/i, previous, "")
+    following = Regex.replace(~r/^\s*<p(?:\s[^>]*)?>\s*/i, following, "")
+
+    if String.ends_with?(String.trim_trailing(previous), "-") do
+      String.trim_trailing(previous)
+      |> String.trim_trailing("-")
+      |> Kernel.<>(String.trim_leading(following))
+    else
+      String.trim_trailing(previous) <> " " <> String.trim_leading(following)
+    end
+  end
+
+  defp source_page_start(block) do
+    case Map.get(block, "_reader_source_pages") do
+      [page | _rest] -> page
+      _other -> source_page(block)
+    end
+  end
+
+  defp source_pages(block) do
+    case Map.get(block, "_reader_source_pages") do
+      pages when is_list(pages) -> pages
+      _other -> List.wrap(source_page(block))
+    end
+    |> Enum.reject(&is_nil/1)
   end
 
   defp build_tree(blocks) do

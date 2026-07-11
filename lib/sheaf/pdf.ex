@@ -102,7 +102,12 @@ defmodule Sheaf.PDF do
             |> DOC.sourceKey(node.source_key)
             |> DOC.sourceBlockType(node.source_block_type)
             |> DOC.sourcePage(node.source_page)
+            |> DOC.sourcePageEnd(node.source_page_end)
             |> DOC.sourceHtml(node.source_html),
+            Enum.map(
+              Enum.drop(node.source_keys, 1),
+              &DOC.sourceKey(node.iri, &1)
+            ),
             Enum.map(node.latex, &DOC.latex(node.iri, &1))
           ]
         end)
@@ -169,10 +174,14 @@ defmodule Sheaf.PDF do
   end
 
   defp source_summary(%{block: block}) do
+    source_keys = DatalabDocument.source_keys(block)
+
     %{
-      source_key: present_value(Map.get(block, "id")),
+      source_key: source_keys |> List.first() |> present_value(),
+      source_keys: source_keys,
       source_block_type: present_value(Map.get(block, "block_type")),
       source_page: DatalabDocument.source_page(block),
+      source_page_end: DatalabDocument.source_page_end(block),
       source_html: present_value(DatalabDocument.block_html(block)),
       latex: DatalabDocument.math_expressions(block)
     }

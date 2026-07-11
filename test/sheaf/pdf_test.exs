@@ -143,6 +143,51 @@ defmodule Sheaf.PDFTest do
     assert rdf_value(description, DOC.latex()) == ~s(\\frac{a}{b} &= c)
   end
 
+  test "preserves provenance for reconstructed page-spanning text" do
+    document = %{
+      "children" => [
+        %{
+          "children" => [
+            %{
+              "block_type" => "Text",
+              "html" => "<p>The paragraph con-</p>",
+              "id" => "/page/0/Text/0",
+              "page" => 0,
+              "section_hierarchy" => %{}
+            }
+          ]
+        },
+        %{
+          "children" => [
+            %{
+              "block_type" => "Text",
+              "html" => "<p>tinues on the next page.</p>",
+              "id" => "/page/1/Text/0",
+              "page" => 1,
+              "section_hierarchy" => %{}
+            }
+          ]
+        }
+      ],
+      "metadata" => %{}
+    }
+
+    result = PDF.build_graph(document, title: "Pages", mint: mint())
+    [block] = Document.children(result.graph, result.document)
+    description = Graph.description(result.graph, block)
+
+    assert Document.source_html(result.graph, block) ==
+             "<p>The paragraph continues on the next page.</p>"
+
+    assert description
+           |> Description.get(DOC.sourceKey(), [])
+           |> Enum.map(&RDF.Term.value/1)
+           |> Enum.sort() == ["/page/0/Text/0", "/page/1/Text/0"]
+
+    assert Document.source_page(result.graph, block) == 0
+    assert Document.source_page_end(result.graph, block) == 1
+  end
+
   test "links imported papers to an existing file entity without duplicating its description" do
     document = %{"children" => [], "metadata" => %{}}
     file = RDF.IRI.new!("https://example.com/sheaf/FILE111")

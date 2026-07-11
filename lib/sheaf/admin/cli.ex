@@ -8,7 +8,7 @@ defmodule Sheaf.Admin.CLI do
     sheaf-admin backup [--output PATH]
     sheaf-admin schema upload
     sheaf-admin ingest files PATH... [--recursive] [--extensions pdf,docx] [--dry-run] [--no-backup]
-    sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--no-backup]
+    sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--document IRI] [--source-file IRI] [--no-backup]
     sheaf-admin import inspect-datalab PATH [--json]
     sheaf-admin import spreadsheet PATH [--title TITLE] [--graph IRI] [--no-backup]
     sheaf-admin spreadsheets import PATH... [--title TITLE] [--db PATH]
