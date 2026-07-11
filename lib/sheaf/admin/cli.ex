@@ -9,6 +9,7 @@ defmodule Sheaf.Admin.CLI do
     sheaf-admin schema upload
     sheaf-admin ingest files PATH... [--recursive] [--extensions pdf,docx] [--dry-run] [--no-backup]
     sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--no-backup]
+    sheaf-admin import inspect-datalab PATH [--json]
     sheaf-admin import spreadsheet PATH [--title TITLE] [--graph IRI] [--no-backup]
     sheaf-admin spreadsheets import PATH... [--title TITLE] [--db PATH]
     sheaf-admin spreadsheets import-metadata PATH... [--no-backup]
@@ -69,6 +70,9 @@ defmodule Sheaf.Admin.CLI do
 
   defp dispatch(["import", "datalab-json" | args]),
     do: run(fn -> Sheaf.Admin.import_datalab_json(args) end)
+
+  defp dispatch(["import", "inspect-datalab" | args]),
+    do: run(fn -> Sheaf.Admin.inspect_datalab(args) end)
 
   defp dispatch(["import", "spreadsheet" | args]),
     do: run(fn -> Sheaf.Admin.import_spreadsheet(args) end)

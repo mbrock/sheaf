@@ -95,13 +95,16 @@ defmodule Sheaf.PDF do
         @prefix RDF.NS.RDFS
 
         Enum.map(nodes, fn node ->
-          node.iri
-          |> a(node.class)
-          |> RDFS.label(node.label)
-          |> DOC.sourceKey(node.source_key)
-          |> DOC.sourceBlockType(node.source_block_type)
-          |> DOC.sourcePage(node.source_page)
-          |> DOC.sourceHtml(node.source_html)
+          [
+            node.iri
+            |> a(node.class)
+            |> RDFS.label(node.label)
+            |> DOC.sourceKey(node.source_key)
+            |> DOC.sourceBlockType(node.source_block_type)
+            |> DOC.sourcePage(node.source_page)
+            |> DOC.sourceHtml(node.source_html),
+            Enum.map(node.latex, &DOC.latex(node.iri, &1))
+          ]
         end)
 
         child_lists
@@ -170,7 +173,8 @@ defmodule Sheaf.PDF do
       source_key: present_value(Map.get(block, "id")),
       source_block_type: present_value(Map.get(block, "block_type")),
       source_page: DatalabDocument.source_page(block),
-      source_html: present_value(DatalabDocument.block_html(block))
+      source_html: present_value(DatalabDocument.block_html(block)),
+      latex: DatalabDocument.math_expressions(block)
     }
   end
 

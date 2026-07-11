@@ -40,6 +40,64 @@ defmodule Datalab.Document do
     |> String.trim()
   end
 
+  @doc """
+  Returns the LaTeX expressions carried by Datalab `<math>` elements.
+
+  Datalab uses `<math>` as a container for LaTeX rather than emitting MathML.
+  Keeping this extraction here preserves the raw HTML while giving importers a
+  structured mathematical representation to index and inspect.
+  """
+  def math_expressions(block) do
+    block
+    |> Map.get("html", "")
+    |> then(
+      &Regex.scan(~r/<math\b[^>]*>(.*?)<\/math>/is, &1,
+        capture: :all_but_first
+      )
+    )
+    |> List.flatten()
+    |> Enum.map(&decode_html_entities/1)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  @doc """
+  Summarizes a Datalab JSON document for deterministic import review.
+  """
+  def quality_report(%{"children" => pages}) when is_list(pages) do
+    blocks = Enum.flat_map(pages, &Map.get(&1, "children", []))
+
+    block_types =
+      Enum.frequencies_by(blocks, &Map.get(&1, "block_type", "Unknown"))
+
+    math = Enum.flat_map(blocks, &math_expressions/1)
+
+    equation_blocks =
+      Enum.count(blocks, &(Map.get(&1, "block_type") == "Equation"))
+
+    %{
+      pages: length(pages),
+      blocks: length(blocks),
+      block_types: block_types,
+      equation_blocks: equation_blocks,
+      math_expressions: length(math),
+      pages_with_math:
+        blocks
+        |> Enum.filter(&(math_expressions(&1) != []))
+        |> Enum.map(&source_page/1)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+        |> length(),
+      empty_equation_blocks:
+        Enum.count(blocks, fn block ->
+          Map.get(block, "block_type") == "Equation" and
+            math_expressions(block) == []
+        end)
+    }
+  end
+
+  def quality_report(_document), do: {:error, :invalid_datalab_document}
+
   def section_blocks(blocks) do
     Enum.filter(blocks, &match?(%{type: :section}, &1))
   end
@@ -202,5 +260,14 @@ defmodule Datalab.Document do
       ".tiff" -> "image/tiff"
       _ -> "image/jpeg"
     end
+  end
+
+  defp decode_html_entities(text) do
+    text
+    |> String.replace("&amp;", "&")
+    |> String.replace("&lt;", "<")
+    |> String.replace("&gt;", ">")
+    |> String.replace("&quot;", ~s("))
+    |> String.replace("&#39;", "'")
   end
 end

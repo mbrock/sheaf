@@ -32,6 +32,7 @@ defmodule Sheaf.Search.IndexTest do
     doc2 = RDF.iri("https://sheaf.less.rest/DOC2")
     block1 = RDF.iri("https://sheaf.less.rest/BLOCK1")
     block2 = RDF.iri("https://sheaf.less.rest/BLOCK2")
+    equation = RDF.iri("https://sheaf.less.rest/EQUATION1")
     row = RDF.iri("https://sheaf.less.rest/ROW1")
     para = RDF.iri("https://sheaf.less.rest/PARA1")
 
@@ -55,6 +56,9 @@ defmodule Sheaf.Search.IndexTest do
                    {doc2, RDF.type(), Sheaf.NS.DOC.Document},
                    {block2, Sheaf.NS.DOC.sourceHtml(),
                     "<p>Repair and maintenance work.</p>"},
+                   {equation, Sheaf.NS.DOC.sourceHtml(),
+                    "<p><math>\\nabla G = 0</math></p>"},
+                   {equation, Sheaf.NS.DOC.sourceBlockType(), "Equation"},
                    {row, Sheaf.NS.DOC.text(),
                     "Coded row about giving things away."},
                    {row, Sheaf.NS.DOC.spreadsheetRow(), 7}
@@ -65,8 +69,8 @@ defmodule Sheaf.Search.IndexTest do
 
     assert {:ok,
             %{
-              count: 3,
-              kinds: %{"paragraph" => 1, "sourceHtml" => 1, "row" => 1}
+              count: 4,
+              kinds: %{"paragraph" => 1, "sourceHtml" => 2, "row" => 1}
             }} =
              Index.sync(db_path: db_path)
 
@@ -80,6 +84,10 @@ defmodule Sheaf.Search.IndexTest do
     assert row_hit.iri == "https://sheaf.less.rest/ROW1"
     assert row_hit.kind == "row"
     assert row_hit.spreadsheet_row == 7
+
+    assert {:ok, [equation_hit]} = Index.search("nabla", db_path: db_path)
+    assert equation_hit.iri == "https://sheaf.less.rest/EQUATION1"
+    assert equation_hit.source_block_type == "Equation"
 
     assert {:ok, units} = Index.units_by_iris([row_hit.iri], db_path: db_path)
 

@@ -440,6 +440,11 @@ sheaf:sourceHtml a rdf:Property ;
   rdfs:range xsd:string ;
   rdfs:comment "A renderable HTML fragment extracted from the source document block." .
 
+sheaf:latex a rdf:Property ;
+  rdfs:label "has LaTeX expression"@en ;
+  rdfs:range xsd:string ;
+  rdfs:comment "A mathematical expression represented in LaTeX and extracted from a source document block." .
+
 sheaf:hasFootnote a rdf:Property ;
   rdfs:label "has footnote"@en ;
   rdfs:domain sheaf:Block ;

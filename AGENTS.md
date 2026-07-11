@@ -209,6 +209,13 @@ No BEAM code changes to reload. Asset build completed.
 Run `mix precommit` before committing. It runs compile checks, formatting,
 schema upload, and tests.
 
+Before importing a Datalab JSON result, run
+`bin/env bin/sheaf-admin import inspect-datalab PATH`. For mathematical papers,
+check the equation count, total math-expression count, and especially that
+`empty equation blocks` is zero. Preserve the raw conversion result; if the
+report or visual comparison looks suspicious, retry only the affected pages
+with a more accurate conversion mode and compare the reports before importing.
+
 ## Version Control
 
 - After completing a task or request, generally commit and push proactively as

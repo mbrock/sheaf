@@ -13,6 +13,18 @@
 
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+.sheaf-math-display {
+  margin-block: 1.25rem;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.25rem;
+}
+
+.sheaf-math-inline {
+  white-space: nowrap;
+}
+
 .document-paragraph-editor .ProseMirror {
   min-height: 6rem;
   outline: none;

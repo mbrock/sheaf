@@ -170,7 +170,11 @@ defmodule Sheaf.TextUnits do
 
         if MapSet.member?(kinds, "sourceHtml") and
              active?(active_subjects, iri) and
-             source_block_type in [nil, RDF.literal("Text")] and
+             source_block_type in [
+               nil,
+               RDF.literal("Text"),
+               RDF.literal("Equation")
+             ] and
              not source_html_noise?(text) do
           [
             %{

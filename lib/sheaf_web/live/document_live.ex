@@ -224,7 +224,11 @@ defmodule SheafWeb.DocumentLive do
         data-scroll-target="window"
         phx-hook={if @knuth_plass?, do: "KnuthPlass"}
       >
-        <div class="document-print-page mx-auto w-full max-w-prose pt-4 lg:py-10">
+        <div
+          id="document-math-typesetter"
+          class="document-print-page mx-auto w-full max-w-prose pt-4 lg:py-10"
+          phx-hook="MathTypeset"
+        >
           <.reader_blocks
             graph={@graph}
             blocks={@blocks}

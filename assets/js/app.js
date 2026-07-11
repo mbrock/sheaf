@@ -19,6 +19,7 @@
 
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html"
+import "katex/dist/katex.min.css"
 // Establish Phoenix Socket and LiveView configuration.
 import { Socket } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"
@@ -31,6 +32,7 @@ import { ScrollContainer } from "./scroll_container"
 import { SubmitShortcut } from "./submit_shortcut"
 import { AssistantTypeWriter } from "./assistant_typewriter"
 import { ParagraphEditor } from "./paragraph_editor"
+import { MathTypeset } from "./math_typeset"
 import { installBlockPreviewAnchors } from "./block_preview_anchor"
 import { installCopyNormalizer } from "./copy_normalize"
 
@@ -69,6 +71,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     SubmitShortcut,
     AssistantTypeWriter,
     ParagraphEditor,
+    MathTypeset,
   },
 })
 

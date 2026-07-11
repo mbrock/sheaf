@@ -116,6 +116,33 @@ defmodule Sheaf.PDFTest do
     assert rdf_value(file_description, DOC.sourceKey()) == "sha256:abc123"
   end
 
+  test "records extracted LaTeX expressions without discarding source HTML" do
+    document = %{
+      "children" => [
+        %{
+          "children" => [
+            %{
+              "block_type" => "Equation",
+              "html" =>
+                ~s(<p><math display="block">\\frac{a}{b} &amp;= c</math></p>),
+              "id" => "/page/0/Equation/0",
+              "page" => 0,
+              "section_hierarchy" => %{}
+            }
+          ]
+        }
+      ],
+      "metadata" => %{}
+    }
+
+    result = PDF.build_graph(document, title: "Math", mint: mint())
+    [equation] = Document.children(result.graph, result.document)
+    description = Graph.description(result.graph, equation)
+
+    assert Document.source_html(result.graph, equation) =~ "<math"
+    assert rdf_value(description, DOC.latex()) == ~s(\\frac{a}{b} &= c)
+  end
+
   test "links imported papers to an existing file entity without duplicating its description" do
     document = %{"children" => [], "metadata" => %{}}
     file = RDF.IRI.new!("https://example.com/sheaf/FILE111")

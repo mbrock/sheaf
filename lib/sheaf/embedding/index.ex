@@ -1179,6 +1179,12 @@ defmodule Sheaf.Embedding.Index do
     end
   end
 
+  defp semantic_content_allowed?(%{
+         match: :semantic,
+         source_block_type: "Equation"
+       }),
+       do: true
+
   defp semantic_content_allowed?(%{match: :semantic, text: text}),
     do: word_count(text) >= @semantic_min_words
 

@@ -26,7 +26,7 @@ config :esbuild,
   version: "0.25.4",
   sheaf: [
     args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=. --loader:.woff=file --loader:.woff2=file --loader:.ttf=file),
     cd: Path.expand("../assets", __DIR__),
     env: %{
       "NODE_PATH" => [

@@ -212,6 +212,40 @@ defmodule Sheaf.Admin do
     end
   end
 
+  def inspect_datalab(args) do
+    {opts, paths, invalid} =
+      OptionParser.parse(args, strict: [json: :boolean])
+
+    reject_invalid!(invalid)
+
+    if length(paths) != 1,
+      do: fail!("Usage: sheaf-admin import inspect-datalab PATH [--json]")
+
+    [path] = paths
+
+    with {:ok, document} <- Datalab.Document.read_file(path),
+         report when is_map(report) <-
+           Datalab.Document.quality_report(document) do
+      if opts[:json] do
+        IO.puts(Jason.encode!(report, pretty: true))
+      else
+        info("Datalab extraction #{path}")
+        info("  pages: #{report.pages}")
+        info("  blocks: #{report.blocks}")
+        info("  equations: #{report.equation_blocks}")
+        info("  math expressions: #{report.math_expressions}")
+        info("  pages with math: #{report.pages_with_math}")
+        info("  empty equation blocks: #{report.empty_equation_blocks}")
+
+        report.block_types
+        |> Enum.sort()
+        |> Enum.each(fn {type, count} -> info("  #{type}: #{count}") end)
+      end
+    else
+      {:error, reason} -> fail!("Inspection failed: #{inspect(reason)}")
+    end
+  end
+
   def import_spreadsheet(args) do
     {opts, paths, invalid} =
       OptionParser.parse(args,

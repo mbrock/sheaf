@@ -272,6 +272,34 @@ The import should become a staged, auditable workflow:
 6. Store provenance for every inferred component and edit.
 7. Rebuild derived indexes for search, embeddings, and reader navigation.
 
+### Mathematical papers
+
+Datalab represents both inline and display mathematics as LaTeX inside custom
+`<math>` elements. Sheaf preserves that source HTML, records each expression as
+`sheaf:latex`, and typesets the reader copy with KaTeX. `Equation` blocks are
+included in the same derived `sourceHtml` search and embedding path as extracted
+prose, with `sourceBlockType` retained so callers can distinguish them.
+
+Before import, an agent should run:
+
+```console
+$ bin/env bin/sheaf-admin import inspect-datalab var/datalab/JOB/FILE.datalab.json
+```
+
+The report is deterministic and deliberately small: pages, total blocks,
+block-type frequencies, display-equation blocks, all inline and display math
+expressions, pages containing math, and equation blocks that contain no parsed
+LaTeX. `--json` produces machine-readable output. A nonzero empty-equation
+count, unexpectedly low math count, visible transcription errors, or a large
+disagreement with the source PDF is a reason to inspect the affected pages and
+selectively retry them. It is not by itself a reason to discard the preserved
+raw result or to rerun an entire paper in the most expensive mode.
+
+In a three-page equation-heavy comparison from the active-walker paper,
+Datalab's default pipeline and `accurate` conversion produced the same eight
+equation blocks and identical LaTeX. That supports an adaptive policy: use the
+normal pipeline first, validate, and escalate only when evidence warrants it.
+
 The agent should not directly rewrite the RDF graph as unstructured output. It
 should call tools that correspond to editor operations Sheaf already wants to
 support:
