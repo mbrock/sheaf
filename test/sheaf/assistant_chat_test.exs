@@ -210,6 +210,28 @@ defmodule Sheaf.Assistant.ChatTest do
            } = wait_for_final_message_text(id, "Hello. Next")
   end
 
+  test "ignores late assistant activity after a turn is idle" do
+    id = Sheaf.Id.generate()
+
+    start_supervised!(
+      {Chat,
+       id: id,
+       model: "test-model",
+       titles: %{},
+       workspace_instructions: "Testing late assistant events.",
+       activity_writer: nil,
+       task_supervisor: Sheaf.Assistant.TaskSupervisor}
+    )
+
+    GenServer.cast(
+      Server.via(id),
+      {:assistant_event, {:tool_started, "generate_image", %{prompt: "late"}}}
+    )
+
+    assert %{pending: false, status_line: nil, active_tool: nil, messages: []} =
+             Chat.snapshot(id)
+  end
+
   test "legacy research conversations use the unified assistant" do
     test_pid = self()
 

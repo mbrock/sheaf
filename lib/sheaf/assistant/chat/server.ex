@@ -396,6 +396,11 @@ defmodule Sheaf.Assistant.Chat.Server do
     {:noreply, delete_subscriber(state, {live_view, component, component_id})}
   end
 
+  def handle_cast({:assistant_event, _event}, %{pending_ref: nil} = state) do
+    {:noreply,
+     %{state | active_tool: nil, status_line: nil, stream_buffer: nil}}
+  end
+
   def handle_cast({:assistant_event, event}, state) do
     {:noreply, handle_assistant_event(state, event)}
   end

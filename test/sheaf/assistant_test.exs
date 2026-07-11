@@ -387,6 +387,56 @@ defmodule Sheaf.AssistantTest do
     assert Response.text(response) == "done"
   end
 
+  test "waits for a long-running turn by default" do
+    test_pid = self()
+
+    generate_text = fn _model, _context, _opts ->
+      send(test_pid, {:long_inference_started, self()})
+
+      receive do
+        :finish ->
+          {:ok,
+           response(Context.assistant("eventually done"),
+             finish_reason: :stop
+           )}
+      end
+    end
+
+    assistant =
+      start_supervised!(
+        {Assistant,
+         model: "test-model",
+         generate_text: generate_text,
+         task_supervisor: Sheaf.Assistant.TaskSupervisor}
+      )
+
+    caller = Task.async(fn -> Assistant.run(assistant, "take your time") end)
+
+    assert_receive {:long_inference_started, task_pid}, 1_000
+    assert Task.yield(caller, 25) == nil
+    send(task_pid, :finish)
+
+    assert {:ok, %Response{} = response} = Task.await(caller, 1_000)
+    assert Response.text(response) == "eventually done"
+  end
+
+  test "allows an explicit turn timeout" do
+    generate_text = fn _model, _context, _opts ->
+      receive do: (:finish -> :ok)
+    end
+
+    assistant =
+      start_supervised!(
+        {Assistant,
+         model: "test-model",
+         generate_text: generate_text,
+         task_supervisor: Sheaf.Assistant.TaskSupervisor}
+      )
+
+    assert {:timeout, {GenServer, :call, _details}} =
+             catch_exit(Assistant.run(assistant, "deadline", timeout: 10))
+  end
+
   test "stops after the configured max tool rounds" do
     tool =
       Tool.new!(

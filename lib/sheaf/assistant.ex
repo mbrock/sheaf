@@ -14,7 +14,7 @@ defmodule Sheaf.Assistant do
   alias ReqLLM.{Context, Response, StreamResponse, Tool, ToolCall, ToolResult}
 
   @default_max_tool_rounds 8
-  @default_timeout 300_000
+  @default_timeout :infinity
   @default_task_supervisor Sheaf.Assistant.TaskSupervisor
 
   defstruct [
@@ -48,6 +48,10 @@ defmodule Sheaf.Assistant do
     * `:task_supervisor` - task supervisor name or pid.
     * `:generate_text` - test seam, defaulting to `Sheaf.LLM.generate_text/3`.
     * `:stream_text` - test seam, defaulting to `Sheaf.LLM.stream_text/3`.
+
+  Calls to `run/3` wait indefinitely by default because a single agent turn can
+  legitimately contain many long-running tool rounds. Pass `:timeout` to
+  `run/3` when a caller needs an explicit deadline.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
@@ -73,7 +77,7 @@ defmodule Sheaf.Assistant do
   Returns the current conversation context.
   """
   @spec context(GenServer.server()) :: Context.t()
-  def context(server), do: GenServer.call(server, :context)
+  def context(server), do: GenServer.call(server, :context, :infinity)
 
   @doc """
   Replaces the current conversation context.
