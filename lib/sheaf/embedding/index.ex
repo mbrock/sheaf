@@ -879,6 +879,15 @@ defmodule Sheaf.Embedding.Index do
       else: :precise
   end
 
+  defp embedding_variant_allowed?(iri, opts) do
+    allowed =
+      opts
+      |> Keyword.get(:embedding_variants, [:precise, :context])
+      |> List.wrap()
+
+    embedding_variant(iri) in allowed
+  end
+
   @doc false
   def metadata_for_iris(iris, opts \\ []),
     do: descriptions_for_iris(iris, opts)
@@ -1149,6 +1158,8 @@ defmodule Sheaf.Embedding.Index do
              candidate_limit,
              source
            ),
+         ranked =
+           Enum.filter(ranked, &embedding_variant_allowed?(&1.iri, opts)),
          {:ok, metadata} <-
            sidecar_descriptions_for_iris(
              ranked |> Enum.map(&citation_iri(&1.iri)) |> Enum.uniq(),
@@ -1427,8 +1438,17 @@ defmodule Sheaf.Embedding.Index do
       semantic_score: semantic_score_or_nil(semantic_score),
       lexical_score: lexical_score,
       match: match,
-      run_iri: left.run_iri || right.run_iri
+      run_iri: left.run_iri || right.run_iri,
+      semantic_variants: merged_semantic_variants(left, right)
     })
+  end
+
+  defp merged_semantic_variants(left, right) do
+    ([Map.get(left, :embedding_variant), Map.get(right, :embedding_variant)] ++
+       Map.get(left, :semantic_variants, []) ++
+       Map.get(right, :semantic_variants, []))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
   end
 
   defp combined_score(semantic_score, lexical_score, :both),
