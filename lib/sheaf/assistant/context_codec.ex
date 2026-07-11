@@ -224,6 +224,28 @@ defmodule Sheaf.Assistant.ContextCodec do
   defp encode_value(%ContentPart{} = part), do: encode_content_part(part)
   defp encode_value(%ToolCall{} = tool_call), do: encode_tool_call(tool_call)
 
+  # RDF terms regularly appear in tool result metadata (for example, the
+  # object of an updated document property). Structs do not implement
+  # Enumerable, so they must be normalized before the generic map clause.
+  defp encode_value(%RDF.IRI{} = iri), do: to_string(iri)
+  defp encode_value(%RDF.BlankNode{} = node), do: to_string(node)
+
+  defp encode_value(%RDF.Literal{} = literal) do
+    literal
+    |> RDF.Term.value()
+    |> encode_value()
+  end
+
+  # Keep persistence total for metadata supplied by dependencies or future
+  # tools. Known Sheaf structs retain their type above; unknown structs are
+  # stored with all of their fields and decode as ordinary maps.
+  defp encode_value(%module{} = struct) do
+    %{
+      "__struct__" => Atom.to_string(module),
+      "fields" => struct |> Map.from_struct() |> encode_value()
+    }
+  end
+
   defp encode_value(%{} = map) do
     Map.new(map, fn {key, value} -> {encode_key(key), encode_value(value)} end)
   end

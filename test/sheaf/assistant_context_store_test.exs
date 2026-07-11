@@ -88,6 +88,53 @@ defmodule Sheaf.Assistant.ContextStoreTest do
              Map.fetch!(tool.metadata, "sheaf_result")
   end
 
+  test "codec normalizes RDF terms nested in tool result metadata" do
+    iri = RDF.iri("https://sheaf.less.rest/DBNVZL")
+
+    context =
+      Context.new([
+        Context.tool_result_message(
+          "update_document_metadata",
+          "call_1",
+          %ToolResult{
+            content: [ContentPart.text("Updated metadata.")],
+            metadata: %{
+              sheaf_result: %ToolResults.DocumentMetadataUpdate{
+                document_id: "DOC111",
+                expression: "cover = #DBNVZL",
+                fields: [cover: iri]
+              }
+            }
+          }
+        )
+      ])
+
+    assert {:ok, decoded} =
+             context
+             |> ContextCodec.encode_context()
+             |> Jason.encode!()
+             |> Jason.decode!()
+             |> ContextCodec.decode_context()
+
+    [tool] = decoded.messages
+
+    assert %ToolResults.DocumentMetadataUpdate{
+             fields: %{"cover" => "https://sheaf.less.rest/DBNVZL"}
+           } = Map.fetch!(tool.metadata, "sheaf_result")
+  end
+
+  test "codec safely preserves fields from unknown structs" do
+    encoded =
+      ContextCodec.encode_json_value(URI.parse("https://example.com/a"))
+
+    assert %{
+             "__struct__" => "Elixir.URI",
+             "fields" => %{"scheme" => "https", "host" => "example.com"}
+           } = encoded
+
+    assert Jason.encode!(encoded)
+  end
+
   test "codec preserves every typed assistant tool result" do
     modules =
       Sheaf.Assistant.ToolResults.__info__(:attributes)
