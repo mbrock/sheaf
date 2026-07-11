@@ -158,6 +158,8 @@ defmodule SheafWeb.AssistantChatComponentTest do
           elapsed_label: "12s",
           activity_detail:
             "18 reasoning characters received · last activity 2s ago",
+          thinking_text:
+            "I checked the imported outline and found a likely title.",
           titles: %{}
         },
         selected_chat_id: "CHAT01",
@@ -175,6 +177,7 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert html =~ "A complete sentence."
     assert html =~ "12s"
     assert html =~ "18 reasoning characters received"
+    assert html =~ "I checked the imported outline and found a likely title."
   end
 
   test "tool call groups render as compact activity rows" do

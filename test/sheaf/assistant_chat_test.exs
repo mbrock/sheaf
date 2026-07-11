@@ -171,6 +171,7 @@ defmodule Sheaf.Assistant.ChatTest do
              status_line: "Reasoning",
              thinking_chars: 22,
              thinking_events: 1,
+             thinking_text: "Checking the evidence.",
              activity_detail:
                "22 reasoning characters received · last activity 0s ago"
            } = Chat.snapshot(id)

@@ -295,6 +295,12 @@ defmodule SheafWeb.AssistantChatComponent do
               >
                 {Map.get(@chat, :activity_detail)}
               </span>
+              <div
+                :if={Map.get(@chat, :thinking_text) not in [nil, ""]}
+                class="mt-2 whitespace-pre-wrap rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm leading-relaxed text-stone-600 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-300"
+              >
+                {Map.get(@chat, :thinking_text)}
+              </div>
             </span>
           </div>
 
@@ -429,6 +435,12 @@ defmodule SheafWeb.AssistantChatComponent do
             >
               {Map.get(@chat, :activity_detail)}
             </span>
+            <div
+              :if={Map.get(@chat, :thinking_text) not in [nil, ""]}
+              class="mt-2 whitespace-pre-wrap rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm leading-relaxed text-stone-600 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-300"
+            >
+              {Map.get(@chat, :thinking_text)}
+            </div>
           </span>
         </div>
       </div>

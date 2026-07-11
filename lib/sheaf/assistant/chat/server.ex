@@ -45,6 +45,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     :turn_started_at,
     :last_activity_at,
     :activity_tick_ref,
+    thinking_text: "",
     thinking_chars: 0,
     thinking_events: 0,
     title: @default_title,
@@ -76,6 +77,7 @@ defmodule Sheaf.Assistant.Chat.Server do
           idle_seconds: non_neg_integer(),
           thinking_chars: non_neg_integer(),
           thinking_events: non_neg_integer(),
+          thinking_text: String.t(),
           error: term()
         }
 
@@ -397,6 +399,7 @@ defmodule Sheaf.Assistant.Chat.Server do
         |> Map.put(:stream_buffer, StreamBuffer.new())
         |> Map.put(:turn_started_at, now)
         |> Map.put(:last_activity_at, now)
+        |> Map.put(:thinking_text, "")
         |> Map.put(:thinking_chars, 0)
         |> Map.put(:thinking_events, 0)
         |> Map.put(:activity_tick_ref, schedule_activity_tick())
@@ -526,6 +529,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     if state.pending_ref == ref do
       state
       |> mark_activity()
+      |> Map.update!(:thinking_text, &(&1 <> text))
       |> Map.update!(:thinking_chars, &(&1 + String.length(text)))
       |> Map.update!(:thinking_events, &(&1 + 1))
       |> Map.put(:status_line, "Reasoning")
@@ -1231,6 +1235,7 @@ defmodule Sheaf.Assistant.Chat.Server do
       idle_seconds: idle_seconds,
       thinking_chars: state.thinking_chars,
       thinking_events: state.thinking_events,
+      thinking_text: state.thinking_text,
       titles: state.titles,
       error: state.error
     }
