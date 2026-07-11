@@ -43,9 +43,11 @@ defmodule SheafWeb.ResourceControllerTest do
       |> put_req_header("accept", "application/json")
       |> get(~p"/DOC123")
 
+    document_iri = to_string(document)
+
     assert %{
              "id" => "DOC123",
-             "iri" => "https://sheaf.less.rest/DOC123",
+             "iri" => ^document_iri,
              "kind" => "thesis",
              "title" => "Example Thesis",
              "outline" => [

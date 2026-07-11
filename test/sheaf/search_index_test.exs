@@ -3,24 +3,11 @@ defmodule Sheaf.Search.IndexTest do
 
   alias Sheaf.Search.Index
 
-  setup do
-    path =
-      Path.join(
-        System.tmp_dir!(),
-        "sheaf-search-index-#{System.unique_integer([:positive])}.sqlite3"
-      )
+  @moduletag :tmp_dir
 
-    on_exit(fn ->
-      File.rm(path)
-      File.rm(path <> "-shm")
-      File.rm(path <> "-wal")
-    end)
-
-    repo_path =
-      Path.join(
-        System.tmp_dir!(),
-        "sheaf-search-repo-#{System.unique_integer([:positive])}.sqlite3"
-      )
+  setup %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "search.sqlite3")
+    repo_path = Path.join(tmp_dir, "repo.sqlite3")
 
     start_supervised!({Sheaf.Repo, path: repo_path})
 

@@ -35,27 +35,31 @@ defmodule SheafWeb.API.NoteControllerTest do
     assert :ok = Sheaf.Repo.assert(graph)
 
     conn = get(conn, ~p"/api/notes")
+    note_iri = to_string(note)
+    session_iri = to_string(session)
+    agent_iri = to_string(agent)
+    block_iri = to_string(block)
 
     assert %{
              "notes" => [
                %{
                  "id" => "NOTE01",
-                 "iri" => "https://sheaf.less.rest/NOTE01",
+                 "iri" => ^note_iri,
                  "title" => "Evidence map note",
                  "text" => "Strongest evidence sits in #BLOCK1.",
                  "published" => "2026-04-26T13:13:46Z",
                  "context" => %{
                    "id" => "SESSION",
-                   "iri" => "https://sheaf.less.rest/SESSION"
+                   "iri" => ^session_iri
                  },
                  "attributed_to" => %{
                    "id" => "AGENT1",
-                   "iri" => "https://sheaf.less.rest/AGENT1"
+                   "iri" => ^agent_iri
                  },
                  "mentions" => [
                    %{
                      "id" => "BLOCK1",
-                     "iri" => "https://sheaf.less.rest/BLOCK1"
+                     "iri" => ^block_iri
                    }
                  ]
                }

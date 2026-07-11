@@ -31,10 +31,10 @@ defmodule SheafWeb.RDFQuadControllerTest do
       |> get(~p"/rdf/quads", %{"g" => RDF.Term.value(graph)})
 
     assert response(conn, 200) =~
-             "<https://sheaf.less.rest/BLOCK123> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://less.rest/sheaf/ParagraphBlock> <https://sheaf.less.rest/DOC123> .\n"
+             "<#{subject}> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://less.rest/sheaf/ParagraphBlock> <#{graph}> .\n"
 
     assert response(conn, 200) =~
-             "_:children <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <https://sheaf.less.rest/BLOCK123> <https://sheaf.less.rest/DOC123> .\n"
+             "_:children <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> <#{subject}> <#{graph}> .\n"
 
     assert ["application/n-quads; charset=utf-8"] =
              get_resp_header(conn, "content-type")

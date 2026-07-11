@@ -134,9 +134,12 @@ defmodule Sheaf.CorpusSearchTest do
     }
 
     markdown = CorpusSearch.markdown(results, query: "tiger")
+    base = URI.parse(Id.base_iri())
+    chapter_url = %{base | path: "/read/CHAP11", query: nil, fragment: nil}
+    section_url = %{base | path: "/read/SEC222", query: nil, fragment: nil}
 
     assert markdown =~
-             "[Interesting Chapter](https://sheaf.less.rest/read/CHAP11) > [Section about Tigers](https://sheaf.less.rest/read/SEC222)"
+             "[Interesting Chapter](#{chapter_url}) > [Section about Tigers](#{section_url})"
   end
 
   test "turtle selects fabio realization metadata and anonymous quote paragraphs" do
@@ -216,7 +219,7 @@ defmodule Sheaf.CorpusSearchTest do
     }
 
     turtle = CorpusSearch.turtle(results, query: "practice")
-    assert turtle =~ "@prefix : <https://sheaf.less.rest/>"
+    assert turtle =~ "@prefix : <#{Id.base_iri()}>"
     assert turtle =~ "@prefix dcterms:"
     assert turtle =~ "@prefix bibo:"
     assert turtle =~ "@prefix fabio:"

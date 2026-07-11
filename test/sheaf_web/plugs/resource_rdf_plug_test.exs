@@ -38,10 +38,10 @@ defmodule SheafWeb.ResourceRDFPlugTest do
     assert ["application/n-quads; charset=utf-8"] =
              get_resp_header(conn, "content-type")
 
-    assert body =~ "<https://sheaf.less.rest/DOC123> "
+    assert body =~ "<#{document}> "
     assert body =~ "<http://www.w3.org/2000/01/rdf-schema#label>"
-    assert body =~ "<https://sheaf.less.rest/DOC123> .\n"
-    refute body =~ "<https://sheaf.less.rest/BLOCK1> "
+    assert body =~ "<#{document}> .\n"
+    refute body =~ "<#{block}> "
   end
 
   @tag :tmp_dir
