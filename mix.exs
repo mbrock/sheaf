@@ -85,6 +85,7 @@ defmodule Sheaf.MixProject do
       {:sqlite_vec, "~> 0.1.0"},
       {:mdex, "~> 0.12"},
       {:rdf, "~> 2.1"},
+      {:rdf_xml, "~> 1.2"},
       {:kino, "~> 0.19.0"},
       {:kino_vega_lite, "~> 0.1.13"},
       {:explorer, "~> 0.11.1"},
