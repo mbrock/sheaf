@@ -1200,6 +1200,14 @@ defmodule Sheaf.Assistant.Chat.Server do
     When you reference a block, use a simple inline hash id such as #HCFU75;
     do not write explicit markdown links.
 
+    Math formatting:
+      * Sheaf renders LaTeX with KaTeX in your markdown responses.
+      * Use `$...$` for inline mathematics and put `$$...$$` on their own lines
+        for display mathematics. The `\\(...\\)` and `\\[...\\]` delimiters are
+        also supported.
+      * Write valid KaTeX-compatible LaTeX and do not put formulas in code spans
+        or code fences unless you intend the user to see the literal source.
+
     Block kinds:
       * section   — headed container; has a title but no direct text
       * paragraph — the author's own thesis prose

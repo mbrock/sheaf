@@ -32,7 +32,7 @@ import { ScrollContainer } from "./scroll_container"
 import { SubmitShortcut } from "./submit_shortcut"
 import { AssistantTypeWriter } from "./assistant_typewriter"
 import { ParagraphEditor } from "./paragraph_editor"
-import { MathTypeset } from "./math_typeset"
+import { installMathTypesetting, MathTypeset } from "./math_typeset"
 import { installBlockPreviewAnchors } from "./block_preview_anchor"
 import { installCopyNormalizer } from "./copy_normalize"
 
@@ -86,6 +86,7 @@ window.addEventListener("sheaf:copy-text", (event) => {
 })
 
 installCopyNormalizer()
+installMathTypesetting()
 installAnchorPositioningPolyfill()
 installBlockPreviewAnchors()
 

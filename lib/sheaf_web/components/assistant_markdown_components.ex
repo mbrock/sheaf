@@ -92,10 +92,43 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   end
 
   defp render_node(%{node: %MDEx.Text{} = node} = assigns) do
-    assigns = assign(assigns, :literal, node.literal)
+    parts = math_text_parts(node.literal)
+
+    if Enum.any?(parts, &(&1.kind == :math)) do
+      assigns = assign(assigns, :parts, parts)
+
+      ~H"""
+      <%= for part <- @parts do %>
+        <math :if={part.kind == :math} display={part.display && "block"}>
+          {part.text}
+        </math>
+        <%= if part.kind == :text do %>
+          {part.text}
+        <% end %>
+      <% end %>
+      """
+    else
+      assigns =
+        assign(
+          assigns,
+          :literal,
+          AssistantMarkdown.restore_math_delimiters(node.literal)
+        )
+
+      ~H"""
+      {@literal}
+      """
+    end
+  end
+
+  defp render_node(%{node: %MDEx.Math{} = node} = assigns) do
+    assigns =
+      assigns
+      |> assign(:literal, node.literal)
+      |> assign(:display, node.display_math)
 
     ~H"""
-    {@literal}
+    <math display={@display && "block"}>{@literal}</math>
     """
   end
 
@@ -112,7 +145,12 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   end
 
   defp render_node(%{node: %MDEx.Code{} = node} = assigns) do
-    assigns = assign(assigns, :literal, node.literal)
+    assigns =
+      assign(
+        assigns,
+        :literal,
+        AssistantMarkdown.restore_math_delimiters(node.literal)
+      )
 
     ~H"""
     <code>{@literal}</code>
@@ -122,7 +160,10 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   defp render_node(%{node: %MDEx.CodeBlock{} = node} = assigns) do
     assigns =
       assigns
-      |> assign(:literal, node.literal)
+      |> assign(
+        :literal,
+        AssistantMarkdown.restore_math_delimiters(node.literal)
+      )
       |> assign(:language, code_language(node.info))
 
     ~H"""
@@ -316,6 +357,46 @@ defmodule SheafWeb.AssistantMarkdownComponents do
   defp render_node(assigns) do
     ~H"""
     """
+  end
+
+  defp math_text_parts(text) do
+    ~r/(\x{E000}[A-Za-z0-9_-]+\x{E001}|\x{E002}[A-Za-z0-9_-]+\x{E003}|\x{E004}[A-Za-z0-9_-]+\x{E005}|\x{E006}[A-Za-z0-9_-]+\x{E007})/u
+    |> Regex.split(text, include_captures: true, trim: false)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(fn part ->
+      cond do
+        String.starts_with?(part, "\uE002") and
+            String.ends_with?(part, "\uE003") ->
+          math_text_part(part, true)
+
+        String.starts_with?(part, "\uE006") and
+            String.ends_with?(part, "\uE007") ->
+          math_text_part(part, true)
+
+        String.starts_with?(part, "\uE000") and
+            String.ends_with?(part, "\uE001") ->
+          math_text_part(part, false)
+
+        String.starts_with?(part, "\uE004") and
+            String.ends_with?(part, "\uE005") ->
+          math_text_part(part, false)
+
+        true ->
+          %{
+            kind: :text,
+            display: false,
+            text: AssistantMarkdown.restore_math_delimiters(part)
+          }
+      end
+    end)
+  end
+
+  defp math_text_part(token, display?) do
+    %{
+      kind: :math,
+      display: display?,
+      text: token |> AssistantMarkdown.math_token_content() |> String.trim()
+    }
   end
 
   defp normalize_ref_lists(nodes) do

@@ -65,6 +65,48 @@ defmodule SheafWeb.AssistantMarkdownTest do
     assert html =~ ~s(phx-hook="DataTable")
   end
 
+  test "renders inline and display LaTeX as math sources for KaTeX" do
+    html =
+      render_markdown("""
+      Euler wrote $e^{i\\pi} + 1 = 0$ and also \\(a^2+b^2=c^2\\).
+
+      $$\\int_0^1 x^2 \\, dx = \\frac{1}{3}$$
+
+      \\[\\sum_{k=1}^n k = \\frac{n(n+1)}{2}\\]
+      """)
+
+    compact_html =
+      html
+      |> String.replace(~r/>\s+/, ">")
+      |> String.replace(~r/\s+</, "<")
+
+    assert compact_html =~ ~s(<math>e^{i\\pi} + 1 = 0</math>)
+    assert compact_html =~ ~s(<math>a^2+b^2=c^2</math>)
+
+    assert compact_html =~
+             ~s(<math display="block">\\int_0^1 x^2 \\, dx = \\frac{1}{3}</math>)
+
+    assert compact_html =~
+             ~s|<math display="block">\\sum_{k=1}^n k = \\frac{n(n+1)}{2}</math>|
+  end
+
+  test "does not treat currency or code as mathematics" do
+    html =
+      render_markdown("""
+      The papers cost between $5 and $10. Use `$x^2$` to show the syntax.
+
+      ```latex
+      $$x^2$$
+      ```
+      """)
+
+    assert html =~ "between $5 and $10"
+    assert html =~ "<code>$x^2$</code>"
+    assert html =~ "<pre><code"
+    assert html =~ "$$x^2$$"
+    refute html =~ "<math"
+  end
+
   test "renders block reference buttons for LiveView preview loading" do
     html =
       render_markdown("See [#PAR111](/b/PAR111).",
