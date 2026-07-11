@@ -113,8 +113,8 @@ defmodule Sheaf.Assistant do
        task_supervisor:
          Keyword.get(opts, :task_supervisor, @default_task_supervisor),
        generate_text:
-         Keyword.get(opts, :generate_text, &ReqLLM.generate_text/3),
-       stream_text: Keyword.get(opts, :stream_text, &ReqLLM.stream_text/3)
+         Keyword.get(opts, :generate_text, &Sheaf.LLM.generate_text/3),
+       stream_text: Keyword.get(opts, :stream_text, &Sheaf.LLM.stream_text/3)
      }}
   end
 
@@ -213,6 +213,9 @@ defmodule Sheaf.Assistant do
 
     if stream?(opts) do
       case state.stream_text.(state.model, request_context, llm_options) do
+        {:ok, %Response{} = response} ->
+          {:ok, response}
+
         {:ok, %StreamResponse{} = stream_response} ->
           stream_response
           |> StreamResponse.process_stream(stream_callbacks(opts))
@@ -255,8 +258,7 @@ defmodule Sheaf.Assistant do
     do: result
 
   defp empty_stream_response?(%Response{} = response) do
-    blank?(Response.text(response)) and Response.tool_calls(response) == [] and
-      response.finish_reason in [nil, :error] and is_nil(response.usage)
+    blank?(Response.text(response)) and Response.tool_calls(response) == []
   end
 
   defp blank?(value), do: value in [nil, ""]

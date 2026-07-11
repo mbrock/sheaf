@@ -15,6 +15,8 @@ defmodule Sheaf.Assistant.ContextCodec do
     Sheaf.Assistant.ToolResults.ListDocuments,
     Sheaf.Assistant.ToolResults.DocumentSummary,
     Sheaf.Assistant.ToolResults.Document,
+    Sheaf.Assistant.ToolResults.DocumentMetadataUpdate,
+    Sheaf.Assistant.ToolResults.GeneratedImage,
     Sheaf.Assistant.ToolResults.OutlineEntry,
     Sheaf.Assistant.ToolResults.Block,
     Sheaf.Assistant.ToolResults.Blocks,
@@ -23,6 +25,7 @@ defmodule Sheaf.Assistant.ContextCodec do
     Sheaf.Assistant.ToolResults.Source,
     Sheaf.Assistant.ToolResults.Coding,
     Sheaf.Assistant.ToolResults.SearchResults,
+    Sheaf.Assistant.ToolResults.WebSearch,
     Sheaf.Assistant.ToolResults.ListSpreadsheets,
     Sheaf.Assistant.ToolResults.Spreadsheet,
     Sheaf.Assistant.ToolResults.SpreadsheetSheet,
@@ -32,7 +35,9 @@ defmodule Sheaf.Assistant.ContextCodec do
     Sheaf.Assistant.ToolResults.SpreadsheetSearch,
     Sheaf.Assistant.ToolResults.SearchHit,
     Sheaf.Assistant.ToolResults.Note,
-    Sheaf.Assistant.ToolResults.ParagraphTags
+    Sheaf.Assistant.ToolResults.ParagraphTags,
+    Sheaf.Assistant.ToolResults.BlockEdit,
+    Sheaf.Assistant.ToolResults.SearchIndexUpdate
   ]
 
   @known_structs Map.new(@tool_result_modules, fn module ->

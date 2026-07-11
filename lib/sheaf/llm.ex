@@ -240,12 +240,32 @@ defmodule Sheaf.LLM do
   @spec generate_text(String.t(), Context.t(), keyword()) ::
           {:ok, Response.t()} | {:error, term()}
   def generate_text(model, %Context{} = context, opts \\ []) do
-    ReqLLM.generate_text(
-      model,
-      context,
-      Keyword.put(opts, :model, model) |> text_request_options()
-    )
+    options = Keyword.put(opts, :model, model) |> text_request_options()
+
+    if openai_model?(model) do
+      Sheaf.OpenAI.Responses.generate(model, context, options)
+    else
+      ReqLLM.generate_text(model, context, options)
+    end
   end
+
+  @doc false
+  def stream_text(model, %Context{} = context, opts \\ []) do
+    options = Keyword.put(opts, :model, model) |> text_request_options()
+
+    if openai_model?(model) do
+      Sheaf.OpenAI.Responses.stream(model, context, options)
+    else
+      ReqLLM.stream_text(model, context, options)
+    end
+  end
+
+  defp openai_model?(model) when is_binary(model),
+    do:
+      String.starts_with?(model, "openai:") or
+        String.starts_with?(model, "gpt")
+
+  defp openai_model?(_model), do: false
 
   @doc false
   def request_options(opts) do
@@ -342,10 +362,11 @@ defmodule Sheaf.LLM do
   defp do_assistant_llm_options("gpt", _mode),
     do: gpt_assistant_options(:medium)
 
-  defp do_assistant_llm_options(_provider, _mode), do: []
+  defp do_assistant_llm_options(_provider, _mode), do: [max_tokens: nil]
 
   defp gpt_assistant_options(effort) do
     [
+      max_tokens: nil,
       reasoning_effort: effort,
       provider_options: [reasoning_summary: :auto]
     ]
@@ -457,7 +478,7 @@ defmodule Sheaf.LLM do
 
   defp text_passthrough_options(opts) do
     opts
-    |> Keyword.take([:tools])
+    |> Keyword.take([:tools, :prompt_cache_key])
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
   end
 end

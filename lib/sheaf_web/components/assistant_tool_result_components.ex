@@ -143,18 +143,18 @@ defmodule SheafWeb.AssistantToolResultComponents do
       <ul :if={@result.sources != []} class="space-y-1">
         <li :for={source <- @result.sources} class="min-w-0">
           <a
-            href={source.url}
+            href={source_value(source, :url)}
             target="_blank"
             rel="noopener noreferrer"
             class="block truncate text-blue-700 hover:underline dark:text-blue-300"
           >
-            {source.title || source.url}
+            {source_value(source, :title) || source_value(source, :url)}
           </a>
           <div
-            :if={source.title not in [nil, ""]}
+            :if={source_value(source, :title) not in [nil, ""]}
             class="truncate text-xs text-stone-500"
           >
-            {source.url}
+            {source_value(source, :url)}
           </div>
         </li>
       </ul>
@@ -1002,4 +1002,8 @@ defmodule SheafWeb.AssistantToolResultComponents do
   defp result_path(nil), do: nil
   defp result_path(""), do: nil
   defp result_path(id), do: ~p"/#{id}"
+
+  defp source_value(source, key) when is_map(source) do
+    Map.get(source, key) || Map.get(source, Atom.to_string(key))
+  end
 end

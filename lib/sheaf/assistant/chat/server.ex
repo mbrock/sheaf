@@ -9,6 +9,8 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   use GenServer
 
+  require Logger
+
   alias ReqLLM.{Context, Response}
   alias Sheaf.Assistant
 
@@ -147,7 +149,11 @@ defmodule Sheaf.Assistant.Chat.Server do
     kind = opts |> Keyword.get(:kind, @default_kind) |> normalize_kind()
     title = Keyword.get_lazy(opts, :title, fn -> default_title(kind) end)
     model = Keyword.get(opts, :model, Sheaf.LLM.default_model())
-    llm_options = Keyword.get(opts, :llm_options, [])
+
+    llm_options =
+      opts
+      |> Keyword.get(:llm_options, [])
+      |> Keyword.put_new(:prompt_cache_key, "sheaf:conversation:#{id}")
 
     max_tool_rounds =
       Keyword.get(opts, :max_tool_rounds, @default_max_tool_rounds)
@@ -155,8 +161,10 @@ defmodule Sheaf.Assistant.Chat.Server do
     task_supervisor =
       Keyword.get(opts, :task_supervisor, Sheaf.Assistant.TaskSupervisor)
 
-    generate_text = Keyword.get(opts, :generate_text, &ReqLLM.generate_text/3)
-    stream_text = Keyword.get(opts, :stream_text, &ReqLLM.stream_text/3)
+    generate_text =
+      Keyword.get(opts, :generate_text, &Sheaf.LLM.generate_text/3)
+
+    stream_text = Keyword.get(opts, :stream_text, &Sheaf.LLM.stream_text/3)
     stream? = Keyword.get(opts, :stream?, false)
     titles = Keyword.get_lazy(opts, :titles, &CorpusTools.titles/0)
     session_iri = Keyword.get_lazy(opts, :session_iri, fn -> Id.iri(id) end)
@@ -282,7 +290,14 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   def handle_call(:persist_context, _from, state) do
     state = persist_context(state)
-    {:reply, :ok, state}
+
+    case state.error do
+      {:context_persistence_failed, reason} ->
+        {:reply, {:error, reason}, state}
+
+      _other ->
+        {:reply, :ok, state}
+    end
   end
 
   def handle_call({:send_user_message, text, _turn_context}, _from, state)
@@ -424,6 +439,37 @@ defmodule Sheaf.Assistant.Chat.Server do
     state = persist_user_message(state, text)
     state = persist_context_with_input(state, input)
 
+    if context_persistence_failed?(state) do
+      state
+      |> append_message(:user, text)
+      |> append_message(
+        :error,
+        "Could not persist this turn safely. The model was not called."
+      )
+      |> touch_index()
+      |> broadcast_snapshot()
+    else
+      start_inference_turn(
+        state,
+        text,
+        input,
+        run_options,
+        assistant,
+        chat,
+        ref
+      )
+    end
+  end
+
+  defp start_inference_turn(
+         state,
+         text,
+         input,
+         run_options,
+         assistant,
+         chat,
+         ref
+       ) do
     case Task.Supervisor.start_child(state.task_supervisor, fn ->
            result = safe_run(assistant, input, run_options)
            send(chat, {:assistant_result, ref, result})
@@ -877,9 +923,10 @@ defmodule Sheaf.Assistant.Chat.Server do
         state
     end
   rescue
-    _error -> state
+    error ->
+      record_context_write(state, {:exception, Exception.message(error)})
   catch
-    _kind, _reason -> state
+    kind, reason -> record_context_write(state, {kind, reason})
   end
 
   defp persist_context(state) do
@@ -891,9 +938,10 @@ defmodule Sheaf.Assistant.Chat.Server do
 
     state
   rescue
-    _error -> state
+    error ->
+      record_context_write(state, {:exception, Exception.message(error)})
   catch
-    _kind, _reason -> state
+    kind, reason -> record_context_write(state, {kind, reason})
   end
 
   defp persist_context_value(state, context) do
@@ -902,14 +950,41 @@ defmodule Sheaf.Assistant.Chat.Server do
         state
 
       store when is_atom(store) ->
-        _ = store.write(state.session_iri, context)
-        state
+        record_context_write(state, store.write(state.session_iri, context))
 
       {store, opts} when is_atom(store) and is_list(opts) ->
-        _ = store.write(state.session_iri, context, opts)
-        state
+        record_context_write(
+          state,
+          store.write(state.session_iri, context, opts)
+        )
     end
   end
+
+  defp record_context_write(state, :ok) do
+    case state.error do
+      {:context_persistence_failed, _reason} -> %{state | error: nil}
+      _other -> state
+    end
+  end
+
+  defp record_context_write(state, {:error, :repo_not_started}), do: state
+
+  defp record_context_write(state, result) do
+    reason = {:context_persistence_failed, result}
+
+    Logger.error(
+      "Assistant context persistence failed for #{state.id}: #{inspect(result)}"
+    )
+
+    %{state | error: reason}
+  end
+
+  defp context_persistence_failed?(%{
+         error: {:context_persistence_failed, _reason}
+       }),
+       do: true
+
+  defp context_persistence_failed?(_state), do: false
 
   defp context_store(state), do: Map.get(state, :context_store, ContextStore)
 

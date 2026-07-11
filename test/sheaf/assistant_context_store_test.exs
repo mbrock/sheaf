@@ -88,6 +88,26 @@ defmodule Sheaf.Assistant.ContextStoreTest do
              Map.fetch!(tool.metadata, "sheaf_result")
   end
 
+  test "codec preserves every typed assistant tool result" do
+    modules =
+      Sheaf.Assistant.ToolResults.__info__(:attributes)
+      |> then(fn _attributes ->
+        :code.all_loaded()
+        |> Enum.map(&elem(&1, 0))
+        |> Enum.filter(
+          &(Atom.to_string(&1) =~ "Elixir.Sheaf.Assistant.ToolResults.")
+        )
+      end)
+
+    for module <- modules,
+        function_exported?(module, :__struct__, 0) do
+      value = module.__struct__()
+      encoded = ContextCodec.encode_json_value(value)
+      assert is_map(encoded), "failed to encode #{inspect(module)}"
+      assert Jason.encode!(encoded)
+    end
+  end
+
   test "codec repairs previously encoded empty list fields in structured metadata" do
     payload = %{
       "messages" => [

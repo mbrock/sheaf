@@ -116,6 +116,41 @@ defmodule Sheaf.AssistantTest do
     refute Keyword.has_key?(opts, :stream)
   end
 
+  test "retries an empty stream even when provider metadata reports success" do
+    test_pid = self()
+
+    stream_text = fn _model, context, _opts ->
+      {:ok,
+       empty_stream_response(context,
+         finish_reason: :stop,
+         usage: %{input_tokens: 10, output_tokens: 0}
+       )}
+    end
+
+    generate_text = fn _model, context, _opts ->
+      send(test_pid, :fallback_called)
+
+      {:ok,
+       response(Context.assistant("Recovered response"),
+         context: context,
+         finish_reason: :stop
+       )}
+    end
+
+    assistant =
+      start_supervised!(
+        {Assistant,
+         model: "openai:gpt-4",
+         task_supervisor: Sheaf.Assistant.TaskSupervisor,
+         stream_text: stream_text,
+         generate_text: generate_text}
+      )
+
+    assert {:ok, response} = Assistant.run(assistant, "hi", stream: true)
+    assert Response.text(response) == "Recovered response"
+    assert_receive :fallback_called
+  end
+
   test "executes requested tools and continues until final answer" do
     test_pid = self()
 
@@ -404,9 +439,15 @@ defmodule Sheaf.AssistantTest do
     }
   end
 
-  defp empty_stream_response(context) do
+  defp empty_stream_response(context, opts \\ []) do
     {:ok, model} = ReqLLM.model("openai:gpt-4")
-    {:ok, metadata_handle} = MetadataHandle.start_link(fn -> %{} end)
+
+    metadata = %{
+      finish_reason: Keyword.get(opts, :finish_reason),
+      usage: Keyword.get(opts, :usage)
+    }
+
+    {:ok, metadata_handle} = MetadataHandle.start_link(fn -> metadata end)
 
     %StreamResponse{
       stream: [],

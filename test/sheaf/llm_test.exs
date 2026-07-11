@@ -188,24 +188,41 @@ defmodule Sheaf.LLMTest do
     end
   end
 
+  test "assistant conversations do not impose a Sheaf output-token cap" do
+    for provider <- ["claude-opus-4-8", "gpt-sol"] do
+      options = LLM.assistant_llm_options(provider, :chat)
+      assert Keyword.fetch!(options, :max_tokens) == nil
+
+      request =
+        options
+        |> Keyword.put(:model, LLM.assistant_model_for_provider(provider))
+        |> LLM.text_request_options()
+
+      refute Keyword.has_key?(request, :max_tokens)
+    end
+  end
+
   test "sets GPT assistant reasoning effort by conversation mode" do
     assert LLM.assistant_llm_options("gpt", "quick") == [
+             max_tokens: nil,
              reasoning_effort: :medium,
              provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("openai:gpt-5.6", :chat) == [
+             max_tokens: nil,
              reasoning_effort: :medium,
              provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("gpt", "research") == [
+             max_tokens: nil,
              reasoning_effort: :high,
              provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("anthropic:claude-opus-4-8", "research") ==
-             []
+             [max_tokens: nil]
   end
 
   test "enables adaptive thinking and maps Claude effort into output configuration" do
