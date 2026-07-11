@@ -101,6 +101,7 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
             authors: ["Ada Lovelace", "Charles Babbage"],
             page_count: 12
           },
+          micro_abstract: "Explains a compact approach to generated terrain.",
           excluded?: false,
           cited?: false,
           has_document?: true,
@@ -114,6 +115,7 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     assert html =~ "from-black/90"
     assert html =~ "A covered paper"
     assert html =~ "Lovelace, Babbage"
+    assert html =~ "Explains a compact approach to generated terrain."
     refute html =~ "Ada Lovelace"
     assert html =~ "2026"
     refute html =~ "12 pp."

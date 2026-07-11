@@ -106,6 +106,49 @@ defmodule Sheaf.WorkspaceTest do
            )
   end
 
+  @tag :tmp_dir
+  test "sets, replaces, validates, and clears document micro abstracts", %{
+    tmp_dir: tmp_dir
+  } do
+    start_repo!(tmp_dir)
+    document = Id.iri("DOC999")
+
+    assert :ok =
+             Sheaf.Workspace.set_document_micro_abstract(
+               "DOC999",
+               "Maps water flow across generated terrain."
+             )
+
+    assert RDF.Data.include?(
+             current_workspace_graph(),
+             {document, DOC.microAbstract(),
+              "Maps water flow across generated terrain."}
+           )
+
+    assert {:error, message} =
+             Sheaf.Workspace.set_document_micro_abstract(
+               "DOC999",
+               String.duplicate("x", 241)
+             )
+
+    assert message =~ "240 characters"
+    assert :ok = Sheaf.Workspace.set_document_micro_abstract("DOC999", "")
+
+    triples =
+      case current_workspace_graph() do
+        nil -> []
+        graph -> RDF.Graph.triples(graph)
+      end
+
+    refute Enum.any?(
+             triples,
+             fn {subject, predicate, _object} ->
+               subject == document and
+                 predicate == RDF.iri(DOC.microAbstract())
+             end
+           )
+  end
+
   defp start_repo!(tmp_dir) do
     start_supervised!({Sheaf.Repo, path: Path.join(tmp_dir, "repo.sqlite3")})
   end

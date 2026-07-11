@@ -276,7 +276,9 @@ defmodule Sheaf.DocumentsTest do
           {workspace, DOC.hasWorkspaceOwner(), author},
           {folder, RDF.type(), DOC.Folder},
           {folder, RDFS.label(), "Trail systems"},
-          {doc, DOC.inFolder(), folder}
+          {doc, DOC.inFolder(), folder},
+          {doc, DOC.microAbstract(),
+           "Explains how paths emerge from repeated movement."}
         ],
         name: Sheaf.Repo.workspace_graph()
       )
@@ -306,6 +308,8 @@ defmodule Sheaf.DocumentsTest do
              workspace_owner_authored?: true,
              workspace_owner_name: "Alpha Author",
              folder: "Trail systems",
+             micro_abstract:
+               "Explains how paths emerge from repeated movement.",
              metadata: %{
                authors: ["Alpha Author"],
                page_count: 3,

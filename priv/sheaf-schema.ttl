@@ -105,6 +105,12 @@ sheaf:inFolder a rdf:Property ;
   rdfs:range sheaf:Folder ;
   rdfs:comment "Links a document to its folder in the current workspace. A document has at most one folder in the Sheaf interface." .
 
+sheaf:microAbstract a rdf:Property ;
+  rdfs:label "has micro abstract"@en ;
+  rdfs:domain sheaf:Document ;
+  rdfs:range xsd:string ;
+  rdfs:comment "A short, workspace-local description of a document for at-a-glance orientation, distinct from its published abstract." .
+
 sheaf:assistantInstructions a rdf:Property ;
   rdfs:label "has assistant instructions"@en ;
   rdfs:domain sheaf:Workspace ;

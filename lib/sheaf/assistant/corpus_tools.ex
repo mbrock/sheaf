@@ -424,6 +424,7 @@ defmodule Sheaf.Assistant.CorpusTools do
           "Only include fields that should be replaced. Use authors for people and " <>
           "corporate_authors for organizations. Use cover_image_id to explicitly associate an existing Sheaf image as the cover. " <>
           "Use folder to place the document in a flat workspace folder. " <>
+          "Use micro_abstract for a concise assistant-written orientation sentence. " <>
           "Verify uncertain metadata first.",
       parameter_schema: [
         document_id: [
@@ -467,6 +468,11 @@ defmodule Sheaf.Assistant.CorpusTools do
           type: :string,
           doc:
             "Workspace folder name. Existing folders with the same label are reused. Pass an empty string to remove the document from its folder."
+        ],
+        micro_abstract: [
+          type: :string,
+          doc:
+            "One plain sentence, no more than 240 characters, describing what the document contributes. Pass an empty string to clear it."
         ]
       ],
       callback:
@@ -2249,6 +2255,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       pages: Map.get(doc.metadata, :pages),
       status: Map.get(doc.metadata, :status),
       folder: Map.get(doc, :folder),
+      micro_abstract: Map.get(doc, :micro_abstract),
       cited?: Map.get(doc, :cited?, false),
       has_document?: Map.get(doc, :has_document?, true),
       workspace_owner_authored?:

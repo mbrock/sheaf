@@ -90,6 +90,31 @@ defmodule Sheaf.Workspace do
   end
 
   @doc """
+  Stores a workspace-local micro abstract for a document, or clears it when
+  the supplied text is blank.
+  """
+  def set_document_micro_abstract(document_id, text)
+      when is_binary(document_id) and (is_binary(text) or is_nil(text)) do
+    document_id = document_id |> String.trim() |> String.trim_leading("#")
+    text = if is_binary(text), do: String.trim(text), else: ""
+
+    Tracer.with_span "sheaf.workspace.set_document_micro_abstract", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.document.id", document_id},
+        {"sheaf.micro_abstract", text},
+        {"sheaf.micro_abstract.length", String.length(text)}
+      ]
+    } do
+      if String.length(text) > 240 do
+        {:error, "micro_abstract must be no more than 240 characters"}
+      else
+        replace_document_literal(document_id, DOC.microAbstract(), text)
+      end
+    end
+  end
+
+  @doc """
   Records the person whose authored work the active workspace is organized around.
   """
   def set_owner(person_id) when is_binary(person_id) do
@@ -171,6 +196,47 @@ defmodule Sheaf.Workspace do
   end
 
   def graph, do: @graph
+
+  defp replace_document_literal(document_id, predicate, text) do
+    document = Id.iri(document_id)
+
+    graph =
+      Sheaf.Repo.ask(&RDF.Dataset.graph(&1, @graph)) ||
+        Graph.new(name: @graph)
+
+    old =
+      graph
+      |> Graph.triples()
+      |> Enum.filter(fn {subject, candidate, _object} ->
+        subject == document and candidate == RDF.iri(predicate)
+      end)
+      |> Graph.new(name: @graph)
+
+    changes =
+      if RDF.Data.statement_count(old) == 0,
+        do: [],
+        else: [{:retract, old}]
+
+    changes =
+      case text do
+        "" ->
+          changes
+
+        text ->
+          changes ++
+            [
+              {:assert,
+               Graph.new({document, predicate, RDF.literal(text)},
+                 name: @graph
+               )}
+            ]
+      end
+
+    case changes do
+      [] -> :ok
+      changes -> Sheaf.Repo.transact(changes)
+    end
+  end
 
   @doc "Returns the labels of all folders in the workspace, including empty folders."
   def folders do

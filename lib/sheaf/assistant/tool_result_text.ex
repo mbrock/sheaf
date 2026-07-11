@@ -443,7 +443,15 @@ defmodule Sheaf.Assistant.ToolResultText do
 
     suffix = if details == "", do: "", else: " - " <> details
     badges = document_badges(doc)
-    "- ##{doc.id} #{doc.title}#{badges}#{suffix}"
+    line = "- ##{doc.id} #{doc.title}#{badges}#{suffix}"
+
+    case doc.micro_abstract do
+      abstract when is_binary(abstract) and abstract != "" ->
+        line <> "\n  Micro abstract: " <> abstract
+
+      _ ->
+        line
+    end
   end
 
   defp document_badges(doc) do

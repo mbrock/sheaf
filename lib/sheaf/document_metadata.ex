@@ -47,12 +47,18 @@ defmodule Sheaf.DocumentMetadata do
              Sheaf.ResourceResolver.resolve(document_id),
            {:ok, cover_change} <- cover_change(attrs),
            {:ok, folder_change} <- folder_change(attrs),
+           {:ok, micro_abstract_change} <- micro_abstract_change(attrs),
            {:ok, graph} <- Sheaf.fetch_graph(graph_name),
            {updated, expression, fields} <-
              apply_metadata(graph, document, attrs),
            :ok <- maybe_put_metadata(graph_name, updated, fields),
            :ok <- apply_cover_change(document, cover_change),
-           :ok <- apply_folder_change(document_id, folder_change) do
+           :ok <- apply_folder_change(document_id, folder_change),
+           :ok <-
+             apply_micro_abstract_change(
+               document_id,
+               micro_abstract_change
+             ) do
         Sheaf.Documents.clear_cache()
 
         fields =
@@ -64,6 +70,11 @@ defmodule Sheaf.DocumentMetadata do
           if folder_change == :unchanged,
             do: fields,
             else: fields ++ [:folder]
+
+        fields =
+          if micro_abstract_change == :unchanged,
+            do: fields,
+            else: fields ++ [:micro_abstract]
 
         {:ok,
          %{
@@ -308,6 +319,34 @@ defmodule Sheaf.DocumentMetadata do
 
   defp apply_folder_change(document_id, {:set, folder}),
     do: Sheaf.Workspace.set_document_folder(document_id, folder)
+
+  defp micro_abstract_change(attrs) do
+    if present_key?(attrs, :micro_abstract) do
+      case value(attrs, :micro_abstract) do
+        text when text in [nil, ""] ->
+          {:ok, :clear}
+
+        text when is_binary(text) ->
+          if String.length(String.trim(text)) <= 240,
+            do: {:ok, {:set, text}},
+            else:
+              {:error, "micro_abstract must be no more than 240 characters"}
+
+        _other ->
+          {:error, "micro_abstract must be text or an empty string"}
+      end
+    else
+      {:ok, :unchanged}
+    end
+  end
+
+  defp apply_micro_abstract_change(_document_id, :unchanged), do: :ok
+
+  defp apply_micro_abstract_change(document_id, :clear),
+    do: Sheaf.Workspace.set_document_micro_abstract(document_id, "")
+
+  defp apply_micro_abstract_change(document_id, {:set, text}),
+    do: Sheaf.Workspace.set_document_micro_abstract(document_id, text)
 
   defp field_predicates(:kind), do: [RDF.type()]
   defp field_predicates(:title), do: [DCTERMS.title(), RDFS.label()]

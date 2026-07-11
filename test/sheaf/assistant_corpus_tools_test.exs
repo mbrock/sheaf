@@ -129,12 +129,17 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
                "title" => "Mountain Trail Formation",
                "authors" => ["S. J. Gilks", "J. P. Hague"],
                "doi" => "10.1000/example",
-               "folder" => "Trail systems"
+               "folder" => "Trail systems",
+               "micro_abstract" =>
+                 "Explains how paths emerge from repeated movement."
              })
 
     assert_receive {:metadata_update, "GY93FG", attrs}
     assert attrs[:title] == "Mountain Trail Formation"
     assert attrs[:folder] == "Trail systems"
+
+    assert attrs[:micro_abstract] ==
+             "Explains how paths emerge from repeated movement."
 
     assert %ToolResults.DocumentMetadataUpdate{document_id: "GY93FG"} =
              sheaf_result(result)
@@ -271,6 +276,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
             authors: ["Ieva Lange"],
             year: "2026",
             status: "mikael",
+            micro_abstract: "A compact account of the thesis contribution.",
             workspace_owner_authored?: true
           },
           %ToolResults.DocumentSummary{
@@ -289,6 +295,9 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert text =~ "- #DOC222 Same thesis [draft] - 2026 | Ieva Lange"
     assert text =~ "FOLDERS\n- Landscape\n- Trail systems"
     assert text =~ "Unfiled (2)"
+
+    assert text =~
+             "Micro abstract: A compact account of the thesis contribution."
   end
 
   test "sidecar spreadsheet tools are hidden when no sidecar sheets are imported" do

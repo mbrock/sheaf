@@ -25,6 +25,7 @@ defmodule Sheaf.Assistant.ToolResults do
       :pages,
       :status,
       :folder,
+      :micro_abstract,
       cited?: false,
       has_document?: true,
       workspace_owner_authored?: false

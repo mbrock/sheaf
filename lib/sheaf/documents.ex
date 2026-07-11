@@ -552,6 +552,10 @@ defmodule Sheaf.Documents do
         )
         |> put_optional("folderName", folder_name(workspace, doc))
         |> put_optional(
+          "microAbstract",
+          first_object(workspace, doc, DOC.microAbstract())
+        )
+        |> put_optional(
           "workspaceOwnerName",
           resource_name(metadata, workspace_owner)
         )
@@ -588,6 +592,10 @@ defmodule Sheaf.Documents do
         resource_name(metadata, workspace_owner)
       )
       |> put_optional("folderName", folder_name(workspace, doc))
+      |> put_optional(
+        "microAbstract",
+        first_object(workspace, doc, DOC.microAbstract())
+      )
       |> Map.merge(metadata_values)
 
     expand_author_rows(row, metadata_values)
@@ -912,6 +920,7 @@ defmodule Sheaf.Documents do
       workspace_owner_authored?: workspace_owner_authored?(rows),
       workspace_owner_name: value(rows, "workspaceOwnerName"),
       folder: value(rows, "folderName"),
+      micro_abstract: value(rows, "microAbstract"),
       cover_path:
         if(value(rows, "coverImage"), do: "/covers/#{Id.id_from_iri(iri)}"),
       title: metadata[:title] || title(row["title"], iri)
