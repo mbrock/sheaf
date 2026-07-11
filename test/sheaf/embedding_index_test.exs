@@ -27,6 +27,19 @@ defmodule Sheaf.Embedding.IndexTest do
              Sheaf.Repo.assert(
                RDF.Graph.new(
                  [
+                   {doc, Sheaf.NS.FABIO.isRepresentationOf(),
+                    RDF.iri("https://sheaf.less.rest/EXPR1")},
+                   {RDF.iri("https://sheaf.less.rest/EXPR1"),
+                    Sheaf.NS.DCTERMS.title(), "Metadata title"}
+                 ],
+                 name: Sheaf.Repo.metadata_graph()
+               )
+             )
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
                    {doc, RDF.type(), Sheaf.NS.DOC.Document},
                    {block1, Sheaf.NS.DOC.paragraph(), para},
                    {para, Sheaf.NS.DOC.text(), "Paragraph text."},
@@ -50,7 +63,9 @@ defmodule Sheaf.Embedding.IndexTest do
     row_unit = Map.fetch!(units_by_iri, to_string(row))
 
     assert paragraph.kind == "paragraph"
+    assert paragraph.doc_title == "Metadata title"
     assert source.text == "<p>PDF text.</p>"
+    assert source.doc_title == "Metadata title"
     assert row_unit.kind == "row"
     assert row_unit.spreadsheet_row == 42
     assert String.length(source.text_hash) == 64
@@ -200,6 +215,213 @@ defmodule Sheaf.Embedding.IndexTest do
 
     assert {:ok, [%{iri: ^block_iri, match: :exact}]} =
              Index.exact_search("signal", db_path: db_path)
+  end
+
+  test "exact search hydrates document titles from the metadata graph" do
+    db_path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-embedding-title-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    on_exit(fn ->
+      File.rm(db_path)
+      File.rm(db_path <> "-shm")
+      File.rm(db_path <> "-wal")
+    end)
+
+    doc = RDF.iri("https://sheaf.less.rest/DOC-TITLE")
+    expression = RDF.iri("https://sheaf.less.rest/EXPR-TITLE")
+    block_iri = "https://sheaf.less.rest/BLOCK-TITLE"
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {doc, RDF.type(), Sheaf.NS.DOC.Document},
+                   {RDF.iri(block_iri), Sheaf.NS.DOC.sourceHtml(),
+                    "Title hydration phrase."}
+                 ],
+                 name: doc
+               )
+             )
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {doc, Sheaf.NS.FABIO.isRepresentationOf(), expression},
+                   {expression, RDF.type(), Sheaf.NS.FABIO.Book},
+                   {expression, Sheaf.NS.DCTERMS.title(),
+                    "Metadata Graph Book"}
+                 ],
+                 name: Sheaf.Repo.metadata_graph()
+               )
+             )
+
+    {:ok, conn} = SearchIndex.open(db_path: db_path)
+
+    try do
+      assert {:ok, %{count: 1}} =
+               SearchIndex.rebuild(conn, [
+                 %{
+                   iri: block_iri,
+                   doc_iri: to_string(doc),
+                   kind: "sourceHtml",
+                   text: "Title hydration phrase."
+                 }
+               ])
+    after
+      SearchIndex.close(conn)
+    end
+
+    assert {:ok, [hit]} =
+             Index.exact_search("hydration", db_path: db_path)
+
+    assert hit.doc_title == "Metadata Graph Book"
+    assert hit.doc_kind == :literature
+  end
+
+  test "semantic search skips short fragments while exact search can return them" do
+    db_path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-embedding-semantic-fragments-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    on_exit(fn ->
+      File.rm(db_path)
+      File.rm(db_path <> "-shm")
+      File.rm(db_path <> "-wal")
+    end)
+
+    model = "gemini-embedding-2"
+    dimensions = 3
+    source = "test-source"
+    run_iri = "https://sheaf.less.rest/RUN-SEMANTIC-FRAGMENTS"
+
+    doc = RDF.iri("https://sheaf.less.rest/DOC-SEMANTIC-FRAGMENTS")
+    short = "https://sheaf.less.rest/BLOCK-SHORT-FRAGMENT"
+    long_one = "https://sheaf.less.rest/BLOCK-LONG-ONE"
+    long_two = "https://sheaf.less.rest/BLOCK-LONG-TWO"
+
+    long_text_one =
+      "This longer passage mentions tigers while offering enough surrounding prose to be useful as a semantic search result for readers."
+
+    long_text_two =
+      "Another substantial paragraph discusses tigers in relation to historical examples and gives enough context for assistant citation in ordinary research conversations."
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {doc, RDF.type(), Sheaf.NS.DOC.Document},
+                   {RDF.iri(short), Sheaf.NS.DOC.sourceHtml(),
+                    "TURKEY TOLSON"},
+                   {RDF.iri(long_one), Sheaf.NS.DOC.sourceHtml(),
+                    long_text_one},
+                   {RDF.iri(long_two), Sheaf.NS.DOC.sourceHtml(),
+                    long_text_two}
+                 ],
+                 name: doc
+               )
+             )
+
+    {:ok, search_conn} = SearchIndex.open(db_path: db_path)
+
+    try do
+      assert {:ok, %{count: 3}} =
+               SearchIndex.rebuild(search_conn, [
+                 %{
+                   iri: short,
+                   doc_iri: to_string(doc),
+                   kind: "sourceHtml",
+                   text: "TURKEY TOLSON"
+                 },
+                 %{
+                   iri: long_one,
+                   doc_iri: to_string(doc),
+                   kind: "sourceHtml",
+                   text: long_text_one
+                 },
+                 %{
+                   iri: long_two,
+                   doc_iri: to_string(doc),
+                   kind: "sourceHtml",
+                   text: long_text_two
+                 }
+               ])
+    after
+      SearchIndex.close(search_conn)
+    end
+
+    {:ok, store_conn} = Store.open(db_path: db_path)
+
+    try do
+      :ok =
+        Store.create_run(store_conn, %{
+          iri: run_iri,
+          model: model,
+          dimensions: dimensions,
+          source: source,
+          status: "completed",
+          target_count: 3,
+          embedded_count: 3
+        })
+
+      for {iri, text, values} <- [
+            {short, "TURKEY TOLSON", [1.0, 0.0, 0.0]},
+            {long_one, long_text_one, [0.9, 0.1, 0.0]},
+            {long_two, long_text_two, [0.8, 0.2, 0.0]}
+          ] do
+        :ok =
+          Store.insert_embedding(store_conn, %{
+            iri: iri,
+            run_iri: run_iri,
+            text_hash: Index.text_hash(text, model, dimensions, source),
+            text_chars: String.length(text),
+            values: values
+          })
+      end
+
+      assert {:ok, 3} =
+               Store.sync_vector_index(
+                 store_conn,
+                 model,
+                 dimensions,
+                 source
+               )
+    after
+      Store.close(store_conn)
+    end
+
+    assert {:ok, [%{iri: ^short, match: :exact}]} =
+             Index.exact_search("TURKEY TOLSON", db_path: db_path)
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "POST"
+
+      Req.Test.json(conn, %{
+        "embedding" => %{"values" => [1.0, 0.0, 0.0]}
+      })
+    end)
+
+    assert {:ok, semantic_hits} =
+             Index.search("tigers",
+               db_path: db_path,
+               model: model,
+               output_dimensionality: dimensions,
+               source: source,
+               exact_limit: 0,
+               limit: 2,
+               candidate_limit: 1,
+               max_candidate_limit: 4,
+               api_key: "secret",
+               req_options: [plug: {Req.Test, __MODULE__}]
+             )
+
+    assert Enum.map(semantic_hits, & &1.iri) == [long_one, long_two]
+    assert Enum.all?(semantic_hits, &(&1.match == :semantic))
   end
 
   test "exact search can filter RDF hits by document kind" do

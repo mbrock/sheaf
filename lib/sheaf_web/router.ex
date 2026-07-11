@@ -35,6 +35,9 @@ defmodule SheafWeb.Router do
   scope "/", SheafWeb do
     get "/sheaf-schema.ttl", SchemaController, :show
     get "/health", HealthController, :show
+    get "/corpus", CorpusController, :index
+    get "/corpus/*parts", CorpusController, :index
+    get "/read/:id", ReadController, :show
   end
 
   scope "/api", SheafWeb.API do

@@ -117,6 +117,7 @@ defmodule Sheaf.MixProject do
       ],
       precommit: [
         "format",
+        "cmd bun run format:js:check",
         "test"
       ]
     ]

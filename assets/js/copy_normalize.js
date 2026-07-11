@@ -30,7 +30,8 @@ export function installCopyNormalizer(target = document) {
 
 function handleCopy(event) {
   const selection = window.getSelection?.()
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0)
+    return
   if (!selectionInsideReader(selection)) return
 
   const original = selection.toString()
@@ -44,7 +45,8 @@ function handleCopy(event) {
 function selectionInsideReader(selection) {
   const node = selection.anchorNode
   if (!node) return false
-  const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
+  const element =
+    node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
   return !!element?.closest(READER_SELECTOR)
 }
 

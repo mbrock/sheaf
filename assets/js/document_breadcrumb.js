@@ -1,4 +1,4 @@
-import {normalizeReaderText} from "./copy_normalize"
+import { normalizeReaderText } from "./copy_normalize"
 
 // Band of the article viewport used to decide which section is "current". The
 // IntersectionObserver root is the article, so percentage rootMargin scales
@@ -25,18 +25,27 @@ export const DocumentBreadcrumb = {
 
     this.update = () => updateCurrentHeading(this)
     this.copy = () => copyMarkdown(this)
-    this.navigateAssistantBlock = event => navigateAssistantBlock(this, event)
-    this.clearSelectionFromOutsideClick = event => clearSelectionFromOutsideClick(this, event)
+    this.navigateAssistantBlock = (event) =>
+      navigateAssistantBlock(this, event)
+    this.clearSelectionFromOutsideClick = (event) =>
+      clearSelectionFromOutsideClick(this, event)
     this.focusArticle = () => focusArticle(this)
-    this.scrollFromKey = event => scrollArticleFromKey(this, event)
+    this.scrollFromKey = (event) => scrollArticleFromKey(this, event)
 
     this.el.addEventListener("click", this.navigateAssistantBlock)
-    document.addEventListener("pointerdown", this.clearSelectionFromOutsideClick)
+    document.addEventListener(
+      "pointerdown",
+      this.clearSelectionFromOutsideClick,
+    )
     this.article?.addEventListener("pointerdown", this.focusArticle)
     window.addEventListener("keydown", this.scrollFromKey)
     this.copyButton?.addEventListener("click", this.copy)
-    this.handleEvent("scroll-to-block", ({id}) => scheduleScrollToBlock(this, id))
-    this.handleEvent("scroll-reader-to-top", () => scheduleScrollReaderToTop(this))
+    this.handleEvent("scroll-to-block", ({ id }) =>
+      scheduleScrollToBlock(this, id),
+    )
+    this.handleEvent("scroll-reader-to-top", () =>
+      scheduleScrollReaderToTop(this),
+    )
 
     initObserver(this)
     requestAnimationFrame(() => focusArticle(this))
@@ -50,7 +59,10 @@ export const DocumentBreadcrumb = {
   destroyed() {
     this.observer?.disconnect()
     this.el.removeEventListener("click", this.navigateAssistantBlock)
-    document.removeEventListener("pointerdown", this.clearSelectionFromOutsideClick)
+    document.removeEventListener(
+      "pointerdown",
+      this.clearSelectionFromOutsideClick,
+    )
     this.article?.removeEventListener("pointerdown", this.focusArticle)
     window.removeEventListener("keydown", this.scrollFromKey)
     this.copyButton?.removeEventListener("click", this.copy)
@@ -61,7 +73,10 @@ function clearSelectionFromOutsideClick(hook, event) {
   const selectedId = hook.el.dataset.selectedBlockId
   if (!selectedId) return
 
-  const target = event.target instanceof Element ? event.target : event.target?.parentElement
+  const target =
+    event.target instanceof Element
+      ? event.target
+      : event.target?.parentElement
   if (!target) return
 
   if (target.closest(`#block-${cssEscape(selectedId)}`)) return
@@ -75,7 +90,10 @@ function navigateAssistantBlock(hook, event) {
   if (event.defaultPrevented || event.button !== 0) return
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
 
-  const target = event.target instanceof Element ? event.target : event.target?.parentElement
+  const target =
+    event.target instanceof Element
+      ? event.target
+      : event.target?.parentElement
   const link = target?.closest('.assistant-prose a[href^="/b/"]')
   if (!link || !hook.el.contains(link)) return
 
@@ -83,7 +101,7 @@ function navigateAssistantBlock(hook, event) {
   if (!blockId) return
 
   event.preventDefault()
-  hook.pushEvent("assistant_block_link", {id: blockId})
+  hook.pushEvent("assistant_block_link", { id: blockId })
 }
 
 function scheduleScrollToBlock(hook, id) {
@@ -101,7 +119,7 @@ function scheduleScrollReaderToTop(hook) {
 function scrollReaderToTop(hook) {
   hook.article = hook.el.querySelector("#document-start")
   hook.scrollTarget = scrollTarget(hook.article)
-  hook.scrollTarget?.scrollTo({top: 0, behavior: "smooth"})
+  hook.scrollTarget?.scrollTo({ top: 0, behavior: "smooth" })
   focusArticle(hook)
 }
 
@@ -111,24 +129,37 @@ function scrollToBlock(hook, id) {
   const block = hook.el.querySelector(`#block-${cssEscape(id)}`)
   if (!block) return
 
-  for (const details of Array.from(block.querySelectorAll("details")).reverse()) {
+  for (const details of Array.from(
+    block.querySelectorAll("details"),
+  ).reverse()) {
     details.open = true
   }
 
-  for (let details = block.closest("details"); details; details = details.parentElement?.closest("details")) {
+  for (
+    let details = block.closest("details");
+    details;
+    details = details.parentElement?.closest("details")
+  ) {
     details.open = true
   }
 
-  block.scrollIntoView({block: "center", behavior: "smooth"})
+  block.scrollIntoView({ block: "center", behavior: "smooth" })
   focusArticle(hook)
 }
 
 function focusArticle(hook) {
-  hook.article?.focus({preventScroll: true})
+  hook.article?.focus({ preventScroll: true })
 }
 
 function scrollArticleFromKey(hook, event) {
-  if (!hook.article || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
+  if (
+    !hook.article ||
+    event.defaultPrevented ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey
+  )
+    return
   if (isInteractiveTarget(event.target)) return
 
   const line = 56
@@ -149,13 +180,15 @@ function scrollArticleFromKey(hook, event) {
   else return
 
   event.preventDefault()
-  target.scrollBy({top, behavior: "auto"})
+  target.scrollBy({ top, behavior: "auto" })
   focusArticle(hook)
 }
 
 function isInteractiveTarget(target) {
   const element = target instanceof Element ? target : target?.parentElement
-  return !!element?.closest("input, textarea, select, button, a, [contenteditable='true']")
+  return !!element?.closest(
+    "input, textarea, select, button, a, [contenteditable='true']",
+  )
 }
 
 function cssEscape(value) {
@@ -166,11 +199,12 @@ function cssEscape(value) {
 function initObserver(hook) {
   if (!hook.article) return
 
-  const observerRoot = hook.article.dataset.scrollTarget === "window" ? null : hook.article
+  const observerRoot =
+    hook.article.dataset.scrollTarget === "window" ? null : hook.article
 
   hook.observer = new IntersectionObserver(
-    entries => handleObserverEntries(hook, entries),
-    {root: observerRoot, rootMargin: BAND_ROOT_MARGIN}
+    (entries) => handleObserverEntries(hook, entries),
+    { root: observerRoot, rootMargin: BAND_ROOT_MARGIN },
   )
   refreshSections(hook)
   refreshTocLinks(hook)
@@ -213,7 +247,9 @@ function handleObserverEntries(hook, entries) {
 function refreshSections(hook) {
   if (!hook.article || !hook.observer) return
 
-  const sections = Array.from(hook.article.querySelectorAll("section[id], details[id]"))
+  const sections = Array.from(
+    hook.article.querySelectorAll("section[id], details[id]"),
+  )
   const next = new Set(sections)
 
   for (const section of hook.observedSections) {
@@ -228,7 +264,9 @@ function refreshSections(hook) {
   }
 
   hook.observedSections = next
-  hook.sectionOrder = new Map(sections.map((section, index) => [section, index]))
+  hook.sectionOrder = new Map(
+    sections.map((section, index) => [section, index]),
+  )
 }
 
 function refreshTocLinks(hook) {
@@ -252,7 +290,9 @@ function currentSection(hook) {
     const depth = sectionDepth(right) - sectionDepth(left)
     if (depth !== 0) return depth
 
-    return (hook.sectionOrder.get(right) ?? 0) - (hook.sectionOrder.get(left) ?? 0)
+    return (
+      (hook.sectionOrder.get(right) ?? 0) - (hook.sectionOrder.get(left) ?? 0)
+    )
   })[0]
 }
 
@@ -278,16 +318,22 @@ async function copyMarkdown(hook) {
 }
 
 function markdownFor(root) {
-  if (root instanceof HTMLElement && root.matches("section.document-print-document[id]")) {
+  if (
+    root instanceof HTMLElement &&
+    root.matches("section.document-print-document[id]")
+  ) {
     return documentMarkdown(root)
   }
-  if (root instanceof HTMLElement && root.matches("section.document-print-section[id]")) {
+  if (
+    root instanceof HTMLElement &&
+    root.matches("section.document-print-section[id]")
+  ) {
     return sectionMarkdown(root, 2)
   }
   if (root instanceof HTMLDetailsElement) return sectionMarkdown(root, 2)
 
   return Array.from(root.children)
-    .flatMap(child => blockMarkdown(child, 2))
+    .flatMap((child) => blockMarkdown(child, 2))
     .join("\n\n")
     .trim()
 }
@@ -295,30 +341,42 @@ function markdownFor(root) {
 function documentMarkdown(section) {
   return [
     `# ${text(section.querySelector(":scope > h1"))}`,
-    ...Array.from(section.querySelector(":scope > div")?.children ?? []).flatMap(child =>
-      blockMarkdown(child, 2)
-    ),
-  ].filter(Boolean).join("\n\n")
+    ...Array.from(
+      section.querySelector(":scope > div")?.children ?? [],
+    ).flatMap((child) => blockMarkdown(child, 2)),
+  ]
+    .filter(Boolean)
+    .join("\n\n")
 }
 
 function sectionMarkdown(section, level) {
   return [
     `${"#".repeat(level)} ${text(sectionHeading(section))}`,
-    ...Array.from(section.querySelector(":scope > div")?.children ?? []).flatMap(child =>
-      blockMarkdown(child, level + 1)
-    ),
-  ].filter(Boolean).join("\n\n")
+    ...Array.from(
+      section.querySelector(":scope > div")?.children ?? [],
+    ).flatMap((child) => blockMarkdown(child, level + 1)),
+  ]
+    .filter(Boolean)
+    .join("\n\n")
 }
 
 function blockMarkdown(element, level) {
-  if (element instanceof HTMLElement && element.matches("section.document-print-section[id]")) {
+  if (
+    element instanceof HTMLElement &&
+    element.matches("section.document-print-section[id]")
+  ) {
     return [sectionMarkdown(element, level)]
   }
-  if (element instanceof HTMLDetailsElement) return [sectionMarkdown(element, level)]
-  if (element instanceof HTMLHeadingElement) return [`${"#".repeat(headingLevel(element))} ${text(element)}`]
-  if (element instanceof HTMLParagraphElement) return [text(element.lastElementChild ?? element)]
+  if (element instanceof HTMLDetailsElement)
+    return [sectionMarkdown(element, level)]
+  if (element instanceof HTMLHeadingElement)
+    return [`${"#".repeat(headingLevel(element))} ${text(element)}`]
+  if (element instanceof HTMLParagraphElement)
+    return [text(element.lastElementChild ?? element)]
   if (element instanceof HTMLDivElement) {
-    return Array.from(element.children).flatMap(child => blockMarkdown(child, level))
+    return Array.from(element.children).flatMap((child) =>
+      blockMarkdown(child, level),
+    )
   }
 
   return []
@@ -329,7 +387,11 @@ function headingLevel(heading) {
 }
 
 function blockHeading(block) {
-  return block?.querySelector(":scope > h1, :scope > header h2, :scope > summary h2")?.textContent.trim() ?? ""
+  return (
+    block
+      ?.querySelector(":scope > h1, :scope > header h2, :scope > summary h2")
+      ?.textContent.trim() ?? ""
+  )
 }
 
 function sectionHeading(section) {
@@ -338,10 +400,10 @@ function sectionHeading(section) {
 
 function tocLinks(hook) {
   return new Map(
-    Array.from(hook.el.querySelectorAll("[data-toc-link]")).map(link => [
+    Array.from(hook.el.querySelectorAll("[data-toc-link]")).map((link) => [
       link.dataset.tocLink,
       link,
-    ])
+    ]),
   )
 }
 
@@ -358,7 +420,8 @@ function updateCurrentTocLink(hook, section) {
 }
 
 function tocLinkForSection(hook, section) {
-  if (section && hook.tocLinks.has(section.id)) return hook.tocLinks.get(section.id)
+  if (section && hook.tocLinks.has(section.id))
+    return hook.tocLinks.get(section.id)
   if (hook.currentTocLink) return hook.currentTocLink
 
   return hook.tocLinks.values().next().value
@@ -382,7 +445,10 @@ function keepTocLinkVisible(hook, link) {
   if (linkRect.top >= topLimit && linkRect.bottom <= bottomLimit) return
 
   toc.scrollTo({
-    top: Math.max(0, toc.scrollTop + linkRect.top - tocRect.top - toc.clientHeight * 0.35),
+    top: Math.max(
+      0,
+      toc.scrollTop + linkRect.top - tocRect.top - toc.clientHeight * 0.35,
+    ),
   })
 }
 
@@ -394,5 +460,8 @@ function flashCopied(button) {
   if (!button) return
 
   button.classList.add("text-stone-950", "dark:text-stone-100")
-  window.setTimeout(() => button.classList.remove("text-stone-950", "dark:text-stone-100"), 700)
+  window.setTimeout(
+    () => button.classList.remove("text-stone-950", "dark:text-stone-100"),
+    700,
+  )
 }

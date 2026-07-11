@@ -311,6 +311,56 @@ defmodule Sheaf.DocumentsTest do
              Enum.find(Documents.from_dataset(dataset), &(&1.id == "PAPER1"))
   end
 
+  test "indexes document kinds from the metadata graph" do
+    doc = ~I<https://example.com/sheaf/PAPER1>
+    expression = ~I<https://example.com/work/PAPER1-expression>
+    thesis = ~I<https://example.com/sheaf/THESIS>
+
+    document_graph =
+      RDF.Graph.new(
+        [
+          {doc, RDFS.label(), "Imported PDF title"},
+          {doc, CITO.cites(), thesis}
+        ],
+        name: doc
+      )
+
+    metadata_graph =
+      RDF.Graph.new(
+        [
+          {doc, RDF.type(), DOC.Document},
+          {doc, RDF.type(), DOC.Paper},
+          {doc, FABIO.isRepresentationOf(), expression},
+          {expression, DCTERMS.title(), "Article title"}
+        ],
+        name: Sheaf.Repo.metadata_graph()
+      )
+
+    thesis_graph =
+      RDF.Graph.new(
+        [
+          {thesis, RDFS.label(), "Example thesis"}
+        ],
+        name: thesis
+      )
+
+    dataset =
+      RDF.Dataset.new()
+      |> RDF.Dataset.add(document_graph)
+      |> RDF.Dataset.add(metadata_graph)
+      |> RDF.Dataset.add(thesis_graph)
+
+    assert [
+             %{
+               id: "PAPER1",
+               kind: :paper,
+               path: "/PAPER1",
+               title: "Article title",
+               metadata: %{title: "Article title"}
+             }
+           ] = Documents.from_dataset(dataset)
+  end
+
   test "ignores citations from excluded thesis documents when creating metadata-only rows" do
     workspace = ~I<https://example.com/sheaf/WORKSPACE>
     thesis = ~I<https://example.com/sheaf/THESIS>

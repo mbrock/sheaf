@@ -1,65 +1,61 @@
 #!/usr/bin/env bun
 
-import { parseArgs } from "util";
+import { parseArgs } from "util"
 
 type DocsResponse = {
-  targets: DocsTarget[];
-};
+  targets: DocsTarget[]
+}
 
-type DocsTarget =
-  | DocsOverview
-  | DocsModule
-  | DocsFunctionGroup
-  | DocsError;
+type DocsTarget = DocsOverview | DocsModule | DocsFunctionGroup | DocsError
 
 type DocsOverview = {
-  kind: "overview";
-  app: string;
-  title: string;
-  modules: Array<{ name: string; depth: number; summary?: string | null }>;
-};
+  kind: "overview"
+  app: string
+  title: string
+  modules: Array<{ name: string; depth: number; summary?: string | null }>
+}
 
 type DocsModule = {
-  kind: "module";
-  module: string;
-  requested_as: string;
-  source?: string | null;
-  doc?: string | null;
-  public_function_count: number;
-  public_functions: DocsFunction[];
-  source_excerpt?: SourceExcerpt | null;
-};
+  kind: "module"
+  module: string
+  requested_as: string
+  source?: string | null
+  doc?: string | null
+  public_function_count: number
+  public_functions: DocsFunction[]
+  source_excerpt?: SourceExcerpt | null
+}
 
 type DocsFunctionGroup = {
-  kind: "function_group";
-  requested_as: string;
-  functions: DocsFunction[];
-};
+  kind: "function_group"
+  requested_as: string
+  functions: DocsFunction[]
+}
 
 type DocsFunction = {
-  name: string;
-  arity: number;
-  kind: string;
-  signature: string;
-  doc?: string | null;
-  module?: string;
-  source?: { path?: string | null; line?: number | null };
-  source_excerpt?: SourceExcerpt | null;
-};
+  name: string
+  arity: number
+  kind: string
+  signature: string
+  doc?: string | null
+  module?: string
+  source?: { path?: string | null; line?: number | null }
+  source_excerpt?: SourceExcerpt | null
+}
 
 type DocsError = {
-  kind: "error";
-  requested_as?: string;
-  module?: string;
-  error: string;
-};
+  kind: "error"
+  requested_as?: string
+  module?: string
+  error: string
+}
 
 type SourceExcerpt = {
-  from: number;
-  to: number;
-  language: string;
-  lines: string[];
-};
+  from: number
+  to: number
+  language: string
+  lines: string[]
+}
 
 const usage = `Usage: bin/docs [--source] [--json] [--host URL] [:app_name | Module.Name | Module.function/arity ...]
 
@@ -68,7 +64,7 @@ Examples:
   bin/docs :rdf
   bin/docs Sheaf
   bin/docs Sheaf.mint/0
-  bin/docs --source Sheaf.query/2 RDF.Graph`;
+  bin/docs --source Sheaf.query/2 RDF.Graph`
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -79,11 +75,11 @@ const { values, positionals } = parseArgs({
     host: { type: "string" },
     help: { type: "boolean", short: "h" },
   },
-});
+})
 
 if (values.help) {
-  console.log(usage);
-  process.exit(0);
+  console.log(usage)
+  process.exit(0)
 }
 
 const baseUrl = (
@@ -91,39 +87,41 @@ const baseUrl = (
   process.env.SHEAF_DOCS_HOST ||
   process.env.SHEAF_HOST ||
   `http://127.0.0.1:${process.env.PORT || "4000"}`
-).replace(/\/+$/, "");
+).replace(/\/+$/, "")
 
-const params = new URLSearchParams();
-for (const target of positionals) params.append("target", target);
-if (values.source) params.set("source", "true");
+const params = new URLSearchParams()
+for (const target of positionals) params.append("target", target)
+if (values.source) params.set("source", "true")
 
-const path = `/api/docs${params.size ? `?${params}` : ""}`;
+const path = `/api/docs${params.size ? `?${params}` : ""}`
 const response = await fetch(`${baseUrl}${path}`, {
   headers: { accept: "application/json" },
-});
+})
 
 if (!response.ok) {
-  fail(`GET ${path} failed: HTTP ${response.status}\n${await response.text()}`);
+  fail(
+    `GET ${path} failed: HTTP ${response.status}\n${await response.text()}`,
+  )
 }
 
-const data = (await response.json()) as DocsResponse;
+const data = (await response.json()) as DocsResponse
 
 if (values.json) {
-  console.log(JSON.stringify(data, null, 2));
+  console.log(JSON.stringify(data, null, 2))
 } else {
-  console.log(data.targets.map(renderTarget).join("\n\n---\n\n"));
+  console.log(data.targets.map(renderTarget).join("\n\n---\n\n"))
 }
 
 function renderTarget(target: DocsTarget): string {
   switch (target.kind) {
     case "overview":
-      return renderOverview(target);
+      return renderOverview(target)
     case "module":
-      return renderModule(target);
+      return renderModule(target)
     case "function_group":
-      return target.functions.map(renderFunction).join("\n\n");
+      return target.functions.map(renderFunction).join("\n\n")
     case "error":
-      return renderError(target);
+      return renderError(target)
   }
 }
 
@@ -138,10 +136,10 @@ function renderOverview(target: DocsOverview): string {
     "",
     `${target.title} modules`,
     ...target.modules.map((mod) => {
-      const summary = mod.summary ? ` - ${mod.summary}` : "";
-      return `${"  ".repeat(mod.depth)}- ${mod.name}${summary}`;
+      const summary = mod.summary ? ` - ${mod.summary}` : ""
+      return `${"  ".repeat(mod.depth)}- ${mod.name}${summary}`
     }),
-  ].join("\n");
+  ].join("\n")
 }
 
 function renderModule(target: DocsModule): string {
@@ -158,7 +156,7 @@ function renderModule(target: DocsModule): string {
     ...target.public_functions.map((fn) => `- ${fn.signature}`),
     target.source_excerpt ? "" : null,
     renderSourceExcerpt(target.source_excerpt),
-  ]).join("\n");
+  ]).join("\n")
 }
 
 function renderFunction(fn: DocsFunction): string {
@@ -171,34 +169,37 @@ function renderFunction(fn: DocsFunction): string {
     fn.doc,
     fn.source_excerpt ? "" : null,
     renderSourceExcerpt(fn.source_excerpt),
-  ]).join("\n");
+  ]).join("\n")
 }
 
 function renderError(target: DocsError): string {
-  const heading = target.requested_as || target.module || "docs error";
-  return `# ${heading}\n\n${target.error}`;
+  const heading = target.requested_as || target.module || "docs error"
+  return `# ${heading}\n\n${target.error}`
 }
 
 function renderSourceExcerpt(excerpt?: SourceExcerpt | null): string | null {
-  if (!excerpt) return null;
+  if (!excerpt) return null
 
   const body = excerpt.lines
     .map((line, index) => `${excerpt.from + index}: ${line}`)
-    .join("\n");
+    .join("\n")
 
   return [
     `Source excerpt ${excerpt.from}-${excerpt.to}:`,
     `\`\`\`${excerpt.language || ""}`,
     body,
     "```",
-  ].join("\n");
+  ].join("\n")
 }
 
 function compact<T>(values: Array<T | null | undefined | false>): T[] {
-  return values.filter((value): value is T => value !== null && value !== undefined && value !== false);
+  return values.filter(
+    (value): value is T =>
+      value !== null && value !== undefined && value !== false,
+  )
 }
 
 function fail(message: string): never {
-  console.error(`bin/docs: ${message}`);
-  process.exit(1);
+  console.error(`bin/docs: ${message}`)
+  process.exit(1)
 }

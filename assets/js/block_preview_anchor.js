@@ -5,12 +5,23 @@ let activePreviewId = null
 let activeAnchorName = null
 
 export function installBlockPreviewAnchors() {
-  document.addEventListener("pointerover", activateBlockPreviewAnchor, {passive: true})
+  document.addEventListener("pointerover", activateBlockPreviewAnchor, {
+    passive: true,
+  })
   document.addEventListener("focusin", activateBlockPreviewAnchor)
-  document.addEventListener("sheaf:block-preview-rendered", positionRenderedBlockPreview)
-  window.addEventListener("phx:sheaf:block-preview-rendered", positionRenderedBlockPreview)
-  window.addEventListener("resize", repositionBlockPreview, {passive: true})
-  window.addEventListener("scroll", repositionBlockPreview, {passive: true, capture: true})
+  document.addEventListener(
+    "sheaf:block-preview-rendered",
+    positionRenderedBlockPreview,
+  )
+  window.addEventListener(
+    "phx:sheaf:block-preview-rendered",
+    positionRenderedBlockPreview,
+  )
+  window.addEventListener("resize", repositionBlockPreview, { passive: true })
+  window.addEventListener("scroll", repositionBlockPreview, {
+    passive: true,
+    capture: true,
+  })
 }
 
 function activateBlockPreviewAnchor(event) {
@@ -25,7 +36,13 @@ function activateBlockPreviewAnchor(event) {
 
   if (changed) {
     hideStalePopovers(previewId)
-    trigger.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, view: window}))
+    trigger.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      }),
+    )
   } else {
     positionCurrentPopover()
   }
@@ -81,7 +98,10 @@ function setActiveAnchor(trigger, previewId) {
   activePreviewId = previewId
   activeAnchorName = anchorNameForPreview(previewId)
 
-  trigger.style.setProperty("anchor-name", `${defaultAnchorName}, ${activeAnchorName}`)
+  trigger.style.setProperty(
+    "anchor-name",
+    `${defaultAnchorName}, ${activeAnchorName}`,
+  )
   trigger.dataset.blockPreviewActive = "true"
 }
 
@@ -97,8 +117,9 @@ function clearActiveAnchor() {
 }
 
 function hideStalePopovers(previewId) {
-  document.querySelectorAll(".block-preview-popover").forEach(popover => {
-    if (!previewId || popover.dataset.previewId !== previewId) popover.hidden = true
+  document.querySelectorAll(".block-preview-popover").forEach((popover) => {
+    if (!previewId || popover.dataset.previewId !== previewId)
+      popover.hidden = true
   })
 }
 
@@ -140,12 +161,16 @@ function blockPreviewTrigger(target) {
 }
 
 function findTrigger(previewId) {
-  return document.querySelector(`.block-preview-trigger[data-preview-id="${cssEscape(previewId)}"]`)
+  return document.querySelector(
+    `.block-preview-trigger[data-preview-id="${cssEscape(previewId)}"]`,
+  )
 }
 
 function findBlockPreviewPopover(previewId) {
   if (previewId) {
-    return document.querySelector(`.block-preview-popover[data-preview-id="${cssEscape(previewId)}"]`)
+    return document.querySelector(
+      `.block-preview-popover[data-preview-id="${cssEscape(previewId)}"]`,
+    )
   }
 
   return document.querySelector(".block-preview-popover")
@@ -160,4 +185,5 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
 }
 
-const cssEscape = window.CSS?.escape ?? (value => `${value}`.replace(/["\\]/g, "\\$&"))
+const cssEscape =
+  window.CSS?.escape ?? ((value) => `${value}`.replace(/["\\]/g, "\\$&"))

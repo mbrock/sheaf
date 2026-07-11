@@ -31,17 +31,25 @@ func main() {
 
 	redisURL := flag.String("redis-url", envDefault("SHEAF_OTEL_REDIS_URL", "redis://localhost:6379"), "Redis URL")
 	stream := flag.String("stream", otelstream.DefaultStream(), "Redis stream key")
-	backfillArg := flag.String("backfill", "100", "Backfill count or duration like 200, 5m, 1h")
+	backfillArg := flag.String("backfill", "100", "Backfill count, duration like 200, 5m, 1h, or all")
 	jsonOut := flag.Bool("json", false, "Output raw JSON, one object per line")
 	jsonLines := flag.Bool("jsonl", false, "Output raw JSON Lines, one span event per line")
 	tree := flag.Bool("tree", false, "Render a one-shot trace tree from backfilled spans and exit")
 	follow := flag.Bool("follow", false, "Keep reading new spans after the backfill")
 	flag.BoolVar(follow, "f", false, "Keep reading new spans after the backfill")
 	tui := flag.Bool("tui", false, "Run an interactive terminal UI")
+	exportParquetPath := flag.String("export-parquet", "", "Export backfilled spans to a Hive-partitioned Parquet dataset directory and exit")
+	partitionBy := flag.String("partition-by", "span_date", "Comma-separated Parquet partition columns for -export-parquet")
+	duckDB := flag.String("duckdb", envDefault("DUCKDB", "duckdb"), "DuckDB executable for -export-parquet")
+	overwriteExport := flag.Bool("overwrite", true, "Overwrite an existing Parquet dataset during -export-parquet")
+	exportBatch := flag.Int64("export-batch", 1000, "Redis scan batch size for -export-parquet")
 	noColor := flag.Bool("no-color", false, "Disable ANSI colors")
 	verbose := flag.Bool("v", false, "Print all attributes, not just promoted ones")
 	flag.Parse()
 	backfill := parseBackfill(*backfillArg)
+	if *exportParquetPath != "" && !flagWasPassed("backfill") {
+		backfill = otelstream.Backfill{All: true}
+	}
 
 	if *noColor || os.Getenv("NO_COLOR") != "" {
 		disableColors()
@@ -79,6 +87,28 @@ func main() {
 		OnReadError: func(err error) {
 			log.Printf("xread: %v (retrying)", err)
 		},
+	}
+
+	if *exportParquetPath != "" {
+		tailer.BatchCount = *exportBatch
+		result, err := exportParquet(ctx, tailer, backfill, parquetExportOptions{
+			OutputPath:  *exportParquetPath,
+			DuckDB:      *duckDB,
+			PartitionBy: parsePartitionColumns(*partitionBy),
+			Overwrite:   *overwriteExport,
+		})
+		if err != nil && ctx.Err() == nil {
+			log.Fatalf("otel parquet export: %v", err)
+		}
+		if result.Rows == 0 {
+			log.Printf("exported no spans from %s", *stream)
+		} else {
+			log.Printf("exported %d spans to %s", result.Rows, result.Path)
+		}
+		if result.DecodeErrors > 0 {
+			log.Printf("skipped %d malformed span payloads", result.DecodeErrors)
+		}
+		return
 	}
 
 	if *tui {
@@ -127,6 +157,9 @@ func parseBackfill(value string) otelstream.Backfill {
 	if value == "" || value == "0" {
 		return otelstream.Backfill{}
 	}
+	if value == "all" {
+		return otelstream.Backfill{All: true}
+	}
 	if count, err := strconv.ParseInt(value, 10, 64); err == nil {
 		return otelstream.Backfill{Count: count}
 	}
@@ -135,4 +168,14 @@ func parseBackfill(value string) otelstream.Backfill {
 		log.Fatalf("invalid backfill %q: use a count or duration like 200, 5m, 1h", value)
 	}
 	return otelstream.Backfill{Since: time.Now().Add(-duration)}
+}
+
+func flagWasPassed(name string) bool {
+	wasPassed := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			wasPassed = true
+		}
+	})
+	return wasPassed
 }

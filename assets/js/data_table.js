@@ -1,4 +1,4 @@
-import {measureNaturalWidth, prepareWithSegments} from "@chenglou/pretext"
+import { measureNaturalWidth, prepareWithSegments } from "@chenglou/pretext"
 
 const SAFETY_PX = 2
 
@@ -31,7 +31,9 @@ export const DataTable = {
     }
   },
   sync() {
-    const seen = new Set(this.el.querySelectorAll("[data-table-heading-cell]"))
+    const seen = new Set(
+      this.el.querySelectorAll("[data-table-heading-cell]"),
+    )
 
     for (const cell of seen) {
       if (this.cells.has(cell)) continue
@@ -57,7 +59,9 @@ export const DataTable = {
   measureHeadings() {
     let hasRotatedHeading = false
 
-    for (const label of this.el.querySelectorAll("[data-table-heading-label]")) {
+    for (const label of this.el.querySelectorAll(
+      "[data-table-heading-label]",
+    )) {
       const cell = label.closest("[data-table-heading-cell]")
       if (!cell) continue
 
@@ -82,12 +86,16 @@ export const DataTable = {
     let width = this.measureCache.get(cacheKey)
 
     if (width === undefined) {
-      const prepared = prepareWithSegments(text, font, {letterSpacing})
+      const prepared = prepareWithSegments(text, font, { letterSpacing })
       width = measureNaturalWidth(prepared)
       this.measureCache.set(cacheKey, width)
     }
 
-    return width + parseCssPixels(style.paddingLeft) + parseCssPixels(style.paddingRight)
+    return (
+      width +
+      parseCssPixels(style.paddingLeft) +
+      parseCssPixels(style.paddingRight)
+    )
   },
 }
 

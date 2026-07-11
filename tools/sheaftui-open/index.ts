@@ -1,6 +1,11 @@
 #!/usr/bin/env bun
 
-import { BoxRenderable, createCliRenderer, ScrollBoxRenderable, TextRenderable } from "@opentui/core"
+import {
+  BoxRenderable,
+  createCliRenderer,
+  ScrollBoxRenderable,
+  TextRenderable,
+} from "@opentui/core"
 import { mkdirSync, openSync, writeSync } from "fs"
 import { dirname } from "path"
 
@@ -60,8 +65,21 @@ type Row =
 
 type Frame =
   | { kind: "index"; title: string; rows: Row[]; selected: number }
-  | { kind: "document"; title: string; document: DocumentSummary; rows: Row[]; selected: number }
-  | { kind: "block"; title: string; document: DocumentSummary; block: BlockDetail; rows: Row[]; selected: number }
+  | {
+      kind: "document"
+      title: string
+      document: DocumentSummary
+      rows: Row[]
+      selected: number
+    }
+  | {
+      kind: "block"
+      title: string
+      document: DocumentSummary
+      block: BlockDetail
+      rows: Row[]
+      selected: number
+    }
 
 const args = parseArgs(Bun.argv.slice(2))
 const host = cleanHost(
@@ -88,7 +106,14 @@ const renderer = await createCliRenderer({
 
 let loading = true
 let status = "loading documents..."
-let frames: Frame[] = [{ kind: "index", title: "Documents", rows: [{ kind: "message", text: status }], selected: 0 }]
+let frames: Frame[] = [
+  {
+    kind: "index",
+    title: "Documents",
+    rows: [{ kind: "message", text: status }],
+    selected: 0,
+  },
+]
 let renderGeneration = 0
 let rowIds: string[] = []
 
@@ -183,19 +208,42 @@ await refresh()
 
 async function refresh() {
   loading = true
-  status = frames.length === 1 ? "loading documents..." : "refreshing documents..."
+  status =
+    frames.length === 1 ? "loading documents..." : "refreshing documents..."
   render()
 
   try {
     const start = performance.now()
-    const documents = await getJson<{ documents?: DocumentSummary[] }>("/api/documents")
-    const rows = documentRows((documents.documents || []).filter((document) => !["transcript", "spreadsheet"].includes(document.kind)))
-    frames = [{ kind: "index", title: "Documents", rows, selected: firstSelectable(rows) }]
+    const documents = await getJson<{ documents?: DocumentSummary[] }>(
+      "/api/documents",
+    )
+    const rows = documentRows(
+      (documents.documents || []).filter(
+        (document) => !["transcript", "spreadsheet"].includes(document.kind),
+      ),
+    )
+    frames = [
+      {
+        kind: "index",
+        title: "Documents",
+        rows,
+        selected: firstSelectable(rows),
+      },
+    ]
     status = `${selectableIndexes(current()).length} documents from ${host}`
-    debug(`documents ok rows=${rows.length} elapsed_ms=${(performance.now() - start).toFixed(1)}`)
+    debug(
+      `documents ok rows=${rows.length} elapsed_ms=${(performance.now() - start).toFixed(1)}`,
+    )
   } catch (error) {
     status = `failed: ${error instanceof Error ? error.message : String(error)}`
-    frames = [{ kind: "index", title: "Documents", rows: [{ kind: "message", text: status }], selected: 0 }]
+    frames = [
+      {
+        kind: "index",
+        title: "Documents",
+        rows: [{ kind: "message", text: status }],
+        selected: 0,
+      },
+    ]
     debug(`documents error ${status}`)
   } finally {
     loading = false
@@ -207,7 +255,13 @@ async function drill() {
   if (loading) return
   const frame = current()
   const row = frame.rows[frame.selected]
-  if (!row || row.kind === "header" || row.kind === "message" || row.kind === "text") return
+  if (
+    !row ||
+    row.kind === "header" ||
+    row.kind === "message" ||
+    row.kind === "text"
+  )
+    return
 
   loading = true
   status = "loading..."
@@ -215,9 +269,14 @@ async function drill() {
 
   try {
     if (row.kind === "document") {
-      const document = await getJson<DocumentDetail>(`/api/documents/${row.document.id}`)
+      const document = await getJson<DocumentDetail>(
+        `/api/documents/${row.document.id}`,
+      )
       const outline = document.outline || []
-      const rows = outline.length > 0 ? flattenOutline(outline) : [{ kind: "message" as const, text: "no outline" }]
+      const rows =
+        outline.length > 0
+          ? flattenOutline(outline)
+          : [{ kind: "message" as const, text: "no outline" }]
       frames.push({
         kind: "document",
         title: documentTitle(document),
@@ -245,8 +304,14 @@ async function drill() {
   }
 }
 
-async function pushBlock(document: DocumentSummary, blockId: string, fallbackTitle: string) {
-  const block = await getJson<BlockDetail>(`/api/documents/${document.id}/blocks/${blockId}`)
+async function pushBlock(
+  document: DocumentSummary,
+  blockId: string,
+  fallbackTitle: string,
+) {
+  const block = await getJson<BlockDetail>(
+    `/api/documents/${document.id}/blocks/${blockId}`,
+  )
   const rows = blockRows(block)
   frames.push({
     kind: "block",
@@ -257,7 +322,9 @@ async function pushBlock(document: DocumentSummary, blockId: string, fallbackTit
     selected: firstSelectable(rows),
   })
   status = `${block.type || "block"} ${block.id}`
-  debug(`block open document=${document.id} block=${block.id} type=${block.type} rows=${rows.length}`)
+  debug(
+    `block open document=${document.id} block=${block.id} type=${block.type} rows=${rows.length}`,
+  )
 }
 
 function render() {
@@ -283,7 +350,13 @@ function drawRow(row: Row, index: number, selected: boolean) {
   if (row.kind === "header") {
     const count = String(row.count)
     const label = row.label.toUpperCase()
-    addText(`row-${index}`, fitColumns(`  ${label}`, count, renderer.width), "#8f846e", undefined, true)
+    addText(
+      `row-${index}`,
+      fitColumns(`  ${label}`, count, renderer.width),
+      "#8f846e",
+      undefined,
+      true,
+    )
     return
   }
 
@@ -295,11 +368,25 @@ function drawRow(row: Row, index: number, selected: boolean) {
   if (row.kind === "document") {
     const meta = row.document.metadata || {}
     const title = documentTitle(row.document)
-    const right = meta.page_count ? `${meta.page_count} pp.` : statusLabel(meta.status)
+    const right = meta.page_count
+      ? `${meta.page_count} pp.`
+      : statusLabel(meta.status)
     const marker = selected ? "▌ " : "  "
-    addText(`row-${index}`, fitColumns(`${marker}${title}`, right, renderer.width), selected ? "#f0dfb7" : "#d8c7a3", selected ? "#263746" : undefined)
-    const byline = [meta.year, authors(meta.authors)].filter(Boolean).join("  ")
-    if (byline) addText(`row-${index}-meta`, `    ${fit(byline, renderer.width - 4)}`, "#8f846e")
+    addText(
+      `row-${index}`,
+      fitColumns(`${marker}${title}`, right, renderer.width),
+      selected ? "#f0dfb7" : "#d8c7a3",
+      selected ? "#263746" : undefined,
+    )
+    const byline = [meta.year, authors(meta.authors)]
+      .filter(Boolean)
+      .join("  ")
+    if (byline)
+      addText(
+        `row-${index}-meta`,
+        `    ${fit(byline, renderer.width - 4)}`,
+        "#8f846e",
+      )
     return
   }
 
@@ -309,7 +396,10 @@ function drawRow(row: Row, index: number, selected: boolean) {
     const marker = selected ? "▌ " : "  "
     addText(
       `row-${index}`,
-      fit(`${marker}${indent}${number}${row.entry.title || row.entry.id}`, renderer.width),
+      fit(
+        `${marker}${indent}${number}${row.entry.title || row.entry.id}`,
+        renderer.width,
+      ),
       selected ? "#f0dfb7" : row.depth === 0 ? "#d8c7a3" : "#bfb092",
       selected ? "#263746" : undefined,
     )
@@ -331,15 +421,24 @@ function drawRow(row: Row, index: number, selected: boolean) {
   }
 
   const indent = "  ".repeat(row.depth)
-  addText(`row-${index}`, fit(`  ${indent}${row.text}`, renderer.width), "#bfb092")
+  addText(
+    `row-${index}`,
+    fit(`  ${indent}${row.text}`, renderer.width),
+    "#bfb092",
+  )
 }
 
 function documentRows(documents: DocumentSummary[]) {
   const groups = groupDocuments(documents)
   const rows: Row[] = []
   for (const group of groups) {
-    rows.push({ kind: "header", label: group.label, count: group.documents.length })
-    for (const document of group.documents) rows.push({ kind: "document", document })
+    rows.push({
+      kind: "header",
+      label: group.label,
+      count: group.documents.length,
+    })
+    for (const document of group.documents)
+      rows.push({ kind: "document", document })
   }
   return rows
 }
@@ -355,9 +454,15 @@ function groupDocuments(documents: DocumentSummary[]) {
   return [...map.entries()]
     .map(([label, docs]) => ({
       label,
-      documents: docs.sort((a, b) => documentTitle(a).localeCompare(documentTitle(b))),
+      documents: docs.sort((a, b) =>
+        documentTitle(a).localeCompare(documentTitle(b)),
+      ),
     }))
-    .sort((a, b) => groupOrder(a.label) - groupOrder(b.label) || a.label.localeCompare(b.label))
+    .sort(
+      (a, b) =>
+        groupOrder(a.label) - groupOrder(b.label) ||
+        a.label.localeCompare(b.label),
+    )
 }
 
 function groupLabel(document: DocumentSummary) {
@@ -372,7 +477,15 @@ function groupLabel(document: DocumentSummary) {
 }
 
 function groupOrder(label: string) {
-  const index = ["Thesis", "Journal articles", "Books", "Book chapters", "Doctoral theses", "Reports", "Documents"].indexOf(label)
+  const index = [
+    "Thesis",
+    "Journal articles",
+    "Books",
+    "Book chapters",
+    "Doctoral theses",
+    "Reports",
+    "Documents",
+  ].indexOf(label)
   return index === -1 ? 99 : index
 }
 
@@ -386,7 +499,10 @@ function flattenOutline(entries: OutlineEntry[], depth = 0): Row[] {
 function blockRows(block: BlockDetail): Row[] {
   const rows: Row[] = []
   if (block.text) {
-    for (const line of wrap(cleanText(block.text), Math.max(20, renderer.width - 4)).slice(0, 40)) {
+    for (const line of wrap(
+      cleanText(block.text),
+      Math.max(20, renderer.width - 4),
+    ).slice(0, 40)) {
       rows.push({ kind: "text", text: line, depth: 0 })
     }
   }
@@ -413,7 +529,10 @@ function select(index: number) {
 function popFrame() {
   if (frames.length <= 1) return
   frames.pop()
-  status = frames.length === 1 ? `${selectableIndexes(current()).length} documents from ${host}` : current().title
+  status =
+    frames.length === 1
+      ? `${selectableIndexes(current()).length} documents from ${host}`
+      : current().title
   render()
 }
 
@@ -424,34 +543,52 @@ function current() {
 function nearestDocument() {
   for (let i = frames.length - 1; i >= 0; i--) {
     const frame = frames[i]!
-    if (frame.kind === "document" || frame.kind === "block") return frame.document
+    if (frame.kind === "document" || frame.kind === "block")
+      return frame.document
   }
   return undefined
 }
 
 function selectableIndexes(frame: Frame) {
   return frame.rows.flatMap((row, index) =>
-    row.kind === "document" || row.kind === "outline" || row.kind === "block" ? [index] : [],
+    row.kind === "document" || row.kind === "outline" || row.kind === "block"
+      ? [index]
+      : [],
   )
 }
 
 function firstSelectable(rows: Row[]) {
-  return rows.findIndex((row) => row.kind === "document" || row.kind === "outline" || row.kind === "block")
+  return rows.findIndex(
+    (row) =>
+      row.kind === "document" ||
+      row.kind === "outline" ||
+      row.kind === "block",
+  )
 }
 
 async function getJson<T>(path: string): Promise<T> {
   const endpoint = `${host}${path}`
   const start = performance.now()
   debug(`fetch start endpoint=${endpoint}`)
-  const res = await fetch(endpoint, { headers: { accept: "application/json" } })
+  const res = await fetch(endpoint, {
+    headers: { accept: "application/json" },
+  })
   const text = await res.text()
-  debug(`fetch response status=${res.status} bytes=${text.length} elapsed_ms=${(performance.now() - start).toFixed(1)}`)
+  debug(
+    `fetch response status=${res.status} bytes=${text.length} elapsed_ms=${(performance.now() - start).toFixed(1)}`,
+  )
   const body = JSON.parse(text)
   if (!res.ok) throw new Error(body.error || body.reason || res.statusText)
   return body as T
 }
 
-function addText(id: string, content: string, fg: string, bg?: string, _bold = false) {
+function addText(
+  id: string,
+  content: string,
+  fg: string,
+  bg?: string,
+  _bold = false,
+) {
   const row = new TextRenderable(renderer, {
     id: rowId(id),
     width: "100%",
@@ -478,7 +615,10 @@ function clearRows() {
 
 function footerText() {
   const crumbs = frames.map((frame) => frame.title).join(" / ")
-  return fit(`${crumbs}   ${status}   j/k move  enter drill  h back  r refresh  q quit`, renderer.width)
+  return fit(
+    `${crumbs}   ${status}   j/k move  enter drill  h back  r refresh  q quit`,
+    renderer.width,
+  )
 }
 
 function documentTitle(document: DocumentSummary) {
@@ -524,7 +664,10 @@ function wrap(text: string, width: number) {
 }
 
 function cleanText(value: string) {
-  return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+  return value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
 function rowId(id: string) {

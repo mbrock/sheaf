@@ -1,6 +1,6 @@
 export const SubmitShortcut = {
   mounted() {
-    this.onKeyDown = event => {
+    this.onKeyDown = (event) => {
       if (event.defaultPrevented || event.isComposing) return
       if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return
 

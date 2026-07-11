@@ -339,12 +339,11 @@ defmodule Sheaf.Documents do
           %{name: nil}, index ->
             index
 
-          %Graph{name: graph_name} = graph, index ->
+          %Graph{} = graph, index ->
             graph
-            |> Graph.description(graph_name)
-            |> document_index_description(
+            |> Graph.triples()
+            |> document_index_triples(
               index,
-              graph_name,
               kinds,
               thesis,
               rdf_type,
@@ -396,10 +395,9 @@ defmodule Sheaf.Documents do
     %{documents: %{}, theses_by_graph: %{}, cites_by_graph: %{}}
   end
 
-  defp document_index_description(
-         %Description{} = description,
+  defp document_index_triples(
+         triples,
          index,
-         graph_name,
          kinds,
          thesis,
          rdf_type,
@@ -407,61 +405,39 @@ defmodule Sheaf.Documents do
          page_count,
          cites
        ) do
-    types = Description.get(description, rdf_type, [])
-    document_kinds = Enum.filter(types, &MapSet.member?(kinds, &1))
+    Enum.reduce(triples, index, fn
+      {subject, ^rdf_type, object}, index ->
+        cond do
+          object == thesis ->
+            index
+            |> update_document_index(subject, :kinds, object)
+            |> update_graph_set(:theses_by_graph, subject, subject)
 
-    index =
-      Enum.reduce(document_kinds, index, fn kind, index ->
-        update_document_index(index, graph_name, :kinds, kind)
-      end)
+          MapSet.member?(kinds, object) ->
+            update_document_index(index, subject, :kinds, object)
 
-    index =
-      if thesis in types do
-        update_graph_set(index, :theses_by_graph, graph_name, graph_name)
-      else
+          true ->
+            index
+        end
+
+      {subject, ^label, object}, index ->
+        update_document_index(index, subject, :labels, object)
+
+      {subject, ^page_count, object}, index ->
+        update_document_index(
+          index,
+          subject,
+          :page_counts,
+          page_number(object)
+        )
+
+      {subject, ^cites, object}, index ->
+        update_graph_list(index, :cites_by_graph, subject, {subject, object})
+
+      _triple, index ->
         index
-      end
-
-    index =
-      description
-      |> Description.get(label, [])
-      |> Enum.reduce(
-        index,
-        &update_document_index(&2, graph_name, :labels, &1)
-      )
-
-    index =
-      description
-      |> Description.get(page_count, [])
-      |> Enum.reduce(
-        index,
-        &update_document_index(&2, graph_name, :page_counts, page_number(&1))
-      )
-
-    description
-    |> Description.get(cites, [])
-    |> Enum.reduce(index, fn cited_doc, index ->
-      update_graph_list(
-        index,
-        :cites_by_graph,
-        graph_name,
-        {graph_name, cited_doc}
-      )
     end)
   end
-
-  defp document_index_description(
-         nil,
-         index,
-         _graph_name,
-         _kinds,
-         _thesis,
-         _rdf_type,
-         _label,
-         _page_count,
-         _cites
-       ),
-       do: index
 
   defp update_document_index(index, _doc, _key, nil), do: index
 

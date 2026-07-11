@@ -100,6 +100,7 @@ defmodule Sheaf.NS do
       creator
       date
       format
+      hasPart
       identifier
       isPartOf
       publisher
@@ -107,10 +108,24 @@ defmodule Sheaf.NS do
     ]
   )
 
+  defvocab(C4O,
+    base_iri: "http://purl.org/spar/c4o/",
+    terms: ~w[
+      hasContent
+    ]
+  )
+
   defvocab(DEO,
     base_iri: "http://purl.org/spar/deo/",
     terms: ~w[
       BibliographicReference
+    ]
+  )
+
+  defvocab(DOCO,
+    base_iri: "http://purl.org/spar/doco/",
+    terms: ~w[
+      Paragraph
     ]
   )
 
@@ -166,6 +181,7 @@ defmodule Sheaf.NS do
     terms: ~w[
       doi
       endingPage
+      isbn
       issn
       issueIdentifier
       startingPage

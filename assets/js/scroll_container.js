@@ -11,13 +11,18 @@ export const ScrollContainer = {
       scheduleScrollToBottom(this.scrollTarget, "smooth")
     }
 
-    this.scrollTarget.addEventListener("scroll", this.onScroll, {passive: true})
+    this.scrollTarget.addEventListener("scroll", this.onScroll, {
+      passive: true,
+    })
     this.bottomButton?.addEventListener("click", this.onBottomButtonClick)
 
-    this.handleEvent("scroll-container-to-bottom", ({id, behavior} = {}) => {
-      if (id && id !== this.el.id) return
-      scheduleScrollToBottom(this.scrollTarget, behavior || "smooth")
-    })
+    this.handleEvent(
+      "scroll-container-to-bottom",
+      ({ id, behavior } = {}) => {
+        if (id && id !== this.el.id) return
+        scheduleScrollToBottom(this.scrollTarget, behavior || "smooth")
+      },
+    )
 
     if (this.el.dataset.scrollInitial === "bottom") {
       scheduleScrollToBottom(this.scrollTarget, "auto")
@@ -76,16 +81,19 @@ function scrollMetrics(target) {
 
 function shouldStickToBottom(target) {
   const element = target === window ? document.documentElement : target
-  const threshold = Number.parseInt(element.dataset.scrollBottomThreshold || "96", 10)
-  const {scrollHeight, scrollTop, clientHeight} = scrollMetrics(target)
+  const threshold = Number.parseInt(
+    element.dataset.scrollBottomThreshold || "96",
+    10,
+  )
+  const { scrollHeight, scrollTop, clientHeight } = scrollMetrics(target)
   return scrollHeight - scrollTop - clientHeight <= threshold
 }
 
 function scheduleScrollToBottom(target, behavior) {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      const {scrollHeight} = scrollMetrics(target)
-      target.scrollTo({top: scrollHeight, behavior})
+      const { scrollHeight } = scrollMetrics(target)
+      target.scrollTo({ top: scrollHeight, behavior })
     })
   })
 }
@@ -93,7 +101,9 @@ function scheduleScrollToBottom(target, behavior) {
 function findBottomButton(element) {
   const id = element.id
   if (!id) return null
-  return document.querySelector(`[data-scroll-bottom-button="${CSS.escape(id)}"]`)
+  return document.querySelector(
+    `[data-scroll-bottom-button="${CSS.escape(id)}"]`,
+  )
 }
 
 function updateBottomButton(button, isAtBottom) {

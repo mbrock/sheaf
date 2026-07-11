@@ -26,28 +26,43 @@ export class SheafClient {
   }
 
   iri(idOrIri: string) {
+    // Most CLI commands accept either a full IRI or the short resource id that
+    // Sheaf shows in URLs. Internally we always query RDF by full IRI.
     if (/^https?:\/\//.test(idOrIri)) return idOrIri
     return `https://sheaf.less.rest/${idOrIri.replace(/^\/+/, "")}`
   }
 
   id(iri: string | Term) {
+    // The inverse of iri(): trim Sheaf's public resource base back to the
+    // compact id used in command output.
     const value = typeof iri === "string" ? iri : iri.value
     return value.replace(/^https:\/\/sheaf\.less\.rest\//, "")
   }
 
   async *streamQuads(pattern: QuadPattern = {}): AsyncIterable<Quad> {
+    // /rdf/quads is the raw RDF access point. The four query parameters are
+    // the RDF quad slots: subject, predicate, object, and graph. Leaving a slot
+    // out makes it a wildcard.
     const endpoint = this.quadsUrl(pattern)
     const response = await this.fetch(endpoint, {
       headers: { accept: "application/n-quads" },
     })
 
     if (!response.ok) {
-      throw new Error(`GET ${endpoint} returned ${response.status} ${response.statusText}`)
+      throw new Error(
+        `GET ${endpoint} returned ${response.status} ${response.statusText}`,
+      )
     }
 
     if (!response.body) return
 
-    const parser = new StreamParser({ format: "N-Quads", blankNodePrefix: "" })
+    // N-Quads is a line-oriented RDF format. n3's StreamParser turns those
+    // lines into RDFJS Quad objects so callers can process large responses
+    // without first buffering the whole graph in memory.
+    const parser = new StreamParser({
+      format: "N-Quads",
+      blankNodePrefix: "",
+    })
     Readable.fromWeb(response.body as any).pipe(parser)
 
     for await (const quad of parser) {
@@ -56,19 +71,26 @@ export class SheafClient {
   }
 
   async nquads(pattern: QuadPattern = {}) {
+    // This returns the same raw RDF as streamQuads(), but as one string. JSON-LD
+    // conversion needs the complete RDF document, so jsonld.ts uses this path.
     const endpoint = this.quadsUrl(pattern)
     const response = await this.fetch(endpoint, {
       headers: { accept: "application/n-quads" },
     })
 
     if (!response.ok) {
-      throw new Error(`GET ${endpoint} returned ${response.status} ${response.statusText}`)
+      throw new Error(
+        `GET ${endpoint} returned ${response.status} ${response.statusText}`,
+      )
     }
 
     return response.text()
   }
 
   async loadStore(patterns: QuadPattern | QuadPattern[]) {
+    // n3 Store is an in-memory RDF index. It is the convenient form when we
+    // ask graph questions like "what objects does this subject have for
+    // this predicate?" rather than just print serialized RDF.
     const store = new Store()
     let count = 0
     for (const pattern of Array.isArray(patterns) ? patterns : [patterns]) {
@@ -102,7 +124,11 @@ export function term(value: string | Term) {
   return typeof value === "string" ? namedNode(value) : value
 }
 
-function addTerms(url: URL, key: string, value?: string | Term | Array<string | Term>) {
+function addTerms(
+  url: URL,
+  key: string,
+  value?: string | Term | Array<string | Term>,
+) {
   if (value === undefined) return
   for (const term of Array.isArray(value) ? value : [value]) {
     url.searchParams.append(key, typeof term === "string" ? term : term.value)
@@ -111,7 +137,8 @@ function addTerms(url: URL, key: string, value?: string | Term | Array<string | 
 
 function defaultHost() {
   if (Bun.env.SHEAF_HOST) return Bun.env.SHEAF_HOST
-  if (Bun.env.PORT) return `http://${Bun.env.SHEAF_HTTP_IP || "127.0.0.1"}:${Bun.env.PORT}`
+  if (Bun.env.PORT)
+    return `http://${Bun.env.SHEAF_HTTP_IP || "127.0.0.1"}:${Bun.env.PORT}`
   if (Bun.env.PHX_HOST) return `https://${Bun.env.PHX_HOST}`
   return "https://sheaf.less.rest"
 }

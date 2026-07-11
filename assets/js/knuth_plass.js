@@ -1,4 +1,4 @@
-import {clearCache, prepareWithSegments} from "@chenglou/pretext"
+import { clearCache, prepareWithSegments } from "@chenglou/pretext"
 import Hypher from "hypher"
 import english from "hyphenation.en-us"
 
@@ -29,18 +29,19 @@ export const KnuthPlass = {
     this.scopes = new Map()
     this.pending = new Set()
     this.raf = null
-    this.beforePrint = () => this.invalidateAll({immediate: true})
+    this.beforePrint = () => this.invalidateAll({ immediate: true })
     this.afterPrint = () => this.invalidateAll()
     this.printMedia = window.matchMedia ? window.matchMedia("print") : null
-    this.printMediaListener = event => {
-      if (event.matches) this.invalidateAll({immediate: true})
+    this.printMediaListener = (event) => {
+      if (event.matches) this.invalidateAll({ immediate: true })
       else this.invalidateAll()
     }
-    this.observer = new ResizeObserver(entries => {
+    this.observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const state = this.scopes.get(entry.target)
         if (!state) continue
-        const w = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width
+        const w =
+          entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width
         if (w === state.width) continue
         state.width = w
         state.layoutKey = null
@@ -186,8 +187,13 @@ function snapshotTextNodes(root) {
   let node
   while ((node = walker.nextNode())) {
     const parent = node.parentElement
-    if (parent && (parent.tagName === "SCRIPT" || parent.tagName === "STYLE")) continue
-    result.push({textNode: node, original: node.nodeValue ?? "", font: null})
+    if (parent && (parent.tagName === "SCRIPT" || parent.tagName === "STYLE"))
+      continue
+    result.push({
+      textNode: node,
+      original: node.nodeValue ?? "",
+      font: null,
+    })
   }
   return result
 }
@@ -207,7 +213,9 @@ function refreshSnapshotMetrics(snapshot) {
 }
 
 function unsupportedScope(root) {
-  return !!root.querySelector("br, code, pre, img, picture, svg, canvas, video, audio, iframe, math, table")
+  return !!root.querySelector(
+    "br, code, pre, img, picture, svg, canvas, video, audio, iframe, math, table",
+  )
 }
 
 function prepareScope(snapshot, font) {
@@ -220,7 +228,13 @@ function prepareScope(snapshot, font) {
     const text = entry.original
     for (let j = 0; j < text.length; j++) {
       const ch = text[j]
-      if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\f") {
+      if (
+        ch === " " ||
+        ch === "\t" ||
+        ch === "\n" ||
+        ch === "\r" ||
+        ch === "\f"
+      ) {
         if (!prevSpace) {
           flat.push(" ")
           flatOrigin.push(i)
@@ -267,7 +281,7 @@ function prepareScope(snapshot, font) {
   })
   const normalSpaceWidth = measureText(" ", font)
   const hyphenWidth = measureText("-", font)
-  return {prepared, hyphOrigin, normalSpaceWidth, hyphenWidth}
+  return { prepared, hyphOrigin, normalSpaceWidth, hyphenWidth }
 }
 
 function segmentCharStarts(segments) {
@@ -300,8 +314,18 @@ function measureSegment(seg, origin, start, snapshot, fallbackFont) {
 }
 
 function applyLayout(snapshot, prep, maxWidth) {
-  const breaks = findBreaks(prep.prepared, maxWidth, prep.normalSpaceWidth, prep.hyphenWidth)
-  const out = renderKPText(prep.prepared, breaks, prep.hyphOrigin, snapshot.length)
+  const breaks = findBreaks(
+    prep.prepared,
+    maxWidth,
+    prep.normalSpaceWidth,
+    prep.hyphenWidth,
+  )
+  const out = renderKPText(
+    prep.prepared,
+    breaks,
+    prep.hyphOrigin,
+    snapshot.length,
+  )
   for (let i = 0; i < snapshot.length; i++) {
     const entry = snapshot[i]
     if (entry.textNode.isConnected) entry.textNode.nodeValue = out[i]
@@ -318,7 +342,7 @@ function renderKPText(prepared, breaks, charOrigin, snapshotLength) {
   }
   segCharStart[segments.length] = pos
 
-  const breakAt = new Map(breaks.map(b => [b.segIndex, b.kind]))
+  const breakAt = new Map(breaks.map((b) => [b.segIndex, b.kind]))
   const buckets = []
   for (let i = 0; i < snapshotLength; i++) buckets.push([])
 
@@ -343,7 +367,7 @@ function renderKPText(prepared, breaks, charOrigin, snapshotLength) {
     }
   }
 
-  return buckets.map(b => b.join(""))
+  return buckets.map((b) => b.join(""))
 }
 
 function findBreaks(prepared, maxWidth, normalSpaceWidth, hyphenWidth) {
@@ -356,20 +380,21 @@ function findBreaks(prepared, maxWidth, normalSpaceWidth, hyphenWidth) {
   const isSpaceArr = new Uint8Array(n)
   for (let i = 0; i < n; i++) {
     isShy[i] = segments[i] === SOFT_HYPHEN ? 1 : 0
-    isSpaceArr[i] = (!isShy[i] && isWhitespace(segments[i])) ? 1 : 0
+    isSpaceArr[i] = !isShy[i] && isWhitespace(segments[i]) ? 1 : 0
   }
 
-  const breaks = [{segIndex: 0, kind: "start"}]
+  const breaks = [{ segIndex: 0, kind: "start" }]
   for (let i = 0; i < n - 1; i++) {
-    if (isShy[i]) breaks.push({segIndex: i + 1, kind: "soft-hyphen"})
-    else if (isSpaceArr[i]) breaks.push({segIndex: i + 1, kind: "space"})
+    if (isShy[i]) breaks.push({ segIndex: i + 1, kind: "soft-hyphen" })
+    else if (isSpaceArr[i]) breaks.push({ segIndex: i + 1, kind: "space" })
   }
-  breaks.push({segIndex: n, kind: "end"})
+  breaks.push({ segIndex: n, kind: "end" })
 
   const prefixWordW = new Float64Array(n + 1)
   const prefixSpaces = new Int32Array(n + 1)
   for (let i = 0; i < n; i++) {
-    prefixWordW[i + 1] = prefixWordW[i] + (isShy[i] || isSpaceArr[i] ? 0 : widths[i])
+    prefixWordW[i + 1] =
+      prefixWordW[i] + (isShy[i] || isSpaceArr[i] ? 0 : widths[i])
     prefixSpaces[i + 1] = prefixSpaces[i] + isSpaceArr[i]
   }
 
@@ -381,9 +406,19 @@ function findBreaks(prepared, maxWidth, normalSpaceWidth, hyphenWidth) {
     const isLast = to === breaks.length - 1
     for (let from = to - 1; from >= 0; from--) {
       if (dp[from] === Infinity) continue
-      const stats = lineStats(breaks, from, to, prefixWordW, prefixSpaces, isSpaceArr, hyphenWidth, normalSpaceWidth)
+      const stats = lineStats(
+        breaks,
+        from,
+        to,
+        prefixWordW,
+        prefixSpaces,
+        isSpaceArr,
+        hyphenWidth,
+        normalSpaceWidth,
+      )
       if (stats.naturalW > maxWidth * 1.6 && !isLast) break
-      const total = dp[from] + badness(stats, maxWidth, normalSpaceWidth, isLast)
+      const total =
+        dp[from] + badness(stats, maxWidth, normalSpaceWidth, isLast)
       if (total < dp[to]) {
         dp[to] = total
         prev[to] = from
@@ -394,15 +429,27 @@ function findBreaks(prepared, maxWidth, normalSpaceWidth, hyphenWidth) {
   const path = []
   let cur = breaks.length - 1
   while (cur > 0) {
-    if (prev[cur] === -1) { path.length = 0; break }
+    if (prev[cur] === -1) {
+      path.length = 0
+      break
+    }
     path.push(cur)
     cur = prev[cur]
   }
   path.reverse()
-  return path.slice(0, -1).map(b => breaks[b])
+  return path.slice(0, -1).map((b) => breaks[b])
 }
 
-function lineStats(breaks, fromBreak, toBreak, prefixWordW, prefixSpaces, isSpaceArr, hyphenWidth, normalSpaceWidth) {
+function lineStats(
+  breaks,
+  fromBreak,
+  toBreak,
+  prefixWordW,
+  prefixSpaces,
+  isSpaceArr,
+  hyphenWidth,
+  normalSpaceWidth,
+) {
   const from = breaks[fromBreak].segIndex
   const to = breaks[toBreak].segIndex
   const toKind = breaks[toBreak].kind
@@ -410,7 +457,7 @@ function lineStats(breaks, fromBreak, toBreak, prefixWordW, prefixSpaces, isSpac
   let sp = prefixSpaces[to] - prefixSpaces[from]
   if (to > from && isSpaceArr[to - 1]) sp -= 1
   if (toKind === "soft-hyphen") wordW += hyphenWidth
-  return {wordW, sp, naturalW: wordW + sp * normalSpaceWidth, toKind}
+  return { wordW, sp, naturalW: wordW + sp * normalSpaceWidth, toKind }
 }
 
 function badness(stats, maxWidth, normalSpaceWidth, isLast) {

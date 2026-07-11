@@ -3,6 +3,7 @@ package otelstream
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -37,12 +38,13 @@ type TailOptions struct {
 }
 
 type Backfill struct {
+	All   bool
 	Count int64
 	Since time.Time
 }
 
 func (b Backfill) IsZero() bool {
-	return b.Count <= 0 && b.Since.IsZero()
+	return !b.All && b.Count <= 0 && b.Since.IsZero()
 }
 
 func (t *RedisTailer) Backfill(ctx context.Context, backfill Backfill, handle EntryHandler) error {
@@ -50,31 +52,78 @@ func (t *RedisTailer) Backfill(ctx context.Context, backfill Backfill, handle En
 		return nil
 	}
 
-	var entries []redis.XMessage
-	var err error
-	if !backfill.Since.IsZero() {
-		min := strconv.FormatInt(backfill.Since.UnixMilli(), 10) + "-0"
-		entries, err = t.Client.XRange(ctx, t.Stream, min, "+").Result()
-	} else {
-		entries, err = t.Client.XRevRangeN(ctx, t.Stream, "+", "-", backfill.Count).Result()
-		reverseMessages(entries)
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil
+	if backfill.All || !backfill.Since.IsZero() {
+		min := "-"
+		if !backfill.Since.IsZero() {
+			min = strconv.FormatInt(backfill.Since.UnixMilli(), 10) + "-0"
 		}
-		return err
+		return t.rangeForward(ctx, min, "+", handle)
 	}
-	for _, msg := range entries {
-		entry, ok := entryFromMessage(msg)
-		if !ok {
-			continue
-		}
-		if err := handle(entry); err != nil {
+
+	if backfill.Count > 0 {
+		entries, err := t.Client.XRevRangeN(ctx, t.Stream, "+", "-", backfill.Count).Result()
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			return err
 		}
+		reverseMessages(entries)
+		for _, msg := range entries {
+			entry, ok := entryFromMessage(msg)
+			if !ok {
+				continue
+			}
+			if err := handle(entry); err != nil {
+				return err
+			}
+		}
 	}
+
 	return nil
+}
+
+func (t *RedisTailer) rangeForward(ctx context.Context, min, max string, handle EntryHandler) error {
+	for {
+		entries, err := t.Client.XRangeN(ctx, t.Stream, min, max, t.batchCount()).Result()
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		if len(entries) == 0 {
+			return nil
+		}
+
+		for _, msg := range entries {
+			entry, ok := entryFromMessage(msg)
+			if !ok {
+				continue
+			}
+			if err := handle(entry); err != nil {
+				return err
+			}
+		}
+
+		if int64(len(entries)) < t.batchCount() {
+			return nil
+		}
+
+		min = nextStreamID(entries[len(entries)-1].ID)
+	}
+}
+
+func nextStreamID(id string) string {
+	millis, seqText, ok := strings.Cut(id, "-")
+	if !ok {
+		return "(" + id
+	}
+	seq, err := strconv.ParseInt(seqText, 10, 64)
+	if err != nil {
+		return "(" + id
+	}
+	return millis + "-" + strconv.FormatInt(seq+1, 10)
 }
 
 func (t *RedisTailer) Tail(ctx context.Context, opts TailOptions, handle EntryHandler) error {

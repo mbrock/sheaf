@@ -6,6 +6,7 @@ defmodule Sheaf.Embedding.Index do
   require Logger
 
   alias RDF.{Description, Graph}
+  alias Sheaf.Document
   alias Sheaf.Embedding.Store
   alias Sheaf.NS.{DCTERMS, DOC, FABIO, FOAF}
   alias RDF.NS.RDFS
@@ -15,6 +16,7 @@ defmodule Sheaf.Embedding.Index do
   @default_batch_size 32
   @default_source "openai-text-embedding-3-large-v1"
   @valid_kinds ~w(paragraph sourceHtml row note)
+  @semantic_min_words 20
 
   @type text_unit :: %{
           required(:iri) => String.t(),
@@ -831,10 +833,12 @@ defmodule Sheaf.Embedding.Index do
            |> Enum.reject(&(&1.kind == "note"))
            |> Enum.map(& &1.doc_iri)
            |> document_metadata_for_doc_iris(opts) do
+      breadcrumbs = breadcrumb_metadata(units)
+
       {:ok,
        iris
        |> Enum.uniq()
-       |> Enum.map(&unit_from_sidecar(units, &1, documents))
+       |> Enum.map(&unit_from_sidecar(units, &1, documents, breadcrumbs))
        |> Enum.reject(&is_nil/1)
        |> Map.new(&{&1.iri, &1})}
     end
@@ -902,8 +906,9 @@ defmodule Sheaf.Embedding.Index do
         {doc,
          %{
            title:
-             description |> Description.first(RDFS.label()) |> term_value(),
-           kind: document_kind(description),
+             document_title(description, metadata, RDF.iri(doc), expression),
+           kind:
+             document_kind(description, metadata, RDF.iri(doc), expression),
            excluded?: MapSet.member?(excluded, RDF.iri(doc)),
            authors: authors,
            status: document_status(metadata, expression)
@@ -1125,7 +1130,7 @@ defmodule Sheaf.Embedding.Index do
     end
   end
 
-  defp unit_from_sidecar(units, iri, documents) do
+  defp unit_from_sidecar(units, iri, documents, breadcrumbs) do
     case Map.get(units, iri) do
       nil ->
         nil
@@ -1138,21 +1143,46 @@ defmodule Sheaf.Embedding.Index do
           doc_kind: Map.get(doc, :kind),
           doc_authors: Map.get(doc, :authors, []),
           doc_status: Map.get(doc, :status),
-          doc_excluded?: Map.get(doc, :excluded?, false)
+          doc_excluded?: Map.get(doc, :excluded?, false),
+          breadcrumbs: Map.get(breadcrumbs, unit.iri, [])
         })
     end
+  end
+
+  defp breadcrumb_metadata(units) do
+    units
+    |> Map.values()
+    |> Enum.reject(&is_nil(&1.doc_iri))
+    |> Enum.group_by(& &1.doc_iri)
+    |> Enum.flat_map(fn {doc_iri, doc_units} ->
+      case Sheaf.fetch_graph(RDF.iri(doc_iri)) do
+        {:ok, %Graph{} = graph} ->
+          Enum.map(doc_units, fn unit ->
+            {unit.iri, Document.breadcrumbs(graph, RDF.iri(unit.iri))}
+          end)
+
+        _error ->
+          Enum.map(doc_units, &{&1.iri, []})
+      end
+    end)
+    |> Map.new()
   end
 
   defp searchable_result(result, opts) do
     if kind_allowed?(result, opts) and document_allowed?(result, opts) and
          document_kind_allowed?(result, opts) and
          Map.get(result, :doc_excluded?, false) != true and
-         searchable_content?(result) do
+         searchable_content?(result) and semantic_content_allowed?(result) do
       [result]
     else
       []
     end
   end
+
+  defp semantic_content_allowed?(%{match: :semantic, text: text}),
+    do: word_count(text) >= @semantic_min_words
+
+  defp semantic_content_allowed?(_result), do: true
 
   defp kind_allowed?(result, opts) do
     result.kind in (opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap())
@@ -1202,6 +1232,14 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp base64_html?(_text), do: false
+
+  defp word_count(text) when is_binary(text) do
+    ~r/[\p{L}\p{N}][\p{L}\p{N}'’-]*/u
+    |> Regex.scan(text)
+    |> length()
+  end
+
+  defp word_count(_text), do: 0
 
   defp merge_ranked_results(results) do
     results
@@ -1405,7 +1443,16 @@ defmodule Sheaf.Embedding.Index do
     |> term_value()
   end
 
-  defp document_kind(%Description{} = description) do
+  defp document_title(%Description{} = description, metadata, doc, expression) do
+    (Description.first(description, RDFS.label()) ||
+       first_object(metadata, doc, RDFS.label()) ||
+       first_object(metadata, doc, DCTERMS.title()) ||
+       first_object(metadata, expression, DCTERMS.title()) ||
+       first_object(metadata, expression, RDFS.label()))
+    |> term_value()
+  end
+
+  defp document_kind(%Description{} = description, metadata, doc, expression) do
     cond do
       Description.include?(description, {RDF.type(), RDF.iri(DOC.Thesis)}) ->
         :thesis
@@ -1422,8 +1469,35 @@ defmodule Sheaf.Embedding.Index do
       ) ->
         :spreadsheet
 
+      kind = metadata_document_kind(metadata, doc, expression) ->
+        kind
+
       true ->
         :document
+    end
+  end
+
+  defp metadata_document_kind(metadata, doc, expression) do
+    metadata
+    |> objects_for(doc, RDF.type())
+    |> Kernel.++(objects_for(metadata, expression, RDF.type()))
+    |> Enum.find_value(&metadata_kind/1)
+  end
+
+  defp metadata_kind(type) do
+    case type
+         |> term_value()
+         |> to_string()
+         |> String.split(["#", "/"])
+         |> List.last() do
+      "ResearchPaper" -> :literature
+      "JournalArticle" -> :literature
+      "Book" -> :literature
+      "BookChapter" -> :literature
+      "Thesis" -> :thesis
+      "Spreadsheet" -> :spreadsheet
+      "Transcript" -> :transcript
+      _other -> nil
     end
   end
 

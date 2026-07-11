@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { parseArgs } from "util";
+import { parseArgs } from "util"
 
-export {}; // top level await plz
+export {} // top level await plz
 
 const usage = `Usage:
   sheaf docs
@@ -16,14 +16,14 @@ const usage = `Usage:
   sheaf open ID
 
 Flags:
-  --host URL   default: SHEAF_HOST or https://sheaf.less.rest`;
+  --host URL   default: SHEAF_HOST or https://sheaf.less.rest`
 
 type Command = {
-  usage: string;
-  min?: number;
-  max?: number;
-  path: (...args: string[]) => string;
-};
+  usage: string
+  min?: number
+  max?: number
+  path: (...args: string[]) => string
+}
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -32,11 +32,11 @@ const { values, positionals } = parseArgs({
     host: { type: "string" },
     help: { type: "boolean", short: "h" },
   },
-});
+})
 
 const host =
-  values.host || process.env.SHEAF_HOST || "https://sheaf.less.rest";
-const [cmd = "help", ...args] = values.help ? ["help"] : positionals;
+  values.host || process.env.SHEAF_HOST || "https://sheaf.less.rest"
+const [cmd = "help", ...args] = values.help ? ["help"] : positionals
 
 const commands: Record<string, Command> = {
   docs: {
@@ -86,45 +86,45 @@ const commands: Record<string, Command> = {
     max: 1,
     path: (id) => `/${id}`,
   },
-};
+}
 
 if (["help", "-h", "--help"].includes(cmd)) {
-  console.log(usage);
-  process.exit(0);
+  console.log(usage)
+  process.exit(0)
 } else if (cmd === "open") {
   requireArgs(
     { usage: "sheaf open ID", min: 1, max: 1, path: () => "" },
     args,
-  );
-  console.log(`${host.replace(/\/+$/, "")}/${args[0]}`);
-  process.exit(0);
+  )
+  console.log(`${host.replace(/\/+$/, "")}/${args[0]}`)
+  process.exit(0)
 }
 
-const command = commands[cmd] || fail(`unknown command: ${cmd}`);
-requireArgs(command, args);
+const command = commands[cmd] || fail(`unknown command: ${cmd}`)
+requireArgs(command, args)
 
-const path = command.path(...args.map(encodeURIComponent));
+const path = command.path(...args.map(encodeURIComponent))
 
 const res = await fetch(`${host.replace(/\/+$/, "")}${path}`, {
   headers: { accept: "application/json" },
-});
+})
 
 if (!res.ok)
-  fail(`GET ${path} failed: HTTP ${res.status}\n${await res.text()}`);
+  fail(`GET ${path} failed: HTTP ${res.status}\n${await res.text()}`)
 
-console.log(JSON.stringify(await res.json(), null, 2));
+console.log(JSON.stringify(await res.json(), null, 2))
 
 function requireArgs(command: Command, args: string[]) {
-  const min = command.min ?? 0;
-  const max = command.max ?? min;
+  const min = command.min ?? 0
+  const max = command.max ?? min
 
   if (args.length < min || args.length > max) {
-    console.error(`usage: ${command.usage}`);
-    process.exit(1);
+    console.error(`usage: ${command.usage}`)
+    process.exit(1)
   }
 }
 
 function fail(message: string): never {
-  console.error(`sheaf: ${message}`);
-  process.exit(1);
+  console.error(`sheaf: ${message}`)
+  process.exit(1)
 }

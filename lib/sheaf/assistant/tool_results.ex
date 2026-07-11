@@ -206,6 +206,7 @@ defmodule Sheaf.Assistant.ToolResults do
       :kind,
       :text,
       :source_page,
+      :breadcrumbs,
       :match,
       :score,
       :coding,

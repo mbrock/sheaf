@@ -43,11 +43,13 @@ defmodule Sheaf.PDFTest do
 
     result = PDF.build_graph(document, title: "Example Paper", mint: mint())
 
-    assert Document.kind(result.graph, result.document) == :paper
-    assert Document.title(result.graph, result.document) == "Example Paper"
+    assert Document.kind(result.metadata_graph, result.document) == :paper
+
+    assert Document.title(result.metadata_graph, result.document) ==
+             "Example Paper"
 
     assert rdf_value(
-             Graph.description(result.graph, result.document),
+             Graph.description(result.metadata_graph, result.document),
              BIBO.numPages()
            ) == 1
 
@@ -92,9 +94,12 @@ defmodule Sheaf.PDFTest do
 
     document = result.document
     file = RDF.IRI.new!("https://example.com/sheaf/FILE111")
-    file_description = Graph.description(result.graph, file)
+    file_description = Graph.description(result.metadata_graph, file)
 
-    assert RDF.Data.include?(result.graph, {document, DOC.sourceFile(), file})
+    assert RDF.Data.include?(
+             result.metadata_graph,
+             {document, DOC.sourceFile(), file}
+           )
 
     assert Description.include?(
              file_description,
@@ -127,9 +132,12 @@ defmodule Sheaf.PDFTest do
       )
 
     paper = result.document
-    file_description = Graph.description(result.graph, file)
+    file_description = Graph.description(result.metadata_graph, file)
 
-    assert RDF.Data.include?(result.graph, {paper, DOC.sourceFile(), file})
+    assert RDF.Data.include?(
+             result.metadata_graph,
+             {paper, DOC.sourceFile(), file}
+           )
 
     refute Description.include?(
              file_description,
@@ -151,7 +159,7 @@ defmodule Sheaf.PDFTest do
       )
 
     assert RDF.Data.include?(
-             result.graph,
+             result.metadata_graph,
              {result.document, DOC.sourceFile(), file}
            )
   end
@@ -165,7 +173,7 @@ defmodule Sheaf.PDFTest do
         mint: mint(~w(DOC111))
       )
 
-    description = Graph.description(result.graph, result.document)
+    description = Graph.description(result.metadata_graph, result.document)
 
     assert result.title == nil
 
@@ -201,7 +209,7 @@ defmodule Sheaf.PDFTest do
         mint: mint(~w(DOC111 SEC111 LST111))
       )
 
-    description = Graph.description(result.graph, result.document)
+    description = Graph.description(result.metadata_graph, result.document)
 
     assert result.title == nil
     refute Description.first(description, RDF.NS.RDFS.label())

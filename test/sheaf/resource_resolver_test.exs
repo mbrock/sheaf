@@ -36,12 +36,17 @@ defmodule Sheaf.ResourceResolverTest do
         name: workspace_graph
       )
 
-    metadata = RDF.Graph.new([], name: metadata_graph)
+    metadata =
+      RDF.Graph.new(
+        [
+          {document, RDF.type(), DOC.Document}
+        ],
+        name: metadata_graph
+      )
 
     document_graph =
       RDF.Graph.new(
         [
-          {document, RDF.type(), DOC.Document},
           {document, RDFS.label(), RDF.literal("Example document")},
           {section, RDF.type(), DOC.Section},
           {section, RDFS.label(), RDF.literal("Example section")}

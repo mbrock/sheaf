@@ -31,7 +31,8 @@ defmodule SheafWeb.AssistantMarkdownTest do
         | Apples | 12 |
       """)
 
-    assert html =~ ~s(<section class="flex justify-center">)
+    assert html =~
+             ~s(<section class="flex max-w-full flex-col items-center">)
 
     assert html =~
              ~s(<table class="border-separate border-spacing-0 text-left" id="data-table-)
@@ -102,7 +103,7 @@ defmodule SheafWeb.AssistantMarkdownTest do
       )
 
     assert html =~
-             ~r/>PAR111<\/button>\s*<\/span>\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR222<\/button>\.\s*<\/span>/
+             ~r/>PAR111<\/button>\s*<\/span>\s+<span class="whitespace-nowrap small-caps">\s*<button[^>]+>PAR222<\/button>\.\s*<\/span>/
 
     refute html =~ "(PAR111"
     refute html =~ "PAR111,"
@@ -118,7 +119,7 @@ defmodule SheafWeb.AssistantMarkdownTest do
       )
 
     assert html =~
-             ~r/See\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR111<\/button>\.\s*<\/span>/
+             ~r/See\s+<span class="whitespace-nowrap small-caps">\s*<button[^>]+>PAR111<\/button>\.\s*<\/span>/
 
     assert html =~ "More."
     refute html =~ "(PAR111"
@@ -136,7 +137,7 @@ defmodule SheafWeb.AssistantMarkdownTest do
     assert html =~ ~r/>PAR111<\/button>\.\s*<\/span>/
 
     assert html =~
-             ~r/>PAR222<\/button>\s*<\/span>\s+<span class="whitespace-nowrap">\s*<button[^>]+>PAR333<\/button>\.\s*<\/span>/
+             ~r/>PAR222<\/button>\s*<\/span>\s+<span class="whitespace-nowrap small-caps">\s*<button[^>]+>PAR333<\/button>\.\s*<\/span>/
 
     refute html =~ "(PAR111"
     refute html =~ "(PAR222"

@@ -19,6 +19,13 @@ defmodule Sheaf.PDF do
         )
 
       :ok = Sheaf.put_graph(result.document, result.graph)
+
+      :ok =
+        Sheaf.Repo.assert(
+          "import PDF metadata #{result.document}",
+          result.metadata_graph
+        )
+
       {:ok, result}
     end
   end
@@ -46,7 +53,7 @@ defmodule Sheaf.PDF do
     page_count = page_count(document, node_summaries)
     child_lists = child_list_graphs(document_iri, blocks, node_iris, mint)
 
-    graph =
+    metadata_graph =
       RDF.Graph.build document: document_iri,
                       title: title,
                       source_path: source_path,
@@ -54,8 +61,7 @@ defmodule Sheaf.PDF do
                       source_file_iri: source_file_iri,
                       source_file_metadata: source_file_metadata,
                       page_count: page_count,
-                      nodes: node_summaries,
-                      child_lists: child_lists do
+                      graph: RDF.iri(Sheaf.Repo.metadata_graph()) do
         @prefix Sheaf.NS.DOC
         @prefix Sheaf.NS.BIBO
         @prefix Sheaf.NS.FABIO
@@ -79,6 +85,14 @@ defmodule Sheaf.PDF do
           |> DOC.byteSize(source_file.byte_size)
           |> DOC.originalFilename(source_file.original_filename)
         end
+      end
+
+    graph =
+      RDF.Graph.build document: document_iri,
+                      nodes: node_summaries,
+                      child_lists: child_lists do
+        @prefix Sheaf.NS.DOC
+        @prefix RDF.NS.RDFS
 
         Enum.map(nodes, fn node ->
           node.iri
@@ -96,6 +110,7 @@ defmodule Sheaf.PDF do
     %{
       document: document_iri,
       graph: graph,
+      metadata_graph: metadata_graph,
       source_file: source_file,
       title: title
     }

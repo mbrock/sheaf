@@ -56,7 +56,8 @@
 
     "children": {
       "@id": "sheaf:children",
-      "@type": "@id"
+      "@type": "@id",
+      "@container": "@list"
     },
     "paragraph": {
       "@id": "sheaf:paragraph",

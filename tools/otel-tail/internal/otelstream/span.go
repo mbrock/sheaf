@@ -6,17 +6,18 @@ import "encoding/json"
 // that are nil/missing are dropped on the producer side, so most of these
 // pointers/maps are optional.
 type Span struct {
-	TraceID       string         `json:"trace_id"`
-	SpanID        string         `json:"span_id"`
-	ParentSpanID  string         `json:"parent_span_id,omitempty"`
-	Name          string         `json:"name"`
-	Kind          string         `json:"kind"`
-	StartUnixNano int64          `json:"start_unix_nano"`
-	EndUnixNano   int64          `json:"end_unix_nano"`
-	DurationUs    int64          `json:"duration_us"`
-	Status        *Status        `json:"status,omitempty"`
-	Attributes    map[string]any `json:"attributes,omitempty"`
-	Scope         map[string]any `json:"scope,omitempty"`
+	TraceID       string           `json:"trace_id"`
+	SpanID        string           `json:"span_id"`
+	ParentSpanID  string           `json:"parent_span_id,omitempty"`
+	Name          string           `json:"name"`
+	Kind          string           `json:"kind"`
+	StartUnixNano int64            `json:"start_unix_nano"`
+	EndUnixNano   int64            `json:"end_unix_nano"`
+	DurationUs    int64            `json:"duration_us"`
+	Status        *Status          `json:"status,omitempty"`
+	Attributes    map[string]any   `json:"attributes,omitempty"`
+	Events        []map[string]any `json:"events,omitempty"`
+	Scope         map[string]any   `json:"scope,omitempty"`
 }
 
 type Status struct {

@@ -10,7 +10,7 @@ defmodule Sheaf.Document do
   alias RDF.{Description, Graph}
   alias RDF.NS.RDFS
   alias Sheaf.Id
-  alias Sheaf.NS.{DOC, PROV}
+  alias Sheaf.NS.{DCTERMS, DOC, FABIO, PROV}
 
   @doi_pattern ~r/\b10\.\d{4,9}\/[-._;()\/:A-Z0-9]+/i
   @default_first_pages 5
@@ -135,7 +135,9 @@ defmodule Sheaf.Document do
   end
 
   def title(%Graph{} = graph, iri) do
-    value(graph, iri, RDFS.label(), "Untitled thesis")
+    value(graph, iri, RDFS.label(), nil) ||
+      metadata_title(graph, iri) ||
+      "Untitled thesis"
   end
 
   def kind(%Graph{} = graph, iri) do
@@ -146,6 +148,7 @@ defmodule Sheaf.Document do
       typed?(description, DOC.Transcript) -> :transcript
       typed?(description, DOC.Paper) -> :paper
       typed?(description, DOC.Spreadsheet) -> :spreadsheet
+      kind = metadata_kind(graph, iri) -> kind
       true -> :document
     end
   end
@@ -155,6 +158,33 @@ defmodule Sheaf.Document do
       nil -> []
       list_iri -> list_values(graph, list_iri)
     end
+  end
+
+  @doc """
+  Returns section breadcrumbs for a block or section.
+
+  Breadcrumbs start with the document and then include containing ancestor
+  sections. When `iri` is a section, that section itself is not included.
+  """
+  def breadcrumbs(%Graph{} = graph, iri) do
+    parents = parent_index(graph)
+    root = graph.name && RDF.iri(graph.name)
+
+    section_iris =
+      graph
+      |> breadcrumb_iris(RDF.iri(iri), parents, [])
+      |> Enum.filter(&(block_type(graph, &1) == :section))
+
+    [root | section_iris]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.map(fn section ->
+      %{
+        id: id(section),
+        iri: section,
+        title: breadcrumb_title(graph, root, section)
+      }
+    end)
   end
 
   @doc """
@@ -397,6 +427,40 @@ defmodule Sheaf.Document do
     }
   end
 
+  defp parent_index(%Graph{} = graph) do
+    graph
+    |> Graph.triples()
+    |> Enum.reduce(%{}, fn {subject, predicate, object}, acc ->
+      if predicate == DOC.children() do
+        graph
+        |> list_values(object)
+        |> Enum.reduce(acc, &Map.put(&2, &1, subject))
+      else
+        acc
+      end
+    end)
+  end
+
+  defp breadcrumb_iris(graph, iri, parents, acc) do
+    case Map.get(parents, iri) do
+      nil ->
+        acc
+
+      parent ->
+        acc =
+          if block_type(graph, parent) == :section,
+            do: [parent | acc],
+            else: acc
+
+        breadcrumb_iris(graph, parent, parents, acc)
+    end
+  end
+
+  defp breadcrumb_title(graph, root, iri) when root == iri,
+    do: title(graph, iri)
+
+  defp breadcrumb_title(graph, _root, iri), do: heading(graph, iri)
+
   defp object(%Graph{} = graph, iri, property) do
     graph
     |> Graph.description(iri)
@@ -414,6 +478,65 @@ defmodule Sheaf.Document do
       nil -> default
       term -> term |> RDF.Term.value() |> to_string()
     end
+  end
+
+  defp metadata_title(%Graph{} = graph, iri) do
+    if document_root?(graph, iri) do
+      iri
+      |> metadata_title()
+      |> case do
+        "" -> nil
+        title -> title
+      end
+    end
+  end
+
+  defp document_root?(%Graph{name: nil}, _iri), do: false
+
+  defp document_root?(%Graph{name: name}, iri),
+    do: RDF.iri(name) == RDF.iri(iri)
+
+  defp metadata_title(iri) do
+    with {:ok, %Graph{} = metadata} <-
+           Sheaf.fetch_graph(Sheaf.Repo.metadata_graph()) do
+      expression = object(metadata, iri, FABIO.isRepresentationOf())
+
+      value(metadata, iri, RDFS.label(), nil) ||
+        value(metadata, iri, DCTERMS.title(), nil) ||
+        metadata_expression_title(metadata, expression)
+    else
+      _error -> nil
+    end
+  end
+
+  defp metadata_kind(%Graph{} = graph, iri) do
+    if document_root?(graph, iri) do
+      metadata_kind(iri)
+    end
+  end
+
+  defp metadata_kind(iri) do
+    with {:ok, %Graph{} = metadata} <-
+           Sheaf.fetch_graph(Sheaf.Repo.metadata_graph()) do
+      description = Graph.description(metadata, iri)
+
+      cond do
+        typed?(description, DOC.Thesis) -> :thesis
+        typed?(description, DOC.Transcript) -> :transcript
+        typed?(description, DOC.Paper) -> :paper
+        typed?(description, DOC.Spreadsheet) -> :spreadsheet
+        true -> nil
+      end
+    else
+      _error -> nil
+    end
+  end
+
+  defp metadata_expression_title(_metadata, nil), do: nil
+
+  defp metadata_expression_title(metadata, expression) do
+    value(metadata, expression, DCTERMS.title(), nil) ||
+      value(metadata, expression, RDFS.label(), nil)
   end
 
   defp inline_markup(%Graph{} = graph, iri) do

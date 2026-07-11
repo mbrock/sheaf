@@ -8,7 +8,7 @@ defmodule Sheaf.TextUnits do
 
   alias RDF.{BlankNode, Graph, IRI}
   alias RDF.NS.RDFS
-  alias Sheaf.NS.{AS, DOC, PROV}
+  alias Sheaf.NS.{AS, DCTERMS, DOC, FABIO, PROV}
 
   @valid_kinds ~w(paragraph sourceHtml row note)
 
@@ -25,20 +25,26 @@ defmodule Sheaf.TextUnits do
       opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap() |> MapSet.new()
 
     excluded = excluded_documents(dataset)
+    metadata = RDF.Dataset.graph(dataset, Sheaf.Repo.metadata_graph())
+    metadata_index = metadata |> graph_triples() |> index()
 
     dataset
     |> RDF.Dataset.graphs()
     |> Enum.reject(&(is_nil(&1.name) or MapSet.member?(excluded, &1.name)))
-    |> Enum.flat_map(&graph_rows(&1, kinds))
+    |> Enum.flat_map(&graph_rows(&1, kinds, metadata_index))
   end
 
   defp fetch_text_dataset(kinds) do
     kinds = MapSet.new(kinds)
+    metadata_graph = RDF.iri(Sheaf.Repo.metadata_graph())
 
     patterns =
       [
         {nil, DOC.excludesDocument(), nil, RDF.iri(Sheaf.Workspace.graph())},
         {nil, RDFS.label(), nil, nil},
+        {nil, RDFS.label(), nil, metadata_graph},
+        {nil, DCTERMS.title(), nil, metadata_graph},
+        {nil, FABIO.isRepresentationOf(), nil, metadata_graph},
         {nil, DOC.children(), nil, nil},
         {nil, RDF.first(), nil, nil},
         {nil, RDF.rest(), nil, nil}
@@ -96,10 +102,14 @@ defmodule Sheaf.TextUnits do
     |> Enum.reduce(left, &RDF.Dataset.add(&2, &1))
   end
 
-  defp graph_rows(graph, kinds) do
+  defp graph_rows(graph, kinds, metadata_index) do
     triples = Graph.triples(graph)
     index = index(triples)
-    doc_title = first(index, graph.name, RDFS.label())
+
+    doc_title =
+      first(index, graph.name, RDFS.label()) ||
+        metadata_title(metadata_index, graph.name)
+
     paragraph_predicate = DOC.paragraph()
     source_html_predicate = DOC.sourceHtml()
     text_predicate = DOC.text()
@@ -214,10 +224,24 @@ defmodule Sheaf.TextUnits do
     end)
   end
 
+  defp graph_triples(nil), do: []
+  defp graph_triples(%Graph{} = graph), do: Graph.triples(graph)
+
   defp first(index, subject, predicate) do
     index
     |> Map.get({subject, predicate}, [])
     |> List.first()
+  end
+
+  defp metadata_title(_index, nil), do: nil
+
+  defp metadata_title(index, doc) do
+    expression = first(index, doc, FABIO.isRepresentationOf())
+
+    first(index, doc, RDFS.label()) ||
+      first(index, doc, DCTERMS.title()) ||
+      first(index, expression, DCTERMS.title()) ||
+      first(index, expression, RDFS.label())
   end
 
   defp present?(index, subject, predicate),

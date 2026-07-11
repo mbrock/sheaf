@@ -9,6 +9,14 @@ defmodule Sheaf.ResourceResolver do
 
   require OpenTelemetry.Tracer, as: Tracer
 
+  @document_types [
+    DOC.Document,
+    DOC.Paper,
+    DOC.Thesis,
+    DOC.Transcript,
+    DOC.Spreadsheet
+  ]
+
   @type resolution ::
           {:ok, %{kind: :document, id: String.t()}}
           | {:ok, %{kind: :research_note, id: String.t()}}
@@ -67,12 +75,42 @@ defmodule Sheaf.ResourceResolver do
 
     case Sheaf.fetch_graph(root) do
       {:ok, %Graph{} = graph} ->
-        RDF.Data.include?(graph, {root, RDF.type(), DOC.Document})
+        document_graph?(graph) and document_type?(root, graph)
 
       _error ->
         false
     end
   end
+
+  defp document_graph?(%Graph{} = graph),
+    do: RDF.Data.statement_count(graph) > 0
+
+  defp document_type?(root, %Graph{} = graph) do
+    Enum.any?(document_type_iris(), fn type ->
+      RDF.Data.include?(graph, {root, RDF.type(), type}) or
+        metadata_type?(root, type)
+    end)
+  end
+
+  defp metadata_type?(root, type) do
+    metadata_graph = RDF.iri(Sheaf.Repo.metadata_graph())
+
+    with :ok <- Sheaf.Repo.load_once({root, RDF.type(), type, metadata_graph}) do
+      Sheaf.Repo.ask(fn dataset ->
+        case RDF.Dataset.graph(dataset, metadata_graph) do
+          %Graph{} = graph ->
+            RDF.Data.include?(graph, {root, RDF.type(), type})
+
+          _other ->
+            false
+        end
+      end)
+    else
+      _error -> false
+    end
+  end
+
+  defp document_type_iris, do: Enum.map(@document_types, &RDF.iri/1)
 
   defp block_document_id(_id, true), do: nil
   defp block_document_id(id, false), do: Corpus.find_document(id)

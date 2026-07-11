@@ -1,6 +1,13 @@
 {
   "overrides": [
     {
+      "files": ["**/*.{js,jsx,ts,tsx}"],
+      "options": {
+        "printWidth": 78,
+        "semi": false
+      }
+    },
+    {
       "files": "*.md",
       "options": {
         "printWidth": 78,

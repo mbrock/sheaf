@@ -42,7 +42,12 @@ export const AssistantTypeWriter = {
 
     this.updateBlind()
 
-    if (this.limit < length && (isStreaming(this.el) || this.wasStreaming || length > this.previousLength)) {
+    if (
+      this.limit < length &&
+      (isStreaming(this.el) ||
+        this.wasStreaming ||
+        length > this.previousLength)
+    ) {
       this.proceed()
     }
   },
@@ -94,7 +99,10 @@ export const AssistantTypeWriter = {
       this.limit = Math.min(this.limit + step, length)
       this.updateBlind()
 
-      const delay = Math.max(FRAME_DELAY, 1000 / adjustedSpeed(length, hidden))
+      const delay = Math.max(
+        FRAME_DELAY,
+        1000 / adjustedSpeed(length, hidden),
+      )
       this.timer = window.setTimeout(tick, delay)
     }
 
@@ -154,7 +162,7 @@ function textPosition(element, limit) {
     const length = node.data.length
 
     if (remaining <= length) {
-      return {node, offset: remaining}
+      return { node, offset: remaining }
     }
 
     remaining -= length
