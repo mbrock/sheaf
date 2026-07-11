@@ -35,7 +35,7 @@ defmodule SheafWeb.DocumentEntryComponents do
 
   defp document_card_content(assigns) do
     ~H"""
-    <div class="aspect-[16/8.4] w-full overflow-hidden bg-stone-100 dark:bg-stone-800">
+    <div class="relative aspect-[16/8.4] w-full overflow-hidden bg-stone-100 dark:bg-stone-800">
       <img
         :if={Map.get(@document, :cover_path)}
         src={@document.cover_path}
@@ -49,20 +49,22 @@ defmodule SheafWeb.DocumentEntryComponents do
       >
         <.icon name="hero-document-text" class="size-10" />
       </div>
+
+      <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pb-3 pt-12">
+        <h3 class="font-sans text-base/5 font-medium text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.75)]">
+          {@document.title}
+        </h3>
+      </div>
     </div>
 
-    <div class="flex min-h-32 flex-1 flex-col px-3 pb-3 pt-2.5">
-      <h3 class="font-sans text-base/5 font-medium text-stone-950 dark:text-stone-50">
-        {@document.title}
-      </h3>
-
-      <div class="mt-1 min-w-0 font-sans text-xs/4 text-stone-500 dark:text-stone-400">
-        <span class="line-clamp-2 font-serif text-stone-600 dark:text-stone-300">
-          {authors_str(@document) || ""}
+    <div class="flex min-h-20 flex-1 flex-col px-3 pb-3 pt-2.5">
+      <div class="min-w-0 font-sans text-xs/4 text-stone-500 dark:text-stone-400">
+        <span class="line-clamp-1 font-serif text-stone-600 dark:text-stone-300">
+          {compact_authors_str(@document) || authors_str(@document) || ""}
         </span>
       </div>
 
-      <div class="mt-auto flex items-end justify-between gap-3 pt-3 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
+      <div class="mt-auto flex items-end justify-between gap-3 pt-2 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
         <span>{year_str(@document)}</span>
         <span>{page_count_str(@document)}</span>
       </div>

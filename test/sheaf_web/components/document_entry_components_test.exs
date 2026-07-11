@@ -96,7 +96,11 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
           path: "/DOC2A2",
           cover_path: "/covers/DOC2A2",
           title: "A covered paper",
-          metadata: %{year: 2026, authors: ["Ada Lovelace"], page_count: 12},
+          metadata: %{
+            year: 2026,
+            authors: ["Ada Lovelace", "Charles Babbage"],
+            page_count: 12
+          },
           excluded?: false,
           cited?: false,
           has_document?: true,
@@ -107,8 +111,10 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     assert html =~ ~s(href="/DOC2A2")
     assert html =~ ~s(src="/covers/DOC2A2")
     assert html =~ "aspect-[16/8.4]"
+    assert html =~ "from-black/90"
     assert html =~ "A covered paper"
-    assert html =~ "Ada Lovelace"
+    assert html =~ "Lovelace, Babbage"
+    refute html =~ "Ada Lovelace"
     assert html =~ "2026"
     assert html =~ "12 pp."
   end
