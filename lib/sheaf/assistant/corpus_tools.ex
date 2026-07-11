@@ -340,6 +340,12 @@ defmodule Sheaf.Assistant.CorpusTools do
           if is_binary(query) and String.trim(query) != "" do
             case searcher.(query) do
               {:ok, result} ->
+                result = %ToolResults.WebSearch{
+                  query: query,
+                  text: Map.get(result, :text),
+                  sources: Map.get(result, :sources, [])
+                }
+
                 {:ok, rendered_result(result)}
 
               {:error, reason} ->

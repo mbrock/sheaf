@@ -39,6 +39,33 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert Enum.any?(tools, &(&1.name == "web_search"))
   end
 
+  test "import web search renders answer text and cited sources" do
+    tools =
+      CorpusTools.tools(
+        tool_set: :import,
+        web_searcher: fn "find the DOI" ->
+          {:ok,
+           %{
+             text: "The DOI is 10.1/example.",
+             sources: [
+               %{title: "DOI record", url: "https://doi.org/10.1/example"}
+             ]
+           }}
+        end
+      )
+
+    tool = Enum.find(tools, &(&1.name == "web_search"))
+
+    assert {:ok, result} = Tool.execute(tool, %{"query" => "find the DOI"})
+
+    assert %ToolResults.WebSearch{query: "find the DOI"} =
+             sheaf_result(result)
+
+    assert tool_text(result) =~ "WEB SEARCH RESULTS"
+    assert tool_text(result) =~ "The DOI is 10.1/example."
+    assert tool_text(result) =~ "https://doi.org/10.1/example"
+  end
+
   test "search_text tool uses embedding index search and preserves assistant hit shape" do
     test_pid = self()
 

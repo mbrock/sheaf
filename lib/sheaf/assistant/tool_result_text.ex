@@ -27,8 +27,36 @@ defmodule Sheaf.Assistant.ToolResultText do
     PresentedSpreadsheetQueryResult,
     SpreadsheetSearch,
     SpreadsheetSheet,
-    ListSpreadsheets
+    ListSpreadsheets,
+    WebSearch
   }
+
+  def to_text(%WebSearch{} = result) do
+    sources =
+      case result.sources do
+        [] ->
+          "(no cited sources)"
+
+        sources ->
+          sources
+          |> Enum.map(fn source ->
+            label = source.title || source.url
+            "- #{label}: #{source.url}"
+          end)
+          |> Enum.join("\n")
+      end
+
+    """
+    WEB SEARCH RESULTS
+    Query: #{result.query}
+
+    #{result.text}
+
+    Cited sources:
+    #{sources}
+    """
+    |> String.trim()
+  end
 
   def to_text(%ListDocuments{documents: documents}) do
     documents

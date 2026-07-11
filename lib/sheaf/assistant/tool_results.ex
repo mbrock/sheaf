@@ -112,6 +112,10 @@ defmodule Sheaf.Assistant.ToolResults do
               approximate_results: []
   end
 
+  defmodule WebSearch do
+    defstruct [:query, :text, sources: []]
+  end
+
   defmodule ListSpreadsheets do
     defstruct spreadsheets: [],
               query: nil,
