@@ -239,6 +239,7 @@ defmodule Sheaf.DocumentsTest do
     expression = ~I<https://example.com/work/PAPER1-expression>
     author = ~I<https://example.com/people/alpha>
     workspace = ~I<https://example.com/workspace>
+    folder = ~I<https://example.com/folders/trails>
     block_a = ~I<https://example.com/sheaf/PAPER1/block-a>
     block_b = ~I<https://example.com/sheaf/PAPER1/block-b>
     thesis = ~I<https://example.com/sheaf/THESIS>
@@ -272,7 +273,10 @@ defmodule Sheaf.DocumentsTest do
         [
           {workspace, RDF.type(), DOC.Workspace},
           {workspace, DOC.excludesDocument(), doc},
-          {workspace, DOC.hasWorkspaceOwner(), author}
+          {workspace, DOC.hasWorkspaceOwner(), author},
+          {folder, RDF.type(), DOC.Folder},
+          {folder, RDFS.label(), "Trail systems"},
+          {doc, DOC.inFolder(), folder}
         ],
         name: Sheaf.Repo.workspace_graph()
       )
@@ -301,6 +305,7 @@ defmodule Sheaf.DocumentsTest do
              excluded?: true,
              workspace_owner_authored?: true,
              workspace_owner_name: "Alpha Author",
+             folder: "Trail systems",
              metadata: %{
                authors: ["Alpha Author"],
                page_count: 3,

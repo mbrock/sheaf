@@ -116,10 +116,10 @@ defmodule SheafWeb.DocumentIndexLive do
           </p>
 
           <div :if={@documents != []} class="space-y-8 px-3 py-4 sm:px-4 lg:px-6">
-            <section :for={{kind, documents} <- @document_groups} class="min-w-0">
-              <div :if={kind} class="mb-3 flex items-baseline gap-3">
+            <section :for={{folder, documents} <- @document_groups} class="min-w-0">
+              <div class="mb-3 flex items-baseline gap-3">
                 <h2 class="font-sans text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
-                  {kind_label(kind)}
+                  {folder_label(folder)}
                 </h2>
                 <span class="shrink-0 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
                   {length(documents)}
@@ -141,74 +141,31 @@ defmodule SheafWeb.DocumentIndexLive do
       kind: :internal,
       attributes: [{"sheaf.document_count", length(documents)}]
     } do
-      owner_documents = Enum.filter(documents, & &1.workspace_owner_authored?)
-
-      library_documents =
-        Enum.reject(documents, & &1.workspace_owner_authored?)
-
-      owner_group =
-        case owner_documents do
-          [] ->
-            []
-
-          documents ->
-            [{:thesis, Enum.sort_by(documents, &document_sort_key/1)}]
-        end
-
-      library_groups =
-        library_documents
-        |> Enum.group_by(&document_group/1)
-        |> Enum.map(fn {kind, documents} ->
-          {kind, Enum.sort_by(documents, &document_sort_key/1)}
+      groups =
+        documents
+        |> Enum.group_by(&Map.get(&1, :folder))
+        |> Enum.map(fn {folder, documents} ->
+          {folder, Enum.sort_by(documents, &document_sort_key/1)}
         end)
-        |> Enum.sort_by(fn {kind, documents} ->
-          {kind_order(kind), kind_label(kind), first_title(documents)}
+        |> Enum.sort_by(fn {folder, documents} ->
+          {is_nil(folder), String.downcase(folder || ""),
+           first_title(documents)}
         end)
 
-      groups = owner_group ++ library_groups
       Tracer.set_attribute("sheaf.document_group_count", length(groups))
       groups
     end
   end
 
   defp document_sort_key(document) do
-    {kind_order(document_group(document)), String.downcase(document.title)}
+    String.downcase(document.title)
   end
-
-  defp document_group(%{metadata: %{kind: kind}}) when is_binary(kind) do
-    {:expression, kind}
-  end
-
-  defp document_group(%{kind: kind}), do: kind
 
   defp first_title([document | _documents]),
     do: String.downcase(document.title)
 
   defp first_title([]), do: ""
 
-  defp kind_label({:expression, kind}), do: pluralize_expression_kind(kind)
-  defp kind_label(:thesis), do: "Thesis"
-  defp kind_label(:paper), do: "Papers"
-  defp kind_label(:transcript), do: "Transcripts"
-  defp kind_label(:spreadsheet), do: "Spreadsheets"
-  defp kind_label(:document), do: "Documents"
-
-  defp pluralize_expression_kind("Book"), do: "Books"
-  defp pluralize_expression_kind("Book chapter"), do: "Book chapters"
-  defp pluralize_expression_kind("Doctoral thesis"), do: "Doctoral theses"
-  defp pluralize_expression_kind("Journal article"), do: "Journal articles"
-  defp pluralize_expression_kind("Report document"), do: "Reports"
-  defp pluralize_expression_kind(kind), do: kind <> "s"
-
-  defp kind_order(:thesis), do: 0
-  defp kind_order({:expression, "Journal article"}), do: 1
-  defp kind_order({:expression, "Book"}), do: 2
-  defp kind_order({:expression, "Book chapter"}), do: 3
-  defp kind_order({:expression, "Doctoral thesis"}), do: 4
-  defp kind_order({:expression, "Report document"}), do: 5
-  defp kind_order({:expression, _kind}), do: 6
-  defp kind_order(:paper), do: 6
-  defp kind_order(:transcript), do: 7
-  defp kind_order(:spreadsheet), do: 8
-  defp kind_order(:document), do: 9
+  defp folder_label(nil), do: "Unfiled"
+  defp folder_label(folder), do: folder
 end

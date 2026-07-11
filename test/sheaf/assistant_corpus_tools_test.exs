@@ -128,11 +128,13 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
                "document_id" => "GY93FG",
                "title" => "Mountain Trail Formation",
                "authors" => ["S. J. Gilks", "J. P. Hague"],
-               "doi" => "10.1000/example"
+               "doi" => "10.1000/example",
+               "folder" => "Trail systems"
              })
 
     assert_receive {:metadata_update, "GY93FG", attrs}
     assert attrs[:title] == "Mountain Trail Formation"
+    assert attrs[:folder] == "Trail systems"
 
     assert %ToolResults.DocumentMetadataUpdate{document_id: "GY93FG"} =
              sheaf_result(result)

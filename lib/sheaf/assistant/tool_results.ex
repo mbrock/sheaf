@@ -24,6 +24,7 @@ defmodule Sheaf.Assistant.ToolResults do
       :publisher,
       :pages,
       :status,
+      :folder,
       cited?: false,
       has_document?: true,
       workspace_owner_authored?: false

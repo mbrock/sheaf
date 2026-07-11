@@ -7,6 +7,7 @@ defmodule Sheaf.Workspace do
   alias RDF.NS.RDFS
   alias Sheaf.Id
   alias Sheaf.NS.DOC
+  require OpenTelemetry.Tracer, as: Tracer
   require RDF.Graph
   use RDF
 
@@ -38,6 +39,54 @@ defmodule Sheaf.Workspace do
       {mode,
        Graph.new({workspace, DOC.excludesDocument(), document}, name: @graph)}
     ])
+  end
+
+  @doc """
+  Places a document in a flat, named folder, or clears its folder when the
+  supplied label is blank.
+  """
+  def set_document_folder(document_id, label)
+      when is_binary(document_id) and (is_binary(label) or is_nil(label)) do
+    document_id = document_id |> String.trim() |> String.trim_leading("#")
+    label = if is_binary(label), do: String.trim(label), else: ""
+
+    Tracer.with_span "sheaf.workspace.set_document_folder", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.document.id", document_id},
+        {"sheaf.folder.label", label}
+      ]
+    } do
+      document = Id.iri(document_id)
+
+      graph =
+        Sheaf.Repo.ask(&RDF.Dataset.graph(&1, @graph)) ||
+          Graph.new(name: @graph)
+
+      old_links =
+        graph
+        |> Graph.triples()
+        |> Enum.filter(fn {subject, predicate, _object} ->
+          subject == document and predicate == RDF.iri(DOC.inFolder())
+        end)
+        |> Graph.new(name: @graph)
+
+      changes =
+        if RDF.Data.statement_count(old_links) == 0,
+          do: [],
+          else: [{:retract, old_links}]
+
+      changes =
+        case label do
+          "" -> changes
+          label -> changes ++ folder_assertions(graph, document, label)
+        end
+
+      case changes do
+        [] -> :ok
+        changes -> Sheaf.Repo.transact(changes)
+      end
+    end
   end
 
   @doc """
@@ -122,6 +171,54 @@ defmodule Sheaf.Workspace do
   end
 
   def graph, do: @graph
+
+  defp folder_assertions(graph, document, label) do
+    case folder_with_label(graph, label) do
+      nil ->
+        folder = Sheaf.mint()
+
+        [
+          {:assert,
+           Graph.new(
+             [
+               {folder, RDF.type(), DOC.Folder},
+               {folder, RDFS.label(), RDF.literal(label)},
+               {document, DOC.inFolder(), folder}
+             ],
+             name: @graph
+           )}
+        ]
+
+      folder ->
+        [
+          {:assert,
+           Graph.new({document, DOC.inFolder(), folder}, name: @graph)}
+        ]
+    end
+  end
+
+  defp folder_with_label(graph, label) do
+    folder_type = RDF.iri(DOC.Folder)
+    rdf_type = RDF.type()
+
+    graph
+    |> Graph.triples()
+    |> Enum.find_value(fn
+      {folder, ^rdf_type, ^folder_type} ->
+        description = Graph.description(graph, folder)
+
+        case Description.first(description, RDFS.label()) do
+          %RDF.Literal{} = value ->
+            if RDF.Literal.value(value) == label, do: folder
+
+          _ ->
+            nil
+        end
+
+      _ ->
+        nil
+    end)
+  end
 
   def exclusion_filter(variable \\ "?doc") do
     """

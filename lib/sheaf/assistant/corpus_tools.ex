@@ -420,9 +420,10 @@ defmodule Sheaf.Assistant.CorpusTools do
     Tool.new!(
       name: "update_document_metadata",
       description:
-        "Apply verified bibliographic metadata to an existing Sheaf document. " <>
+        "Apply metadata and workspace organization to an existing Sheaf document. " <>
           "Only include fields that should be replaced. Use authors for people and " <>
           "corporate_authors for organizations. Use cover_image_id to explicitly associate an existing Sheaf image as the cover. " <>
+          "Use folder to place the document in a flat workspace folder. " <>
           "Verify uncertain metadata first.",
       parameter_schema: [
         document_id: [
@@ -461,6 +462,11 @@ defmodule Sheaf.Assistant.CorpusTools do
           type: :string,
           doc:
             "Existing Sheaf image ID to use as the document cover. Pass an empty string to clear the cover."
+        ],
+        folder: [
+          type: :string,
+          doc:
+            "Workspace folder name. Existing folders with the same label are reused. Pass an empty string to remove the document from its folder."
         ]
       ],
       callback:
@@ -2240,6 +2246,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       publisher: Map.get(doc.metadata, :publisher),
       pages: Map.get(doc.metadata, :pages),
       status: Map.get(doc.metadata, :status),
+      folder: Map.get(doc, :folder),
       cited?: Map.get(doc, :cited?, false),
       has_document?: Map.get(doc, :has_document?, true),
       workspace_owner_authored?:

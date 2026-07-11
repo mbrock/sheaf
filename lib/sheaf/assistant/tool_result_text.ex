@@ -313,38 +313,33 @@ defmodule Sheaf.Assistant.ToolResultText do
   end
 
   defp grouped_documents(documents) do
-    owner_documents = Enum.filter(documents, & &1.workspace_owner_authored?)
-    library_documents = Enum.reject(documents, & &1.workspace_owner_authored?)
-
-    owner_group =
-      case owner_documents do
-        [] -> []
-        docs -> [{nil, Enum.sort_by(docs, &document_sort_key/1)}]
-      end
-
-    library_groups =
-      library_documents
-      |> Enum.group_by(&document_group/1)
-      |> Enum.map(fn {kind, docs} ->
-        {kind, Enum.sort_by(docs, &document_sort_key/1)}
-      end)
-      |> Enum.sort_by(fn {kind, docs} ->
-        {kind_order(kind), kind_label(kind), first_title(docs)}
-      end)
-
-    owner_group ++ library_groups
+    documents
+    |> Enum.group_by(& &1.folder)
+    |> Enum.map(fn {folder, docs} ->
+      {folder, Enum.sort_by(docs, &document_sort_key/1)}
+    end)
+    |> Enum.sort_by(fn {folder, docs} ->
+      {is_nil(folder), String.downcase(folder || ""), first_title(docs)}
+    end)
   end
 
-  defp document_group_text(nil, documents),
-    do: Enum.map_join(documents, "\n", &document_summary_line/1)
+  defp document_group_text(folder, documents) do
+    label = folder || "Unfiled"
 
-  defp document_group_text(group, documents) do
     """
-    #{kind_label(group)} (#{length(documents)})
+    #{label} (#{length(documents)})
     #{Enum.map_join(documents, "\n", &document_summary_line/1)}
     """
     |> String.trim()
   end
+
+  defp document_sort_key(document),
+    do: String.downcase(document.title || "")
+
+  defp first_title([document | _documents]),
+    do: String.downcase(document.title || "")
+
+  defp first_title([]), do: ""
 
   defp spreadsheet_text(%Spreadsheet{} = spreadsheet) do
     """
@@ -422,48 +417,6 @@ defmodule Sheaf.Assistant.ToolResultText do
 
     "  - #{sheet.table_name} \"#{sheet.name}\" rows=#{sheet.row_count} cols=#{sheet.col_count} columns=[#{columns}]"
   end
-
-  defp document_sort_key(document),
-    do:
-      {kind_order(document_group(document)),
-       String.downcase(document.title || "")}
-
-  defp document_group(%DocumentSummary{metadata_kind: kind})
-       when is_binary(kind),
-       do: {:expression, kind}
-
-  defp document_group(%DocumentSummary{kind: kind}), do: kind
-
-  defp first_title([document | _documents]),
-    do: String.downcase(document.title || "")
-
-  defp first_title([]), do: ""
-
-  defp kind_label({:expression, kind}), do: pluralize_expression_kind(kind)
-  defp kind_label(:thesis), do: "Thesis"
-  defp kind_label(:paper), do: "Papers"
-  defp kind_label(:document), do: "Documents"
-
-  defp kind_label(kind) when is_atom(kind),
-    do: kind |> Atom.to_string() |> String.capitalize()
-
-  defp pluralize_expression_kind("Book"), do: "Books"
-  defp pluralize_expression_kind("Book chapter"), do: "Book chapters"
-  defp pluralize_expression_kind("Doctoral thesis"), do: "Doctoral theses"
-  defp pluralize_expression_kind("Journal article"), do: "Journal articles"
-  defp pluralize_expression_kind("Report document"), do: "Reports"
-  defp pluralize_expression_kind(kind), do: kind <> "s"
-
-  defp kind_order(:thesis), do: 0
-  defp kind_order({:expression, "Journal article"}), do: 1
-  defp kind_order({:expression, "Book"}), do: 2
-  defp kind_order({:expression, "Book chapter"}), do: 3
-  defp kind_order({:expression, "Doctoral thesis"}), do: 4
-  defp kind_order({:expression, "Report document"}), do: 5
-  defp kind_order({:expression, _kind}), do: 6
-  defp kind_order(:paper), do: 6
-  defp kind_order(:document), do: 9
-  defp kind_order(_kind), do: 10
 
   defp document_summary_line(%DocumentSummary{} = doc) do
     details =

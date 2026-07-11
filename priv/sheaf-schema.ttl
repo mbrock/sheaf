@@ -93,6 +93,18 @@ sheaf:Workspace a rdfs:Class ;
     co:Set ;
   rdfs:comment "A persistent context for local reading and research preferences." .
 
+sheaf:Folder a rdfs:Class ;
+  rdfs:label "folder"@en ;
+  rdfs:subClassOf co:Set,
+    prov:Entity ;
+  rdfs:comment "A flat, named collection used to organize documents within a Sheaf workspace." .
+
+sheaf:inFolder a rdf:Property ;
+  rdfs:label "is in folder"@en ;
+  rdfs:domain sheaf:Document ;
+  rdfs:range sheaf:Folder ;
+  rdfs:comment "Links a document to its folder in the current workspace. A document has at most one folder in the Sheaf interface." .
+
 sheaf:assistantInstructions a rdf:Property ;
   rdfs:label "has assistant instructions"@en ;
   rdfs:domain sheaf:Workspace ;

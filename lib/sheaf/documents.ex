@@ -550,6 +550,7 @@ defmodule Sheaf.Documents do
           "coverImage",
           first_object(workspace, doc, DOC.coverImage())
         )
+        |> put_optional("folderName", folder_name(workspace, doc))
         |> put_optional(
           "workspaceOwnerName",
           resource_name(metadata, workspace_owner)
@@ -586,6 +587,7 @@ defmodule Sheaf.Documents do
         "workspaceOwnerName",
         resource_name(metadata, workspace_owner)
       )
+      |> put_optional("folderName", folder_name(workspace, doc))
       |> Map.merge(metadata_values)
 
     expand_author_rows(row, metadata_values)
@@ -714,6 +716,12 @@ defmodule Sheaf.Documents do
 
   defp resource_name(metadata, resource),
     do: first_object(metadata, resource, FOAF.name())
+
+  defp folder_name(workspace, document) do
+    workspace
+    |> first_object(document, DOC.inFolder())
+    |> then(&first_object(workspace, &1, RDFS.label()))
+  end
 
   defp workspace_owner(workspace) do
     workspace
@@ -903,6 +911,7 @@ defmodule Sheaf.Documents do
       path: path(iri, metadata_only?(rows)),
       workspace_owner_authored?: workspace_owner_authored?(rows),
       workspace_owner_name: value(rows, "workspaceOwnerName"),
+      folder: value(rows, "folderName"),
       cover_path:
         if(value(rows, "coverImage"), do: "/covers/#{Id.id_from_iri(iri)}"),
       title: metadata[:title] || title(row["title"], iri)

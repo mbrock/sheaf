@@ -46,17 +46,24 @@ defmodule Sheaf.DocumentMetadata do
       with {:ok, %{kind: :document}} <-
              Sheaf.ResourceResolver.resolve(document_id),
            {:ok, cover_change} <- cover_change(attrs),
+           {:ok, folder_change} <- folder_change(attrs),
            {:ok, graph} <- Sheaf.fetch_graph(graph_name),
            {updated, expression, fields} <-
              apply_metadata(graph, document, attrs),
            :ok <- maybe_put_metadata(graph_name, updated, fields),
-           :ok <- apply_cover_change(document, cover_change) do
+           :ok <- apply_cover_change(document, cover_change),
+           :ok <- apply_folder_change(document_id, folder_change) do
         Sheaf.Documents.clear_cache()
 
         fields =
           if cover_change == :unchanged,
             do: fields,
             else: fields ++ [:cover_image_id]
+
+        fields =
+          if folder_change == :unchanged,
+            do: fields,
+            else: fields ++ [:folder]
 
         {:ok,
          %{
@@ -281,6 +288,26 @@ defmodule Sheaf.DocumentMetadata do
       changes -> Sheaf.Repo.transact(changes)
     end
   end
+
+  defp folder_change(attrs) do
+    if present_key?(attrs, :folder) do
+      case value(attrs, :folder) do
+        folder when folder in [nil, ""] -> {:ok, :clear}
+        folder when is_binary(folder) -> {:ok, {:set, folder}}
+        _other -> {:error, "folder must be a folder name or an empty string"}
+      end
+    else
+      {:ok, :unchanged}
+    end
+  end
+
+  defp apply_folder_change(_document_id, :unchanged), do: :ok
+
+  defp apply_folder_change(document_id, :clear),
+    do: Sheaf.Workspace.set_document_folder(document_id, "")
+
+  defp apply_folder_change(document_id, {:set, folder}),
+    do: Sheaf.Workspace.set_document_folder(document_id, folder)
 
   defp field_predicates(:kind), do: [RDF.type()]
   defp field_predicates(:title), do: [DCTERMS.title(), RDFS.label()]
