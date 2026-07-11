@@ -122,8 +122,8 @@ defmodule Sheaf.Assistant.CorpusTools do
       Tool.new!(
         name: "list_documents",
         description:
-          "List every document in the Sheaf corpus. " <>
-            "Returns id, kind, title, authors, year, page count, DOI, venue.",
+          "List every document in the Sheaf corpus, grouped by workspace folder. " <>
+            "Also lists every existing folder, including empty folders. Returns id, kind, title, authors, year, page count, DOI, venue.",
         callback: instrument(notify, "list_documents", &list_documents_tool/1)
       ),
       Tool.new!(
@@ -1430,11 +1430,13 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp list_documents_tool(_args) do
     case Documents.list(include_excluded: false) do
       {:ok, documents} ->
+        folders = Sheaf.Workspace.folders()
+
         {:ok,
          documents
          |> Enum.filter(&assistant_list_document?/1)
          |> Enum.map(&document_summary/1)
-         |> then(&%ToolResults.ListDocuments{documents: &1})
+         |> then(&%ToolResults.ListDocuments{documents: &1, folders: folders})
          |> rendered_result()}
 
       {:error, reason} ->

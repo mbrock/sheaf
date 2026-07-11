@@ -172,6 +172,26 @@ defmodule Sheaf.Workspace do
 
   def graph, do: @graph
 
+  @doc "Returns the labels of all folders in the workspace, including empty folders."
+  def folders do
+    Tracer.with_span "sheaf.workspace.list_folders", %{kind: :internal} do
+      graph =
+        Sheaf.Repo.ask(&RDF.Dataset.graph(&1, @graph)) ||
+          Graph.new(name: @graph)
+
+      labels =
+        graph
+        |> folder_resources()
+        |> Enum.map(&folder_label(graph, &1))
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+        |> Enum.sort_by(&String.downcase/1)
+
+      Tracer.set_attribute("sheaf.folder_count", length(labels))
+      labels
+    end
+  end
+
   defp folder_assertions(graph, document, label) do
     case folder_with_label(graph, label) do
       nil ->
@@ -198,26 +218,31 @@ defmodule Sheaf.Workspace do
   end
 
   defp folder_with_label(graph, label) do
+    graph
+    |> folder_resources()
+    |> Enum.find(&(folder_label(graph, &1) == label))
+  end
+
+  defp folder_resources(graph) do
     folder_type = RDF.iri(DOC.Folder)
     rdf_type = RDF.type()
 
     graph
     |> Graph.triples()
-    |> Enum.find_value(fn
-      {folder, ^rdf_type, ^folder_type} ->
-        description = Graph.description(graph, folder)
-
-        case Description.first(description, RDFS.label()) do
-          %RDF.Literal{} = value ->
-            if RDF.Literal.value(value) == label, do: folder
-
-          _ ->
-            nil
-        end
-
-      _ ->
-        nil
+    |> Enum.flat_map(fn
+      {folder, ^rdf_type, ^folder_type} -> [folder]
+      _ -> []
     end)
+  end
+
+  defp folder_label(graph, folder) do
+    graph
+    |> Graph.description(folder)
+    |> Description.first(RDFS.label())
+    |> case do
+      %RDF.Literal{} = value -> RDF.Literal.value(value)
+      _ -> nil
+    end
   end
 
   def exclusion_filter(variable \\ "?doc") do

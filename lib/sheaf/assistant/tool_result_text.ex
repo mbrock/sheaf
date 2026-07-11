@@ -75,12 +75,23 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
-  def to_text(%ListDocuments{documents: documents}) do
-    documents
-    |> grouped_documents()
-    |> Enum.map(fn {group, documents} ->
-      document_group_text(group, documents)
-    end)
+  def to_text(%ListDocuments{documents: documents, folders: folders}) do
+    folder_list =
+      case folders do
+        [] -> "FOLDERS\n(none)"
+        folders -> "FOLDERS\n" <> Enum.map_join(folders, "\n", &"- #{&1}")
+      end
+
+    document_groups =
+      documents
+      |> grouped_documents()
+      |> Enum.map(fn {group, documents} ->
+        document_group_text(group, documents)
+      end)
+      |> Enum.reject(&blank?/1)
+      |> Enum.join("\n\n")
+
+    [folder_list, document_groups]
     |> Enum.reject(&blank?/1)
     |> Enum.join("\n\n")
   end

@@ -80,6 +80,7 @@ defmodule Sheaf.WorkspaceTest do
       end)
 
     assert [folder] = folders
+    assert Sheaf.Workspace.folders() == ["Trail systems"]
     assert RDF.Data.include?(graph, {folder, RDFS.label(), "Trail systems"})
 
     assert RDF.Data.include?(

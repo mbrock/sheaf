@@ -7,7 +7,7 @@ defmodule Sheaf.Assistant.ToolResults do
   """
 
   defmodule ListDocuments do
-    defstruct documents: []
+    defstruct documents: [], folders: []
   end
 
   defmodule DocumentSummary do

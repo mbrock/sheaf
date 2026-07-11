@@ -262,6 +262,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
   test "list document text renders all document statuses" do
     text =
       ToolResultText.to_text(%ToolResults.ListDocuments{
+        folders: ["Landscape", "Trail systems"],
         documents: [
           %ToolResults.DocumentSummary{
             id: "DOC111",
@@ -286,6 +287,8 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert text =~ "- #DOC111 Same thesis [MIKAEL] - 2026 | Ieva Lange"
     assert text =~ "- #DOC222 Same thesis [draft] - 2026 | Ieva Lange"
+    assert text =~ "FOLDERS\n- Landscape\n- Trail systems"
+    assert text =~ "Unfiled (2)"
   end
 
   test "sidecar spreadsheet tools are hidden when no sidecar sheets are imported" do
