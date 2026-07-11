@@ -56,5 +56,6 @@ defmodule SheafWeb.Endpoint do
   plug Plug.Session, @session_options
   plug SheafWeb.ResourceRDFPlug
   plug SheafWeb.ResourceJSONPlug
+  plug SheafWeb.ResourceTextPlug
   plug SheafWeb.Router
 end
