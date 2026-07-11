@@ -113,6 +113,7 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     assert html =~ ~s(src="/covers/DOC2A2")
     assert html =~ "aspect-[16/8.4]"
     assert html =~ "from-black/90"
+    assert html =~ "text-white/80"
     assert html =~ "A covered paper"
     assert html =~ "Lovelace, Babbage"
     assert html =~ "Explains a compact approach to generated terrain."
@@ -124,6 +125,7 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     refute html =~ "rounded-lg"
     refute html =~ "shadow-sm"
     refute html =~ "font-serif"
+    refute html =~ "h-9"
   end
 
   test "metadata heading uses plain compact metadata" do

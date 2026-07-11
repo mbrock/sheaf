@@ -50,22 +50,21 @@ defmodule SheafWeb.DocumentEntryComponents do
         <.icon name="hero-document-text" class="size-10" />
       </div>
 
-      <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pb-3 pt-12">
+      <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-3 pb-3 pt-16">
         <h3 class="font-sans text-base/5 font-medium text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.75)]">
           {@document.title}
         </h3>
+        <div class="mt-1.5 flex min-w-0 items-center justify-between gap-3 font-sans text-xs/4 text-white/80 [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">
+          <span class="min-w-0 truncate">
+            {compact_authors_str(@document) || authors_str(@document) || ""}
+          </span>
+          <span class="shrink-0 tabular-nums">{year_str(@document)}</span>
+        </div>
       </div>
     </div>
 
-    <div class="flex h-20 items-center border-b border-stone-200 px-3 py-2 font-sans text-xs/4 text-stone-700 dark:border-stone-700 dark:text-stone-300">
+    <div class="flex h-20 items-center px-3 py-2 font-sans text-xs/4 text-stone-700 dark:text-stone-300">
       <p class="line-clamp-4">{Map.get(@document, :micro_abstract) || ""}</p>
-    </div>
-
-    <div class="flex h-9 min-w-0 items-center justify-between gap-3 px-3 font-sans text-xs text-stone-500 dark:text-stone-400">
-      <span class="min-w-0 truncate text-stone-600 dark:text-stone-300">
-        {compact_authors_str(@document) || authors_str(@document) || ""}
-      </span>
-      <span class="shrink-0 tabular-nums">{year_str(@document)}</span>
     </div>
     """
   end
