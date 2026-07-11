@@ -5,7 +5,7 @@ defmodule Sheaf.Assistant.Chats do
 
   use GenServer
 
-  alias Sheaf.Assistant.Chat
+  alias Sheaf.Assistant.{Chat, ConversationSettings}
   alias Sheaf.Id
 
   @default_title "Assistant conversation"
@@ -110,7 +110,14 @@ defmodule Sheaf.Assistant.Chats do
   end
 
   defp create_conversation(state, opts) do
+    {restore?, opts} = Keyword.pop(opts, :restore?, false)
     id = Keyword.get_lazy(opts, :id, &mint_id/0)
+
+    opts =
+      if restore?,
+        do: ConversationSettings.merge_options(id, opts),
+        else: opts
+
     kind = opts |> Keyword.get(:kind, @default_kind) |> normalize_kind()
     title = Keyword.get_lazy(opts, :title, fn -> default_title(kind) end)
     listed? = Keyword.get(opts, :listed?, true)
@@ -121,6 +128,7 @@ defmodule Sheaf.Assistant.Chats do
       |> Keyword.put(:id, id)
       |> Keyword.put(:kind, kind)
       |> Keyword.put_new(:title, title)
+      |> Keyword.put_new(:settings_store, settings_store())
 
     case DynamicSupervisor.start_child(@supervisor, {Chat, child_opts}) do
       {:ok, _pid} ->
@@ -158,6 +166,10 @@ defmodule Sheaf.Assistant.Chats do
       {:error, reason} ->
         {{:error, reason}, state}
     end
+  end
+
+  defp settings_store do
+    if Process.whereis(Sheaf.Repo), do: ConversationSettings, else: nil
   end
 
   defp put_conversation(state, conversation) do

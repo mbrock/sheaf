@@ -2,6 +2,7 @@ defmodule Sheaf.LLMTest do
   use ExUnit.Case, async: true
 
   alias ReqLLM.{Context, Message}
+  alias ReqLLM.Message.{ContentPart, ReasoningDetails}
   alias ReqLLM.Providers.OpenAI.ResponsesAPI
   alias Sheaf.LLM
 
@@ -20,6 +21,50 @@ defmodule Sheaf.LLMTest do
     assert file_part.media_type == "application/pdf"
     assert text_part.type == :text
     assert text_part.text == "extract metadata"
+  end
+
+  test "removes unsigned cross-provider thinking before an Anthropic request" do
+    gpt_message = %Message{
+      role: :assistant,
+      content: [
+        ContentPart.text("Visible answer."),
+        ContentPart.thinking("GPT reasoning summary")
+      ],
+      tool_calls: [],
+      reasoning_details: [
+        %ReasoningDetails{provider: :openai, text: nil, index: 0}
+      ]
+    }
+
+    anthropic_message = %Message{
+      role: :assistant,
+      content: [
+        ContentPart.text("Earlier Claude answer."),
+        ContentPart.thinking("Claude reasoning summary")
+      ],
+      reasoning_details: [
+        %ReasoningDetails{
+          provider: :anthropic,
+          text: "Claude reasoning summary",
+          signature: "signed",
+          index: 0
+        }
+      ]
+    }
+
+    context = Context.new([gpt_message, anthropic_message])
+
+    assert %{messages: [sanitized_gpt, sanitized_anthropic]} =
+             LLM.context_for_model("anthropic:claude-opus-4-7", context)
+
+    assert Enum.map(sanitized_gpt.content, & &1.type) == [:text]
+    assert sanitized_gpt.reasoning_details == nil
+    assert Enum.map(sanitized_anthropic.content, & &1.type) == [:text]
+
+    assert [%ReasoningDetails{signature: "signed"}] =
+             sanitized_anthropic.reasoning_details
+
+    assert LLM.context_for_model("openai:gpt-5.6-sol", context) == context
   end
 
   test "generates objects with default request options" do

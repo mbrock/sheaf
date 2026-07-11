@@ -128,6 +128,22 @@ defmodule Sheaf.LLM do
   end
 
   @doc """
+  Makes persisted reasoning history safe for the provider receiving a request.
+
+  Anthropic only accepts thinking blocks produced by Anthropic and carrying
+  their original signature. Human-readable summaries produced by another
+  provider remain useful in Sheaf's UI but must not be replayed as Anthropic
+  thinking input.
+  """
+  def context_for_model(model, %Context{} = context) do
+    if anthropic_model?(model) do
+      %{context | messages: Enum.map(context.messages, &anthropic_message/1)}
+    else
+      context
+    end
+  end
+
+  @doc """
   Generates a structured object with ReqLLM.
 
   Options:
@@ -298,6 +314,46 @@ defmodule Sheaf.LLM do
   defp anthropic_model?({:anthropic, _opts}), do: true
   defp anthropic_model?(%{provider: :anthropic}), do: true
   defp anthropic_model?(_model), do: false
+
+  defp anthropic_message(%ReqLLM.Message{} = message) do
+    content =
+      Enum.reject(message.content || [], fn
+        %ContentPart{type: :thinking} -> true
+        _other -> false
+      end)
+
+    reasoning_details =
+      message.reasoning_details
+      |> List.wrap()
+      |> Enum.filter(&valid_anthropic_reasoning?/1)
+
+    %{
+      message
+      | content: content,
+        reasoning_details:
+          if(reasoning_details == [], do: nil, else: reasoning_details)
+    }
+  end
+
+  defp valid_anthropic_reasoning?(%ReqLLM.Message.ReasoningDetails{
+         provider: :anthropic,
+         signature: signature
+       })
+       when is_binary(signature) and signature != "",
+       do: true
+
+  defp valid_anthropic_reasoning?(%ReqLLM.Message.ReasoningDetails{
+         provider: :anthropic,
+         encrypted?: true,
+         provider_data: provider_data
+       })
+       when is_map(provider_data),
+       do:
+         is_binary(
+           Map.get(provider_data, :data) || Map.get(provider_data, "data")
+         )
+
+  defp valid_anthropic_reasoning?(_detail), do: false
 
   defp model_provider_options(model, caller_opts) do
     cond do

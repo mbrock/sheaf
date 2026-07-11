@@ -209,18 +209,24 @@ defmodule Sheaf.Assistant do
   end
 
   defp generate_response(state, %Context{} = context, llm_options, opts) do
+    request_context = Sheaf.LLM.context_for_model(state.model, context)
+
     if stream?(opts) do
-      case state.stream_text.(state.model, context, llm_options) do
+      case state.stream_text.(state.model, request_context, llm_options) do
         {:ok, %StreamResponse{} = stream_response} ->
           stream_response
           |> StreamResponse.process_stream(stream_callbacks(opts))
-          |> recover_empty_stream_response(state, context, llm_options)
+          |> recover_empty_stream_response(
+            state,
+            request_context,
+            llm_options
+          )
 
         other ->
           other
       end
     else
-      state.generate_text.(state.model, context, llm_options)
+      state.generate_text.(state.model, request_context, llm_options)
     end
   end
 

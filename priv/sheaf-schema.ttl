@@ -162,6 +162,12 @@ sheaf:conversationMode a rdf:Property ;
   rdfs:range xsd:string ;
   rdfs:comment "Records the assistant conversation mode, such as quick or research." .
 
+sheaf:assistantConfiguration a rdf:Property ;
+  rdfs:label "has assistant configuration"@en ;
+  rdfs:domain sheaf:AssistantConversation ;
+  rdfs:range rdf:JSON ;
+  rdfs:comment "Records the currently selected model, conversation mode, and model request options needed to resume an assistant conversation consistently." .
+
 sheaf:Message a rdfs:Class ;
   rdfs:label "message"@en ;
   rdfs:subClassOf prov:Entity ;

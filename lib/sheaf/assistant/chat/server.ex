@@ -41,6 +41,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     :last_user_message_iri,
     :activity_writer,
     :context_store,
+    :settings_store,
     :stream_buffer,
     :turn_started_at,
     :last_activity_at,
@@ -160,6 +161,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     agent_iri = Keyword.get_lazy(opts, :agent_iri, &Sheaf.mint/0)
     activity_writer = Keyword.get(opts, :activity_writer, Activity)
     context_store = Keyword.get(opts, :context_store, ContextStore)
+    settings_store = Keyword.get(opts, :settings_store)
 
     spreadsheet_session =
       Keyword.get_lazy(opts, :spreadsheet_session, fn ->
@@ -226,27 +228,33 @@ defmodule Sheaf.Assistant.Chat.Server do
            stream_text: stream_text
          ) do
       {:ok, assistant} ->
-        {:ok,
-         %__MODULE__{
-           id: id,
-           title: title,
-           kind: kind,
-           assistant: assistant,
-           agent_iri: agent_iri,
-           session_iri: session_iri,
-           activity_writer: activity_writer,
-           context_store: context_store,
-           allow_notes?: allow_notes?,
-           model: model,
-           llm_options: llm_options,
-           max_tool_rounds: max_tool_rounds,
-           task_supervisor: task_supervisor,
-           generate_text: generate_text,
-           stream_text: stream_text,
-           stream?: stream?,
-           titles: titles,
-           messages: messages
-         }}
+        state =
+          %__MODULE__{
+            id: id,
+            title: title,
+            kind: kind,
+            assistant: assistant,
+            agent_iri: agent_iri,
+            session_iri: session_iri,
+            activity_writer: activity_writer,
+            context_store: context_store,
+            settings_store: settings_store,
+            allow_notes?: allow_notes?,
+            model: model,
+            llm_options: llm_options,
+            max_tool_rounds: max_tool_rounds,
+            task_supervisor: task_supervisor,
+            generate_text: generate_text,
+            stream_text: stream_text,
+            stream?: stream?,
+            titles: titles,
+            messages: messages
+          }
+
+        case persist_settings(state) do
+          :ok -> {:ok, state}
+          {:error, reason} -> {:stop, {:settings_persistence_failed, reason}}
+        end
 
       {:error, reason} ->
         {:stop, reason}
@@ -308,8 +316,16 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   def handle_call({:put_model, model}, _from, state) do
     case Assistant.put_model(state.assistant, model) do
-      :ok -> {:reply, :ok, %{state | model: model}}
-      {:error, reason} -> {:reply, {:error, reason}, state}
+      :ok ->
+        state = %{state | model: model}
+
+        case persist_settings(state) do
+          :ok -> {:reply, :ok, state}
+          {:error, reason} -> {:reply, {:error, reason}, state}
+        end
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
     end
   end
 
@@ -324,8 +340,16 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   def handle_call({:put_llm_options, opts}, _from, state) do
     case Assistant.put_llm_options(state.assistant, opts) do
-      :ok -> {:reply, :ok, %{state | llm_options: opts}}
-      {:error, reason} -> {:reply, {:error, reason}, state}
+      :ok ->
+        state = %{state | llm_options: opts}
+
+        case persist_settings(state) do
+          :ok -> {:reply, :ok, state}
+          {:error, reason} -> {:reply, {:error, reason}, state}
+        end
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
     end
   end
 
@@ -786,6 +810,17 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp write_activity(writer, function, attrs) when is_atom(writer) do
     apply(writer, function, [attrs])
+  end
+
+  defp persist_settings(%{settings_store: nil}), do: :ok
+  defp persist_settings(%{settings_store: false}), do: :ok
+
+  defp persist_settings(state) do
+    state.settings_store.write(state.id, %{
+      model: state.model,
+      kind: state.kind,
+      llm_options: state.llm_options
+    })
   end
 
   defp put_context_tools(%Context{} = context, tools) when is_list(tools) do

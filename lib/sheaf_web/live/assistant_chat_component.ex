@@ -1495,6 +1495,7 @@ defmodule SheafWeb.AssistantChatComponent do
     case Chats.create(
            chat_options(socket, mode_kind(socket.assigns.mode))
            |> Keyword.put(:id, id)
+           |> Keyword.put(:restore?, true)
            |> Keyword.put(:listed?, history_enabled?(socket.assigns))
          ) do
       %{id: ^id} ->
