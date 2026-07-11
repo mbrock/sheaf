@@ -218,17 +218,28 @@ defmodule Sheaf.AssistantTest do
            ]
   end
 
-  test "executes a batch of web searches concurrently and preserves result order" do
+  test "executes mixed tool calls concurrently and preserves result order" do
     test_pid = self()
 
-    web_search =
+    first_tool =
       Tool.new!(
-        name: "web_search",
-        description: "Search",
-        parameter_schema: [query: [type: :string, required: true]],
-        callback: fn %{query: query} ->
-          send(test_pid, {:search_started, query, self()})
-          receive do: (:release -> {:ok, query})
+        name: "first_lookup",
+        description: "First lookup",
+        parameter_schema: [value: [type: :string, required: true]],
+        callback: fn %{value: value} ->
+          send(test_pid, {:tool_started, value, self()})
+          receive do: (:release -> {:ok, value})
+        end
+      )
+
+    second_tool =
+      Tool.new!(
+        name: "second_lookup",
+        description: "Second lookup",
+        parameter_schema: [value: [type: :string, required: true]],
+        callback: fn %{value: value} ->
+          send(test_pid, {:tool_started, value, self()})
+          receive do: (:release -> {:ok, value})
         end
       )
 
@@ -239,8 +250,16 @@ defmodule Sheaf.AssistantTest do
            response(
              Context.assistant("Searching.",
                tool_calls: [
-                 ToolCall.new("call_1", "web_search", ~s({"query":"first"})),
-                 ToolCall.new("call_2", "web_search", ~s({"query":"second"}))
+                 ToolCall.new(
+                   "call_1",
+                   "first_lookup",
+                   ~s({"value":"first"})
+                 ),
+                 ToolCall.new(
+                   "call_2",
+                   "second_lookup",
+                   ~s({"value":"second"})
+                 )
                ]
              ),
              finish_reason: :tool_calls
@@ -261,15 +280,15 @@ defmodule Sheaf.AssistantTest do
       start_supervised!(
         {Assistant,
          model: "test-model",
-         tools: [web_search],
+         tools: [first_tool, second_tool],
          generate_text: generate_text,
          task_supervisor: Sheaf.Assistant.TaskSupervisor}
       )
 
-    task = Task.async(fn -> Assistant.run(assistant, "Search twice.") end)
+    task = Task.async(fn -> Assistant.run(assistant, "Use both tools.") end)
 
-    assert_receive {:search_started, "first", first_pid}, 1_000
-    assert_receive {:search_started, "second", second_pid}, 1_000
+    assert_receive {:tool_started, "first", first_pid}, 1_000
+    assert_receive {:tool_started, "second", second_pid}, 1_000
     send(first_pid, :release)
     send(second_pid, :release)
 

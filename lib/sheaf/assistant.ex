@@ -329,7 +329,7 @@ defmodule Sheaf.Assistant do
   end
 
   defp execute_tools(context, tool_calls, tools) do
-    if parallel_web_searches?(tool_calls) do
+    if length(tool_calls) > 1 do
       messages =
         tool_calls
         |> Task.async_stream(&execute_tool_call(&1, tools),
@@ -348,11 +348,6 @@ defmodule Sheaf.Assistant do
   catch
     kind, reason ->
       {:error, {kind, reason}}
-  end
-
-  defp parallel_web_searches?(tool_calls) do
-    length(tool_calls) > 1 and
-      Enum.all?(tool_calls, &(tool_call_name(&1) == "web_search"))
   end
 
   defp execute_tool_call(tool_call, tools) do
@@ -378,8 +373,6 @@ defmodule Sheaf.Assistant do
         })
     end
   end
-
-  defp tool_call_name(tool_call), do: elem(tool_call_parts(tool_call), 0)
 
   defp tool_call_parts(%ToolCall{
          id: id,
