@@ -66,7 +66,21 @@ defmodule Sheaf.LLMTest do
                label: "Claude",
                model: "anthropic:claude-opus-4-7"
              },
-             %{provider: "gpt", label: "GPT", model: "openai:gpt-5.6"}
+             %{
+               provider: "gpt-sol",
+               label: "GPT Sol",
+               model: "openai:gpt-5.6-sol"
+             },
+             %{
+               provider: "gpt-terra",
+               label: "GPT Terra",
+               model: "openai:gpt-5.6-terra"
+             },
+             %{
+               provider: "gpt-luna",
+               label: "GPT Luna",
+               model: "openai:gpt-5.6-luna"
+             }
            ] = LLM.assistant_model_options()
 
     assert LLM.default_assistant_provider() == "claude"
@@ -74,8 +88,20 @@ defmodule Sheaf.LLMTest do
     assert LLM.assistant_model_for_provider("claude") ==
              "anthropic:claude-opus-4-7"
 
-    assert LLM.assistant_model_for_provider("gpt") == "openai:gpt-5.6"
-    assert LLM.assistant_provider_for_model("openai:gpt-5.6") == "gpt"
+    assert LLM.assistant_model_for_provider("gpt-sol") ==
+             "openai:gpt-5.6-sol"
+
+    assert LLM.assistant_model_for_provider("gpt-terra") ==
+             "openai:gpt-5.6-terra"
+
+    assert LLM.assistant_model_for_provider("gpt-luna") ==
+             "openai:gpt-5.6-luna"
+
+    assert LLM.assistant_provider_for_model("openai:gpt-5.6-sol") ==
+             "gpt-sol"
+
+    assert LLM.assistant_reasoning_effort_options() ==
+             ~w(none low medium high xhigh max)
 
     assert LLM.assistant_provider_for_model("anthropic:claude-opus-4-7") ==
              "claude"

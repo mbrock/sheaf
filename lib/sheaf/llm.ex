@@ -10,7 +10,7 @@ defmodule Sheaf.LLM do
   alias ReqLLM.Message.ContentPart
 
   @claude_assistant_model "anthropic:claude-opus-4-7"
-  @gpt_assistant_model "openai:gpt-5.6"
+  @gpt_assistant_model "openai:gpt-5.6-sol"
   @default_model @claude_assistant_model
   @default_max_tokens 65_536
   @default_thinking %{type: "adaptive", display: "omitted"}
@@ -37,7 +37,13 @@ defmodule Sheaf.LLM do
   def assistant_model_options do
     [
       %{provider: "claude", label: "Claude", model: @claude_assistant_model},
-      %{provider: "gpt", label: "GPT", model: @gpt_assistant_model}
+      %{provider: "gpt-sol", label: "GPT Sol", model: @gpt_assistant_model},
+      %{
+        provider: "gpt-terra",
+        label: "GPT Terra",
+        model: "openai:gpt-5.6-terra"
+      },
+      %{provider: "gpt-luna", label: "GPT Luna", model: "openai:gpt-5.6-luna"}
     ]
   end
 
@@ -47,19 +53,38 @@ defmodule Sheaf.LLM do
   @spec default_assistant_provider() :: String.t()
   def default_assistant_provider, do: "claude"
 
+  @doc "The reasoning effort levels supported by GPT-5.6 assistant models."
+  def assistant_reasoning_effort_options,
+    do: ~w(none low medium high xhigh max)
+
   @doc """
   Resolves a chat UI provider key to the ReqLLM model spec used for assistant turns.
   """
   @spec assistant_model_for_provider(term()) :: String.t()
-  def assistant_model_for_provider("gpt"), do: @gpt_assistant_model
-  def assistant_model_for_provider(:gpt), do: @gpt_assistant_model
+  def assistant_model_for_provider(provider)
+      when provider in ["gpt", "gpt-sol", :gpt, :gpt_sol],
+      do: @gpt_assistant_model
+
+  def assistant_model_for_provider(provider)
+      when provider in ["gpt-terra", :gpt_terra],
+      do: "openai:gpt-5.6-terra"
+
+  def assistant_model_for_provider(provider)
+      when provider in ["gpt-luna", :gpt_luna],
+      do: "openai:gpt-5.6-luna"
+
   def assistant_model_for_provider(_provider), do: @claude_assistant_model
 
   @doc """
   Returns the chat UI provider key for an assistant model spec.
   """
   @spec assistant_provider_for_model(term()) :: String.t()
-  def assistant_provider_for_model(@gpt_assistant_model), do: "gpt"
+  def assistant_provider_for_model(model)
+      when model in ["openai:gpt-5.6", @gpt_assistant_model],
+      do: "gpt-sol"
+
+  def assistant_provider_for_model("openai:gpt-5.6-terra"), do: "gpt-terra"
+  def assistant_provider_for_model("openai:gpt-5.6-luna"), do: "gpt-luna"
   def assistant_provider_for_model(_model), do: "claude"
 
   @doc """
@@ -225,11 +250,20 @@ defmodule Sheaf.LLM do
   def response_usage(%{usage: usage}) when is_map(usage), do: usage
   def response_usage(_), do: nil
 
-  defp assistant_provider_key("gpt"), do: "gpt"
-  defp assistant_provider_key(:gpt), do: "gpt"
+  defp assistant_provider_key(provider)
+       when provider in ["gpt", "gpt-sol", "gpt-terra", "gpt-luna", :gpt],
+       do: "gpt"
 
   defp assistant_provider_key(provider_or_model),
-    do: assistant_provider_for_model(provider_or_model)
+    do:
+      if(
+        String.starts_with?(
+          assistant_provider_for_model(provider_or_model),
+          "gpt"
+        ),
+        do: "gpt",
+        else: "claude"
+      )
 
   defp normalize_assistant_mode(:research), do: :research
   defp normalize_assistant_mode("research"), do: :research

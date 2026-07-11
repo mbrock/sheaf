@@ -41,7 +41,7 @@ defmodule SheafWeb.AssistantChatComponentTest do
              )
 
     assert socket.assigns.mode == "research"
-    assert socket.assigns.model_provider == "gpt"
+    assert socket.assigns.model_provider == "gpt-sol"
     assert socket.assigns.form.params["message"] == "Keep this draft."
   end
 
@@ -65,6 +65,30 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert socket.assigns.form.params["message"] == "Move this paragraph."
   end
 
+  test "GPT model and reasoning effort can be selected independently" do
+    {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
+
+    assert {:noreply, socket} =
+             AssistantChatComponent.handle_event(
+               "set_options",
+               %{
+                 "chat" => %{
+                   "message" => "Compare this draft.",
+                   "mode" => "research",
+                   "model_provider" => "gpt-terra",
+                   "reasoning_effort" => "max"
+                 }
+               },
+               socket
+             )
+
+    assert socket.assigns.model_provider == "gpt-terra"
+    assert socket.assigns.model == "openai:gpt-5.6-terra"
+    assert socket.assigns.reasoning_effort == "max"
+    assert socket.assigns.form.params["reasoning_effort"] == "max"
+    assert socket.assigns.form.params["message"] == "Compare this draft."
+  end
+
   test "import mode routes through GPT with high-reasoning defaults" do
     {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
 
@@ -82,8 +106,8 @@ defmodule SheafWeb.AssistantChatComponentTest do
              )
 
     assert socket.assigns.mode == "import"
-    assert socket.assigns.model_provider == "gpt"
-    assert socket.assigns.model == "openai:gpt-5.6"
+    assert socket.assigns.model_provider == "gpt-sol"
+    assert socket.assigns.model == "openai:gpt-5.6-sol"
 
     assert Sheaf.LLM.assistant_llm_options(socket.assigns.model, "import") ==
              [

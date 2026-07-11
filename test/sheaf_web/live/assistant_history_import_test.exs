@@ -43,6 +43,6 @@ defmodule SheafWeb.AssistantHistoryImportTest do
 
     assert html =~ "paper.pdf · ready"
     assert html =~ ~s(value="import" checked)
-    assert html =~ ~s(value="gpt" selected)
+    assert html =~ ~s(value="gpt-sol" selected)
   end
 end

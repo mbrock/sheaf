@@ -31,6 +31,7 @@ defmodule SheafWeb.AssistantChatComponent do
      |> assign(:mode, "quick")
      |> assign(:model, Sheaf.LLM.default_model())
      |> assign(:model_provider, Sheaf.LLM.default_assistant_provider())
+     |> assign(:reasoning_effort, "medium")
      |> assign(:form, chat_form())}
   end
 
@@ -42,11 +43,13 @@ defmodule SheafWeb.AssistantChatComponent do
         |> assign(:chat, snapshot)
         |> assign(:model, chat_model(snapshot))
         |> assign(:model_provider, chat_model_provider(snapshot))
+        |> assign(:reasoning_effort, chat_reasoning_effort(snapshot))
         |> assign(
           :form,
           chat_form(
             chat_mode(snapshot),
             chat_model_provider(snapshot),
+            chat_reasoning_effort(snapshot),
             current_form_message(socket)
           )
         )
@@ -67,17 +70,18 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   def update(%{import_uploads: files}, socket) do
-    provider = "gpt"
+    provider = "gpt-sol"
 
     {:ok,
      socket
      |> assign(:uploaded_pdfs, files)
      |> assign(:mode, "import")
      |> assign(:model_provider, provider)
+     |> assign(:reasoning_effort, "high")
      |> assign(:model, Sheaf.LLM.assistant_model_for_provider(provider))
      |> assign(
        :form,
-       chat_form("import", provider, current_form_message(socket))
+       chat_form("import", provider, "high", current_form_message(socket))
      )}
   end
 
@@ -89,6 +93,7 @@ defmodule SheafWeb.AssistantChatComponent do
       |> assign_new(:model_provider, fn ->
         Sheaf.LLM.assistant_provider_for_model(socket.assigns.model)
       end)
+      |> assign_new(:reasoning_effort, fn -> "medium" end)
       |> assign_new(:llm_options, fn -> [] end)
       |> assign_new(:variant, fn -> :full end)
       |> assign_new(:composer_only?, fn -> false end)
@@ -134,6 +139,12 @@ defmodule SheafWeb.AssistantChatComponent do
       |> provider_for_mode(mode)
 
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
+
+    reasoning_effort =
+      chat_params
+      |> Map.get("reasoning_effort", socket.assigns.reasoning_effort)
+      |> normalize_reasoning_effort()
+
     message = Map.get(chat_params, "message", "")
 
     {:noreply,
@@ -141,7 +152,11 @@ defmodule SheafWeb.AssistantChatComponent do
      |> assign(:mode, mode)
      |> assign(:model_provider, model_provider)
      |> assign(:model, model)
-     |> assign(:form, chat_form(mode, model_provider, message))}
+     |> assign(:reasoning_effort, reasoning_effort)
+     |> assign(
+       :form,
+       chat_form(mode, model_provider, reasoning_effort, message)
+     )}
   end
 
   def handle_event("new_chat", %{"mode" => mode}, socket) do
@@ -178,6 +193,11 @@ defmodule SheafWeb.AssistantChatComponent do
     model_provider = normalize_model_provider(model_provider)
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
 
+    reasoning_effort =
+      chat_params
+      |> Map.get("reasoning_effort", socket.assigns.reasoning_effort)
+      |> normalize_reasoning_effort()
+
     cond do
       message == "" ->
         {:noreply,
@@ -185,7 +205,8 @@ defmodule SheafWeb.AssistantChatComponent do
          |> assign(:mode, mode)
          |> assign(:model_provider, model_provider)
          |> assign(:model, model)
-         |> assign(:form, chat_form(mode, model_provider))}
+         |> assign(:reasoning_effort, reasoning_effort)
+         |> assign(:form, chat_form(mode, model_provider, reasoning_effort))}
 
       socket.assigns.chat.pending ->
         {:noreply, socket}
@@ -196,6 +217,7 @@ defmodule SheafWeb.AssistantChatComponent do
           |> assign(:mode, mode)
           |> assign(:model_provider, model_provider)
           |> assign(:model, model)
+          |> assign(:reasoning_effort, reasoning_effort)
           |> ensure_sendable_chat(mode)
 
         socket =
@@ -203,7 +225,12 @@ defmodule SheafWeb.AssistantChatComponent do
             put_local_error(socket, "No assistant chat is selected.")
           else
             llm_options =
-              assistant_llm_options(socket.assigns.llm_options, model, mode)
+              assistant_llm_options(
+                socket.assigns.llm_options,
+                model,
+                mode,
+                reasoning_effort
+              )
 
             case put_chat_route(
                    socket.assigns.selected_chat_id,
@@ -221,14 +248,21 @@ defmodule SheafWeb.AssistantChatComponent do
                       do: send(self(), :clear_import_uploads)
 
                     socket
-                    |> assign(:form, chat_form(mode, model_provider))
+                    |> assign(
+                      :form,
+                      chat_form(mode, model_provider, reasoning_effort)
+                    )
                     |> maybe_navigate_after_send()
 
                   {:error, :busy} ->
                     socket
 
                   {:error, :empty_message} ->
-                    assign(socket, :form, chat_form(mode, model_provider))
+                    assign(
+                      socket,
+                      :form,
+                      chat_form(mode, model_provider, reasoning_effort)
+                    )
 
                   {:error, reason} ->
                     put_local_error(
@@ -309,6 +343,7 @@ defmodule SheafWeb.AssistantChatComponent do
             form={@form}
             mode={@mode}
             model_provider={@model_provider}
+            reasoning_effort={Map.get(assigns, :reasoning_effort, "medium")}
             selected_chat_id={@selected_chat_id}
             selected_id={Map.get(assigns, :selected_id)}
             pending={@chat.pending}
@@ -389,6 +424,7 @@ defmodule SheafWeb.AssistantChatComponent do
         form={@form}
         mode={@mode}
         model_provider={@model_provider}
+        reasoning_effort={Map.get(assigns, :reasoning_effort, "medium")}
         selected_chat_id={@selected_chat_id}
         selected_id={Map.get(assigns, :selected_id)}
         pending={@chat.pending}
@@ -451,6 +487,7 @@ defmodule SheafWeb.AssistantChatComponent do
   attr :form, :any, required: true
   attr :mode, :string, required: true
   attr :model_provider, :string, required: true
+  attr :reasoning_effort, :string, default: "medium"
   attr :selected_chat_id, :string, default: nil
   attr :selected_id, :string, default: nil
   attr :pending, :boolean, required: true
@@ -581,6 +618,30 @@ defmodule SheafWeb.AssistantChatComponent do
               selected={@model_provider == option.provider}
             >
               {option.label}
+            </option>
+          </select>
+
+          <label
+            :if={String.starts_with?(@model_provider, "gpt")}
+            class="sr-only"
+            for={"#{@id}-reasoning-effort"}
+          >
+            Reasoning effort
+          </label>
+          <select
+            :if={String.starts_with?(@model_provider, "gpt")}
+            id={"#{@id}-reasoning-effort"}
+            name="chat[reasoning_effort]"
+            class="h-7 rounded-sm border border-stone-200 bg-white px-1.5 py-0 text-stone-700 outline-none focus:border-stone-400 focus:ring-0 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200"
+            disabled={@options_locked?}
+            title="Reasoning effort"
+          >
+            <option
+              :for={effort <- Sheaf.LLM.assistant_reasoning_effort_options()}
+              value={effort}
+              selected={@reasoning_effort == effort}
+            >
+              {effort |> String.capitalize()}
             </option>
           </select>
 
@@ -1391,7 +1452,10 @@ defmodule SheafWeb.AssistantChatComponent do
     |> assign(:mode, mode)
     |> assign(:model_provider, model_provider)
     |> assign(:model, Sheaf.LLM.assistant_model_for_provider(model_provider))
-    |> assign(:form, chat_form(mode, model_provider))
+    |> assign(
+      :form,
+      chat_form(mode, model_provider, socket.assigns.reasoning_effort)
+    )
   end
 
   defp ensure_sendable_chat(
@@ -1459,9 +1523,14 @@ defmodule SheafWeb.AssistantChatComponent do
     |> assign(:mode, chat_mode(snapshot))
     |> assign(:model, chat_model(snapshot))
     |> assign(:model_provider, chat_model_provider(snapshot))
+    |> assign(:reasoning_effort, chat_reasoning_effort(snapshot))
     |> assign(
       :form,
-      chat_form(chat_mode(snapshot), chat_model_provider(snapshot))
+      chat_form(
+        chat_mode(snapshot),
+        chat_model_provider(snapshot),
+        chat_reasoning_effort(snapshot)
+      )
     )
   end
 
@@ -1481,7 +1550,8 @@ defmodule SheafWeb.AssistantChatComponent do
       assistant_llm_options(
         socket.assigns.llm_options,
         socket.assigns.model,
-        kind
+        kind,
+        socket.assigns.reasoning_effort
       )
 
     options = [
@@ -1557,11 +1627,24 @@ defmodule SheafWeb.AssistantChatComponent do
   defp mode_kind("import"), do: :import
   defp mode_kind(_mode), do: :chat
 
-  defp normalize_model_provider("gpt"), do: "gpt"
+  defp normalize_model_provider(provider)
+       when provider in ~w(gpt gpt-sol gpt-terra gpt-luna),
+       do: if(provider == "gpt", do: "gpt-sol", else: provider)
+
   defp normalize_model_provider(_provider), do: "claude"
 
-  defp provider_for_mode(_provider, "import"), do: "gpt"
+  defp provider_for_mode(provider, "import")
+       when provider in ~w(gpt-sol gpt-terra gpt-luna),
+       do: provider
+
+  defp provider_for_mode(_provider, "import"), do: "gpt-sol"
   defp provider_for_mode(provider, _mode), do: provider
+
+  defp normalize_reasoning_effort(effort)
+       when effort in ~w(none low medium high xhigh max),
+       do: effort
+
+  defp normalize_reasoning_effort(_effort), do: "medium"
 
   defp put_chat_route(id, model, llm_options) when is_binary(id) do
     with :ok <- Chat.put_model(id, model),
@@ -1572,10 +1655,17 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp put_chat_route(_id, _model, _llm_options), do: :ok
 
-  defp assistant_llm_options(base_options, model, kind_or_mode) do
-    model
-    |> Sheaf.LLM.assistant_llm_options(kind_or_mode)
-    |> Keyword.merge(base_options)
+  defp assistant_llm_options(base_options, model, kind_or_mode, effort) do
+    options =
+      model
+      |> Sheaf.LLM.assistant_llm_options(kind_or_mode)
+      |> Keyword.merge(base_options)
+
+    if Sheaf.LLM.assistant_provider_for_model(model) == "claude" do
+      Keyword.delete(options, :reasoning_effort)
+    else
+      Keyword.put(options, :reasoning_effort, String.to_existing_atom(effort))
+    end
   end
 
   defp selector_label_class(selected_value, value, locked?) do
@@ -1643,6 +1733,15 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp chat_model_provider(chat),
     do: chat |> chat_model() |> Sheaf.LLM.assistant_provider_for_model()
+
+  defp chat_reasoning_effort(%{llm_options: options}) when is_list(options) do
+    options
+    |> Keyword.get(:reasoning_effort, :medium)
+    |> Atom.to_string()
+    |> normalize_reasoning_effort()
+  end
+
+  defp chat_reasoning_effort(_chat), do: "medium"
 
   defp input_placeholder(_mode, selected_chat_id)
        when is_binary(selected_chat_id),
@@ -1732,13 +1831,15 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_form(
          mode \\ "quick",
          model_provider \\ Sheaf.LLM.default_assistant_provider(),
+         reasoning_effort \\ "medium",
          message \\ ""
        ) do
     to_form(
       %{
         "message" => message,
         "mode" => mode,
-        "model_provider" => model_provider
+        "model_provider" => model_provider,
+        "reasoning_effort" => reasoning_effort
       },
       as: :chat
     )
