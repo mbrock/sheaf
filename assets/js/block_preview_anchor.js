@@ -3,9 +3,13 @@ const defaultAnchorName = "--block-preview-anchor"
 let currentAnchor = null
 let activePreviewId = null
 let activeAnchorName = null
+let hideTimeout = null
 
 export function installBlockPreviewAnchors() {
-  document.addEventListener("pointerover", activateBlockPreviewAnchor, {
+  document.addEventListener("pointerover", handleBlockPreviewPointerOver, {
+    passive: true,
+  })
+  document.addEventListener("pointerout", handleBlockPreviewPointerOut, {
     passive: true,
   })
   document.addEventListener("focusin", activateBlockPreviewAnchor)
@@ -24,6 +28,32 @@ export function installBlockPreviewAnchors() {
   })
 }
 
+function handleBlockPreviewPointerOver(event) {
+  if (blockPreviewPopover(event.target)) {
+    cancelScheduledHide()
+    return
+  }
+
+  activateBlockPreviewAnchor(event)
+}
+
+function handleBlockPreviewPointerOut(event) {
+  const surface =
+    blockPreviewTrigger(event.target) || blockPreviewPopover(event.target)
+  if (!surface) return
+
+  const nextSurface =
+    blockPreviewTrigger(event.relatedTarget) ||
+    blockPreviewPopover(event.relatedTarget)
+
+  if (nextSurface && surfacePreviewId(nextSurface) === activePreviewId) {
+    cancelScheduledHide()
+    return
+  }
+
+  scheduleHide()
+}
+
 function activateBlockPreviewAnchor(event) {
   const trigger = blockPreviewTrigger(event.target)
   if (!trigger) return
@@ -31,6 +61,7 @@ function activateBlockPreviewAnchor(event) {
   const previewId = trigger.dataset.previewId
   if (!previewId) return
 
+  cancelScheduledHide()
   const changed = currentAnchor !== trigger || activePreviewId !== previewId
   setActiveAnchor(trigger, previewId)
 
@@ -46,6 +77,26 @@ function activateBlockPreviewAnchor(event) {
   } else {
     positionCurrentPopover()
   }
+}
+
+function scheduleHide() {
+  cancelScheduledHide()
+
+  hideTimeout = window.setTimeout(() => {
+    const popover = findBlockPreviewPopover(activePreviewId)
+
+    if (currentAnchor?.matches(":hover") || popover?.matches(":hover")) return
+
+    hideStalePopovers(null)
+    clearActiveAnchor()
+    hideTimeout = null
+  }, 140)
+}
+
+function cancelScheduledHide() {
+  if (hideTimeout === null) return
+  window.clearTimeout(hideTimeout)
+  hideTimeout = null
 }
 
 function positionRenderedBlockPreview(event) {
@@ -158,6 +209,15 @@ function placePopoverWithinViewport(trigger, popover) {
 function blockPreviewTrigger(target) {
   const element = target instanceof Element ? target : target?.parentElement
   return element?.closest(".block-preview-trigger")
+}
+
+function blockPreviewPopover(target) {
+  const element = target instanceof Element ? target : target?.parentElement
+  return element?.closest(".block-preview-popover")
+}
+
+function surfacePreviewId(surface) {
+  return surface?.dataset.previewId
 }
 
 function findTrigger(previewId) {
