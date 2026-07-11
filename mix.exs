@@ -29,6 +29,7 @@ defmodule Sheaf.MixProject do
       extra_applications: [
         :logger,
         :runtime_tools,
+        :xmerl,
         :opentelemetry_exporter,
         :opentelemetry
       ]
@@ -79,7 +80,7 @@ defmodule Sheaf.MixProject do
       {:jason, "~> 1.2"},
       {:nimble_csv, "~> 1.0"},
       {:req, "~> 0.5"},
-      {:req_llm, "~> 1.10"},
+      {:req_llm, "~> 1.17"},
       {:exqlite, "~> 0.36.0"},
       {:duckdbex, "~> 0.4.0"},
       {:sqlite_vec, "~> 0.1.0"},

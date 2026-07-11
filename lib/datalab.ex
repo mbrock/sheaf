@@ -109,13 +109,13 @@ defmodule Datalab do
          {:ok, bytes} <- File.read(path) do
       form =
         [
-          {"file",
+          {:file,
            {bytes,
             filename: Path.basename(path), content_type: "application/pdf"}},
-          {"output_format",
+          {:output_format,
            Keyword.get(opts, :output_format, @default_output_format)}
         ]
-        |> maybe_put("page_range", Keyword.get(opts, :page_range))
+        |> maybe_put(:page_range, Keyword.get(opts, :page_range))
 
       client(api_key, opts)
       |> Req.post(

@@ -1,7 +1,8 @@
 defmodule Sheaf.LLMTest do
   use ExUnit.Case, async: true
 
-  alias ReqLLM.Message
+  alias ReqLLM.{Context, Message}
+  alias ReqLLM.Providers.OpenAI.ResponsesAPI
   alias Sheaf.LLM
 
   test "builds user messages with text and file parts" do
@@ -82,19 +83,53 @@ defmodule Sheaf.LLMTest do
 
   test "sets GPT assistant reasoning effort by conversation mode" do
     assert LLM.assistant_llm_options("gpt", "quick") == [
-             reasoning_effort: :medium
+             reasoning_effort: :medium,
+             provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("openai:gpt-5.6", :chat) == [
-             reasoning_effort: :medium
+             reasoning_effort: :medium,
+             provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("gpt", "research") == [
-             reasoning_effort: :high
+             reasoning_effort: :high,
+             provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("anthropic:claude-opus-4-7", "research") ==
              []
+  end
+
+  test "requests and decodes streamed OpenAI reasoning summaries" do
+    options =
+      LLM.text_request_options(
+        model: "openai:gpt-5.6",
+        llm_options: LLM.assistant_llm_options("gpt", :research)
+      )
+
+    body =
+      ResponsesAPI.build_request_body(
+        Context.new(),
+        "gpt-5.6",
+        options,
+        %{options: options}
+      )
+
+    assert body["reasoning"] == %{"effort" => "high", "summary" => "auto"}
+
+    {:ok, model} = ReqLLM.model("openai:gpt-5.6")
+
+    assert [%ReqLLM.StreamChunk{type: :thinking, text: "Checking sources."}] =
+             ResponsesAPI.decode_stream_event(
+               %{
+                 data: %{
+                   "type" => "response.reasoning_summary_text.delta",
+                   "delta" => "Checking sources."
+                 }
+               },
+               model
+             )
   end
 
   test "merges provider options and request overrides" do

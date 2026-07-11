@@ -238,10 +238,19 @@ defmodule Sheaf.LLM do
   defp normalize_assistant_mode(_mode), do: :quick
 
   defp do_assistant_llm_options("gpt", :research),
-    do: [reasoning_effort: :high]
+    do: gpt_assistant_options(:high)
 
-  defp do_assistant_llm_options("gpt", _mode), do: [reasoning_effort: :medium]
+  defp do_assistant_llm_options("gpt", _mode),
+    do: gpt_assistant_options(:medium)
+
   defp do_assistant_llm_options(_provider, _mode), do: []
+
+  defp gpt_assistant_options(effort) do
+    [
+      reasoning_effort: effort,
+      provider_options: [reasoning_summary: :auto]
+    ]
+  end
 
   defp anthropic_adaptive_model?("anthropic:claude-opus-4-7"), do: true
   defp anthropic_adaptive_model?("claude-opus-4-7"), do: true

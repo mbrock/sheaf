@@ -86,7 +86,10 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert socket.assigns.model == "openai:gpt-5.6"
 
     assert Sheaf.LLM.assistant_llm_options(socket.assigns.model, "import") ==
-             [reasoning_effort: :high]
+             [
+               reasoning_effort: :high,
+               provider_options: [reasoning_summary: :auto]
+             ]
   end
 
   test "existing conversations keep their original mode and model options" do
