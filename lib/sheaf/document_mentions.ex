@@ -126,6 +126,7 @@ defmodule Sheaf.DocumentMentions do
 
     newest
     |> Map.drop([:source_id])
+    |> Map.put(:preview_id, newest.source_id)
     |> Map.put(
       :mention_count,
       contexts |> Enum.map(& &1.source_id) |> Enum.uniq() |> length()

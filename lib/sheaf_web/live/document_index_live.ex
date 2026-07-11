@@ -112,6 +112,10 @@ defmodule SheafWeb.DocumentIndexLive do
       ~H"""
       <main class="min-h-dvh max-w-full overflow-x-hidden bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
         <AppChrome.toolbar section={:index} />
+        <.live_component
+          module={SheafWeb.BlockPreviewComponent}
+          id="document-index-preview"
+        />
 
         <div class="min-w-0">
           <p

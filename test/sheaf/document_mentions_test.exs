@@ -27,6 +27,7 @@ defmodule Sheaf.DocumentMentionsTest do
                  id: "CHAT01",
                  path: "/CHAT01",
                  title: "A useful synthesis",
+                 preview_id: "NOTE01",
                  mention_count: 1
                } = mention
              ]

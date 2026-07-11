@@ -40,16 +40,21 @@ defmodule SheafWeb.DocumentEntryComponents do
       :if={@mentions != []}
       class="absolute right-2 top-2 z-20 flex max-w-[70%] flex-col items-end gap-1 font-sans"
     >
-      <.link
+      <button
         :for={mention <- @mentions}
-        navigate={mention.path}
-        class="max-w-full border border-white/15 bg-black/60 px-2 py-1 text-right text-[10px]/3.5 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/80 hover:text-white"
+        type="button"
+        class="block-preview-trigger resource-ref flex max-w-full cursor-pointer items-center gap-1 border border-white/15 bg-black/60 px-1.5 py-1 text-[10px]/3.5 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/80 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
         title={mention.title || "Assistant conversation"}
+        aria-label={"##{mention.preview_id}: #{mention.title || "Research note"}"}
+        data-preview-id={mention.preview_id}
+        phx-click="show_resource_preview"
+        phx-focus="show_resource_preview"
+        phx-value-id={mention.preview_id}
+        phx-target="#document-index-preview"
       >
-        <span class="line-clamp-2">
-          {mention.title || "Assistant conversation"}
-        </span>
-      </.link>
+        <.icon name="hero-document-text" class="size-3 shrink-0" />
+        <span class="truncate font-micro small-caps">{mention.preview_id}</span>
+      </button>
     </div>
     """
   end

@@ -106,6 +106,7 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
             %{
               path: "/CHAT01",
               title: "Terrain synthesis",
+              preview_id: "NOTE01",
               mention_count: 2
             }
           ],
@@ -131,8 +132,10 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     refute html =~ "rounded-lg"
     refute html =~ "shadow-sm"
     refute html =~ "font-serif"
-    assert html =~ ~s(href="/CHAT01")
-    assert html =~ "Terrain synthesis"
+    assert html =~ "NOTE01"
+    assert html =~ ~s(phx-click="show_resource_preview")
+    assert html =~ ~s(phx-target="#document-index-preview")
+    assert html =~ ~s(data-preview-id="NOTE01")
     refute html =~ "Discussed in"
     refute html =~ "No discussions yet"
   end
