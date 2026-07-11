@@ -230,7 +230,10 @@ defmodule Sheaf.TextUnits do
   defp retrieval_context(%Graph{name: nil}), do: %{}
 
   defp retrieval_context(%Graph{} = graph) do
-    chunks = Document.text_chunks(graph, graph.name)
+    chunks =
+      graph
+      |> Document.text_chunks(graph.name)
+      |> Enum.reject(&(&1.type == :section))
 
     chunks
     |> Enum.with_index()

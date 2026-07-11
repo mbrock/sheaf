@@ -1265,7 +1265,10 @@ defmodule Sheaf.Embedding.Index do
     |> Enum.flat_map(fn {doc_iri, doc_units} ->
       case Sheaf.fetch_graph(RDF.iri(doc_iri)) do
         {:ok, %Graph{} = graph} ->
-          chunks = Document.text_chunks(graph, graph.name)
+          chunks =
+            graph
+            |> Document.text_chunks(graph.name)
+            |> Enum.reject(&(&1.type == :section))
 
           positions =
             chunks
