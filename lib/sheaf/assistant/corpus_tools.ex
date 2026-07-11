@@ -61,6 +61,9 @@ defmodule Sheaf.Assistant.CorpusTools do
     spreadsheet_session = Keyword.get(opts, :spreadsheet_session)
     query_result_context = Keyword.get(opts, :query_result_context, [])
 
+    document_importer =
+      Keyword.get(opts, :document_importer, &Sheaf.DocumentImport.dispatch/2)
+
     query_result_reader =
       Keyword.get(opts, :query_result_reader, &QueryResults.read/2)
 
@@ -208,6 +211,13 @@ defmodule Sheaf.Assistant.CorpusTools do
     ]
 
     tools =
+      if tool_set == :import do
+        tools ++ [document_import_tool(notify, document_importer)]
+      else
+        tools
+      end
+
+    tools =
       if tool_set == :edit do
         tools ++
           edit_tool_definitions(
@@ -244,6 +254,50 @@ defmodule Sheaf.Assistant.CorpusTools do
     else
       tools
     end
+  end
+
+  defp document_import_tool(notify, importer) do
+    Tool.new!(
+      name: "document_import",
+      description:
+        "Operate a durable PDF import run through a bounded action API. " <>
+          "Use stage for public HTTPS PDF URLs or uploaded Sheaf file ids; " <>
+          "extract to run and await Datalab; inspect before mutation; import only after inspection; " <>
+          "resolve metadata and validate after import; and use status to resume an existing run. " <>
+          "The tool has no shell, arbitrary paths, private-network access, or non-PDF downloads.",
+      parameter_schema: [
+        action: [
+          type:
+            {:in, ~w(stage status extract inspect import metadata validate)},
+          required: true,
+          doc: "Import operation to perform."
+        ],
+        run_id: [
+          type: :string,
+          doc: "Import run id; required except for stage."
+        ],
+        urls: [
+          type: {:list, :string},
+          doc: "Public HTTPS PDF URLs to stage. Only valid with stage."
+        ],
+        file_ids: [
+          type: {:list, :string},
+          doc: "Uploaded Sheaf PDF file ids to stage. Only valid with stage."
+        ],
+        name: [type: :string, doc: "Optional human label for a new run."]
+      ],
+      callback:
+        instrument(notify, "document_import", fn args ->
+          case importer.(normalize_import_args(args),
+                 notify: fn message ->
+                   notify.({:tool_progress, "document_import", message})
+                 end
+               ) do
+            {:ok, result} -> {:ok, rendered_import_result(result)}
+            {:error, reason} -> {:error, inspect(reason)}
+          end
+        end)
+    )
   end
 
   defp edit_tool_definitions(
@@ -809,6 +863,19 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   def humanize("write_note", _args, _titles), do: "Saving a research note"
 
+  def humanize("document_import", args, _titles) do
+    case arg(args, :action) do
+      "stage" -> "Staging PDF sources"
+      "extract" -> "Extracting PDFs with Datalab"
+      "inspect" -> "Inspecting extracted documents"
+      "import" -> "Importing reviewed documents"
+      "status" -> "Checking document import progress"
+      "metadata" -> "Resolving bibliographic metadata"
+      "validate" -> "Validating imported documents and search"
+      _action -> "Working on a document import"
+    end
+  end
+
   def humanize("tag_paragraphs", args, _titles) do
     block_ids = requested_blocks(args)
 
@@ -900,6 +967,34 @@ defmodule Sheaf.Assistant.CorpusTools do
       nil -> sections
       "" -> sections
       _t -> sections
+    end
+  end
+
+  def result_summary("document_import", {:ok, result}) when is_map(result) do
+    case Map.get(result, :action) || Map.get(result, "action") do
+      "stage" ->
+        "run #{Map.get(result, :run_id) || Map.get(result, "run_id")} staged"
+
+      "extract" ->
+        "extraction complete"
+
+      "inspect" ->
+        "extraction inspected"
+
+      "import" ->
+        "documents imported"
+
+      "status" ->
+        "status checked"
+
+      "metadata" ->
+        "metadata resolved"
+
+      "validate" ->
+        "documents validated"
+
+      _action ->
+        "import action complete"
     end
   end
 
@@ -1084,6 +1179,17 @@ defmodule Sheaf.Assistant.CorpusTools do
       content: [ContentPart.text(ToolResultText.to_text(result))],
       metadata: %{sheaf_result: result}
     }
+  end
+
+  defp rendered_import_result(result) do
+    %ToolResult{
+      content: [ContentPart.text(Jason.encode!(result, pretty: true))],
+      metadata: %{sheaf_result: result}
+    }
+  end
+
+  defp normalize_import_args(args) when is_map(args) do
+    Map.new(args, fn {key, value} -> {to_string(key), value} end)
   end
 
   defp list_documents_tool(_args) do

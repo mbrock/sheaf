@@ -3,6 +3,42 @@
 This note records findings from exploring Sheaf's PDF imports and sketches a
 direction for improving them with auditable agentic repair passes.
 
+## Web import mode
+
+Sheaf now exposes the first bounded web implementation on the assistant history
+page. Choosing **Import** defaults the conversation to GPT-5.6 with high
+reasoning effort. A user can paste public HTTPS PDF URLs or drop up to ten PDFs.
+Uploads are immediately deduplicated into the content-addressed blob store and
+represented to the assistant only by stable Sheaf file IDs.
+
+The assistant receives one `document_import` dispatcher tool rather than a
+shell or a long list of narrowly coupled functions. Its actions are:
+
+- `stage`: safely download public HTTPS PDFs or collect uploaded file IDs into
+  a durable RDF-backed import run;
+- `status`: inspect a run that may outlive a browser connection;
+- `extract`: submit pending files to Datalab, report progress, and save
+  extraction artifacts;
+- `inspect`: return deterministic extraction quality reports before mutation;
+- `import`: create document graphs only after inspection;
+- `metadata`: run the conservative local/Crossref metadata resolver;
+- `validate`: rebuild exact and semantic indexes and report document invariants
+  and reader paths.
+
+This is code-mode-like at the schema level: one orthogonal action interface can
+be composed by the model in different orders, while the server retains
+authority over paths, credentials, network access, and RDF mutations. URL
+acquisition accepts only HTTPS, rejects credentials and private or local network
+addresses, validates every redirect, limits redirects and bytes, and verifies
+the PDF signature before ingestion. The model cannot choose arbitrary paths,
+HTTP methods, request headers, commands, or executables.
+
+Import-run and Datalab execution state are durable. A currently executing tool
+reports its phase through the existing chat activity UI; after a service or
+browser interruption the model can resume from `status`. A future refinement
+should move long polling from the chat task into a dedicated supervised worker
+and add an explicit review card for metadata candidates and structural repairs.
+
 ## Problem
 
 The current PDF import path preserves Datalab's extracted blocks and section

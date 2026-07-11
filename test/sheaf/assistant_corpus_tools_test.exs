@@ -7,6 +7,36 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
   alias Sheaf.Id
   alias Sheaf.NS.{AS, DOC}
 
+  test "import tool exposes one bounded action surface and reports progress" do
+    test_pid = self()
+
+    importer = fn args, opts ->
+      opts[:notify].("Submitting FILE01 to Datalab")
+      send(test_pid, {:import_args, args})
+      {:ok, %{action: "stage", run_id: "RUN001"}}
+    end
+
+    tools =
+      CorpusTools.tools(tool_set: :import, document_importer: importer)
+
+    tool = Enum.find(tools, &(&1.name == "document_import"))
+    assert tool
+
+    assert {:ok, %ToolResult{}} =
+             Tool.execute(tool, %{
+               "action" => "stage",
+               "urls" => ["https://example.com/paper.pdf"]
+             })
+
+    assert_received {:import_args,
+                     %{
+                       "action" => "stage",
+                       "urls" => ["https://example.com/paper.pdf"]
+                     }}
+
+    refute Enum.any?(tools, &(&1.name == "update_block_text"))
+  end
+
   test "search_text tool uses embedding index search and preserves assistant hit shape" do
     test_pid = self()
 

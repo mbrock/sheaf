@@ -65,6 +65,30 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert socket.assigns.form.params["message"] == "Move this paragraph."
   end
 
+  test "import mode routes through GPT with high-reasoning defaults" do
+    {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
+
+    assert {:noreply, socket} =
+             AssistantChatComponent.handle_event(
+               "set_options",
+               %{
+                 "chat" => %{
+                   "message" => "Import this PDF.",
+                   "mode" => "import",
+                   "model_provider" => "claude"
+                 }
+               },
+               socket
+             )
+
+    assert socket.assigns.mode == "import"
+    assert socket.assigns.model_provider == "gpt"
+    assert socket.assigns.model == "openai:gpt-5.6"
+
+    assert Sheaf.LLM.assistant_llm_options(socket.assigns.model, "import") ==
+             [reasoning_effort: :high]
+  end
+
   test "existing conversations keep their original mode and model options" do
     {:ok, socket} = AssistantChatComponent.mount(%Phoenix.LiveView.Socket{})
 

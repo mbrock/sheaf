@@ -448,6 +448,14 @@ defmodule Sheaf.Assistant.Chat.Server do
     |> broadcast_snapshot()
   end
 
+  defp handle_assistant_event(state, {:tool_progress, name, message})
+       when is_binary(message) do
+    state
+    |> Map.put(:active_tool, name)
+    |> Map.put(:status_line, message)
+    |> broadcast_snapshot()
+  end
+
   defp handle_assistant_event(state, {:text_delta, ref, text})
        when is_reference(ref) and is_binary(text) do
     if state.pending_ref == ref do
@@ -779,10 +787,12 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp agent_label(_kind), do: "Sheaf research assistant"
 
   defp tool_set(:edit), do: :edit
+  defp tool_set(:import), do: :import
   defp tool_set(_kind), do: :default
 
   defp conversation_mode(:edit, _allow_notes?), do: "edit"
   defp conversation_mode(:research, _allow_notes?), do: "research"
+  defp conversation_mode(:import, _allow_notes?), do: "import"
   defp conversation_mode(_kind, true), do: "research"
   defp conversation_mode(_kind, _allow_notes?), do: "quick"
 
@@ -790,6 +800,8 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp normalize_kind("edit"), do: :edit
   defp normalize_kind(:research), do: :research
   defp normalize_kind("research"), do: :research
+  defp normalize_kind(:import), do: :import
+  defp normalize_kind("import"), do: :import
   defp normalize_kind(_kind), do: :chat
 
   defp title_from_text(text) do
@@ -1342,6 +1354,20 @@ defmodule Sheaf.Assistant.Chat.Server do
         assignment, or exploration brief.
       * Work through the corpus with the available tools and finish with a
         concise progress report.
+    """
+  end
+
+  defp mode_prompt(:import, _allow_notes?) do
+    """
+    Import mode:
+      * Treat the user message as a request to add PDF research documents.
+      * Use document_import rather than claiming that a URL or upload was imported.
+      * The normal sequence is stage, extract, inspect, import, metadata, then
+        validate. Always inspect extraction evidence before import. Stop safely if
+        the source is not a PDF, extraction fails, or the evidence is ambiguous.
+      * A staged upload is identified by a Sheaf file id in the user message.
+      * Keep the user informed through tool progress and finish with imported
+        document ids or a precise needs-review explanation.
     """
   end
 

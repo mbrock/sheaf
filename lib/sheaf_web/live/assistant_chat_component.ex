@@ -66,6 +66,21 @@ defmodule SheafWeb.AssistantChatComponent do
     {:ok, socket}
   end
 
+  def update(%{import_uploads: files}, socket) do
+    provider = "gpt"
+
+    {:ok,
+     socket
+     |> assign(:uploaded_pdfs, files)
+     |> assign(:mode, "import")
+     |> assign(:model_provider, provider)
+     |> assign(:model, Sheaf.LLM.assistant_model_for_provider(provider))
+     |> assign(
+       :form,
+       chat_form("import", provider, current_form_message(socket))
+     )}
+  end
+
   def update(assigns, socket) do
     socket =
       socket
@@ -77,6 +92,7 @@ defmodule SheafWeb.AssistantChatComponent do
       |> assign_new(:llm_options, fn -> [] end)
       |> assign_new(:variant, fn -> :full end)
       |> assign_new(:composer_only?, fn -> false end)
+      |> assign_new(:uploaded_pdfs, fn -> [] end)
       |> maybe_ensure_chat_index_subscription()
       |> maybe_ensure_selected_chat()
 
@@ -115,6 +131,7 @@ defmodule SheafWeb.AssistantChatComponent do
         |> Map.get("model_provider", socket.assigns.model_provider)
         |> normalize_model_provider()
       end
+      |> provider_for_mode(mode)
 
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
     message = Map.get(chat_params, "message", "")
@@ -155,7 +172,8 @@ defmodule SheafWeb.AssistantChatComponent do
     model_provider =
       Map.get(chat_params, "model_provider", socket.assigns.model_provider)
 
-    message = String.trim(message)
+    uploaded_files = Map.get(socket.assigns, :uploaded_pdfs, [])
+    message = message |> String.trim() |> add_uploaded_files(uploaded_files)
     mode = normalize_mode(mode)
     model_provider = normalize_model_provider(model_provider)
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
@@ -199,6 +217,9 @@ defmodule SheafWeb.AssistantChatComponent do
                        turn_context(socket.assigns)
                      ) do
                   :ok ->
+                    if uploaded_files != [],
+                      do: send(self(), :clear_import_uploads)
+
                     socket
                     |> assign(:form, chat_form(mode, model_provider))
                     |> maybe_navigate_after_send()
@@ -276,6 +297,7 @@ defmodule SheafWeb.AssistantChatComponent do
             pending={@chat.pending}
             myself={@myself}
             id={@id}
+            uploaded_pdfs={Map.get(assigns, :uploaded_pdfs, [])}
           />
         </div>
       </div>
@@ -355,6 +377,7 @@ defmodule SheafWeb.AssistantChatComponent do
         pending={@chat.pending}
         myself={@myself}
         id={@id}
+        uploaded_pdfs={Map.get(assigns, :uploaded_pdfs, [])}
       />
 
       <div
@@ -399,6 +422,7 @@ defmodule SheafWeb.AssistantChatComponent do
   attr :pending, :boolean, required: true
   attr :myself, :any, required: true
   attr :id, :string, required: true
+  attr :uploaded_pdfs, :list, default: []
 
   defp composer_form(assigns) do
     assigns =
@@ -492,6 +516,18 @@ defmodule SheafWeb.AssistantChatComponent do
               />
               <.icon name="hero-pencil-square" class="size-3.5" />
               <span>Edit</span>
+            </label>
+            <label class={selector_label_class(@mode, "import", @options_locked?)}>
+              <input
+                type="radio"
+                name="chat[mode]"
+                value="import"
+                checked={@mode == "import"}
+                class="sr-only"
+                disabled={@options_locked?}
+              />
+              <.icon name="hero-arrow-down-tray" class="size-3.5" />
+              <span>Import</span>
             </label>
           </div>
 
@@ -792,6 +828,22 @@ defmodule SheafWeb.AssistantChatComponent do
     scope = tool_arg(input, :document_id)
     scope = if scope, do: title_or_id(scope, titles), else: "the corpus"
     target = "Searching for #{query} in #{scope}"
+
+    tool_phrase(target, message)
+  end
+
+  defp tool_view(%{tool: "document_import", input: input} = message, _titles) do
+    target =
+      case tool_arg(input, :action) do
+        "stage" -> "Staging PDF sources"
+        "extract" -> "Extracting PDFs with Datalab"
+        "inspect" -> "Inspecting extracted documents"
+        "import" -> "Importing reviewed documents"
+        "status" -> "Checking import progress"
+        "metadata" -> "Resolving bibliographic metadata"
+        "validate" -> "Validating documents and search"
+        _action -> "Working on document import"
+      end
 
     tool_phrase(target, message)
   end
@@ -1283,13 +1335,17 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp start_blank_chat(socket, mode) do
+    model_provider = provider_for_mode(socket.assigns.model_provider, mode)
+
     socket
     |> unsubscribe_from_previous_chat(nil)
     |> assign(:selected_chat_id, nil)
     |> assign(:subscribed_chat_id, nil)
     |> assign(:chat, empty_chat())
     |> assign(:mode, mode)
-    |> assign(:form, chat_form(mode, socket.assigns.model_provider))
+    |> assign(:model_provider, model_provider)
+    |> assign(:model, Sheaf.LLM.assistant_model_for_provider(model_provider))
+    |> assign(:form, chat_form(mode, model_provider))
   end
 
   defp ensure_sendable_chat(
@@ -1447,14 +1503,19 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp normalize_mode("research"), do: "research"
   defp normalize_mode("edit"), do: "edit"
+  defp normalize_mode("import"), do: "import"
   defp normalize_mode(_mode), do: "quick"
 
   defp mode_kind("research"), do: :research
   defp mode_kind("edit"), do: :edit
+  defp mode_kind("import"), do: :import
   defp mode_kind(_mode), do: :chat
 
   defp normalize_model_provider("gpt"), do: "gpt"
   defp normalize_model_provider(_provider), do: "claude"
+
+  defp provider_for_mode(_provider, "import"), do: "gpt"
+  defp provider_for_mode(provider, _mode), do: provider
 
   defp put_chat_route(id, model, llm_options) when is_binary(id) do
     with :ok <- Chat.put_model(id, model),
@@ -1547,7 +1608,30 @@ defmodule SheafWeb.AssistantChatComponent do
   defp input_placeholder("research", _selected_chat_id),
     do: "Give the assistant a research task"
 
+  defp input_placeholder("import", _selected_chat_id),
+    do: "Paste PDF links or describe what to import"
+
   defp input_placeholder(_mode, _selected_chat_id), do: "Ask a quick question"
+
+  defp add_uploaded_files("", []), do: ""
+  defp add_uploaded_files(message, []), do: message
+
+  defp add_uploaded_files(message, files) do
+    attachment_text =
+      files
+      |> Enum.map_join("\n", fn file ->
+        "- #{file.name}: Sheaf file ##{file.id}"
+      end)
+
+    [
+      if(message == "",
+        do: "Import the attached PDF documents.",
+        else: message
+      ),
+      "[Uploaded PDFs]\n" <> attachment_text
+    ]
+    |> Enum.join("\n\n")
+  end
 
   defp turn_context(assigns) do
     %{}

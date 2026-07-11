@@ -219,6 +219,8 @@ defmodule Sheaf.Assistant.Chats do
   defp normalize_kind("edit"), do: :edit
   defp normalize_kind(:research), do: :research
   defp normalize_kind("research"), do: :research
+  defp normalize_kind(:import), do: :import
+  defp normalize_kind("import"), do: :import
   defp normalize_kind(_kind), do: :chat
 
   defp default_title(_kind), do: @default_title

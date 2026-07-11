@@ -233,6 +233,8 @@ defmodule Sheaf.LLM do
 
   defp normalize_assistant_mode(:research), do: :research
   defp normalize_assistant_mode("research"), do: :research
+  defp normalize_assistant_mode(:import), do: :research
+  defp normalize_assistant_mode("import"), do: :research
   defp normalize_assistant_mode(_mode), do: :quick
 
   defp do_assistant_llm_options("gpt", :research),

@@ -10,6 +10,7 @@ defmodule SheafWeb.AssistantHistoryLive do
   alias SheafWeb.AppChrome
   alias SheafWeb.AssistantChatComponent
   alias SheafWeb.AssistantHistoryComponents
+  alias Sheaf.{Files, Id}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -39,9 +40,64 @@ defmodule SheafWeb.AssistantHistoryLive do
 
       {:ok,
        socket
+       |> allow_upload(:pdfs,
+         accept: ~w(.pdf application/pdf),
+         max_entries: 10,
+         max_file_size: 50 * 1024 * 1024,
+         auto_upload: true,
+         progress: &handle_pdf_upload/3
+       )
        |> assign(:page_title, "Assistant history")
        |> assign(:notes_error, notes_error)
+       |> assign(:uploaded_pdfs, [])
        |> assign(:rows, rows)}
+    end
+  end
+
+  @impl true
+  def handle_info(:clear_import_uploads, socket) do
+    send_update(AssistantChatComponent,
+      id: "assistant-history-composer",
+      import_uploads: []
+    )
+
+    {:noreply, assign(socket, :uploaded_pdfs, [])}
+  end
+
+  defp handle_pdf_upload(:pdfs, entry, socket) do
+    if entry.done? do
+      uploaded =
+        consume_uploaded_entry(socket, entry, fn %{path: path} ->
+          case Files.ingest(path,
+                 filename: entry.client_name,
+                 mime_type: entry.client_type || "application/pdf"
+               ) do
+            {:ok, stored} ->
+              {:ok,
+               %{
+                 id: Id.id_from_iri(stored.iri),
+                 name: entry.client_name,
+                 created: stored.created?
+               }}
+
+            {:error, reason} ->
+              {:postpone, {:error, reason}}
+          end
+        end)
+
+      {:noreply,
+       update(socket, :uploaded_pdfs, fn files ->
+         files = files ++ [uploaded]
+
+         send_update(AssistantChatComponent,
+           id: "assistant-history-composer",
+           import_uploads: files
+         )
+
+         files
+       end)}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -53,11 +109,35 @@ defmodule SheafWeb.AssistantHistoryLive do
 
       <div class="mx-auto w-full max-w-5xl px-2 py-2 sm:px-4 sm:py-4">
         <section class="mb-3">
+          <div
+            id="assistant-import-pdf-drop"
+            phx-drop-target={@uploads.pdfs.ref}
+            class="mb-2 rounded-md border border-dashed border-stone-300 bg-stone-50/70 p-3 text-center font-sans text-sm text-stone-500 transition-colors hover:border-stone-400 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-400"
+          >
+            <.live_file_input upload={@uploads.pdfs} class="sr-only" />
+            <label for={@uploads.pdfs.ref} class="cursor-pointer">
+              <.icon name="hero-document-arrow-down" class="mr-1 size-4" />
+              Drop PDFs here to start an import, or choose files
+            </label>
+            <div
+              :for={entry <- @uploads.pdfs.entries}
+              class="mt-1 truncate text-stone-700 dark:text-stone-300"
+            >
+              {entry.client_name} · {entry.progress}%
+            </div>
+            <div
+              :for={file <- @uploaded_pdfs}
+              class="mt-1 truncate text-emerald-700 dark:text-emerald-300"
+            >
+              {file.name} · ready
+            </div>
+          </div>
           <.live_component
             module={AssistantChatComponent}
             id="assistant-history-composer"
             variant={:assistant_page}
             composer_only?={true}
+            uploaded_pdfs={@uploaded_pdfs}
           />
         </section>
 
