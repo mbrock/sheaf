@@ -63,6 +63,12 @@ defmodule SheafWeb.DocumentIndexLive do
       case Sheaf.Documents.list() do
         {:ok, documents} ->
           index_documents = Enum.filter(documents, &index_document?/1)
+          mentions = Sheaf.DocumentMentions.for_documents(index_documents)
+
+          index_documents =
+            Enum.map(index_documents, fn document ->
+              Map.put(document, :mentions, Map.get(mentions, document.id, []))
+            end)
 
           Tracer.set_attributes([
             {"sheaf.document_count.total", length(documents)},

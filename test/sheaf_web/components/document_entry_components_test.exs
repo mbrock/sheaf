@@ -102,6 +102,13 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
             page_count: 12
           },
           micro_abstract: "Explains a compact approach to generated terrain.",
+          mentions: [
+            %{
+              path: "/CHAT01",
+              title: "Terrain synthesis",
+              mention_count: 2
+            }
+          ],
           excluded?: false,
           cited?: false,
           has_document?: true,
@@ -111,21 +118,23 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
 
     assert html =~ ~s(href="/DOC2A2")
     assert html =~ ~s(src="/covers/DOC2A2")
-    assert html =~ "aspect-[16/8.4]"
-    assert html =~ "from-black/90"
+    assert html =~ "aspect-[2/3]"
+    assert html =~ "from-black/95"
     assert html =~ "text-white/80"
     assert html =~ "A covered paper"
     assert html =~ "Lovelace, Babbage"
     assert html =~ "Explains a compact approach to generated terrain."
     assert html =~ "line-clamp-4"
-    assert html =~ "h-20"
     refute html =~ "Ada Lovelace"
     assert html =~ "2026"
     refute html =~ "12 pp."
     refute html =~ "rounded-lg"
     refute html =~ "shadow-sm"
     refute html =~ "font-serif"
-    refute html =~ "h-9"
+    assert html =~ ~s(href="/CHAT01")
+    assert html =~ "Terrain synthesis"
+    refute html =~ "Discussed in"
+    refute html =~ "No discussions yet"
   end
 
   test "metadata heading uses plain compact metadata" do

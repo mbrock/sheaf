@@ -10,9 +10,9 @@ defmodule SheafWeb.DocumentEntryComponents do
   def document_card(assigns) do
     ~H"""
     <article class={[
-      "group min-w-0 overflow-hidden border border-stone-200 bg-white",
+      "group relative aspect-[2/3] min-w-0 overflow-hidden border border-stone-200 bg-stone-100",
       "transition-colors duration-150 hover:border-stone-300",
-      "dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-600",
+      "dark:border-stone-700 dark:bg-stone-800 dark:hover:border-stone-600",
       @document.excluded? && "opacity-45 grayscale",
       @document.cited? && "border-amber-400 dark:border-amber-500",
       workspace_owner_authored?(@document) && "border-sky-400 dark:border-sky-500"
@@ -20,22 +20,45 @@ defmodule SheafWeb.DocumentEntryComponents do
       <.link
         :if={@document.path}
         navigate={@document.path}
-        class="flex h-full min-w-0 flex-col focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-700 dark:focus-visible:outline-stone-200"
+        class="absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
       >
-        <.document_card_content document={@document} />
+        <.document_artwork document={@document} />
       </.link>
-      <div :if={is_nil(@document.path)} class="flex h-full min-w-0 flex-col">
-        <.document_card_content document={@document} />
+      <div :if={is_nil(@document.path)} class="absolute inset-0">
+        <.document_artwork document={@document} />
       </div>
+      <.document_discussions mentions={Map.get(@document, :mentions, [])} />
     </article>
+    """
+  end
+
+  attr :mentions, :list, required: true
+
+  defp document_discussions(assigns) do
+    ~H"""
+    <div
+      :if={@mentions != []}
+      class="absolute right-2 top-2 z-20 flex max-w-[70%] flex-col items-end gap-1 font-sans"
+    >
+      <.link
+        :for={mention <- @mentions}
+        navigate={mention.path}
+        class="max-w-full border border-white/15 bg-black/60 px-2 py-1 text-right text-[10px]/3.5 text-white/90 backdrop-blur-sm transition-colors hover:bg-black/80 hover:text-white"
+        title={mention.title || "Assistant conversation"}
+      >
+        <span class="line-clamp-2">
+          {mention.title || "Assistant conversation"}
+        </span>
+      </.link>
+    </div>
     """
   end
 
   attr :document, :map, required: true
 
-  defp document_card_content(assigns) do
+  defp document_artwork(assigns) do
     ~H"""
-    <div class="relative aspect-[16/8.4] w-full overflow-hidden bg-stone-100 dark:bg-stone-800">
+    <div class="relative size-full overflow-hidden bg-stone-100 dark:bg-stone-800">
       <img
         :if={Map.get(@document, :cover_path)}
         src={@document.cover_path}
@@ -50,7 +73,7 @@ defmodule SheafWeb.DocumentEntryComponents do
         <.icon name="hero-document-text" class="size-10" />
       </div>
 
-      <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-3 pb-3 pt-16">
+      <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-3 pb-3 pt-28">
         <h3 class="font-sans text-base/5 font-medium text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.75)]">
           {@document.title}
         </h3>
@@ -60,11 +83,10 @@ defmodule SheafWeb.DocumentEntryComponents do
           </span>
           <span class="shrink-0 tabular-nums">{year_str(@document)}</span>
         </div>
+        <p class="mt-3 line-clamp-4 font-sans text-xs/4 text-white/90 [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">
+          {Map.get(@document, :micro_abstract) || ""}
+        </p>
       </div>
-    </div>
-
-    <div class="flex h-20 items-center px-3 py-2 font-sans text-xs/4 text-stone-700 dark:text-stone-300">
-      <p class="line-clamp-4">{Map.get(@document, :micro_abstract) || ""}</p>
     </div>
     """
   end
