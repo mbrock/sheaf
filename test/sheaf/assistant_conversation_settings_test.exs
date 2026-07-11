@@ -34,11 +34,18 @@ defmodule Sheaf.Assistant.ConversationSettingsTest do
     assert :ok =
              ConversationSettings.write("CHAT01", %{
                model: "openai:gpt-5.6-terra",
-               kind: :research,
+               kind: :chat,
+               allow_changes: true,
                llm_options: [reasoning_effort: :max]
              })
 
-    assert {:ok, %{model: "openai:gpt-5.6-terra", llm_options: options}} =
+    assert {:ok,
+            %{
+              model: "openai:gpt-5.6-terra",
+              kind: :chat,
+              allow_changes: true,
+              llm_options: options
+            }} =
              ConversationSettings.read("CHAT01")
 
     assert options[:reasoning_effort] == :max
@@ -50,7 +57,7 @@ defmodule Sheaf.Assistant.ConversationSettingsTest do
 
     assert description
            |> RDF.Description.get(Sheaf.NS.DOC.conversationMode())
-           |> Enum.map(&RDF.Literal.value/1) == ["research"]
+           |> Enum.map(&RDF.Literal.value/1) == ["quick"]
   end
 
   @tag :tmp_dir

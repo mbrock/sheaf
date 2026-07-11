@@ -22,7 +22,11 @@ defmodule Sheaf.Assistant.ChatTest do
 
     generate_text = fn _model, context, opts ->
       send(test_pid, {:inference_started, self(), context})
-      refute Enum.any?(opts[:tools], &(&1.name == "write_note"))
+      tool_names = Enum.map(opts[:tools], & &1.name)
+      assert "write_note" in tool_names
+      assert "web_search" in tool_names
+      refute "update_block_text" in tool_names
+      refute "document_import" in tool_names
 
       receive do
         :finish ->
@@ -77,7 +81,8 @@ defmodule Sheaf.Assistant.ChatTest do
     assert user_text(context) =~ "Selected paragraph text."
     refute user_text(context) =~ "Workspace:"
     refute user_text(context) =~ "Document: #ABC123 Draft chapter"
-    refute system_text(context) =~ "write_note"
+    assert system_text(context) =~ "write_note"
+    refute system_text(context) =~ "update_block_text"
 
     assert system_text(context) =~
              "Do not end by offering optional follow-up help"
@@ -205,7 +210,7 @@ defmodule Sheaf.Assistant.ChatTest do
            } = wait_for_final_message_text(id, "Hello. Next")
   end
 
-  test "research-mode conversations expose their kind and get research prompt guidance" do
+  test "legacy research conversations use the unified assistant" do
     test_pid = self()
 
     generate_text = fn _model, context, opts ->
@@ -243,8 +248,9 @@ defmodule Sheaf.Assistant.ChatTest do
              Chat.send_user_message(id, "Read the circular economy papers.")
 
     assert_receive {:research_inference_started, task_pid, context}
-    assert system_text(context) =~ "Research mode:"
-    assert system_text(context) =~ "write durable"
+    refute system_text(context) =~ "Research mode:"
+    assert system_text(context) =~ "persist durable research notes"
+    assert system_text(context) =~ "Interpret the user's intent"
 
     assert %{
              title: "Read the circular economy papers.",
@@ -265,7 +271,7 @@ defmodule Sheaf.Assistant.ChatTest do
            } = wait_for_messages(id, 2)
   end
 
-  test "edit-mode conversations get edit tools and prompt guidance" do
+  test "legacy edit conversations enable workspace changes" do
     test_pid = self()
 
     generate_text = fn _model, context, opts ->
@@ -277,7 +283,9 @@ defmodule Sheaf.Assistant.ChatTest do
       assert "insert_paragraph" in tool_names
       assert "delete_block" in tool_names
       assert "update_search_index" in tool_names
-      refute "write_note" in tool_names
+      assert "write_note" in tool_names
+      assert "document_import" in tool_names
+      assert "web_search" in tool_names
 
       receive do
         :finish ->
@@ -303,8 +311,12 @@ defmodule Sheaf.Assistant.ChatTest do
        task_supervisor: Sheaf.Assistant.TaskSupervisor}
     )
 
-    assert %{title: "Assistant conversation", kind: :edit, pending: false} =
-             Chat.snapshot(id)
+    assert %{
+             title: "Assistant conversation",
+             kind: :edit,
+             allow_changes?: true,
+             pending: false
+           } = Chat.snapshot(id)
 
     assert :ok =
              Chat.send_user_message(
@@ -313,10 +325,10 @@ defmodule Sheaf.Assistant.ChatTest do
              )
 
     assert_receive {:edit_inference_started, task_pid, context, _opts}
-    assert system_text(context) =~ "Edit mode:"
+    refute system_text(context) =~ "Edit mode:"
     assert system_text(context) =~ "delete_block"
     assert system_text(context) =~ "update_search_index"
-    assert system_text(context) =~ "mikael-tagged"
+    assert system_text(context) =~ "Only modify the workspace"
 
     send(task_pid, :finish)
 

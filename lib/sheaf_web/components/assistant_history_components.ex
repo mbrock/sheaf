@@ -48,7 +48,6 @@ defmodule SheafWeb.AssistantHistoryComponents do
                      } do
       titles =
         Chats.list()
-        |> Enum.filter(&(chat_kind(&1) == :research))
         |> Map.new(&{&1.id, &1.title})
 
       Tracer.set_attribute(
@@ -396,11 +395,6 @@ defmodule SheafWeb.AssistantHistoryComponents do
     end)
     |> Enum.map(& &1.text)
   end
-
-  defp chat_kind(%{kind: kind}) when kind in [:research, "research"],
-    do: :research
-
-  defp chat_kind(_chat), do: :chat
 
   def history_groups(items, graph, session_titles \\ %{})
 

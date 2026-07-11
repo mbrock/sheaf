@@ -21,7 +21,7 @@ defmodule SheafWeb.AssistantHistoryImportTest do
     :ok
   end
 
-  test "dropping a PDF stages it and switches the composer to Import mode", %{
+  test "dropping a PDF stages it and enables workspace changes", %{
     conn: conn
   } do
     {:ok, view, _html} = live(conn, ~p"/history")
@@ -42,7 +42,9 @@ defmodule SheafWeb.AssistantHistoryImportTest do
     html = render(view)
 
     assert html =~ "paper.pdf · ready"
-    assert html =~ ~s(value="import" checked)
-    assert html =~ ~s(value="gpt-sol" selected)
+    assert html =~ ~s(name="chat[allow_changes]")
+    assert html =~ ~s(value="true" checked)
+    assert html =~ ~s(value="claude-opus-4-8" selected)
+    refute html =~ ~s(name="chat[mode]")
   end
 end

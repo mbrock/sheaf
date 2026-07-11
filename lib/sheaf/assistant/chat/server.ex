@@ -53,7 +53,8 @@ defmodule Sheaf.Assistant.Chat.Server do
     kind: @default_kind,
     messages: [],
     subscribers: %{},
-    allow_notes?: false,
+    allow_notes?: true,
+    allow_changes?: false,
     model: nil,
     llm_options: [],
     max_tool_rounds: @default_max_tool_rounds,
@@ -67,7 +68,8 @@ defmodule Sheaf.Assistant.Chat.Server do
   @type snapshot :: %{
           id: String.t(),
           title: String.t(),
-          kind: :chat | :research | :edit,
+          kind: :chat | :research | :edit | :import,
+          allow_changes?: boolean(),
           messages: [map()],
           pending: boolean(),
           active_tool: String.t() | nil,
@@ -179,7 +181,14 @@ defmodule Sheaf.Assistant.Chat.Server do
       Keyword.get(
         opts,
         :allow_notes?,
-        Keyword.get(opts, :allow_notes, kind == :research)
+        Keyword.get(opts, :allow_notes, true)
+      )
+
+    allow_changes? =
+      Keyword.get(
+        opts,
+        :allow_changes?,
+        Keyword.get(opts, :allow_changes, kind in [:edit, :import])
       )
 
     context =
@@ -187,7 +196,11 @@ defmodule Sheaf.Assistant.Chat.Server do
         persisted_context(context_store, session_iri) ||
         Context.new([
           Context.system(
-            system_prompt(kind, allow_notes?, workspace_instructions)
+            system_prompt(
+              allow_changes?,
+              allow_notes?,
+              workspace_instructions
+            )
           )
         ])
 
@@ -196,7 +209,7 @@ defmodule Sheaf.Assistant.Chat.Server do
 
     tools =
       CorpusTools.tools(
-        tool_set: tool_set(kind),
+        tool_set: tool_set(allow_changes?),
         include_notes?: allow_notes?,
         notify: fn event ->
           GenServer.cast(chat, {:assistant_event, event})
@@ -240,6 +253,7 @@ defmodule Sheaf.Assistant.Chat.Server do
             context_store: context_store,
             settings_store: settings_store,
             allow_notes?: allow_notes?,
+            allow_changes?: allow_changes?,
             model: model,
             llm_options: llm_options,
             max_tool_rounds: max_tool_rounds,
@@ -819,6 +833,7 @@ defmodule Sheaf.Assistant.Chat.Server do
     state.settings_store.write(state.id, %{
       model: state.model,
       kind: state.kind,
+      allow_changes: state.allow_changes?,
       llm_options: state.llm_options
     })
   end
@@ -902,18 +917,15 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp session_label(_kind, id), do: "Assistant conversation #{id}"
 
-  defp agent_label(:edit), do: "Sheaf edit assistant"
-  defp agent_label(_kind), do: "Sheaf research assistant"
+  defp agent_label(_kind), do: "Sheaf assistant"
 
-  defp tool_set(:edit), do: :edit
-  defp tool_set(:import), do: :import
-  defp tool_set(_kind), do: :default
+  defp tool_set(true), do: :assistant_changes
+  defp tool_set(false), do: :assistant
 
   defp conversation_mode(:edit, _allow_notes?), do: "edit"
   defp conversation_mode(:research, _allow_notes?), do: "research"
   defp conversation_mode(:import, _allow_notes?), do: "import"
-  defp conversation_mode(_kind, true), do: "research"
-  defp conversation_mode(_kind, _allow_notes?), do: "quick"
+  defp conversation_mode(_kind, _allow_notes?), do: "chat"
 
   defp normalize_kind(:edit), do: :edit
   defp normalize_kind("edit"), do: :edit
@@ -1279,6 +1291,7 @@ defmodule Sheaf.Assistant.Chat.Server do
       id: state.id,
       title: state.title,
       kind: state.kind,
+      allow_changes?: state.allow_changes?,
       model: state.model,
       llm_options: state.llm_options,
       messages: snapshot_messages(state),
@@ -1370,7 +1383,7 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp server_ref(pid) when is_pid(pid), do: pid
   defp server_ref(id) when is_binary(id), do: via(id)
 
-  defp system_prompt(kind, allow_notes?, workspace_instructions) do
+  defp system_prompt(allow_changes?, allow_notes?, workspace_instructions) do
     """
     You are an assistant embedded in Sheaf, a reading and writing environment
     for a thesis project. Be concrete and help the user move the work forward.
@@ -1413,11 +1426,8 @@ defmodule Sheaf.Assistant.Chat.Server do
         including imported coded rows; pass document_id to scope to one
         document or document_kind to scope to a document type such as thesis,
         literature, or spreadsheet.
-      * Use tag_paragraphs to attach writing-attention tags to thesis paragraph
-        blocks that are placeholders, fragments, need evidence, or need
-        revision. Pass all relevant paragraph ids in blocks and choose from
-        placeholder, needs_evidence, needs_revision, and fragment.
-    #{edit_tool_prompt(kind)}
+      * Use web_search when public sources are needed beyond the local corpus.
+    #{change_tool_prompt(allow_changes?)}
     #{note_tool_prompt(allow_notes?)}
 
     How to help:
@@ -1439,7 +1449,10 @@ defmodule Sheaf.Assistant.Chat.Server do
     document currently open and any block the user has selected. Treat
     this as a hint, not a scope restriction — you can navigate elsewhere.
 
-    #{mode_prompt(kind, allow_notes?)}
+    Interpret the user's intent from their request. Answer directly when the
+    task is simple; investigate with as many tool calls as needed when it is
+    a research task. Do not treat research depth as a separate conversation
+    mode.
     """
   end
 
@@ -1474,8 +1487,12 @@ defmodule Sheaf.Assistant.Chat.Server do
 
   defp note_tool_prompt(false), do: ""
 
-  defp edit_tool_prompt(kind) when kind in [:edit, :import] do
+  defp change_tool_prompt(true) do
     """
+      * Use tag_paragraphs to attach writing-attention tags to thesis paragraph
+        blocks that are placeholders, fragments, need evidence, or need
+        revision. Pass all relevant paragraph ids in blocks and choose from
+        placeholder, needs_evidence, needs_revision, and fragment.
       * Use update_block_text to replace a paragraph's full text or change a
         section heading title when the user asks for a concrete edit.
       * Use move_block to move or reparent an existing block. For example, use
@@ -1490,71 +1507,16 @@ defmodule Sheaf.Assistant.Chat.Server do
         call update_search_index with the edited, moved, inserted, or deleted
         affected block ids so embeddings and full-text search reflect the
         changed document.
+      * Use document_import for PDF imports. Follow the durable stage, extract,
+        inspect, import, metadata, and validate sequence, and stop safely when
+        extraction evidence is missing or ambiguous.
+      * Use update_document_metadata only for fields supported by verified
+        evidence.
+      * Only modify the workspace when the user has explicitly requested the
+        corresponding change. Make the smallest requested change and finish
+        with a concise summary naming affected resource ids.
     """
   end
 
-  defp edit_tool_prompt(_kind), do: ""
-
-  defp mode_prompt(:edit, _allow_notes?) do
-    """
-    Edit mode:
-      * Treat the user message as a specific editing instruction for an
-        existing thesis draft, not as an open-ended research task.
-      * If the target draft or block is ambiguous, inspect the documents and
-        relevant block context before editing. The workspace may contain both a
-        draft-tagged and a mikael-tagged active thesis draft.
-      * Make only the requested edits. Do not rewrite neighboring paragraphs
-        unless the user explicitly asks.
-      * After applying edit tools and update_search_index, finish with a short
-        confirmation naming the changed block ids.
-    """
-  end
-
-  defp mode_prompt(:research, true) do
-    """
-    Research mode:
-      * Treat the first user message as a research question, paper-reading
-        assignment, or exploration brief.
-      * Work through the corpus with the available tools and write durable
-        notes for findings that should be kept.
-      * It is fine to make several tool calls before answering. Keep the chat
-        updated through tool status and finish with a concise progress report.
-    """
-  end
-
-  defp mode_prompt(:research, false) do
-    """
-    Research mode:
-      * Treat the first user message as a research question, paper-reading
-        assignment, or exploration brief.
-      * Work through the corpus with the available tools and finish with a
-        concise progress report.
-    """
-  end
-
-  defp mode_prompt(:import, _allow_notes?) do
-    """
-    Import mode:
-      * Treat the user message as a request to add PDF research documents.
-      * Use document_import rather than claiming that a URL or upload was imported.
-      * The normal sequence is stage, extract, inspect, import, metadata, then
-        validate. Always inspect extraction evidence before import. Stop safely if
-        the source is not a PDF, extraction fails, or the evidence is ambiguous.
-      * A staged upload is identified by a Sheaf file id in the user message.
-      * Use the normal corpus reading and search tools to inspect imported
-        results. Use web_search to verify metadata against public sources.
-      * Repair obvious structural extraction artifacts with the editing tools.
-        Prefer unwrap_section for a useless title-level wrapper whose children
-        should become top-level blocks; do not use delete_block for that case.
-      * Keep the user informed through tool progress and finish with imported
-        document ids or a precise needs-review explanation.
-    """
-  end
-
-  defp mode_prompt(_kind, _allow_notes?) do
-    """
-    Chat mode:
-      * Answer the user's immediate question directly.
-    """
-  end
+  defp change_tool_prompt(false), do: ""
 end

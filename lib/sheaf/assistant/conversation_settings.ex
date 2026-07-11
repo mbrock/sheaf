@@ -38,7 +38,9 @@ defmodule Sheaf.Assistant.ConversationSettings do
       attributes: [
         {"sheaf.assistant.conversation_id", id},
         {"sheaf.assistant.model", to_string(settings.model)},
-        {"sheaf.assistant.mode", to_string(settings.kind)}
+        {"sheaf.assistant.mode", to_string(settings.kind)},
+        {"sheaf.assistant.allow_changes",
+         Map.get(settings, :allow_changes, false)}
       ]
     } do
       iri = Sheaf.Id.iri(id)
@@ -54,6 +56,7 @@ defmodule Sheaf.Assistant.ConversationSettings do
         configuration = %{
           model: settings.model,
           kind: settings.kind,
+          allow_changes: Map.get(settings, :allow_changes, false),
           llm_options: settings.llm_options || []
         }
 
@@ -83,6 +86,7 @@ defmodule Sheaf.Assistant.ConversationSettings do
         options
         |> put_present(:kind, settings.kind)
         |> put_present(:model, settings.model)
+        |> put_present(:allow_changes, settings.allow_changes)
         |> put_present(:llm_options, settings.llm_options)
 
       {:error, _reason} ->
@@ -98,6 +102,7 @@ defmodule Sheaf.Assistant.ConversationSettings do
     %{
       kind: kind,
       model: model,
+      allow_changes: kind in [:edit, :import],
       llm_options:
         if(model, do: Sheaf.LLM.assistant_llm_options(model, kind), else: nil)
     }
@@ -160,6 +165,7 @@ defmodule Sheaf.Assistant.ConversationSettings do
     %{
       kind: kind,
       model: model,
+      allow_changes: value(configuration, "allow_changes") in [true, "true"],
       llm_options: decode_options(value(configuration, "llm_options"))
     }
   end

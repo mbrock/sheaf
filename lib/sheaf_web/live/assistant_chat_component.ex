@@ -28,10 +28,9 @@ defmodule SheafWeb.AssistantChatComponent do
      |> assign(:selected_chat_id, nil)
      |> assign(:subscribed_chat_id, nil)
      |> assign(:chats_subscribed?, false)
-     |> assign(:mode, "quick")
+     |> assign(:allow_changes, false)
      |> assign(:model, Sheaf.LLM.default_model())
      |> assign(:model_provider, Sheaf.LLM.default_assistant_provider())
-     |> assign(:options_touched?, false)
      |> assign(
        :reasoning_effort,
        Sheaf.LLM.default_assistant_reasoning_effort(
@@ -47,15 +46,16 @@ defmodule SheafWeb.AssistantChatComponent do
       if socket.assigns.selected_chat_id == snapshot.id do
         socket
         |> assign(:chat, snapshot)
+        |> assign(:allow_changes, chat_allow_changes(snapshot))
         |> assign(:model, chat_model(snapshot))
         |> assign(:model_provider, chat_model_provider(snapshot))
         |> assign(:reasoning_effort, chat_reasoning_effort(snapshot))
         |> assign(
           :form,
           chat_form(
-            chat_mode(snapshot),
             chat_model_provider(snapshot),
             chat_reasoning_effort(snapshot),
+            chat_allow_changes(snapshot),
             current_form_message(socket)
           )
         )
@@ -76,26 +76,18 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   def update(%{import_uploads: files}, socket) do
-    {model_provider, reasoning_effort} =
-      if socket.assigns.options_touched? do
-        {socket.assigns.model_provider, socket.assigns.reasoning_effort}
-      else
-        {"gpt-sol", "high"}
-      end
+    allow_changes = files != [] or socket.assigns.allow_changes
 
     {:ok,
      socket
      |> assign(:uploaded_pdfs, files)
-     |> assign(:mode, "import")
-     |> assign(:model_provider, model_provider)
-     |> assign(:model, Sheaf.LLM.assistant_model_for_provider(model_provider))
-     |> assign(:reasoning_effort, reasoning_effort)
+     |> assign(:allow_changes, allow_changes)
      |> assign(
        :form,
        chat_form(
-         "import",
-         model_provider,
-         reasoning_effort,
+         socket.assigns.model_provider,
+         socket.assigns.reasoning_effort,
+         allow_changes,
          current_form_message(socket)
        )
      )}
@@ -114,7 +106,7 @@ defmodule SheafWeb.AssistantChatComponent do
           socket.assigns.model_provider
         )
       end)
-      |> assign_new(:options_touched?, fn -> false end)
+      |> assign_new(:allow_changes, fn -> false end)
       |> assign_new(:llm_options, fn -> [] end)
       |> assign_new(:variant, fn -> :full end)
       |> assign_new(:composer_only?, fn -> false end)
@@ -140,15 +132,6 @@ defmodule SheafWeb.AssistantChatComponent do
   def handle_event("set_options", %{"chat" => chat_params}, socket) do
     options_locked? = is_binary(socket.assigns.selected_chat_id)
 
-    mode =
-      if options_locked? do
-        socket.assigns.mode
-      else
-        chat_params
-        |> Map.get("mode", socket.assigns.mode)
-        |> normalize_mode()
-      end
-
     model_provider =
       if options_locked? do
         socket.assigns.model_provider
@@ -157,9 +140,15 @@ defmodule SheafWeb.AssistantChatComponent do
         |> Map.get("model_provider", socket.assigns.model_provider)
         |> normalize_model_provider()
       end
-      |> provider_for_mode(mode)
 
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
+
+    allow_changes =
+      if options_locked? do
+        socket.assigns.allow_changes
+      else
+        truthy?(Map.get(chat_params, "allow_changes", false))
+      end
 
     reasoning_effort =
       selected_reasoning_effort(
@@ -172,21 +161,18 @@ defmodule SheafWeb.AssistantChatComponent do
 
     {:noreply,
      socket
-     |> assign(:mode, mode)
-     |> assign(:options_touched?, true)
+     |> assign(:allow_changes, allow_changes)
      |> assign(:model_provider, model_provider)
      |> assign(:model, model)
      |> assign(:reasoning_effort, reasoning_effort)
      |> assign(
        :form,
-       chat_form(mode, model_provider, reasoning_effort, message)
+       chat_form(model_provider, reasoning_effort, allow_changes, message)
      )}
   end
 
-  def handle_event("new_chat", %{"mode" => mode}, socket) do
-    mode = normalize_mode(mode)
-    {:noreply, start_blank_chat(socket, mode)}
-  end
+  def handle_event("new_chat", %{}, socket),
+    do: {:noreply, start_blank_chat(socket)}
 
   def handle_event("promote_note", %{"index" => index}, socket) do
     with {message_index, ""} <- Integer.parse(index),
@@ -206,16 +192,18 @@ defmodule SheafWeb.AssistantChatComponent do
         %{"chat" => %{"message" => message} = chat_params},
         socket
       ) do
-    mode = Map.get(chat_params, "mode", socket.assigns.mode)
-
     model_provider =
       Map.get(chat_params, "model_provider", socket.assigns.model_provider)
 
     uploaded_files = Map.get(socket.assigns, :uploaded_pdfs, [])
     message = message |> String.trim() |> add_uploaded_files(uploaded_files)
-    mode = normalize_mode(mode)
     model_provider = normalize_model_provider(model_provider)
     model = Sheaf.LLM.assistant_model_for_provider(model_provider)
+
+    allow_changes =
+      truthy?(
+        Map.get(chat_params, "allow_changes", socket.assigns.allow_changes)
+      )
 
     reasoning_effort =
       selected_reasoning_effort(
@@ -228,11 +216,14 @@ defmodule SheafWeb.AssistantChatComponent do
       message == "" ->
         {:noreply,
          socket
-         |> assign(:mode, mode)
+         |> assign(:allow_changes, allow_changes)
          |> assign(:model_provider, model_provider)
          |> assign(:model, model)
          |> assign(:reasoning_effort, reasoning_effort)
-         |> assign(:form, chat_form(mode, model_provider, reasoning_effort))}
+         |> assign(
+           :form,
+           chat_form(model_provider, reasoning_effort, allow_changes)
+         )}
 
       socket.assigns.chat.pending ->
         {:noreply, socket}
@@ -240,11 +231,11 @@ defmodule SheafWeb.AssistantChatComponent do
       true ->
         socket =
           socket
-          |> assign(:mode, mode)
+          |> assign(:allow_changes, allow_changes)
           |> assign(:model_provider, model_provider)
           |> assign(:model, model)
           |> assign(:reasoning_effort, reasoning_effort)
-          |> ensure_sendable_chat(mode)
+          |> ensure_sendable_chat()
 
         socket =
           if is_nil(socket.assigns.selected_chat_id) do
@@ -254,7 +245,7 @@ defmodule SheafWeb.AssistantChatComponent do
               assistant_llm_options(
                 socket.assigns.llm_options,
                 model,
-                mode,
+                :chat,
                 reasoning_effort
               )
 
@@ -276,7 +267,11 @@ defmodule SheafWeb.AssistantChatComponent do
                     socket
                     |> assign(
                       :form,
-                      chat_form(mode, model_provider, reasoning_effort)
+                      chat_form(
+                        model_provider,
+                        reasoning_effort,
+                        allow_changes
+                      )
                     )
                     |> maybe_navigate_after_send()
 
@@ -287,7 +282,11 @@ defmodule SheafWeb.AssistantChatComponent do
                     assign(
                       socket,
                       :form,
-                      chat_form(mode, model_provider, reasoning_effort)
+                      chat_form(
+                        model_provider,
+                        reasoning_effort,
+                        allow_changes
+                      )
                     )
 
                   {:error, reason} ->
@@ -367,7 +366,7 @@ defmodule SheafWeb.AssistantChatComponent do
           <.composer_form
             :if={!@chat.pending}
             form={@form}
-            mode={@mode}
+            allow_changes={Map.get(assigns, :allow_changes, false)}
             model_provider={@model_provider}
             reasoning_effort={Map.get(assigns, :reasoning_effort, "medium")}
             selected_chat_id={@selected_chat_id}
@@ -416,7 +415,6 @@ defmodule SheafWeb.AssistantChatComponent do
           <button
             type="button"
             phx-click="new_chat"
-            phx-value-mode={@mode}
             phx-target={@myself}
             class="grid size-8 shrink-0 place-items-center rounded-sm text-stone-500 transition-colors hover:bg-stone-200/70 hover:text-stone-950 dark:text-stone-400 dark:hover:bg-stone-800/80 dark:hover:text-stone-100"
             title="New conversation"
@@ -448,7 +446,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
       <.composer_form
         form={@form}
-        mode={@mode}
+        allow_changes={Map.get(assigns, :allow_changes, false)}
         model_provider={@model_provider}
         reasoning_effort={Map.get(assigns, :reasoning_effort, "medium")}
         selected_chat_id={@selected_chat_id}
@@ -511,7 +509,7 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   attr :form, :any, required: true
-  attr :mode, :string, required: true
+  attr :allow_changes, :boolean, default: false
   attr :model_provider, :string, required: true
   attr :reasoning_effort, :string, default: "medium"
   attr :selected_chat_id, :string, default: nil
@@ -542,7 +540,7 @@ defmodule SheafWeb.AssistantChatComponent do
           type="textarea"
           rows="1"
           class="block w-full overflow-y-auto border-0 bg-transparent px-3 text-base leading-6 text-stone-950 outline-none [field-sizing:content] [resize:none] placeholder:text-stone-400 focus:ring-0 sm:sm dark:text-stone-50 dark:placeholder:text-stone-500"
-          placeholder={input_placeholder(@mode, @selected_chat_id)}
+          placeholder={input_placeholder(@selected_chat_id, @uploaded_pdfs)}
           disabled={@pending}
           phx-hook="SubmitShortcut"
         />
@@ -569,64 +567,24 @@ defmodule SheafWeb.AssistantChatComponent do
           type="textarea"
           rows="1"
           class="block max-h-40 min-h-24 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 text-base leading-6 text-stone-950 outline-none [field-sizing:content] placeholder:text-stone-400 focus:ring-0 sm:sm dark:text-stone-50 dark:placeholder:text-stone-500"
-          placeholder={input_placeholder(@mode, @selected_chat_id)}
+          placeholder={input_placeholder(@selected_chat_id, @uploaded_pdfs)}
           disabled={@pending}
           phx-hook="SubmitShortcut"
         />
 
         <div class="flex min-w-0 items-center gap-1 border-t border-stone-200 bg-stone-50/80 px-1.5 dark:border-stone-800 dark:bg-stone-950/30">
-          <div class="inline-flex min-w-0 items-center gap-0.5">
-            <label class={selector_label_class(@mode, "quick", @options_locked?)}>
-              <input
-                type="radio"
-                name="chat[mode]"
-                value="quick"
-                checked={@mode == "quick"}
-                class="sr-only"
-                disabled={@options_locked?}
-              />
-              <.icon name="hero-chat-bubble-left-ellipsis" class="size-3.5" />
-              <span>Quick</span>
-            </label>
-            <label class={
-              selector_label_class(@mode, "research", @options_locked?)
-            }>
-              <input
-                type="radio"
-                name="chat[mode]"
-                value="research"
-                checked={@mode == "research"}
-                class="sr-only"
-                disabled={@options_locked?}
-              />
-              <.icon name="hero-beaker" class="size-3.5" />
-              <span>Research</span>
-            </label>
-            <label class={selector_label_class(@mode, "edit", @options_locked?)}>
-              <input
-                type="radio"
-                name="chat[mode]"
-                value="edit"
-                checked={@mode == "edit"}
-                class="sr-only"
-                disabled={@options_locked?}
-              />
-              <.icon name="hero-pencil-square" class="size-3.5" />
-              <span>Edit</span>
-            </label>
-            <label class={selector_label_class(@mode, "import", @options_locked?)}>
-              <input
-                type="radio"
-                name="chat[mode]"
-                value="import"
-                checked={@mode == "import"}
-                class="sr-only"
-                disabled={@options_locked?}
-              />
-              <.icon name="hero-arrow-down-tray" class="size-3.5" />
-              <span>Import</span>
-            </label>
-          </div>
+          <label class={changes_checkbox_class(@allow_changes, @options_locked?)}>
+            <input type="hidden" name="chat[allow_changes]" value="false" />
+            <input
+              type="checkbox"
+              name="chat[allow_changes]"
+              value="true"
+              checked={@allow_changes}
+              class="size-3.5 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 dark:border-stone-600 dark:bg-stone-900"
+              disabled={@options_locked?}
+            />
+            <span>Allow changes</span>
+          </label>
 
           <span class="min-w-0 flex-1"></span>
           <.selected_context_badge selected_id={@selected_id} />
@@ -1474,39 +1432,33 @@ defmodule SheafWeb.AssistantChatComponent do
     |> assign(:chats_subscribed?, true)
   end
 
-  defp start_blank_chat(socket, mode) do
-    model_provider = provider_for_mode(socket.assigns.model_provider, mode)
+  defp start_blank_chat(socket) do
+    model_provider = socket.assigns.model_provider
 
     socket
     |> unsubscribe_from_previous_chat(nil)
     |> assign(:selected_chat_id, nil)
     |> assign(:subscribed_chat_id, nil)
     |> assign(:chat, empty_chat())
-    |> assign(:mode, mode)
+    |> assign(:allow_changes, false)
     |> assign(:model_provider, model_provider)
     |> assign(:model, Sheaf.LLM.assistant_model_for_provider(model_provider))
     |> assign(
       :form,
-      chat_form(mode, model_provider, socket.assigns.reasoning_effort)
+      chat_form(model_provider, socket.assigns.reasoning_effort, false)
     )
   end
 
-  defp ensure_sendable_chat(
-         %{assigns: %{selected_chat_id: id}} = socket,
-         _mode
-       )
+  defp ensure_sendable_chat(%{assigns: %{selected_chat_id: id}} = socket)
        when is_binary(id),
        do: socket
 
-  defp ensure_sendable_chat(socket, mode),
-    do: create_conversation_for_send(socket, mode)
+  defp ensure_sendable_chat(socket), do: create_conversation_for_send(socket)
 
-  defp create_conversation_for_send(socket, mode) do
-    kind = mode_kind(mode)
-
+  defp create_conversation_for_send(socket) do
     case Chats.create(
            Keyword.put(
-             chat_options(socket, kind),
+             chat_options(socket),
              :listed?,
              history_enabled?(socket.assigns)
            )
@@ -1526,7 +1478,7 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp create_existing_conversation(socket, id) do
     case Chats.create(
-           chat_options(socket, mode_kind(socket.assigns.mode))
+           chat_options(socket)
            |> Keyword.put(:id, id)
            |> Keyword.put(:restore?, true)
            |> Keyword.put(:listed?, history_enabled?(socket.assigns))
@@ -1554,16 +1506,16 @@ defmodule SheafWeb.AssistantChatComponent do
     socket
     |> assign(:subscribed_chat_id, id)
     |> assign(:chat, snapshot)
-    |> assign(:mode, chat_mode(snapshot))
+    |> assign(:allow_changes, chat_allow_changes(snapshot))
     |> assign(:model, chat_model(snapshot))
     |> assign(:model_provider, chat_model_provider(snapshot))
     |> assign(:reasoning_effort, chat_reasoning_effort(snapshot))
     |> assign(
       :form,
       chat_form(
-        chat_mode(snapshot),
         chat_model_provider(snapshot),
-        chat_reasoning_effort(snapshot)
+        chat_reasoning_effort(snapshot),
+        chat_allow_changes(snapshot)
       )
     )
   end
@@ -1579,37 +1531,25 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp unsubscribe_from_previous_chat(socket, _new_id), do: socket
 
-  defp chat_options(socket, kind) do
+  defp chat_options(socket) do
     llm_options =
       assistant_llm_options(
         socket.assigns.llm_options,
         socket.assigns.model,
-        kind,
+        :chat,
         socket.assigns.reasoning_effort
       )
 
     options = [
-      kind: kind,
+      kind: :chat,
+      allow_changes: socket.assigns.allow_changes,
+      allow_notes: true,
       model: socket.assigns.model,
       llm_options: llm_options,
       stream?: true
     ]
 
-    case assistant_allow_notes(socket.assigns, kind) do
-      {:ok, allow_notes?} -> Keyword.put(options, :allow_notes, allow_notes?)
-      :error -> options
-    end
-  end
-
-  defp assistant_allow_notes(assigns, kind) do
-    case Map.fetch(assigns, :allow_notes) do
-      {:ok, allow_notes?} -> {:ok, allow_notes?}
-      :error -> Map.fetch(assigns, :allow_notes?)
-    end
-    |> case do
-      :error -> {:ok, kind == :research}
-      other -> other
-    end
+    options
   end
 
   defp history_enabled?(assigns),
@@ -1651,16 +1591,6 @@ defmodule SheafWeb.AssistantChatComponent do
 
   defp maybe_navigate_after_send(socket), do: socket
 
-  defp normalize_mode("research"), do: "research"
-  defp normalize_mode("edit"), do: "edit"
-  defp normalize_mode("import"), do: "import"
-  defp normalize_mode(_mode), do: "quick"
-
-  defp mode_kind("research"), do: :research
-  defp mode_kind("edit"), do: :edit
-  defp mode_kind("import"), do: :import
-  defp mode_kind(_mode), do: :chat
-
   defp normalize_model_provider("gpt"), do: "gpt-sol"
 
   defp normalize_model_provider(provider) do
@@ -1674,7 +1604,7 @@ defmodule SheafWeb.AssistantChatComponent do
     end
   end
 
-  defp provider_for_mode(provider, _mode), do: provider
+  defp truthy?(value), do: value in [true, "true", "1", 1, "on"]
 
   defp selected_reasoning_effort(chat_params, model_provider, current_effort) do
     chat_params
@@ -1712,14 +1642,14 @@ defmodule SheafWeb.AssistantChatComponent do
     end
   end
 
-  defp selector_label_class(selected_value, value, locked?) do
+  defp changes_checkbox_class(selected?, locked?) do
     [
       "inline-flex items-center gap-1 rounded-sm px-1.5 transition-colors",
       locked? && "cursor-not-allowed",
       not locked? && "cursor-pointer",
-      selected_value == value &&
+      selected? &&
         "text-stone-900 ring-1 ring-inset ring-stone-400/70 dark:text-stone-50 dark:ring-stone-500/80",
-      selected_value != value &&
+      not selected? &&
         if(locked?,
           do: "text-stone-400 opacity-60 dark:text-stone-600",
           else:
@@ -1745,32 +1675,24 @@ defmodule SheafWeb.AssistantChatComponent do
     ]
   end
 
-  defp chat_kind_icon(chat) do
-    case chat_kind(chat) do
-      :edit -> "hero-pencil-square"
-      :research -> "hero-beaker"
-      _kind -> "hero-chat-bubble-left-ellipsis"
-    end
-  end
+  defp chat_kind_icon(_chat), do: "hero-chat-bubble-left-ellipsis"
 
   defp chat_listed?(chats, id), do: Enum.any?(chats, &(&1.id == id))
-
-  defp chat_kind(%{kind: :edit}), do: :edit
-  defp chat_kind(%{kind: "edit"}), do: :edit
-  defp chat_kind(%{kind: :research}), do: :research
-  defp chat_kind(%{kind: "research"}), do: :research
-  defp chat_kind(_chat), do: :chat
 
   defp block_preview_id(id), do: "block-preview-#{id}"
   defp block_preview_target(id), do: "##{block_preview_id(id)}"
 
-  defp chat_mode(chat) do
-    case chat_kind(chat) do
-      :edit -> "edit"
-      :research -> "research"
-      _kind -> "quick"
-    end
-  end
+  defp chat_allow_changes(%{allow_changes?: value}) when is_boolean(value),
+    do: value
+
+  defp chat_allow_changes(%{allow_changes: value}) when is_boolean(value),
+    do: value
+
+  defp chat_allow_changes(%{kind: kind})
+       when kind in [:edit, "edit", :import, "import"],
+       do: true
+
+  defp chat_allow_changes(_chat), do: false
 
   defp chat_model(%{model: model}) when not is_nil(model), do: model
   defp chat_model(_chat), do: Sheaf.LLM.default_model()
@@ -1800,20 +1722,15 @@ defmodule SheafWeb.AssistantChatComponent do
   defp chat_reasoning_effort(_chat),
     do: Sheaf.LLM.default_assistant_reasoning_effort()
 
-  defp input_placeholder(_mode, selected_chat_id)
+  defp input_placeholder(selected_chat_id, _uploaded_pdfs)
        when is_binary(selected_chat_id),
        do: "Reply to assistant"
 
-  defp input_placeholder("edit", _selected_chat_id),
-    do: "Tell the assistant what to edit"
-
-  defp input_placeholder("research", _selected_chat_id),
-    do: "Give the assistant a research task"
-
-  defp input_placeholder("import", _selected_chat_id),
+  defp input_placeholder(_selected_chat_id, [_file | _files]),
     do: "Paste PDF links or describe what to import"
 
-  defp input_placeholder(_mode, _selected_chat_id), do: "Ask a quick question"
+  defp input_placeholder(_selected_chat_id, _uploaded_pdfs),
+    do: "Ask the assistant"
 
   defp add_uploaded_files("", []), do: ""
   defp add_uploaded_files(message, []), do: message
@@ -1886,17 +1803,17 @@ defmodule SheafWeb.AssistantChatComponent do
   end
 
   defp chat_form(
-         mode \\ "quick",
          model_provider \\ Sheaf.LLM.default_assistant_provider(),
          reasoning_effort \\ Sheaf.LLM.default_assistant_reasoning_effort(),
+         allow_changes \\ false,
          message \\ ""
        ) do
     to_form(
       %{
         "message" => message,
-        "mode" => mode,
         "model_provider" => model_provider,
-        "reasoning_effort" => reasoning_effort
+        "reasoning_effort" => reasoning_effort,
+        "allow_changes" => allow_changes
       },
       as: :chat
     )
@@ -1915,6 +1832,7 @@ defmodule SheafWeb.AssistantChatComponent do
       id: nil,
       title: "Assistant conversation",
       kind: :chat,
+      allow_changes?: false,
       model: Sheaf.LLM.default_model(),
       llm_options: [],
       messages: [],

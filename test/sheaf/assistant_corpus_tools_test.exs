@@ -620,6 +620,32 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert Enum.any?(tools, &(&1.name == "search_text"))
   end
 
+  test "unified assistant tool sets separate safe capabilities from changes" do
+    safe_names =
+      CorpusTools.tools(tool_set: :assistant)
+      |> Enum.map(& &1.name)
+
+    assert "list_documents" in safe_names
+    assert "read" in safe_names
+    assert "search_text" in safe_names
+    assert "web_search" in safe_names
+    assert "write_note" in safe_names
+    refute "tag_paragraphs" in safe_names
+    refute "update_block_text" in safe_names
+    refute "document_import" in safe_names
+
+    change_names =
+      CorpusTools.tools(tool_set: :assistant_changes)
+      |> Enum.map(& &1.name)
+
+    assert "tag_paragraphs" in change_names
+    assert "update_block_text" in change_names
+    assert "document_import" in change_names
+    assert "update_document_metadata" in change_names
+    assert "web_search" in change_names
+    assert "write_note" in change_names
+  end
+
   test "edit tool set exposes document mutation tools and visible search index refresh" do
     test_pid = self()
 

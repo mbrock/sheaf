@@ -220,11 +220,17 @@ defmodule Sheaf.Assistant.CorpusTools do
     ]
 
     tools =
-      if tool_set == :import do
+      if tool_set == :assistant do
+        Enum.reject(tools, &(&1.name == "tag_paragraphs"))
+      else
+        tools
+      end
+
+    tools =
+      if tool_set in [:import, :assistant_changes] do
         tools ++
           [
             document_import_tool(notify, document_importer),
-            web_search_tool(notify, web_searcher),
             document_metadata_tool(notify, metadata_updater)
           ]
       else
@@ -232,7 +238,7 @@ defmodule Sheaf.Assistant.CorpusTools do
       end
 
     tools =
-      if tool_set in [:edit, :import] do
+      if tool_set in [:edit, :import, :assistant_changes] do
         tools ++
           edit_tool_definitions(
             notify,
@@ -243,6 +249,13 @@ defmodule Sheaf.Assistant.CorpusTools do
             section_unwrapper,
             search_index_updater
           )
+      else
+        tools
+      end
+
+    tools =
+      if tool_set in [:assistant, :assistant_changes, :import] do
+        tools ++ [web_search_tool(notify, web_searcher)]
       else
         tools
       end
