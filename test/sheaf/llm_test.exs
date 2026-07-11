@@ -65,7 +65,7 @@ defmodule Sheaf.LLMTest do
                label: "Claude",
                model: "anthropic:claude-opus-4-7"
              },
-             %{provider: "gpt", label: "GPT", model: "openai:gpt-5.5"}
+             %{provider: "gpt", label: "GPT", model: "openai:gpt-5.6"}
            ] = LLM.assistant_model_options()
 
     assert LLM.default_assistant_provider() == "claude"
@@ -73,8 +73,8 @@ defmodule Sheaf.LLMTest do
     assert LLM.assistant_model_for_provider("claude") ==
              "anthropic:claude-opus-4-7"
 
-    assert LLM.assistant_model_for_provider("gpt") == "openai:gpt-5.5"
-    assert LLM.assistant_provider_for_model("openai:gpt-5.5") == "gpt"
+    assert LLM.assistant_model_for_provider("gpt") == "openai:gpt-5.6"
+    assert LLM.assistant_provider_for_model("openai:gpt-5.6") == "gpt"
 
     assert LLM.assistant_provider_for_model("anthropic:claude-opus-4-7") ==
              "claude"
@@ -85,7 +85,7 @@ defmodule Sheaf.LLMTest do
              reasoning_effort: :medium
            ]
 
-    assert LLM.assistant_llm_options("openai:gpt-5.5", :chat) == [
+    assert LLM.assistant_llm_options("openai:gpt-5.6", :chat) == [
              reasoning_effort: :medium
            ]
 

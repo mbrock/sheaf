@@ -10,7 +10,7 @@ defmodule Sheaf.LLM do
   alias ReqLLM.Message.ContentPart
 
   @claude_assistant_model "anthropic:claude-opus-4-7"
-  @gpt_assistant_model "openai:gpt-5.5"
+  @gpt_assistant_model "openai:gpt-5.6"
   @default_model @claude_assistant_model
   @default_max_tokens 65_536
   @default_thinking %{type: "adaptive", display: "omitted"}
