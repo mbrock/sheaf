@@ -43,6 +43,9 @@ defmodule Sheaf.PDFTest do
 
     result = PDF.build_graph(document, title: "Example Paper", mint: mint())
 
+    assert result.metadata_graph.name ==
+             RDF.iri(Sheaf.Repo.metadata_graph())
+
     assert Document.kind(result.metadata_graph, result.document) == :paper
 
     assert Document.title(result.metadata_graph, result.document) ==

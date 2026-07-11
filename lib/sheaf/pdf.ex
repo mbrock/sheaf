@@ -60,8 +60,7 @@ defmodule Sheaf.PDF do
                       source_file: source_file_metadata,
                       source_file_iri: source_file_iri,
                       source_file_metadata: source_file_metadata,
-                      page_count: page_count,
-                      graph: RDF.iri(Sheaf.Repo.metadata_graph()) do
+                      page_count: page_count do
         @prefix Sheaf.NS.DOC
         @prefix Sheaf.NS.BIBO
         @prefix Sheaf.NS.FABIO
@@ -86,6 +85,7 @@ defmodule Sheaf.PDF do
           |> DOC.originalFilename(source_file.original_filename)
         end
       end
+      |> RDF.Graph.new(name: Sheaf.Repo.metadata_graph())
 
     graph =
       RDF.Graph.build document: document_iri,
