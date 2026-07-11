@@ -57,8 +57,8 @@ defmodule SheafWeb.DocumentEntryComponents do
       </div>
     </div>
 
-    <div class="flex min-h-14 items-center border-b border-stone-200 px-3 py-2 font-sans text-xs/4 text-stone-700 dark:border-stone-700 dark:text-stone-300">
-      <p class="line-clamp-2">{Map.get(@document, :micro_abstract) || ""}</p>
+    <div class="flex h-20 items-center border-b border-stone-200 px-3 py-2 font-sans text-xs/4 text-stone-700 dark:border-stone-700 dark:text-stone-300">
+      <p class="line-clamp-4">{Map.get(@document, :micro_abstract) || ""}</p>
     </div>
 
     <div class="flex h-9 min-w-0 items-center justify-between gap-3 px-3 font-sans text-xs text-stone-500 dark:text-stone-400">
