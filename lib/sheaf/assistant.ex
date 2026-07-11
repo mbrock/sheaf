@@ -212,10 +212,9 @@ defmodule Sheaf.Assistant do
     if stream?(opts) do
       case state.stream_text.(state.model, context, llm_options) do
         {:ok, %StreamResponse{} = stream_response} ->
-          StreamResponse.process_stream(
-            stream_response,
-            stream_callbacks(opts)
-          )
+          stream_response
+          |> StreamResponse.process_stream(stream_callbacks(opts))
+          |> recover_empty_stream_response(state, context, llm_options)
 
         other ->
           other
@@ -226,6 +225,35 @@ defmodule Sheaf.Assistant do
   end
 
   defp stream?(opts), do: Keyword.get(opts, :stream, false) == true
+
+  defp recover_empty_stream_response(
+         {:ok, %Response{} = response} = result,
+         state,
+         context,
+         llm_options
+       ) do
+    if empty_stream_response?(response) do
+      Tracer.set_attribute("sheaf.assistant.empty_stream_fallback", true)
+
+      state.generate_text.(
+        state.model,
+        context,
+        Keyword.delete(llm_options, :stream)
+      )
+    else
+      result
+    end
+  end
+
+  defp recover_empty_stream_response(result, _state, _context, _llm_options),
+    do: result
+
+  defp empty_stream_response?(%Response{} = response) do
+    blank?(Response.text(response)) and Response.tool_calls(response) == [] and
+      response.finish_reason in [nil, :error] and is_nil(response.usage)
+  end
+
+  defp blank?(value), do: value in [nil, ""]
 
   defp stream_callbacks(opts) do
     [

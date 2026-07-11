@@ -87,6 +87,35 @@ defmodule Sheaf.AssistantTest do
              Assistant.context(assistant)
   end
 
+  test "retries an anomalous empty stream non-streaming to expose provider errors" do
+    test_pid = self()
+
+    stream_text = fn _model, context, _opts ->
+      {:ok, empty_stream_response(context)}
+    end
+
+    generate_text = fn _model, _context, opts ->
+      send(test_pid, {:fallback_options, opts})
+      {:error, %{reason: "Provider response error (429): insufficient quota"}}
+    end
+
+    assistant =
+      start_supervised!(
+        {Assistant,
+         model: "openai:gpt-4",
+         task_supervisor: Sheaf.Assistant.TaskSupervisor,
+         stream_text: stream_text,
+         generate_text: generate_text}
+      )
+
+    assert {:error, %{reason: reason}} =
+             Assistant.run(assistant, "hi", stream: true)
+
+    assert reason =~ "insufficient quota"
+    assert_receive {:fallback_options, opts}
+    refute Keyword.has_key?(opts, :stream)
+  end
+
   test "executes requested tools and continues until final answer" do
     test_pid = self()
 
@@ -309,6 +338,19 @@ defmodule Sheaf.AssistantTest do
 
     %StreamResponse{
       stream: chunks,
+      metadata_handle: metadata_handle,
+      cancel: fn -> :ok end,
+      model: model,
+      context: context
+    }
+  end
+
+  defp empty_stream_response(context) do
+    {:ok, model} = ReqLLM.model("openai:gpt-4")
+    {:ok, metadata_handle} = MetadataHandle.start_link(fn -> %{} end)
+
+    %StreamResponse{
+      stream: [],
       metadata_handle: metadata_handle,
       cancel: fn -> :ok end,
       model: model,

@@ -415,10 +415,17 @@ defmodule Sheaf.Assistant.Chat.Server do
     |> Map.put(:active_tool, nil)
     |> Map.put(:status_line, nil)
     |> Map.put(:stream_buffer, nil)
-    |> append_message(:error, "Assistant error: #{inspect(reason)}")
+    |> append_message(:error, "Assistant error: #{assistant_error(reason)}")
     |> touch_index()
     |> broadcast_snapshot()
   end
+
+  defp assistant_error(%{reason: reason}) when is_binary(reason), do: reason
+
+  defp assistant_error(reason) when is_exception(reason),
+    do: Exception.message(reason)
+
+  defp assistant_error(reason), do: inspect(reason)
 
   defp handle_assistant_event(state, {:tool_started, name, args}) do
     line = CorpusTools.humanize(name, args, state.titles)
