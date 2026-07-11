@@ -7,9 +7,9 @@ defmodule Sheaf.DocumentMetadata do
 
   require OpenTelemetry.Tracer, as: Tracer
 
-  alias RDF.Graph
+  alias RDF.{Description, Graph}
   alias RDF.NS.RDFS
-  alias Sheaf.NS.{DCTERMS, FABIO, FOAF}
+  alias Sheaf.NS.{DCTERMS, DOC, FABIO, FOAF}
 
   @replaceable_predicates [
     RDF.type(),
@@ -23,7 +23,7 @@ defmodule Sheaf.DocumentMetadata do
 
   @type result :: %{
           document_id: String.t(),
-          expression: RDF.IRI.t(),
+          expression: RDF.IRI.t() | nil,
           fields: [atom()],
           statement_count: non_neg_integer()
         }
@@ -45,11 +45,18 @@ defmodule Sheaf.DocumentMetadata do
     } do
       with {:ok, %{kind: :document}} <-
              Sheaf.ResourceResolver.resolve(document_id),
+           {:ok, cover_change} <- cover_change(attrs),
            {:ok, graph} <- Sheaf.fetch_graph(graph_name),
            {updated, expression, fields} <-
              apply_metadata(graph, document, attrs),
-           :ok <- Sheaf.put_graph(graph_name, updated) do
+           :ok <- maybe_put_metadata(graph_name, updated, fields),
+           :ok <- apply_cover_change(document, cover_change) do
         Sheaf.Documents.clear_cache()
+
+        fields =
+          if cover_change == :unchanged,
+            do: fields,
+            else: fields ++ [:cover_image_id]
 
         {:ok,
          %{
@@ -68,19 +75,46 @@ defmodule Sheaf.DocumentMetadata do
     end
   end
 
+  @doc "Returns the image resource currently associated as a document's cover."
+  def cover_image_id(document_id) when is_binary(document_id) do
+    workspace =
+      Sheaf.Repo.ask(&RDF.Dataset.graph(&1, Sheaf.Repo.workspace_graph()))
+
+    case Graph.description(workspace, Sheaf.Id.iri(document_id)) do
+      %Description{} = document ->
+        case Description.first(document, DOC.coverImage()) do
+          %RDF.IRI{} = image -> {:ok, Sheaf.Id.id_from_iri(image)}
+          _ -> {:error, :not_found}
+        end
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
   @doc false
   def apply_metadata(%Graph{} = graph, document, attrs) do
-    expression = existing_expression(graph, document) || Sheaf.mint()
     supplied = supplied_fields(attrs)
 
-    graph =
-      graph
-      |> remove_expression_fields(expression, supplied)
-      |> ensure_expression_link(document, expression)
-      |> add_expression_metadata(expression, attrs)
+    if supplied == [] do
+      {graph, existing_expression(graph, document), []}
+    else
+      expression = existing_expression(graph, document) || Sheaf.mint()
 
-    {graph, expression, supplied}
+      graph =
+        graph
+        |> remove_expression_fields(expression, supplied)
+        |> ensure_expression_link(document, expression)
+        |> add_expression_metadata(expression, attrs)
+
+      {graph, expression, supplied}
+    end
   end
+
+  defp maybe_put_metadata(_graph_name, _graph, []), do: :ok
+
+  defp maybe_put_metadata(graph_name, graph, _fields),
+    do: Sheaf.put_graph(graph_name, graph)
 
   defp existing_expression(graph, document) do
     representation = FABIO.isRepresentationOf()
@@ -187,6 +221,66 @@ defmodule Sheaf.DocumentMetadata do
 
   defp value(attrs, key),
     do: Map.get(attrs, key, Map.get(attrs, to_string(key)))
+
+  defp cover_change(attrs) do
+    if present_key?(attrs, :cover_image_id) do
+      case value(attrs, :cover_image_id) do
+        image_id when image_id in [nil, ""] ->
+          {:ok, :clear}
+
+        image_id when is_binary(image_id) ->
+          image_id = String.trim_leading(String.trim(image_id), "#")
+
+          case Sheaf.OpenAI.Images.fetch(image_id) do
+            {:ok, _image} -> {:ok, {:set, Sheaf.Id.iri(image_id)}}
+            {:error, _reason} -> {:error, "image ##{image_id} was not found"}
+          end
+
+        _other ->
+          {:error, "cover_image_id must be a Sheaf image ID"}
+      end
+    else
+      {:ok, :unchanged}
+    end
+  end
+
+  defp apply_cover_change(_document, :unchanged), do: :ok
+
+  defp apply_cover_change(document, change) do
+    workspace =
+      Sheaf.Repo.ask(&RDF.Dataset.graph(&1, Sheaf.Repo.workspace_graph()))
+
+    old =
+      workspace
+      |> Graph.triples()
+      |> Enum.filter(fn {subject, predicate, _object} ->
+        subject == document and predicate == RDF.iri(DOC.coverImage())
+      end)
+      |> Graph.new(name: Sheaf.Repo.workspace_graph())
+
+    changes =
+      if RDF.Data.statement_count(old) == 0, do: [], else: [{:retract, old}]
+
+    changes =
+      case change do
+        :clear ->
+          changes
+
+        {:set, image} ->
+          link =
+            Graph.new(
+              [{document, DOC.coverImage(), image}],
+              name: Sheaf.Repo.workspace_graph()
+            )
+
+          changes ++ [{:assert, link}]
+      end
+
+    case changes do
+      [] -> :ok
+      changes -> Sheaf.Repo.transact(changes)
+    end
+  end
 
   defp field_predicates(:kind), do: [RDF.type()]
   defp field_predicates(:title), do: [DCTERMS.title(), RDFS.label()]

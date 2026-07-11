@@ -1511,7 +1511,9 @@ defmodule Sheaf.Assistant.Chat.Server do
         inspect, import, metadata, and validate sequence, and stop safely when
         extraction evidence is missing or ambiguous.
       * Use update_document_metadata only for fields supported by verified
-        evidence.
+        evidence. To give a document a generated cover, first use generate_image
+        to create a standalone image resource, then pass its image ID as
+        cover_image_id to update_document_metadata.
       * Only modify the workspace when the user has explicitly requested the
         corresponding change. Make the smallest requested change and finish
         with a concise summary naming affected resource ids.

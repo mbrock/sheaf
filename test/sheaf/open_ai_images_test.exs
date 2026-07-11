@@ -1,16 +1,18 @@
-defmodule Sheaf.OpenAI.CoverImagesTest do
+defmodule Sheaf.OpenAI.ImagesTest do
   use ExUnit.Case, async: true
 
-  alias Sheaf.OpenAI.CoverImages
+  alias Sheaf.OpenAI.Images
 
-  test "calls the image generation endpoint and persists provenance" do
+  test "generates and persists a standalone image with provenance" do
     test_pid = self()
 
     blob_root =
       Path.join(
         System.tmp_dir!(),
-        "sheaf-cover-test-#{System.unique_integer()}"
+        "sheaf-image-test-#{System.unique_integer()}"
       )
+
+    image_iri = Sheaf.Id.iri("IMG123")
 
     on_exit(fn -> File.rm_rf(blob_root) end)
 
@@ -24,22 +26,22 @@ defmodule Sheaf.OpenAI.CoverImagesTest do
        }}
     end
 
-    transact = fn changes ->
-      send(test_pid, {:transact, changes})
+    assert_graph = fn graph ->
+      send(test_pid, {:assert_graph, graph})
       :ok
     end
 
     assert {:ok, result} =
-             CoverImages.generate("DOC123", "A luminous paper forest",
+             Images.generate("A luminous paper forest",
                api_key: "test-key",
                request: request,
-               resolver: fn "DOC123" -> {:ok, %{kind: :document}} end,
+               image_iri: image_iri,
                blob_root: blob_root,
-               old_links: [],
-               transact: transact
+               assert_graph: assert_graph
              )
 
-    assert result.path == "/covers/DOC123"
+    assert result.image_id == "IMG123"
+    assert result.path == "/images/IMG123"
     assert result.model == "gpt-image-2"
     assert result.byte_size == byte_size("png bytes")
 
@@ -51,7 +53,11 @@ defmodule Sheaf.OpenAI.CoverImagesTest do
     assert opts[:json].quality == "medium"
     assert opts[:json].output_format == "png"
 
-    assert_received {:transact, [{:assert, graph}]}
-    assert RDF.Data.statement_count(graph) >= 15
+    assert_received {:assert_graph, graph}
+    assert RDF.Data.statement_count(graph) >= 14
+
+    refute Enum.any?(RDF.Graph.triples(graph), fn {_s, p, _o} ->
+             p == RDF.iri(Sheaf.NS.DOC.coverImage())
+           end)
   end
 end

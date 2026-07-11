@@ -95,11 +95,11 @@ defmodule Sheaf.Assistant.CorpusTools do
     metadata_updater =
       Keyword.get(opts, :metadata_updater, &Sheaf.DocumentMetadata.update/2)
 
-    cover_generator =
+    image_generator =
       Keyword.get(
         opts,
-        :cover_generator,
-        &Sheaf.OpenAI.CoverImages.generate/2
+        :image_generator,
+        &Sheaf.OpenAI.Images.generate/1
       )
 
     search_index_updater =
@@ -225,18 +225,12 @@ defmodule Sheaf.Assistant.CorpusTools do
           end)
       ),
       Tool.new!(
-        name: "generate_cover_image",
+        name: "generate_image",
         description:
-          "Generate and attach a representative cover image to a Sheaf document. " <>
-            "First read enough of the document to understand its central ideas, then write a vivid, specific visual prompt. " <>
-            "Prefer evocative visual metaphor and composition over literal diagrams; avoid title text, captions, logos, and author likenesses unless explicitly requested. " <>
-            "The new image replaces the current cover association while retaining generation provenance.",
+          "Generate a durable image resource in the Sheaf workspace. " <>
+            "Write a vivid, specific standalone art-direction prompt. The result has its own Sheaf image ID and generation provenance. " <>
+            "This tool does not associate the image with a document or other resource; use a separate metadata update when an association is wanted.",
         parameter_schema: [
-          document_id: [
-            type: :string,
-            required: true,
-            doc: "Six-character Sheaf document id."
-          ],
           prompt: [
             type: :string,
             required: true,
@@ -245,16 +239,16 @@ defmodule Sheaf.Assistant.CorpusTools do
           ]
         ],
         callback:
-          instrument(notify, "generate_cover_image", fn args ->
-            case cover_generator.(arg(args, :document_id), arg(args, :prompt)) do
+          instrument(notify, "generate_image", fn args ->
+            case image_generator.(arg(args, :prompt)) do
               {:ok, result} ->
                 {:ok, Jason.encode!(result, pretty: true)}
 
               {:error, reason} ->
-                {:error, "cover generation failed: #{inspect(reason)}"}
+                {:error, "image generation failed: #{inspect(reason)}"}
 
               other ->
-                {:error, "cover generation returned: #{inspect(other)}"}
+                {:error, "image generation returned: #{inspect(other)}"}
             end
           end)
       )
@@ -262,7 +256,7 @@ defmodule Sheaf.Assistant.CorpusTools do
 
     tools =
       if tool_set == :assistant do
-        Enum.reject(tools, &(&1.name == "tag_paragraphs"))
+        Enum.reject(tools, &(&1.name in ["tag_paragraphs", "generate_image"]))
       else
         tools
       end
@@ -427,7 +421,8 @@ defmodule Sheaf.Assistant.CorpusTools do
       description:
         "Apply verified bibliographic metadata to an existing Sheaf document. " <>
           "Only include fields that should be replaced. Use authors for people and " <>
-          "corporate_authors for organizations. Verify uncertain metadata first.",
+          "corporate_authors for organizations. Use cover_image_id to explicitly associate an existing Sheaf image as the cover. " <>
+          "Verify uncertain metadata first.",
       parameter_schema: [
         document_id: [
           type: :string,
@@ -460,7 +455,12 @@ defmodule Sheaf.Assistant.CorpusTools do
           type: :string,
           doc: "Journal, proceedings, book, or series title."
         ],
-        doi: [type: :string, doc: "Canonical DOI without a URL prefix."]
+        doi: [type: :string, doc: "Canonical DOI without a URL prefix."],
+        cover_image_id: [
+          type: :string,
+          doc:
+            "Existing Sheaf image ID to use as the document cover. Pass an empty string to clear the cover."
+        ]
       ],
       callback:
         instrument(notify, "update_document_metadata", fn args ->

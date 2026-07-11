@@ -1,5 +1,5 @@
-defmodule Sheaf.OpenAI.CoverImages do
-  @moduledoc "Generates durable, document-associated cover images with OpenAI."
+defmodule Sheaf.OpenAI.Images do
+  @moduledoc "Generates durable image resources with OpenAI."
 
   require OpenTelemetry.Tracer, as: Tracer
   require RDF.Graph
@@ -12,48 +12,48 @@ defmodule Sheaf.OpenAI.CoverImages do
   @default_model "gpt-image-2"
   @mime_type "image/png"
 
-  def generate(document_id, prompt, opts \\ [])
-      when is_binary(document_id) and is_binary(prompt) do
+  def generate(prompt, opts \\ []) when is_binary(prompt) do
     prompt = String.trim(prompt)
     model = Keyword.get(opts, :model, @default_model)
     size = Keyword.get(opts, :size, "1024x1536")
     quality = Keyword.get(opts, :quality, "medium")
 
-    Tracer.with_span "sheaf.openai.generate_cover_image", %{
+    Tracer.with_span "sheaf.openai.generate_image", %{
       kind: :client,
       attributes: [
         {"gen_ai.system", "openai"},
         {"gen_ai.request.model", model},
-        {"sheaf.document.id", document_id},
-        {"sheaf.cover.prompt", prompt},
-        {"sheaf.cover.size", size},
-        {"sheaf.cover.quality", quality}
+        {"sheaf.image.prompt", prompt},
+        {"sheaf.image.size", size},
+        {"sheaf.image.quality", quality}
       ]
     } do
-      with :ok <- validate(document_id, prompt, opts),
+      with :ok <- require_prompt(prompt),
            {:ok, key, _source} <- ReqLLM.Keys.get(:openai, opts),
            {:ok, bytes} <- request(prompt, model, size, quality, key, opts),
-           {:ok, result} <- persist(document_id, prompt, model, bytes, opts) do
-        Tracer.set_attribute("sheaf.cover.byte_size", result.byte_size)
+           {:ok, result} <- persist(prompt, model, bytes, opts) do
+        Tracer.set_attributes([
+          {"sheaf.image.id", result.image_id},
+          {"sheaf.image.byte_size", result.byte_size}
+        ])
+
         {:ok, result}
       end
     end
   end
 
-  def fetch(document_id, opts \\ []) when is_binary(document_id) do
+  def fetch(image_id, opts \\ []) when is_binary(image_id) do
     graph = Keyword.get_lazy(opts, :workspace_graph, &workspace_graph/0)
 
-    with %Description{} = document <-
-           Graph.description(graph, Id.iri(document_id)),
-         %RDF.IRI{} = file_iri <-
-           Description.first(document, DOC.coverImage()),
-         %Description{} = file <- Graph.description(graph, file_iri),
+    with %Description{} = file <- Graph.description(graph, Id.iri(image_id)),
+         true <- image_file?(file),
          {:ok, path} <- Files.local_path(file, opts) do
       {:ok,
        %{
-         file_iri: file_iri,
+         image_id: image_id,
+         iri: file.subject,
          path: path,
-         mime_type: first_value(file, DCAT.mediaType()) || @mime_type
+         mime_type: first_value(file, DCAT.mediaType())
        }}
     else
       {:error, reason} -> {:error, reason}
@@ -98,11 +98,12 @@ defmodule Sheaf.OpenAI.CoverImages do
 
   defp decode(_body), do: {:error, :missing_generated_image}
 
-  defp persist(document_id, prompt, model, bytes, opts) do
-    file_iri = Keyword.get_lazy(opts, :file_iri, &Sheaf.mint/0)
+  defp persist(prompt, model, bytes, opts) do
+    image_iri = Keyword.get_lazy(opts, :image_iri, &Sheaf.mint/0)
+    image_id = Id.id_from_iri(image_iri)
     activity_iri = Keyword.get_lazy(opts, :activity_iri, &Sheaf.mint/0)
     generated_at = Keyword.get_lazy(opts, :generated_at, &now/0)
-    filename = "#{document_id}-cover.png"
+    filename = "#{image_id}.png"
 
     path =
       Path.join(
@@ -119,21 +120,22 @@ defmodule Sheaf.OpenAI.CoverImages do
                mime_type: @mime_type
              ),
            graph =
-             cover_graph(
-               Id.iri(document_id),
-               file_iri,
+             image_graph(
+               image_iri,
                activity_iri,
                stored,
                prompt,
                model,
                generated_at
              ),
-           :ok <- replace_cover_link(Id.iri(document_id), graph, opts) do
+           assert_graph =
+             Keyword.get(opts, :assert_graph, &Sheaf.Repo.assert/1),
+           :ok <- assert_graph.(graph) do
         {:ok,
          %{
-           document_id: document_id,
-           file_id: Id.id_from_iri(file_iri),
-           path: "/covers/#{document_id}",
+           image_id: image_id,
+           iri: to_string(image_iri),
+           path: "/images/#{image_id}",
            mime_type: @mime_type,
            byte_size: stored.byte_size,
            prompt: prompt,
@@ -145,75 +147,30 @@ defmodule Sheaf.OpenAI.CoverImages do
     end
   end
 
-  defp cover_graph(
-         document,
-         file,
-         activity,
-         stored,
-         prompt,
-         model,
-         generated_at
-       ) do
+  defp image_graph(image, activity, stored, prompt, model, generated_at) do
     Graph.new(name: Sheaf.Repo.workspace_graph())
-    |> Graph.add({document, DOC.coverImage(), file})
-    |> Graph.add({file, RDF.type(), FABIO.ComputerFile})
-    |> Graph.add({file, RDF.type(), PROV.Entity})
-    |> Graph.add({file, RDF.NS.RDFS.label(), "Cover image"})
-    |> Graph.add({file, DCTERMS.identifier(), stored.storage_key})
-    |> Graph.add({file, DCAT.mediaType(), @mime_type})
-    |> Graph.add({file, DCAT.byteSize(), stored.byte_size})
-    |> Graph.add({file, DOC.sha256(), stored.hash})
-    |> Graph.add({file, DOC.originalFilename(), stored.original_filename})
-    |> Graph.add({file, PROV.wasGeneratedBy(), activity})
-    |> Graph.add({file, PROV.generatedAtTime(), generated_at})
+    |> Graph.add({image, RDF.type(), FABIO.ComputerFile})
+    |> Graph.add({image, RDF.type(), PROV.Entity})
+    |> Graph.add({image, RDF.NS.RDFS.label(), "Generated image"})
+    |> Graph.add({image, DCTERMS.identifier(), stored.storage_key})
+    |> Graph.add({image, DCAT.mediaType(), @mime_type})
+    |> Graph.add({image, DCAT.byteSize(), stored.byte_size})
+    |> Graph.add({image, DOC.sha256(), stored.hash})
+    |> Graph.add({image, DOC.originalFilename(), stored.original_filename})
+    |> Graph.add({image, PROV.wasGeneratedBy(), activity})
+    |> Graph.add({image, PROV.generatedAtTime(), generated_at})
     |> Graph.add({activity, RDF.type(), PROV.Activity})
-    |> Graph.add({activity, RDF.NS.RDFS.label(), "Cover image generation"})
-    |> Graph.add({activity, PROV.used(), document})
-    |> Graph.add({activity, PROV.generated(), file})
+    |> Graph.add({activity, RDF.NS.RDFS.label(), "Image generation"})
+    |> Graph.add({activity, PROV.generated(), image})
     |> Graph.add({activity, RDF.NS.RDF.value(), prompt})
     |> Graph.add({activity, DOC.generationModelName(), model})
   end
 
-  defp replace_cover_link(document, graph, opts) do
-    transact = Keyword.get(opts, :transact, &Sheaf.Repo.transact/1)
+  defp image_file?(description) do
+    mime_type = first_value(description, DCAT.mediaType())
 
-    old_links =
-      Keyword.get_lazy(opts, :old_links, fn ->
-        workspace_graph()
-        |> Graph.triples()
-        |> Enum.filter(fn {subject, predicate, _object} ->
-          subject == document and predicate == RDF.iri(DOC.coverImage())
-        end)
-      end)
-
-    changes =
-      if old_links == [] do
-        [{:assert, graph}]
-      else
-        old = Graph.new(old_links, name: Sheaf.Repo.workspace_graph())
-        [{:retract, old}, {:assert, graph}]
-      end
-
-    transact.(changes)
-  end
-
-  defp validate(document_id, prompt, opts) do
-    resolver = Keyword.get(opts, :resolver, &Sheaf.ResourceResolver.resolve/1)
-
-    cond do
-      not Regex.match?(~r/^[A-Za-z0-9]{6}$/, document_id) ->
-        {:error, :invalid_document_id}
-
-      prompt == "" ->
-        {:error, :prompt_required}
-
-      true ->
-        case resolver.(document_id) do
-          {:ok, %{kind: :document}} -> :ok
-          {:ok, _resource} -> {:error, :not_a_document}
-          {:error, reason} -> {:error, reason}
-        end
-    end
+    Description.include?(description, {RDF.type(), FABIO.ComputerFile}) and
+      is_binary(mime_type) and String.starts_with?(mime_type, "image/")
   end
 
   defp workspace_graph do
@@ -226,6 +183,9 @@ defmodule Sheaf.OpenAI.CoverImages do
       term -> RDF.Term.value(term)
     end
   end
+
+  defp require_prompt(""), do: {:error, :prompt_required}
+  defp require_prompt(_prompt), do: :ok
 
   defp blob_root do
     :sheaf

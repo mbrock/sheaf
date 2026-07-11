@@ -80,4 +80,18 @@ defmodule Sheaf.DocumentMetadataTest do
                false
            end)
   end
+
+  test "cover-only updates do not invent bibliographic metadata" do
+    document = ~I<https://example.com/document>
+    graph = Graph.new(name: ~I<https://example.com/metadata>)
+
+    {updated, expression, fields} =
+      DocumentMetadata.apply_metadata(graph, document, %{
+        "cover_image_id" => "IMG123"
+      })
+
+    assert updated == graph
+    assert expression == nil
+    assert fields == []
+  end
 end

@@ -67,35 +67,34 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert tool_text(result) =~ "https://doi.org/10.1/example"
   end
 
-  test "cover image tool passes researched art direction to the generator" do
+  test "image tool saves a standalone generated image" do
     test_pid = self()
 
     tools =
       CorpusTools.tools(
-        cover_generator: fn document_id, prompt ->
-          send(test_pid, {:cover_generation, document_id, prompt})
+        image_generator: fn prompt ->
+          send(test_pid, {:image_generation, prompt})
 
           {:ok,
            %{
-             document_id: document_id,
-             path: "/covers/#{document_id}",
+             image_id: "IMG123",
+             path: "/images/IMG123",
              prompt: prompt
            }}
         end
       )
 
-    tool = Enum.find(tools, &(&1.name == "generate_cover_image"))
+    tool = Enum.find(tools, &(&1.name == "generate_image"))
 
     assert {:ok, result} =
              Tool.execute(tool, %{
-               "document_id" => "DOC123",
                "prompt" =>
                  "An archipelago of paper islands under a copper moon"
              })
 
-    assert_received {:cover_generation, "DOC123", prompt}
+    assert_received {:image_generation, prompt}
     assert prompt =~ "paper islands"
-    assert result =~ "/covers/DOC123"
+    assert result =~ "/images/IMG123"
   end
 
   test "import metadata tool applies verified document fields" do
@@ -662,6 +661,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert "web_search" in safe_names
     assert "write_note" in safe_names
     refute "tag_paragraphs" in safe_names
+    refute "generate_image" in safe_names
     refute "update_block_text" in safe_names
     refute "document_import" in safe_names
 
@@ -673,6 +673,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert "update_block_text" in change_names
     assert "document_import" in change_names
     assert "update_document_metadata" in change_names
+    assert "generate_image" in change_names
     assert "web_search" in change_names
     assert "write_note" in change_names
   end
