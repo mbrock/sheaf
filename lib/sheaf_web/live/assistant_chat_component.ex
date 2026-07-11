@@ -1035,6 +1035,11 @@ defmodule SheafWeb.AssistantChatComponent do
     tool_phrase("Reading #{range}", message)
   end
 
+  defp tool_view(%{tool: "web_search", input: input} = message, _titles) do
+    tool_phrase("Searching the web", message)
+    |> Map.put(:subtitle, tool_arg(input, :query))
+  end
+
   defp tool_view(%{tool: tool} = message, _titles) when is_binary(tool) do
     tool_phrase("Running #{String.replace(tool, "_", " ")}", message)
   end
@@ -1095,6 +1100,7 @@ defmodule SheafWeb.AssistantChatComponent do
   defp tool_body?(%{result: %ToolResults.SearchIndexUpdate{}}), do: false
   defp tool_body?(%{result: %ToolResults.ParagraphTags{}}), do: false
   defp tool_body?(%{result: %ToolResults.Note{}}), do: false
+  defp tool_body?(%{result: %ToolResults.DocumentMetadataUpdate{}}), do: false
   defp tool_body?(%{result: %ToolResults.Blocks{}}), do: true
   defp tool_body?(%{result: %ToolResults.Block{}}), do: true
   defp tool_body?(%{result: nil}), do: false
@@ -1138,6 +1144,10 @@ defmodule SheafWeb.AssistantChatComponent do
         length(result.exact_results) + length(result.approximate_results)
       )
     ]
+  end
+
+  defp tool_meta(%{result: %ToolResults.WebSearch{} = result}) do
+    [count_label("sources", length(result.sources))]
   end
 
   defp tool_meta(%{result: %ToolResults.ListSpreadsheets{} = result}) do

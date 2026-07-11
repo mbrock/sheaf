@@ -37,6 +37,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert Enum.any?(tools, &(&1.name == "update_block_text"))
     assert Enum.any?(tools, &(&1.name == "unwrap_section"))
     assert Enum.any?(tools, &(&1.name == "web_search"))
+    assert Enum.any?(tools, &(&1.name == "update_document_metadata"))
   end
 
   test "import web search renders answer text and cited sources" do
@@ -64,6 +65,43 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert tool_text(result) =~ "WEB SEARCH RESULTS"
     assert tool_text(result) =~ "The DOI is 10.1/example."
     assert tool_text(result) =~ "https://doi.org/10.1/example"
+  end
+
+  test "import metadata tool applies verified document fields" do
+    test_pid = self()
+
+    tools =
+      CorpusTools.tools(
+        tool_set: :import,
+        metadata_updater: fn document_id, attrs ->
+          send(test_pid, {:metadata_update, document_id, attrs})
+
+          {:ok,
+           %{
+             document_id: document_id,
+             expression: RDF.iri("https://example.com/expression"),
+             fields: [:title, :authors, :doi]
+           }}
+        end
+      )
+
+    tool = Enum.find(tools, &(&1.name == "update_document_metadata"))
+
+    assert {:ok, result} =
+             Tool.execute(tool, %{
+               "document_id" => "GY93FG",
+               "title" => "Mountain Trail Formation",
+               "authors" => ["S. J. Gilks", "J. P. Hague"],
+               "doi" => "10.1000/example"
+             })
+
+    assert_receive {:metadata_update, "GY93FG", attrs}
+    assert attrs[:title] == "Mountain Trail Formation"
+
+    assert %ToolResults.DocumentMetadataUpdate{document_id: "GY93FG"} =
+             sheaf_result(result)
+
+    assert tool_text(result) =~ "title, authors, doi"
   end
 
   test "search_text tool uses embedding index search and preserves assistant hit shape" do
@@ -510,7 +548,8 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
                       session_iri: ^session
                     }}
 
-    assert_receive {:tool_finished, "write_note", {:ok, ^result}}
+    assert_receive {:tool_finished, "write_note", %{text: _text},
+                    {:ok, ^result}}
 
     assert %ToolResults.Note{id: "NOTE03", iri: iri} = sheaf_result(result)
     assert iri == to_string(Id.iri("NOTE03"))

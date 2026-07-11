@@ -145,6 +145,7 @@ defmodule Sheaf.NS do
       JournalArticle
       PositionPaper
       ResearchPaper
+      ReportDocument
       ScholarlyWork
       hasDOI
       hasIssueIdentifier

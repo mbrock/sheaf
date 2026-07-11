@@ -84,16 +84,19 @@ defmodule Sheaf.LLMTest do
   test "sets GPT assistant reasoning effort by conversation mode" do
     assert LLM.assistant_llm_options("gpt", "quick") == [
              reasoning_effort: :medium,
+             parallel_tool_calls: true,
              provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("openai:gpt-5.6", :chat) == [
              reasoning_effort: :medium,
+             parallel_tool_calls: true,
              provider_options: [reasoning_summary: :auto]
            ]
 
     assert LLM.assistant_llm_options("gpt", "research") == [
              reasoning_effort: :high,
+             parallel_tool_calls: true,
              provider_options: [reasoning_summary: :auto]
            ]
 
@@ -117,6 +120,7 @@ defmodule Sheaf.LLMTest do
       )
 
     assert body["reasoning"] == %{"effort" => "high", "summary" => "auto"}
+    assert body["parallel_tool_calls"] == true
 
     {:ok, model} = ReqLLM.model("openai:gpt-5.6")
 

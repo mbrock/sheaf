@@ -183,6 +183,65 @@ defmodule Sheaf.AssistantTest do
            ]
   end
 
+  test "executes a batch of web searches concurrently and preserves result order" do
+    test_pid = self()
+
+    web_search =
+      Tool.new!(
+        name: "web_search",
+        description: "Search",
+        parameter_schema: [query: [type: :string, required: true]],
+        callback: fn %{query: query} ->
+          send(test_pid, {:search_started, query, self()})
+          receive do: (:release -> {:ok, query})
+        end
+      )
+
+    generate_text = fn _model, context, _opts ->
+      case Enum.map(context.messages, & &1.role) do
+        [:user] ->
+          {:ok,
+           response(
+             Context.assistant("Searching.",
+               tool_calls: [
+                 ToolCall.new("call_1", "web_search", ~s({"query":"first"})),
+                 ToolCall.new("call_2", "web_search", ~s({"query":"second"}))
+               ]
+             ),
+             finish_reason: :tool_calls
+           )}
+
+        [:user, :assistant, :tool, :tool] ->
+          tool_text =
+            context.messages
+            |> Enum.filter(&(&1.role == :tool))
+            |> Enum.map(fn message -> hd(message.content).text end)
+
+          assert tool_text == ["first", "second"]
+          {:ok, response(Context.assistant("Done."), finish_reason: :stop)}
+      end
+    end
+
+    assistant =
+      start_supervised!(
+        {Assistant,
+         model: "test-model",
+         tools: [web_search],
+         generate_text: generate_text,
+         task_supervisor: Sheaf.Assistant.TaskSupervisor}
+      )
+
+    task = Task.async(fn -> Assistant.run(assistant, "Search twice.") end)
+
+    assert_receive {:search_started, "first", first_pid}
+    assert_receive {:search_started, "second", second_pid}
+    send(first_pid, :release)
+    send(second_pid, :release)
+
+    assert {:ok, response} = Task.await(task)
+    assert Response.text(response) == "Done."
+  end
+
   test "keeps streaming callbacks active after tool calls" do
     test_pid = self()
 

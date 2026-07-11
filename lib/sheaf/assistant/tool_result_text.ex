@@ -13,6 +13,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     Child,
     Coding,
     Document,
+    DocumentMetadataUpdate,
     DocumentSummary,
     ListDocuments,
     Note,
@@ -30,6 +31,11 @@ defmodule Sheaf.Assistant.ToolResultText do
     ListSpreadsheets,
     WebSearch
   }
+
+  def to_text(%DocumentMetadataUpdate{} = result) do
+    "Updated metadata for ##{result.document_id}: " <>
+      Enum.map_join(result.fields, ", ", &to_string/1)
+  end
 
   def to_text(%WebSearch{} = result) do
     sources =

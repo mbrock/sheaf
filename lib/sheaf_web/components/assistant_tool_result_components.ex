@@ -104,6 +104,38 @@ defmodule SheafWeb.AssistantToolResultComponents do
   end
 
   def tool_preview_body(
+        %{message: %{result: %ToolResults.WebSearch{} = result}} = assigns
+      ) do
+    assigns = assign(assigns, :result, result)
+
+    ~H"""
+    <div class="min-w-0 space-y-2 px-2 py-1">
+      <p class="whitespace-pre-wrap text-stone-700 dark:text-stone-300">
+        {@result.text}
+      </p>
+      <ul :if={@result.sources != []} class="space-y-1">
+        <li :for={source <- @result.sources} class="min-w-0">
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="block truncate text-blue-700 hover:underline dark:text-blue-300"
+          >
+            {source.title || source.url}
+          </a>
+          <div
+            :if={source.title not in [nil, ""]}
+            class="truncate text-xs text-stone-500"
+          >
+            {source.url}
+          </div>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  def tool_preview_body(
         %{message: %{result: %ToolResults.ListSpreadsheets{} = result}} =
           assigns
       ) do

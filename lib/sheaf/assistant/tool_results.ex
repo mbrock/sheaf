@@ -39,6 +39,10 @@ defmodule Sheaf.Assistant.ToolResults do
     ]
   end
 
+  defmodule DocumentMetadataUpdate do
+    defstruct [:document_id, :expression, fields: []]
+  end
+
   defmodule OutlineEntry do
     defstruct [
       :id,

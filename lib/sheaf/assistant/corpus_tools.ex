@@ -40,7 +40,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   Builds the tool list used by corpus assistant conversations.
 
   `notify` receives `{:tool_started, name, args}` and
-  `{:tool_finished, name, result}` events.
+  `{:tool_finished, name, args, result}` events.
   """
   def tools(opts \\ [])
 
@@ -91,6 +91,9 @@ defmodule Sheaf.Assistant.CorpusTools do
 
     web_searcher =
       Keyword.get(opts, :web_searcher, &Sheaf.OpenAI.WebSearch.search/1)
+
+    metadata_updater =
+      Keyword.get(opts, :metadata_updater, &Sheaf.DocumentMetadata.update/2)
 
     search_index_updater =
       Keyword.get(
@@ -221,7 +224,8 @@ defmodule Sheaf.Assistant.CorpusTools do
         tools ++
           [
             document_import_tool(notify, document_importer),
-            web_search_tool(notify, web_searcher)
+            web_search_tool(notify, web_searcher),
+            document_metadata_tool(notify, metadata_updater)
           ]
       else
         tools
@@ -325,7 +329,9 @@ defmodule Sheaf.Assistant.CorpusTools do
         "Search the public web using OpenAI's server-side web search. " <>
           "Use it to verify bibliographic metadata, find canonical publication pages, " <>
           "DOIs, author lists, venues, and other current external evidence. " <>
-          "Returns an answer and the source URLs consulted.",
+          "Returns an answer and the source URLs consulted. When several independent " <>
+          "lookups are needed, issue multiple web_search calls together; Sheaf runs " <>
+          "that batch concurrently.",
       parameter_schema: [
         query: [
           type: :string,
@@ -356,6 +362,66 @@ defmodule Sheaf.Assistant.CorpusTools do
             end
           else
             {:error, "query is required"}
+          end
+        end)
+    )
+  end
+
+  defp document_metadata_tool(notify, updater) do
+    Tool.new!(
+      name: "update_document_metadata",
+      description:
+        "Apply verified bibliographic metadata to an existing Sheaf document. " <>
+          "Only include fields that should be replaced. Use authors for people and " <>
+          "corporate_authors for organizations. Verify uncertain metadata first.",
+      parameter_schema: [
+        document_id: [
+          type: :string,
+          required: true,
+          doc: "Six-character Sheaf document id."
+        ],
+        kind: [
+          type:
+            {:in,
+             [
+               "journal_article",
+               "book_chapter",
+               "book",
+               "report",
+               "research_paper"
+             ]},
+          doc: "Bibliographic document type."
+        ],
+        title: [type: :string],
+        authors: [
+          type: {:list, :string},
+          doc: "Personal author names in publication order."
+        ],
+        corporate_authors: [
+          type: {:list, :string},
+          doc: "Organization author names."
+        ],
+        year: [type: :string],
+        venue: [
+          type: :string,
+          doc: "Journal, proceedings, book, or series title."
+        ],
+        doi: [type: :string, doc: "Canonical DOI without a URL prefix."]
+      ],
+      callback:
+        instrument(notify, "update_document_metadata", fn args ->
+          case updater.(arg(args, :document_id), args) do
+            {:ok, result} ->
+              typed = %ToolResults.DocumentMetadataUpdate{
+                document_id: result.document_id,
+                expression: result.expression,
+                fields: result.fields
+              }
+
+              {:ok, rendered_result(typed)}
+
+            {:error, reason} ->
+              {:error, inspect(reason)}
           end
         end)
     )
@@ -943,6 +1009,15 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   def humanize("write_note", _args, _titles), do: "Saving a research note"
 
+  def humanize("web_search", args, _titles) do
+    "Searching the web for " <>
+      smart_quote(ellipsize(arg(args, :query) || "", 120))
+  end
+
+  def humanize("update_document_metadata", args, _titles) do
+    "Updating metadata for ##{arg(args, :document_id)}"
+  end
+
   def humanize("document_import", args, _titles) do
     case arg(args, :action) do
       "stage" -> "Staging PDF sources"
@@ -1188,6 +1263,18 @@ defmodule Sheaf.Assistant.CorpusTools do
     do: "note saved"
 
   def result_summary(
+        "web_search",
+        {:ok, %ToolResults.WebSearch{sources: sources}}
+      ),
+      do: pluralize(length(sources), "source", "sources")
+
+  def result_summary(
+        "update_document_metadata",
+        {:ok, %ToolResults.DocumentMetadataUpdate{fields: fields}}
+      ),
+      do: "updated " <> Enum.map_join(fields, ", ", &to_string/1)
+
+  def result_summary(
         "tag_paragraphs",
         {:ok, %ToolResults.ParagraphTags{} = result}
       ) do
@@ -1240,7 +1327,7 @@ defmodule Sheaf.Assistant.CorpusTools do
     fn args ->
       notify.({:tool_started, name, args})
       result = safe_callback(callback, args)
-      notify.({:tool_finished, name, result})
+      notify.({:tool_finished, name, args, result})
       result
     end
   end

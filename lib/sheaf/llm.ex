@@ -248,6 +248,7 @@ defmodule Sheaf.LLM do
   defp gpt_assistant_options(effort) do
     [
       reasoning_effort: effort,
+      parallel_tool_calls: true,
       provider_options: [reasoning_summary: :auto]
     ]
   end

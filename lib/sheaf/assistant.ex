@@ -11,7 +11,7 @@ defmodule Sheaf.Assistant do
 
   require OpenTelemetry.Tracer, as: Tracer
 
-  alias ReqLLM.{Context, Response, StreamResponse}
+  alias ReqLLM.{Context, Response, StreamResponse, Tool, ToolCall, ToolResult}
 
   @default_max_tool_rounds 8
   @default_timeout 300_000
@@ -321,7 +321,19 @@ defmodule Sheaf.Assistant do
   end
 
   defp execute_tools(context, tool_calls, tools) do
-    {:ok, Context.execute_and_append_tools(context, tool_calls, tools)}
+    if parallel_web_searches?(tool_calls) do
+      messages =
+        tool_calls
+        |> Task.async_stream(&execute_tool_call(&1, tools),
+          ordered: true,
+          timeout: :infinity
+        )
+        |> Enum.map(fn {:ok, message} -> message end)
+
+      {:ok, Context.append(context, messages)}
+    else
+      {:ok, Context.execute_and_append_tools(context, tool_calls, tools)}
+    end
   rescue
     exception ->
       {:error, Exception.message(exception)}
@@ -329,6 +341,47 @@ defmodule Sheaf.Assistant do
     kind, reason ->
       {:error, {kind, reason}}
   end
+
+  defp parallel_web_searches?(tool_calls) do
+    length(tool_calls) > 1 and
+      Enum.all?(tool_calls, &(tool_call_name(&1) == "web_search"))
+  end
+
+  defp execute_tool_call(tool_call, tools) do
+    {name, id, args} = tool_call_parts(tool_call)
+
+    result =
+      case Enum.find(tools, &(&1.name == name)) do
+        nil -> {:error, "Tool #{name} not found"}
+        tool -> Tool.execute(tool, args)
+      end
+
+    case result do
+      {:ok, output} ->
+        Context.tool_result_message(name, id, output)
+
+      {:error, %ToolResult{} = output} ->
+        message = Context.tool_result_message(name, id, output)
+        %{message | metadata: Map.put(message.metadata, :is_error, true)}
+
+      {:error, error} ->
+        Context.tool_result_message(name, id, %{error: inspect(error)}, %{
+          is_error: true
+        })
+    end
+  end
+
+  defp tool_call_name(tool_call), do: elem(tool_call_parts(tool_call), 0)
+
+  defp tool_call_parts(%ToolCall{
+         id: id,
+         function: %{name: name, arguments: arguments}
+       }) do
+    {name, id, Jason.decode!(arguments)}
+  end
+
+  defp tool_call_parts(%{name: name, id: id, arguments: arguments}),
+    do: {name, id, arguments}
 
   defp finish_run(result, %{pending_from: from} = state) do
     GenServer.reply(from, result)

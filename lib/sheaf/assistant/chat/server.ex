@@ -476,17 +476,20 @@ defmodule Sheaf.Assistant.Chat.Server do
     |> broadcast_snapshot()
   end
 
-  defp handle_assistant_event(state, {:tool_finished, name, result}) do
+  defp handle_assistant_event(state, {:tool_finished, name, args, result}) do
     status = if match?({:error, _}, result), do: :error, else: :ok
     summary = CorpusTools.result_summary(name, result)
     visible_result = visible_tool_result(result)
 
     state
     |> mark_activity()
-    |> Map.put(:active_tool, nil)
-    |> Map.put(:status_line, "Thinking")
-    |> update_last_pending_tool(name, status, summary, visible_result)
+    |> update_pending_tool(name, args, status, summary, visible_result)
+    |> refresh_tool_status()
     |> broadcast_snapshot()
+  end
+
+  defp handle_assistant_event(state, {:tool_finished, name, result}) do
+    handle_assistant_event(state, {:tool_finished, name, nil, result})
   end
 
   defp handle_assistant_event(state, {:tool_progress, name, message})
@@ -689,12 +692,12 @@ defmodule Sheaf.Assistant.Chat.Server do
     end
   end
 
-  defp update_last_pending_tool(state, name, status, summary, result) do
+  defp update_pending_tool(state, name, input, status, summary, result) do
     {messages, _updated?} =
       state.messages
       |> Enum.reverse()
       |> Enum.map_reduce(false, fn msg, updated? ->
-        if not updated? and tool_pending?(msg, name) do
+        if not updated? and tool_pending?(msg, name, input) do
           {Map.merge(msg, %{status: status, summary: summary, result: result}),
            true}
         else
@@ -703,6 +706,23 @@ defmodule Sheaf.Assistant.Chat.Server do
       end)
 
     %{state | messages: Enum.reverse(messages)}
+  end
+
+  defp refresh_tool_status(state) do
+    case Enum.find(
+           Enum.reverse(state.messages),
+           &(Map.get(&1, :status) == :pending)
+         ) do
+      %{tool: name, input: input} ->
+        %{
+          state
+          | active_tool: name,
+            status_line: CorpusTools.humanize(name, input, state.titles)
+        }
+
+      nil ->
+        %{state | active_tool: nil, status_line: "Thinking"}
+    end
   end
 
   defp visible_tool_result({:ok, %ReqLLM.ToolResult{} = result}) do
@@ -714,10 +734,11 @@ defmodule Sheaf.Assistant.Chat.Server do
   defp visible_tool_result({:ok, result}), do: result
   defp visible_tool_result(_result), do: nil
 
-  defp tool_pending?(msg, name) do
+  defp tool_pending?(msg, name, input) do
     Map.get(msg, :role) == :tool and
       Map.get(msg, :tool) == name and
-      Map.get(msg, :status) == :pending
+      Map.get(msg, :status) == :pending and
+      (is_nil(input) or Map.get(msg, :input) == input)
   end
 
   defp maybe_title_from(%{messages: []} = state, text) do

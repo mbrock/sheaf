@@ -88,6 +88,7 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert Sheaf.LLM.assistant_llm_options(socket.assigns.model, "import") ==
              [
                reasoning_effort: :high,
+               parallel_tool_calls: true,
                provider_options: [reasoning_summary: :auto]
              ]
   end
@@ -202,6 +203,23 @@ defmodule SheafWeb.AssistantChatComponentTest do
               tool: "search_text",
               status: :pending,
               input: %{"query" => "circular work"}
+            },
+            %{
+              role: :tool,
+              tool: "web_search",
+              status: :ok,
+              summary: "1 source",
+              input: %{"query" => "Mountain Trail Formation Gilks Hague"},
+              result: %ToolResults.WebSearch{
+                query: "Mountain Trail Formation Gilks Hague",
+                text: "The paper was published in 2008.",
+                sources: [
+                  %{
+                    title: "Publisher record",
+                    url: "https://example.org/paper"
+                  }
+                ]
+              }
             }
           ],
           pending: false,
@@ -224,6 +242,11 @@ defmodule SheafWeb.AssistantChatComponentTest do
     assert html =~ "working"
     assert html =~ "hero-document-duplicate"
     assert html =~ "hero-magnifying-glass"
+    assert html =~ "Searching the web"
+    assert html =~ "Mountain Trail Formation Gilks Hague"
+    assert html =~ "The paper was published in 2008."
+    assert html =~ "Publisher record"
+    assert html =~ "https://example.org/paper"
     refute html =~ ~s(class="hidden text-sm)
   end
 
