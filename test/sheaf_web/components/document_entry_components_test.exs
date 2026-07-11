@@ -83,6 +83,7 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     assert html =~ ~s(src="/covers/DOC2A1")
     assert html =~ "h-36 w-24"
     assert html =~ "sm:h-44 sm:w-32"
+    assert html =~ "object-contain"
     assert html =~ "sm:text-2xl/7"
   end
 

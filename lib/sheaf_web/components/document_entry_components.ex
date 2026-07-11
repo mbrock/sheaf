@@ -68,7 +68,7 @@ defmodule SheafWeb.DocumentEntryComponents do
         alt=""
         loading="lazy"
         class={[
-          "shrink-0 rounded-sm object-cover shadow-sm ring-1 ring-black/10 dark:ring-white/10",
+          "shrink-0 rounded-sm object-contain shadow-sm ring-1 ring-black/10 dark:ring-white/10",
           if(@featured?, do: "h-36 w-24 sm:h-44 sm:w-32", else: "h-14 w-10")
         ]}
       />

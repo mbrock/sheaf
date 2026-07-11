@@ -65,6 +65,17 @@ defmodule SheafWeb.AssistantMarkdownTest do
     assert html =~ ~s(phx-hook="DataTable")
   end
 
+  test "renders images without changing their aspect ratio" do
+    html =
+      render_markdown(
+        "![A generated landscape](https://example.com/landscape.png)"
+      )
+
+    assert html =~ ~s(class="h-auto max-w-full object-contain")
+    assert html =~ ~s(src="https://example.com/landscape.png")
+    assert html =~ ~s(alt="A generated landscape")
+  end
+
   test "renders inline and display LaTeX as math sources for KaTeX" do
     html =
       render_markdown("""

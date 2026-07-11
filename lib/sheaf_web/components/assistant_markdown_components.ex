@@ -238,7 +238,13 @@ defmodule SheafWeb.AssistantMarkdownComponents do
       |> assign(:title, blank_to_nil(node.title))
 
     ~H"""
-    <img :if={@src} src={@src} alt={@alt} title={@title} />
+    <img
+      :if={@src}
+      src={@src}
+      alt={@alt}
+      title={@title}
+      class="h-auto max-w-full object-contain"
+    />
     <span :if={!@src}>{@alt}</span>
     """
   end
