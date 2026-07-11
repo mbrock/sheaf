@@ -10,8 +10,8 @@ defmodule SheafWeb.DocumentEntryComponents do
   def document_card(assigns) do
     ~H"""
     <article class={[
-      "group min-w-0 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm",
-      "transition duration-150 hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md",
+      "group min-w-0 overflow-hidden border border-stone-200 bg-white",
+      "transition-colors duration-150 hover:border-stone-300",
       "dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-600",
       @document.excluded? && "opacity-45 grayscale",
       @document.cited? && "border-amber-400 dark:border-amber-500",
@@ -57,17 +57,11 @@ defmodule SheafWeb.DocumentEntryComponents do
       </div>
     </div>
 
-    <div class="flex min-h-20 flex-1 flex-col px-3 pb-3 pt-2.5">
-      <div class="min-w-0 font-sans text-xs/4 text-stone-500 dark:text-stone-400">
-        <span class="line-clamp-1 font-serif text-stone-600 dark:text-stone-300">
-          {compact_authors_str(@document) || authors_str(@document) || ""}
-        </span>
-      </div>
-
-      <div class="mt-auto flex items-end justify-between gap-3 pt-2 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
-        <span>{year_str(@document)}</span>
-        <span>{page_count_str(@document)}</span>
-      </div>
+    <div class="flex h-9 min-w-0 items-center justify-between gap-3 px-3 font-sans text-xs text-stone-500 dark:text-stone-400">
+      <span class="min-w-0 truncate text-stone-600 dark:text-stone-300">
+        {compact_authors_str(@document) || authors_str(@document) || ""}
+      </span>
+      <span class="shrink-0 tabular-nums">{year_str(@document)}</span>
     </div>
     """
   end

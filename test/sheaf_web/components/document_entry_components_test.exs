@@ -116,7 +116,10 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     assert html =~ "Lovelace, Babbage"
     refute html =~ "Ada Lovelace"
     assert html =~ "2026"
-    assert html =~ "12 pp."
+    refute html =~ "12 pp."
+    refute html =~ "rounded-lg"
+    refute html =~ "shadow-sm"
+    refute html =~ "font-serif"
   end
 
   test "metadata heading uses plain compact metadata" do
