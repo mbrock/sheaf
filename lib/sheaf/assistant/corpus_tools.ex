@@ -242,7 +242,8 @@ defmodule Sheaf.Assistant.CorpusTools do
           instrument(notify, "generate_image", fn args ->
             case image_generator.(arg(args, :prompt)) do
               {:ok, result} ->
-                {:ok, Jason.encode!(result, pretty: true)}
+                typed = struct!(ToolResults.GeneratedImage, result)
+                {:ok, rendered_result(typed)}
 
               {:error, reason} ->
                 {:error, "image generation failed: #{inspect(reason)}"}
@@ -1157,6 +1158,12 @@ defmodule Sheaf.Assistant.CorpusTools do
       ) do
     result_summary(name, {:ok, result})
   end
+
+  def result_summary(
+        "generate_image",
+        {:ok, %ToolResults.GeneratedImage{image_id: image_id}}
+      ),
+      do: "created image ##{image_id}"
 
   def result_summary(
         "list_documents",

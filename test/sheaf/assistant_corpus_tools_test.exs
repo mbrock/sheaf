@@ -94,7 +94,13 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert_received {:image_generation, prompt}
     assert prompt =~ "paper islands"
-    assert result =~ "/images/IMG123"
+
+    assert %ToolResults.GeneratedImage{
+             image_id: "IMG123",
+             path: "/images/IMG123"
+           } = sheaf_result(result)
+
+    assert tool_text(result) =~ "GENERATED IMAGE #IMG123"
   end
 
   test "import metadata tool applies verified document fields" do

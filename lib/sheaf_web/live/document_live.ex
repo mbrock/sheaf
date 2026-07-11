@@ -232,6 +232,7 @@ defmodule SheafWeb.DocumentLive do
           <.reader_blocks
             graph={@graph}
             blocks={@blocks}
+            cover_path={Map.get(@document, :cover_path)}
             selected_id={@selected_block_id}
             references_by_block={@references_by_block}
             tags_by_block={@tags_by_block}
@@ -245,6 +246,7 @@ defmodule SheafWeb.DocumentLive do
 
   attr :blocks, :list, required: true
   attr :graph, :any, required: true
+  attr :cover_path, :string, default: nil
   attr :selected_id, :string, default: nil
   attr :references_by_block, :map, default: %{}
   attr :tags_by_block, :map, default: %{}
@@ -257,6 +259,7 @@ defmodule SheafWeb.DocumentLive do
         :for={block <- @blocks}
         graph={@graph}
         block={block}
+        cover_path={@cover_path}
         selected_id={@selected_id}
         references_by_block={@references_by_block}
         tags_by_block={@tags_by_block}
@@ -268,6 +271,7 @@ defmodule SheafWeb.DocumentLive do
 
   attr :block, :map, required: true
   attr :graph, :any, required: true
+  attr :cover_path, :string, default: nil
   attr :selected_id, :string, default: nil
   attr :references_by_block, :map, default: %{}
   attr :tags_by_block, :map, default: %{}
@@ -279,16 +283,29 @@ defmodule SheafWeb.DocumentLive do
       id={"block-#{Document.id(@block.iri)}"}
       class="document-print-document scroll-mt-6 space-y-8"
     >
-      <h1
-        class={[
-          "small-caps cursor-pointer rounded-sm text-3xl font-semibold leading-tight",
-          selected_class(@block, @selected_id)
-        ]}
-        phx-click="inspect_block"
-        phx-value-id={Document.id(@block.iri)}
-      >
-        {document_title(@graph, @block.iri)}
-      </h1>
+      <header class={[
+        "grid gap-6",
+        @cover_path &&
+          "sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-end lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-10"
+      ]}>
+        <img
+          :if={@cover_path}
+          src={@cover_path}
+          alt=""
+          class="aspect-[2/3] w-36 rounded-sm object-cover shadow-lg ring-1 ring-black/10 sm:w-full dark:ring-white/10"
+        />
+        <h1
+          class={[
+            "small-caps cursor-pointer rounded-sm text-3xl font-semibold leading-tight",
+            @cover_path && "sm:pb-2 lg:text-4xl",
+            selected_class(@block, @selected_id)
+          ]}
+          phx-click="inspect_block"
+          phx-value-id={Document.id(@block.iri)}
+        >
+          {document_title(@graph, @block.iri)}
+        </h1>
+      </header>
 
       <.reader_blocks
         graph={@graph}

@@ -16,6 +16,33 @@ defmodule SheafWeb.AssistantToolResultComponents do
   attr :tool_view, :map, required: true
 
   def tool_preview_body(
+        %{message: %{result: %ToolResults.GeneratedImage{} = result}} =
+          assigns
+      ) do
+    assigns = assign(assigns, :result, result)
+
+    ~H"""
+    <figure class="overflow-hidden bg-stone-100 dark:bg-stone-950">
+      <a href={@result.path} target="_blank" rel="noopener noreferrer">
+        <img
+          src={@result.path}
+          alt={@result.prompt}
+          class="max-h-[32rem] w-full object-contain"
+        />
+      </a>
+      <figcaption class="space-y-1 border-t border-stone-200 px-3 py-2 dark:border-stone-800">
+        <div class="font-micro text-stone-500 dark:text-stone-400">
+          image #{@result.image_id} · {@result.model}
+        </div>
+        <p class="line-clamp-3 text-xs leading-relaxed text-stone-600 dark:text-stone-300">
+          {@result.prompt}
+        </p>
+      </figcaption>
+    </figure>
+    """
+  end
+
+  def tool_preview_body(
         %{message: %{result: %ToolResults.ListDocuments{} = result}} = assigns
       ) do
     assigns =

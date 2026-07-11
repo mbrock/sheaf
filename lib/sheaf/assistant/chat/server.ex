@@ -1019,8 +1019,12 @@ defmodule Sheaf.Assistant.Chat.Server do
     name = Map.get(message, :name)
     id = Map.get(message, :tool_call_id)
 
-    result =
-      message |> Map.get(:metadata, %{}) |> sheaf_result_from_metadata()
+    metadata_result =
+      message
+      |> Map.get(:metadata, %{})
+      |> sheaf_result_from_metadata()
+
+    result = metadata_result || legacy_visible_tool_result(name, message)
 
     summary =
       if name && result, do: CorpusTools.result_summary(name, {:ok, result})
@@ -1104,6 +1108,27 @@ defmodule Sheaf.Assistant.Chat.Server do
   end
 
   defp sheaf_result_from_metadata(_metadata), do: nil
+
+  defp legacy_visible_tool_result("generate_image", message) do
+    with text when is_binary(text) and text != "" <- message_text(message),
+         {:ok, result} when is_map(result) <- Jason.decode(text),
+         image_id when is_binary(image_id) <- Map.get(result, "image_id"),
+         path when is_binary(path) <- Map.get(result, "path") do
+      %Sheaf.Assistant.ToolResults.GeneratedImage{
+        image_id: image_id,
+        iri: Map.get(result, "iri"),
+        path: path,
+        mime_type: Map.get(result, "mime_type"),
+        byte_size: Map.get(result, "byte_size"),
+        prompt: Map.get(result, "prompt"),
+        model: Map.get(result, "model")
+      }
+    else
+      _other -> nil
+    end
+  end
+
+  defp legacy_visible_tool_result(_name, _message), do: nil
 
   defp truncate(text, limit) do
     if String.length(text) <= limit,

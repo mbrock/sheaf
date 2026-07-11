@@ -15,6 +15,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     Document,
     DocumentMetadataUpdate,
     DocumentSummary,
+    GeneratedImage,
     ListDocuments,
     Note,
     OutlineEntry,
@@ -31,6 +32,16 @@ defmodule Sheaf.Assistant.ToolResultText do
     ListSpreadsheets,
     WebSearch
   }
+
+  def to_text(%GeneratedImage{} = result) do
+    """
+    GENERATED IMAGE ##{result.image_id}
+    URL: #{result.path}
+    Model: #{result.model}
+    Prompt: #{result.prompt}
+    """
+    |> String.trim()
+  end
 
   def to_text(%DocumentMetadataUpdate{} = result) do
     "Updated metadata for ##{result.document_id}: " <>

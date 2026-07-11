@@ -43,6 +43,18 @@ defmodule Sheaf.Assistant.ToolResults do
     defstruct [:document_id, :expression, fields: []]
   end
 
+  defmodule GeneratedImage do
+    defstruct [
+      :image_id,
+      :iri,
+      :path,
+      :mime_type,
+      :byte_size,
+      :prompt,
+      :model
+    ]
+  end
+
   defmodule OutlineEntry do
     defstruct [
       :id,

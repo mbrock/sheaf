@@ -10,6 +10,13 @@ defmodule SheafWeb.DocumentEntryComponents do
   attr :nested, :boolean, default: false
 
   def document_entry(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :featured?,
+        featured_cover?(assigns.document, assigns.nested)
+      )
+
     ~H"""
     <div class={[
       "odd:bg-white bg-stone-100/70 dark:odd:bg-stone-900 dark:bg-stone-900/60",
@@ -21,7 +28,9 @@ defmodule SheafWeb.DocumentEntryComponents do
       workspace_owner_authored?(@document) &&
         "border-sky-500 dark:border-sky-300",
       @nested &&
-        "border-stone-200 pl-2 dark:border-stone-700"
+        "border-stone-200 pl-2 dark:border-stone-700",
+      @featured? &&
+        "my-2 overflow-hidden border-stone-300 bg-white shadow-sm dark:border-stone-700 dark:bg-stone-900"
     ]}>
       <.document_row
         document={@document}
@@ -38,26 +47,62 @@ defmodule SheafWeb.DocumentEntryComponents do
   attr :link_title, :boolean, default: true
 
   def document_row(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :featured?,
+        featured_cover?(assigns.document, assigns.nested)
+      )
+
     ~H"""
     <div class={[
-      "flex min-w-0 items-center",
-      if(@nested, do: "gap-2 px-2 py-1.5", else: "gap-3 px-2 py-1")
+      "flex min-w-0",
+      if(@featured?,
+        do: "items-stretch gap-4 p-3 sm:gap-5 sm:p-4",
+        else: "items-center gap-2 px-2 py-1.5"
+      )
     ]}>
       <img
         :if={Map.get(@document, :cover_path)}
         src={@document.cover_path}
         alt=""
         loading="lazy"
-        class="h-14 w-10 shrink-0 rounded-sm object-cover shadow-sm ring-1 ring-black/10 dark:ring-white/10"
+        class={[
+          "shrink-0 rounded-sm object-cover shadow-sm ring-1 ring-black/10 dark:ring-white/10",
+          if(@featured?, do: "h-36 w-24 sm:h-44 sm:w-32", else: "h-14 w-10")
+        ]}
       />
-      <div class="min-w-0 flex-1 leading-5">
+      <div class={[
+        "min-w-0 flex-1",
+        if(@featured?, do: "self-center leading-6", else: "leading-5")
+      ]}>
         <.document_title_line
           document={@document}
           show_checkbox={@show_checkbox}
           nested={@nested}
           link_title={@link_title}
+          class={
+            if(@featured?,
+              do:
+                "flex min-w-0 items-start gap-2 font-sans text-xl/6 sm:text-2xl/7",
+              else: "flex min-w-0 items-baseline gap-2 font-sans text-base/5"
+            )
+          }
+          title_class={
+            if(@featured?, do: "min-w-0 flex-1", else: "min-w-0 flex-1 truncate")
+          }
         />
-        <.document_metadata_lines document={@document} />
+        <.document_metadata_lines
+          document={@document}
+          subline_class={
+            if(@featured?,
+              do:
+                "mt-2 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-base text-stone-500 dark:text-stone-400",
+              else:
+                "flex min-w-0 items-baseline gap-3 text-stone-500 dark:text-stone-400"
+            )
+          }
+        />
       </div>
     </div>
     """
@@ -294,6 +339,9 @@ defmodule SheafWeb.DocumentEntryComponents do
 
   defp workspace_owner_authored?(document),
     do: Map.get(document, :workspace_owner_authored?, false)
+
+  defp featured_cover?(document, nested),
+    do: !nested and is_binary(Map.get(document, :cover_path))
 
   defp subline?(document, show_id, show_kind, show_status) do
     authors_str(document) != nil or year_str(document) != "" or

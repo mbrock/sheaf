@@ -712,7 +712,7 @@ defmodule SheafWeb.AssistantChatComponent do
       subtitle={@tool_view.subtitle}
       meta={@tool_view.meta}
       status={@tool_view.status_label}
-      open={false}
+      open={match?(%ToolResults.GeneratedImage{}, Map.get(@message, :result))}
     >
       <.tool_preview_body message={@message} tool_view={@tool_view} />
     </.activity_preview>
@@ -916,6 +916,10 @@ defmodule SheafWeb.AssistantChatComponent do
     target = "Searching for #{query} in #{scope}"
 
     tool_phrase(target, message)
+  end
+
+  defp tool_view(%{tool: "generate_image"} = message, _titles) do
+    tool_phrase("Generating image", message)
   end
 
   defp tool_view(%{tool: "document_import", input: input} = message, _titles) do
@@ -1288,6 +1292,7 @@ defmodule SheafWeb.AssistantChatComponent do
   defp tool_icon("get_document"), do: "hero-document-text"
   defp tool_icon("read"), do: "hero-book-open"
   defp tool_icon("search_text"), do: "hero-magnifying-glass"
+  defp tool_icon("generate_image"), do: "hero-photo"
   defp tool_icon("list_spreadsheets"), do: "hero-table-cells"
   defp tool_icon("search_spreadsheets"), do: "hero-magnifying-glass"
   defp tool_icon("query_spreadsheets"), do: "hero-table-cells"
