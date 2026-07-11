@@ -64,6 +64,11 @@ defmodule SheafWeb.AssistantHistoryLive do
     {:noreply, assign(socket, :uploaded_pdfs, [])}
   end
 
+  @impl true
+  def handle_event("validate_pdf_upload", _params, socket) do
+    {:noreply, socket}
+  end
+
   defp handle_pdf_upload(:pdfs, entry, socket) do
     if entry.done? do
       uploaded =
@@ -109,29 +114,31 @@ defmodule SheafWeb.AssistantHistoryLive do
 
       <div class="mx-auto w-full max-w-5xl px-2 py-2 sm:px-4 sm:py-4">
         <section class="mb-3">
-          <div
-            id="assistant-import-pdf-drop"
-            phx-drop-target={@uploads.pdfs.ref}
-            class="mb-2 rounded-md border border-dashed border-stone-300 bg-stone-50/70 p-3 text-center font-sans text-sm text-stone-500 transition-colors hover:border-stone-400 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-400"
-          >
-            <.live_file_input upload={@uploads.pdfs} class="sr-only" />
-            <label for={@uploads.pdfs.ref} class="cursor-pointer">
-              <.icon name="hero-document-arrow-down" class="mr-1 size-4" />
-              Drop PDFs here to start an import, or choose files
-            </label>
+          <form phx-change="validate_pdf_upload">
             <div
-              :for={entry <- @uploads.pdfs.entries}
-              class="mt-1 truncate text-stone-700 dark:text-stone-300"
+              id="assistant-import-pdf-drop"
+              phx-drop-target={@uploads.pdfs.ref}
+              class="mb-2 rounded-md border border-dashed border-stone-300 bg-stone-50/70 p-3 text-center font-sans text-sm text-stone-500 transition-colors hover:border-stone-400 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-400"
             >
-              {entry.client_name} · {entry.progress}%
+              <.live_file_input upload={@uploads.pdfs} class="sr-only" />
+              <label for={@uploads.pdfs.ref} class="cursor-pointer">
+                <.icon name="hero-document-arrow-down" class="mr-1 size-4" />
+                Drop PDFs here to start an import, or choose files
+              </label>
+              <div
+                :for={entry <- @uploads.pdfs.entries}
+                class="mt-1 truncate text-stone-700 dark:text-stone-300"
+              >
+                {entry.client_name} · {entry.progress}%
+              </div>
+              <div
+                :for={file <- @uploaded_pdfs}
+                class="mt-1 truncate text-emerald-700 dark:text-emerald-300"
+              >
+                {file.name} · ready
+              </div>
             </div>
-            <div
-              :for={file <- @uploaded_pdfs}
-              class="mt-1 truncate text-emerald-700 dark:text-emerald-300"
-            >
-              {file.name} · ready
-            </div>
-          </div>
+          </form>
           <.live_component
             module={AssistantChatComponent}
             id="assistant-history-composer"

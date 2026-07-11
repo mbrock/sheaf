@@ -26,6 +26,8 @@ defmodule SheafWeb.AssistantHistoryImportTest do
   } do
     {:ok, view, _html} = live(conn, ~p"/history")
 
+    assert has_element?(view, "form[phx-change=validate_pdf_upload]")
+
     upload =
       file_input(view, "#assistant-import-pdf-drop", :pdfs, [
         %{
