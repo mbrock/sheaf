@@ -90,6 +90,17 @@ defmodule SheafWeb.AssistantMarkdownTest do
              ~s|<math display="block">\\sum_{k=1}^n k = \\frac{n(n+1)}{2}</math>|
   end
 
+  test "renders numeric inline LaTeX without treating currency as mathematics" do
+    html = render_markdown("The area is $25 \\times 25\\ \\mathrm{km}^2$.")
+
+    compact_html =
+      html
+      |> String.replace(~r/>\s+/, ">")
+      |> String.replace(~r/\s+</, "<")
+
+    assert compact_html =~ ~s(<math>25 \\times 25\\ \\mathrm{km}^2</math>)
+  end
+
   test "does not treat currency or code as mathematics" do
     html =
       render_markdown("""
@@ -118,6 +129,10 @@ defmodule SheafWeb.AssistantMarkdownTest do
     assert html =~ ~s(phx-click="show_resource_preview")
     assert html =~ ~s(phx-value-id="PAR111")
     assert html =~ ~s(phx-target="1")
+
+    assert html =~
+             ~s(class="block-preview-trigger resource-ref cursor-pointer")
+
     refute html =~ ~s(role="tooltip")
     refute html =~ "block-preview-backdrop"
     refute html =~ "backdrop-blur"

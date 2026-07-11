@@ -600,7 +600,7 @@ defmodule SheafWeb.AssistantMarkdownComponents do
         type="button"
         title={@title}
         aria-label={"##{@resource_id}"}
-        class="block-preview-trigger cursor-pointer"
+        class="block-preview-trigger resource-ref cursor-pointer"
         data-preview-id={@resource_id}
         phx-click="show_resource_preview"
         phx-focus="show_resource_preview"

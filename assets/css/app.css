@@ -158,6 +158,16 @@
     text-decoration: underline;
   }
 
+  .assistant-prose .resource-ref {
+    border-radius: 0.25rem;
+    background: rgb(120 113 108 / 0.1);
+    color: rgb(87 83 78);
+    font-size: 0.78em;
+    font-weight: 600;
+    line-height: 1.35;
+    padding: 0.08em 0.36em;
+  }
+
   .assistant-prose .block-preview-trigger:hover,
   .assistant-prose .block-preview-trigger:focus-visible {
     color: rgb(28 25 23);
@@ -246,6 +256,11 @@
 
     .assistant-prose .block-preview-trigger {
       color: rgb(214 211 209);
+    }
+
+    .assistant-prose .resource-ref {
+      background: rgb(214 211 209 / 0.12);
+      color: rgb(231 229 228);
     }
 
     .assistant-prose .block-preview-trigger:hover,

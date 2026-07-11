@@ -147,6 +147,11 @@ defmodule SheafWeb.AssistantMarkdown do
     |> protect_math_tokens(~r/\\\(([\s\S]*?)\\\)/, "\uE000", "\uE001")
     |> protect_math_tokens(~r/\$\$([\s\S]*?)\$\$/, "\uE006", "\uE007")
     |> protect_math_tokens(
+      ~r/(?<!\$)\$([0-9][^$\n]*(?:\\[A-Za-z]+|[_^])[^$\n]*)\$(?!\$)/,
+      "\uE004",
+      "\uE005"
+    )
+    |> protect_math_tokens(
       ~r/(?<!\$)\$(?![\d\s])([^$\n]+?)\$(?!\$)/,
       "\uE004",
       "\uE005"
