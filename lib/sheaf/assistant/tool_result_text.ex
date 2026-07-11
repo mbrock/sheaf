@@ -553,10 +553,12 @@ defmodule Sheaf.Assistant.ToolResultText do
     coding = coding_inline(hit.coding)
     score = if mode == :approximate, do: score(hit.score), else: nil
     context = search_context(hit.context)
+    neighbors = search_neighbors(hit.neighbors)
 
     [
       "#{index}. #{source}",
       indent_multiline(context, 1),
+      indent_multiline(neighbors, 1),
       line(coding, 1),
       line(score, 1),
       "#{indent(1)}#{label} ##{hit.block_id}:",
@@ -564,6 +566,25 @@ defmodule Sheaf.Assistant.ToolResultText do
     ]
     |> Enum.reject(&blank?/1)
     |> Enum.join("\n")
+  end
+
+  defp search_neighbors([]), do: nil
+
+  defp search_neighbors(neighbors) do
+    lines =
+      neighbors
+      |> Enum.map(fn neighbor ->
+        page =
+          case Map.get(neighbor, :source_page) do
+            nil -> ""
+            value -> " (p. #{value})"
+          end
+
+        "- ##{Map.get(neighbor, :id)}#{page}: #{Map.get(neighbor, :text)}"
+      end)
+      |> Enum.join("\n")
+
+    "Adjacent context:\n" <> lines
   end
 
   defp expanded_block_text(%Block{type: :document} = block) do

@@ -52,6 +52,33 @@ defmodule Sheaf.CorpusSearchTest do
     assert approximate_opts[:exact_limit] == 0
   end
 
+  test "search results carry section and adjacent passage context" do
+    result = %{
+      iri: to_string(Id.iri("BLK222")),
+      doc_iri: to_string(Id.iri("DOC222")),
+      doc_title: "Road generation",
+      doc_authors: [],
+      kind: "sourceHtml",
+      text: "<p>The focal road result.</p>",
+      source_page: 8,
+      breadcrumbs: [%{id: "SEC2", title: "Evaluation", type: :section}],
+      previous: %{id: "BLK221", text: "The setup.", source_page: 7},
+      following: %{id: "BLK223", text: "The discussion.", source_page: 8},
+      match: :semantic,
+      score: 0.03
+    }
+
+    assert {:ok, results} =
+             CorpusSearch.search("road result",
+               exact_search: fn _query, _opts -> {:ok, []} end,
+               search: fn _query, _opts -> {:ok, [result]} end
+             )
+
+    assert [hit] = results.approximate_results
+    assert hit.context == result.breadcrumbs
+    assert hit.neighbors == [result.previous, result.following]
+  end
+
   test "markdown is concise and omits block ids and scores" do
     long_text = String.duplicate("Practice theory result ", 40)
 

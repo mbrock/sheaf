@@ -96,6 +96,46 @@ defmodule Sheaf.Embedding.IndexTest do
     refute Enum.any?(units, &(&1.iri == to_string(paragraph)))
   end
 
+  test "builds precise and contextual vectors for a stable citation IRI" do
+    iri = "https://sheaf.less.rest/BLOCK-CONTEXT"
+
+    [precise, contextual] =
+      Index.units_from_rows(
+        [
+          %{
+            "iri" => RDF.iri(iri),
+            "kind" => RDF.literal("sourceHtml"),
+            "text" => RDF.literal("<p>The focal result.</p>"),
+            "searchText" => "The focal result.",
+            "doc" => RDF.iri("https://sheaf.less.rest/DOC-CONTEXT"),
+            "docTitle" => RDF.literal("Contextual Retrieval"),
+            "breadcrumbs" => ["Contextual Retrieval", "Evaluation"],
+            "previous" => %{"text" => "The experimental setup."},
+            "following" => %{"text" => "The result is discussed."}
+          }
+        ],
+        model: "text-embedding-3-large",
+        output_dimensionality: 768,
+        source: "test-context-v1"
+      )
+
+    assert precise.iri == iri
+    assert precise.embedding_variant == :precise
+    assert precise.embedding_text == "The focal result."
+
+    assert contextual.iri == iri <> "#sheaf-context"
+    assert contextual.citation_iri == iri
+    assert contextual.embedding_variant == :context
+
+    assert contextual.embedding_text =~
+             "Section: Contextual Retrieval > Evaluation"
+
+    assert contextual.embedding_text =~ "Previous: The experimental setup."
+    assert contextual.embedding_text =~ "Passage: The focal result."
+    assert contextual.embedding_text =~ "Next: The result is discussed."
+    refute contextual.text_hash == precise.text_hash
+  end
+
   test "plans missing embeddings without embedding them" do
     db_path =
       Path.join(

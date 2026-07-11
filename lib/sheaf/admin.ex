@@ -105,6 +105,44 @@ defmodule Sheaf.Admin do
     end
   end
 
+  def evaluate_search(args) do
+    {opts, paths, invalid} =
+      OptionParser.parse(args, strict: [db: :string, limit: :integer])
+
+    reject_invalid!(invalid)
+
+    if length(paths) != 1,
+      do:
+        fail!(
+          "Usage: sheaf-admin search evaluate PATH [--db PATH] [--limit N]"
+        )
+
+    [path] = paths
+
+    evaluation_opts =
+      []
+      |> put_if_present(:db_path, opts[:db])
+      |> put_if_present(:limit, opts[:limit])
+
+    case Sheaf.Retrieval.Evaluation.run_file(path, evaluation_opts) do
+      {:ok, report} ->
+        info(
+          "Retrieval evaluation #{report.name}: hits=#{report.found_count}/#{report.case_count} hit_rate=#{format_metric(report.hit_rate)} mrr=#{format_metric(report.mean_reciprocal_rank)}"
+        )
+
+        Enum.each(report.cases, fn result ->
+          info(
+            "  #{if(result.found, do: "PASS", else: "FAIL")} rank=#{result.rank || "-"} query=#{inspect(result.query)}"
+          )
+        end)
+
+      {:error, reason} ->
+        fail!("Retrieval evaluation failed: #{inspect(reason)}")
+    end
+  end
+
+  defp format_metric(value), do: :erlang.float_to_binary(value, decimals: 3)
+
   def sync_embeddings(args) do
     {opts, _positional, invalid} =
       OptionParser.parse(args, strict: embedding_sync_options())

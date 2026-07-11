@@ -16,6 +16,7 @@ defmodule Sheaf.Admin.CLI do
     sheaf-admin spreadsheets list [--db PATH]
     sheaf-admin spreadsheets query SQL [--db PATH] [--limit N]
     sheaf-admin search sync [--db PATH] [--limit N] [--kind KIND] [--provider NAME] [--model NAME]
+    sheaf-admin search evaluate PATH [--db PATH] [--limit N]
     sheaf-admin embeddings plan [--db PATH] [--limit N] [--kind KIND] [--provider NAME] [--model NAME] [--sample N]
     sheaf-admin embeddings sync [--db PATH] [--limit N] [--kind KIND] [--provider NAME] [--model NAME]
     sheaf-admin datalab {submit|poll|import|status} [--job IRI] [--limit N] [--await]
@@ -91,6 +92,9 @@ defmodule Sheaf.Admin.CLI do
 
   defp dispatch(["search", "sync" | args]),
     do: run(fn -> Sheaf.Admin.sync_search_indexes(args) end)
+
+  defp dispatch(["search", "evaluate" | args]),
+    do: run(fn -> Sheaf.Admin.evaluate_search(args) end)
 
   defp dispatch(["embeddings", "sync" | args]),
     do: run(fn -> Sheaf.Admin.sync_embeddings(args) end)

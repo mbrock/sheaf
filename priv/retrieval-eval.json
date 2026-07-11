@@ -1,0 +1,20 @@
+{
+  "name": "Mikael paper retrieval smoke suite",
+  "cases": [
+    {
+      "query": "How are tensor fields used to guide generation of a street network?",
+      "document_id": "V4TQYB",
+      "expected_text": "tensor fields give rise to two sets of hyperstreamlines"
+    },
+    {
+      "query": "How does the maximum slope affect whether a generated road becomes a tunnel?",
+      "document_id": "XDEFZS",
+      "expected_text": "if the maximum authorized slope is very low"
+    },
+    {
+      "query": "What equations and mechanisms make up the active walker model for trail formation?",
+      "document_id": "B6P8L4",
+      "expected_text": "an equation for environmental changes"
+    }
+  ]
+}

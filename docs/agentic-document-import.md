@@ -213,10 +213,26 @@ adjacent-duplicate rate, citation correctness, and whether the answer-supporting
 passage survives the final context budget. Log the retrieval profile, embedding
 model, fusion weights, reranker, candidate counts, and timings in OpenTelemetry.
 
-The recommended next implementation after page reconstruction is contextual
-multi-vector indexing plus neighbor expansion and reciprocal-rank fusion. It is
-likely to improve recall substantially without making the agent responsible for
-repairing a weak retrieval substrate at answer time.
+The first version of this retrieval design is now implemented:
+
+- paragraph and extracted-text citation IRIs receive both a precise vector and
+  a contextual vector; the contextual vector includes the document title,
+  section breadcrumb, focal passage, and one readable neighbor on each side;
+- contextual vectors use derived `#sheaf-context` embedding identities, but are
+  collapsed back to the focal RDF block IRI before hydration and ranking, so
+  links and citations remain stable;
+- lexical, precise-vector, and contextual-vector ranks are fused with weighted
+  reciprocal-rank fusion instead of comparing incomparable raw scores;
+- assistant search hits include section ancestry and bounded adjacent passages;
+- `bin/sheaf-admin search evaluate priv/retrieval-eval.json` runs a reviewable
+  smoke suite and reports hit rate and mean reciprocal rank;
+- retrieval queries, candidate counts, fusion profile, and evaluation metrics
+  are recorded as OpenTelemetry attributes.
+
+The next refinement should be a bounded query-aware reranker over the fused
+candidates, followed by more evaluation questions and dedicated equation/table
+projections. The evaluation suite should grow from real research questions and
+retain text evidence rather than reminted block IRIs as its ground truth.
 
 ## Tables
 

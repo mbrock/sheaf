@@ -8,6 +8,7 @@ defmodule Sheaf.TextUnits do
 
   alias RDF.{BlankNode, Graph, IRI}
   alias RDF.NS.RDFS
+  alias Sheaf.Document
   alias Sheaf.NS.{AS, DCTERMS, DOC, FABIO, PROV}
 
   @valid_kinds ~w(paragraph sourceHtml row note)
@@ -116,6 +117,7 @@ defmodule Sheaf.TextUnits do
     type_predicate = RDF.type()
     note_type = RDF.iri(AS.Note)
     active_subjects = active_subjects(graph, index)
+    retrieval_context = retrieval_context(graph)
 
     triples
     |> Enum.flat_map(fn
@@ -136,6 +138,7 @@ defmodule Sheaf.TextUnits do
                     first(index, iri, RDFS.label()) ||
                       RDF.literal("Research note")
                 }
+                |> add_retrieval_context(iri, retrieval_context)
               ]
           end
         else
@@ -191,6 +194,7 @@ defmodule Sheaf.TextUnits do
               "codeCategoryTitle" =>
                 first(index, iri, DOC.codeCategoryTitle())
             }
+            |> add_retrieval_context(iri, retrieval_context)
           ]
         else
           []
@@ -212,6 +216,7 @@ defmodule Sheaf.TextUnits do
               "codeCategoryTitle" =>
                 first(index, iri, DOC.codeCategoryTitle())
             }
+            |> add_retrieval_context(iri, retrieval_context)
           ]
         else
           []
@@ -220,6 +225,49 @@ defmodule Sheaf.TextUnits do
       _triple ->
         []
     end)
+  end
+
+  defp retrieval_context(%Graph{name: nil}), do: %{}
+
+  defp retrieval_context(%Graph{} = graph) do
+    chunks = Document.text_chunks(graph, graph.name)
+
+    chunks
+    |> Enum.with_index()
+    |> Map.new(fn {chunk, index} ->
+      previous = Enum.at(chunks, index - 1)
+      following = Enum.at(chunks, index + 1)
+
+      {chunk.iri,
+       %{
+         "searchText" => chunk.text,
+         "breadcrumbs" => breadcrumb_titles(graph, chunk.iri),
+         "previous" => neighbor(previous),
+         "following" => neighbor(following)
+       }}
+    end)
+  end
+
+  defp add_retrieval_context(row, iri, contexts) do
+    Map.merge(row, Map.get(contexts, iri, %{}))
+  end
+
+  defp breadcrumb_titles(graph, iri) do
+    graph
+    |> Document.breadcrumbs(iri)
+    |> Enum.map(& &1.title)
+    |> Enum.reject(&(&1 in [nil, ""]))
+  end
+
+  defp neighbor(nil), do: nil
+
+  defp neighbor(chunk) do
+    %{
+      "iri" => to_string(chunk.iri),
+      "text" => chunk.text,
+      "sourcePage" => chunk.source_page,
+      "type" => to_string(chunk.type)
+    }
   end
 
   defp index(triples) do

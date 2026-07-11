@@ -210,6 +210,7 @@ defmodule Sheaf.Assistant.ToolResults do
       :match,
       :score,
       :coding,
+      neighbors: [],
       context: []
     ]
   end

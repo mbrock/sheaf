@@ -342,6 +342,10 @@ defmodule Sheaf.CorpusSearch do
       text: search_hit_text(result),
       source_page: result.source_page,
       breadcrumbs: Map.get(result, :breadcrumbs, []),
+      context: Map.get(result, :breadcrumbs, []),
+      neighbors:
+        [Map.get(result, :previous), Map.get(result, :following)]
+        |> Enum.reject(&is_nil/1),
       match: result.match,
       score: result.score
     }

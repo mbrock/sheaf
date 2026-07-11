@@ -4,6 +4,7 @@ defmodule Sheaf.Embedding.Index do
   """
 
   require Logger
+  require OpenTelemetry.Tracer, as: Tracer
 
   alias RDF.{Description, Graph}
   alias Sheaf.Document
@@ -17,6 +18,7 @@ defmodule Sheaf.Embedding.Index do
   @default_source "openai-text-embedding-3-large-v1"
   @valid_kinds ~w(paragraph sourceHtml row note)
   @semantic_min_words 20
+  @context_variant_fragment "#sheaf-context"
 
   @type text_unit :: %{
           required(:iri) => String.t(),
@@ -170,7 +172,7 @@ defmodule Sheaf.Embedding.Index do
     source = source(opts)
 
     rows
-    |> Enum.map(&unit_from_row(&1, model, dimensions, source))
+    |> Enum.flat_map(&units_from_row(&1, model, dimensions, source))
     |> Enum.reject(&(&1.text == ""))
     |> Enum.sort_by(& &1.iri)
     |> maybe_limit_units(opts)
@@ -197,35 +199,45 @@ defmodule Sheaf.Embedding.Index do
   def search(query, opts \\ []) when is_binary(query) do
     query = String.trim(query)
 
-    if query == "" do
-      {:ok, []}
-    else
-      model = Sheaf.Embedding.model(opts)
+    Tracer.with_span "Sheaf.Embedding.Index.search", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.retrieval.query", query},
+        {"sheaf.retrieval.limit", Keyword.get(opts, :limit, 20)},
+        {"sheaf.retrieval.document_id", Keyword.get(opts, :document_id, "")},
+        {"sheaf.retrieval.fusion", "reciprocal_rank"}
+      ]
+    } do
+      if query == "" do
+        {:ok, []}
+      else
+        model = Sheaf.Embedding.model(opts)
 
-      dimensions =
-        Keyword.get(opts, :output_dimensionality, @default_dimensions)
+        dimensions =
+          Keyword.get(opts, :output_dimensionality, @default_dimensions)
 
-      source = source(opts)
-      limit = Keyword.get(opts, :limit, 20)
+        source = source(opts)
+        limit = Keyword.get(opts, :limit, 20)
 
-      with {:ok, query_embedding} <-
-             Sheaf.Embedding.embed_query(
-               query,
-               Keyword.merge(opts, output_dimensionality: dimensions)
-             ),
-           {:ok, conn} <- Store.open(opts) do
-        try do
-          search_loaded(
-            conn,
-            query_embedding.values,
-            model,
-            dimensions,
-            source,
-            limit,
-            Keyword.put(opts, :query, query)
-          )
-        after
-          Store.close(conn)
+        with {:ok, query_embedding} <-
+               Sheaf.Embedding.embed_query(
+                 query,
+                 Keyword.merge(opts, output_dimensionality: dimensions)
+               ),
+             {:ok, conn} <- Store.open(opts) do
+          try do
+            search_loaded(
+              conn,
+              query_embedding.values,
+              model,
+              dimensions,
+              source,
+              limit,
+              Keyword.put(opts, :query, query)
+            )
+          after
+            Store.close(conn)
+          end
         end
       end
     end
@@ -644,8 +656,8 @@ defmodule Sheaf.Embedding.Index do
     Enum.with_index(units, fn unit, index ->
       %{
         key: Integer.to_string(index),
-        text: unit.text,
-        title: unit.doc_title
+        text: Map.get(unit, :embedding_text, unit.text),
+        title: Map.get(unit, :embedding_title, unit.doc_title)
       }
     end)
   end
@@ -715,12 +727,15 @@ defmodule Sheaf.Embedding.Index do
   defp current_import_pairs([], _opts), do: {:ok, [], 0}
 
   defp current_import_pairs(pairs, opts) do
-    iris = Enum.map(pairs, fn {unit, _embedding} -> unit.iri end)
+    iris =
+      pairs
+      |> Enum.map(fn {unit, _embedding} -> citation_iri(unit.iri) end)
+      |> Enum.uniq()
 
     with {:ok, current_units} <- descriptions_for_iris(iris, opts) do
       {included, skipped} =
         Enum.split_with(pairs, fn {unit, _embedding} ->
-          case Map.get(current_units, unit.iri) do
+          case Map.get(current_units, citation_iri(unit.iri)) do
             %{doc_excluded?: true} -> false
             nil -> false
             _unit -> true
@@ -774,15 +789,19 @@ defmodule Sheaf.Embedding.Index do
     |> MapSet.new()
   end
 
-  defp unit_from_row(row, model, dimensions, source) do
+  defp units_from_row(row, model, dimensions, source) do
     text = row |> Map.fetch!("text") |> term_value()
+    search_text = Map.get(row, "searchText") || text
     doc_title = row |> Map.get("docTitle") |> term_value()
-    embedding_text = embedding_document_text(text, doc_title, model)
+    embedding_text = embedding_document_text(search_text, doc_title, model)
 
-    %{
+    unit = %{
       iri: row |> Map.fetch!("iri") |> term_value(),
       kind: row |> Map.fetch!("kind") |> term_value(),
       text: text,
+      embedding_text: search_text,
+      embedding_title: doc_title,
+      embedding_variant: :precise,
       text_hash: text_hash(embedding_text, model, dimensions, source),
       text_chars: String.length(text),
       doc_iri: row |> Map.get("doc") |> term_value(),
@@ -791,8 +810,73 @@ defmodule Sheaf.Embedding.Index do
       source_block_type: row |> Map.get("sourceBlockType") |> term_value(),
       spreadsheet_row: row |> Map.get("spreadsheetRow") |> integer_value(),
       spreadsheet_source: row |> Map.get("spreadsheetSource") |> term_value(),
-      code_category_title: row |> Map.get("codeCategoryTitle") |> term_value()
+      code_category_title:
+        row |> Map.get("codeCategoryTitle") |> term_value(),
+      breadcrumbs: Map.get(row, "breadcrumbs", []),
+      previous: Map.get(row, "previous"),
+      following: Map.get(row, "following")
     }
+
+    [unit | contextual_units(unit, row, model, dimensions, source)]
+  end
+
+  defp contextual_units(%{kind: kind} = unit, row, model, dimensions, source)
+       when kind in ["paragraph", "sourceHtml"] do
+    context_text = contextual_embedding_text(unit, row)
+
+    if context_text == unit.embedding_text do
+      []
+    else
+      prepared = embedding_document_text(context_text, nil, model)
+
+      [
+        %{
+          unit
+          | iri: context_variant_iri(unit.iri),
+            embedding_text: context_text,
+            embedding_title: nil,
+            embedding_variant: :context,
+            text_hash: text_hash(prepared, model, dimensions, source),
+            text_chars: String.length(context_text)
+        }
+        |> Map.put(:citation_iri, unit.iri)
+      ]
+    end
+  end
+
+  defp contextual_units(_unit, _row, _model, _dimensions, _source), do: []
+
+  defp contextual_embedding_text(unit, row) do
+    [
+      labeled_context("Document", unit.doc_title),
+      labeled_context(
+        "Section",
+        Enum.join(Map.get(row, "breadcrumbs", []), " > ")
+      ),
+      labeled_context("Previous", neighbor_text(Map.get(row, "previous"))),
+      labeled_context("Passage", unit.embedding_text),
+      labeled_context("Next", neighbor_text(Map.get(row, "following")))
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+  end
+
+  defp labeled_context(_label, value) when value in [nil, ""], do: nil
+  defp labeled_context(label, value), do: "#{label}: #{value}"
+
+  defp neighbor_text(%{"text" => text}) when is_binary(text), do: text
+  defp neighbor_text(_neighbor), do: nil
+
+  defp context_variant_iri(iri), do: iri <> @context_variant_fragment
+
+  defp citation_iri(iri) do
+    String.replace_suffix(iri, @context_variant_fragment, "")
+  end
+
+  defp embedding_variant(iri) do
+    if String.ends_with?(iri, @context_variant_fragment),
+      do: :context,
+      else: :precise
   end
 
   @doc false
@@ -833,12 +917,14 @@ defmodule Sheaf.Embedding.Index do
            |> Enum.reject(&(&1.kind == "note"))
            |> Enum.map(& &1.doc_iri)
            |> document_metadata_for_doc_iris(opts) do
-      breadcrumbs = breadcrumb_metadata(units)
+      retrieval_contexts = retrieval_context_metadata(units)
 
       {:ok,
        iris
        |> Enum.uniq()
-       |> Enum.map(&unit_from_sidecar(units, &1, documents, breadcrumbs))
+       |> Enum.map(
+         &unit_from_sidecar(units, &1, documents, retrieval_contexts)
+       )
        |> Enum.reject(&is_nil/1)
        |> Map.new(&{&1.iri, &1})}
     end
@@ -999,10 +1085,15 @@ defmodule Sheaf.Embedding.Index do
              limit,
              opts
            ) do
-      {:ok,
-       (exact_results ++ vector_results)
-       |> merge_ranked_results()
-       |> Enum.take(limit)}
+      fused_results = fuse_ranked_results(exact_results, vector_results, opts)
+
+      Tracer.set_attributes([
+        {"sheaf.retrieval.lexical_candidate_count", length(exact_results)},
+        {"sheaf.retrieval.semantic_candidate_count", length(vector_results)},
+        {"sheaf.retrieval.fused_candidate_count", length(fused_results)}
+      ])
+
+      {:ok, Enum.take(fused_results, limit)}
     end
   end
 
@@ -1060,7 +1151,7 @@ defmodule Sheaf.Embedding.Index do
            ),
          {:ok, metadata} <-
            sidecar_descriptions_for_iris(
-             Enum.map(ranked, & &1.iri),
+             ranked |> Enum.map(&citation_iri(&1.iri)) |> Enum.uniq(),
              Keyword.merge(opts,
                model: model,
                output_dimensionality: dimensions
@@ -1069,7 +1160,7 @@ defmodule Sheaf.Embedding.Index do
       results =
         ranked
         |> Enum.flat_map(fn ranked ->
-          case Map.get(metadata, ranked.iri) do
+          case Map.get(metadata, citation_iri(ranked.iri)) do
             nil ->
               []
 
@@ -1080,13 +1171,16 @@ defmodule Sheaf.Embedding.Index do
                 semantic_score: ranked.score,
                 lexical_score: 0.0,
                 match: :semantic,
-                run_iri: ranked.run_iri
+                run_iri: ranked.run_iri,
+                embedding_variant: embedding_variant(ranked.iri),
+                embedding_iri: ranked.iri
               })
               |> searchable_result(opts)
           end
         end)
 
-      if length(results) >= limit or candidate_limit >= max_candidate_limit do
+      if unique_result_count(results) >= limit or
+           candidate_limit >= max_candidate_limit do
         {:ok, results}
       else
         do_vector_results_until(
@@ -1130,13 +1224,14 @@ defmodule Sheaf.Embedding.Index do
     end
   end
 
-  defp unit_from_sidecar(units, iri, documents, breadcrumbs) do
+  defp unit_from_sidecar(units, iri, documents, retrieval_contexts) do
     case Map.get(units, iri) do
       nil ->
         nil
 
       unit ->
         doc = Map.get(documents, unit.doc_iri, %{})
+        context = Map.get(retrieval_contexts, unit.iri, %{})
 
         Map.merge(unit, %{
           doc_title: Map.get(unit, :doc_title) || Map.get(doc, :title),
@@ -1144,12 +1239,14 @@ defmodule Sheaf.Embedding.Index do
           doc_authors: Map.get(doc, :authors, []),
           doc_status: Map.get(doc, :status),
           doc_excluded?: Map.get(doc, :excluded?, false),
-          breadcrumbs: Map.get(breadcrumbs, unit.iri, [])
+          breadcrumbs: Map.get(context, :breadcrumbs, []),
+          previous: Map.get(context, :previous),
+          following: Map.get(context, :following)
         })
     end
   end
 
-  defp breadcrumb_metadata(units) do
+  defp retrieval_context_metadata(units) do
     units
     |> Map.values()
     |> Enum.reject(&is_nil(&1.doc_iri))
@@ -1157,15 +1254,47 @@ defmodule Sheaf.Embedding.Index do
     |> Enum.flat_map(fn {doc_iri, doc_units} ->
       case Sheaf.fetch_graph(RDF.iri(doc_iri)) do
         {:ok, %Graph{} = graph} ->
+          chunks = Document.text_chunks(graph, graph.name)
+
+          positions =
+            chunks
+            |> Enum.with_index()
+            |> Map.new(fn {chunk, index} -> {to_string(chunk.iri), index} end)
+
           Enum.map(doc_units, fn unit ->
-            {unit.iri, Document.breadcrumbs(graph, RDF.iri(unit.iri))}
+            index = Map.get(positions, unit.iri)
+
+            {unit.iri,
+             %{
+               breadcrumbs: Document.breadcrumbs(graph, RDF.iri(unit.iri)),
+               previous: retrieval_neighbor(chunks, index, -1),
+               following: retrieval_neighbor(chunks, index, 1)
+             }}
           end)
 
         _error ->
-          Enum.map(doc_units, &{&1.iri, []})
+          Enum.map(doc_units, &{&1.iri, %{breadcrumbs: []}})
       end
     end)
     |> Map.new()
+  end
+
+  defp retrieval_neighbor(_chunks, nil, _offset), do: nil
+
+  defp retrieval_neighbor(chunks, index, offset) do
+    case Enum.at(chunks, index + offset) do
+      nil ->
+        nil
+
+      chunk ->
+        %{
+          iri: to_string(chunk.iri),
+          id: Document.id(chunk.iri),
+          text: chunk.text,
+          source_page: chunk.source_page,
+          type: chunk.type
+        }
+    end
   end
 
   defp searchable_result(result, opts) do
@@ -1247,13 +1376,41 @@ defmodule Sheaf.Embedding.Index do
 
   defp word_count(_text), do: 0
 
-  defp merge_ranked_results(results) do
-    results
-    |> Enum.reduce(%{}, fn result, acc ->
-      Map.update(acc, result.iri, result, &merge_result(&1, result))
+  defp fuse_ranked_results(exact_results, vector_results, opts) do
+    rank_constant = Keyword.get(opts, :rrf_rank_constant, 60)
+
+    contributions =
+      ranked_contributions(exact_results, :lexical, rank_constant) ++
+        ranked_contributions(vector_results, :semantic, rank_constant)
+
+    contributions
+    |> Enum.group_by(fn {result, _contribution} -> result.iri end)
+    |> Enum.map(fn {_iri, ranked} ->
+      {results, scores} = Enum.unzip(ranked)
+
+      results
+      |> Enum.reduce(&merge_result/2)
+      |> Map.put(:score, Enum.sum(scores))
+      |> Map.put(:fusion, :reciprocal_rank)
     end)
-    |> Map.values()
     |> Enum.sort_by(&{-&1.score, match_sort(&1), &1.iri})
+  end
+
+  defp ranked_contributions(results, channel, rank_constant) do
+    results
+    |> Enum.with_index(1)
+    |> Enum.map(fn {result, rank} ->
+      weight = fusion_weight(channel, Map.get(result, :embedding_variant))
+      {result, weight / (rank_constant + rank)}
+    end)
+  end
+
+  defp fusion_weight(:lexical, _variant), do: 1.0
+  defp fusion_weight(:semantic, :context), do: 0.85
+  defp fusion_weight(:semantic, _variant), do: 1.0
+
+  defp unique_result_count(results) do
+    results |> Enum.uniq_by(& &1.iri) |> length()
   end
 
   defp merge_result(left, right) do
