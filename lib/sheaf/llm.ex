@@ -197,7 +197,7 @@ defmodule Sheaf.LLM do
   end
 
   @doc """
-  Generates a structured object with ReqLLM.
+  Generates a structured object.
 
   Options:
 
@@ -212,17 +212,38 @@ defmodule Sheaf.LLM do
     * `:receive_timeout` - Req receive timeout in milliseconds, defaulting to 300s.
     * `:provider_options` - additional provider options.
     * `:llm_options` - extra ReqLLM options merged into the final request.
-    * `:generate_object` - test seam, defaulting to `ReqLLM.generate_object/4`.
+    * `:generate_object` - optional four-argument test seam.
   """
   @spec generate_object(term(), keyword(), keyword()) ::
           {:ok, object_result()} | {:error, term()}
   def generate_object(message, schema, opts \\ []) when is_list(schema) do
     model = Keyword.get(opts, :model, @default_model)
 
-    generate_object =
-      Keyword.get(opts, :generate_object, &ReqLLM.generate_object/4)
+    generate_object = Keyword.get(opts, :generate_object)
 
-    case generate_object.(model, message, schema, request_options(opts)) do
+    result =
+      cond do
+        is_function(generate_object, 4) ->
+          generate_object.(model, message, schema, request_options(opts))
+
+        anthropic_model?(model) ->
+          Sheaf.Anthropic.Messages.generate_object(
+            model,
+            message,
+            schema,
+            request_options(opts)
+          )
+
+        true ->
+          ReqLLM.generate_object(
+            model,
+            message,
+            schema,
+            request_options(opts)
+          )
+      end
+
+    case result do
       {:ok, response} ->
         with {:ok, object} <- response_object(response) do
           {:ok,
@@ -245,7 +266,11 @@ defmodule Sheaf.LLM do
     if openai_model?(model) do
       Sheaf.OpenAI.Responses.generate(model, context, options)
     else
-      ReqLLM.generate_text(model, context, options)
+      if anthropic_model?(model) do
+        Sheaf.Anthropic.Messages.generate(model, context, options)
+      else
+        ReqLLM.generate_text(model, context, options)
+      end
     end
   end
 
@@ -256,7 +281,11 @@ defmodule Sheaf.LLM do
     if openai_model?(model) do
       Sheaf.OpenAI.Responses.stream(model, context, options)
     else
-      ReqLLM.stream_text(model, context, options)
+      if anthropic_model?(model) do
+        Sheaf.Anthropic.Messages.stream(model, context, options)
+      else
+        ReqLLM.stream_text(model, context, options)
+      end
     end
   end
 

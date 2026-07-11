@@ -43,11 +43,11 @@ defmodule Sheaf.Assistant do
     * `:model` - ReqLLM model spec, defaulting to `Sheaf.LLM.default_model/0`.
     * `:context` - initial `ReqLLM.Context`, defaulting to an empty context.
     * `:tools` - list of `ReqLLM.Tool` structs available to the loop.
-    * `:llm_options` - default options passed to `ReqLLM.generate_text/3`.
+    * `:llm_options` - default provider request options.
     * `:max_tool_rounds` - maximum tool-call turns before returning an error.
     * `:task_supervisor` - task supervisor name or pid.
-    * `:generate_text` - test seam, defaulting to `ReqLLM.generate_text/3`.
-    * `:stream_text` - test seam, defaulting to `ReqLLM.stream_text/3`.
+    * `:generate_text` - test seam, defaulting to `Sheaf.LLM.generate_text/3`.
+    * `:stream_text` - test seam, defaulting to `Sheaf.LLM.stream_text/3`.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
