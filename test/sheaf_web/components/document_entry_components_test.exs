@@ -63,6 +63,27 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     assert html =~ ~r/>\s*MIKAEL\s*<\/span>/
   end
 
+  test "renders a document cover when one is associated" do
+    html =
+      render_component(&document_entry/1,
+        document: %{
+          id: "DOC2A1",
+          kind: :paper,
+          path: "/DOC2A1",
+          cover_path: "/covers/DOC2A1",
+          title: "A covered paper",
+          metadata: %{},
+          excluded?: false,
+          cited?: false,
+          has_document?: true,
+          workspace_owner_authored?: false
+        }
+      )
+
+    assert html =~ ~s(src="/covers/DOC2A1")
+    assert html =~ ~s(class="h-14 w-10)
+  end
+
   test "metadata heading uses plain compact metadata" do
     html =
       render_component(&document_metadata_heading/1,

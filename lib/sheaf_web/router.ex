@@ -38,6 +38,7 @@ defmodule SheafWeb.Router do
     get "/corpus", CorpusController, :index
     get "/corpus/*parts", CorpusController, :index
     get "/read/:id", ReadController, :show
+    get "/covers/:id", CoverController, :show
   end
 
   scope "/api", SheafWeb.API do

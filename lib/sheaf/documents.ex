@@ -547,6 +547,10 @@ defmodule Sheaf.Documents do
         |> put_flag("cited", MapSet.member?(cited_docs, doc))
         |> put_flag("workspaceOwnerAuthored", workspace_owner_authored?)
         |> put_optional(
+          "coverImage",
+          first_object(workspace, doc, DOC.coverImage())
+        )
+        |> put_optional(
           "workspaceOwnerName",
           resource_name(metadata, workspace_owner)
         )
@@ -899,6 +903,8 @@ defmodule Sheaf.Documents do
       path: path(iri, metadata_only?(rows)),
       workspace_owner_authored?: workspace_owner_authored?(rows),
       workspace_owner_name: value(rows, "workspaceOwnerName"),
+      cover_path:
+        if(value(rows, "coverImage"), do: "/covers/#{Id.id_from_iri(iri)}"),
       title: metadata[:title] || title(row["title"], iri)
     }
   end

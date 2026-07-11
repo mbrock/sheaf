@@ -95,6 +95,13 @@ defmodule Sheaf.Assistant.CorpusTools do
     metadata_updater =
       Keyword.get(opts, :metadata_updater, &Sheaf.DocumentMetadata.update/2)
 
+    cover_generator =
+      Keyword.get(
+        opts,
+        :cover_generator,
+        &Sheaf.OpenAI.CoverImages.generate/2
+      )
+
     search_index_updater =
       Keyword.get(
         opts,
@@ -215,6 +222,40 @@ defmodule Sheaf.Assistant.CorpusTools do
         callback:
           instrument(notify, "tag_paragraphs", fn args ->
             tag_paragraphs_tool(args, paragraph_tagger)
+          end)
+      ),
+      Tool.new!(
+        name: "generate_cover_image",
+        description:
+          "Generate and attach a representative cover image to a Sheaf document. " <>
+            "First read enough of the document to understand its central ideas, then write a vivid, specific visual prompt. " <>
+            "Prefer evocative visual metaphor and composition over literal diagrams; avoid title text, captions, logos, and author likenesses unless explicitly requested. " <>
+            "The new image replaces the current cover association while retaining generation provenance.",
+        parameter_schema: [
+          document_id: [
+            type: :string,
+            required: true,
+            doc: "Six-character Sheaf document id."
+          ],
+          prompt: [
+            type: :string,
+            required: true,
+            doc:
+              "Detailed standalone art-direction prompt grounded in the document."
+          ]
+        ],
+        callback:
+          instrument(notify, "generate_cover_image", fn args ->
+            case cover_generator.(arg(args, :document_id), arg(args, :prompt)) do
+              {:ok, result} ->
+                {:ok, Jason.encode!(result, pretty: true)}
+
+              {:error, reason} ->
+                {:error, "cover generation failed: #{inspect(reason)}"}
+
+              other ->
+                {:error, "cover generation returned: #{inspect(other)}"}
+            end
           end)
       )
     ]

@@ -426,6 +426,18 @@ sheaf:modelName a rdf:Property ;
   rdfs:domain sheaf:Interview ;
   rdfs:range xsd:string .
 
+sheaf:generationModelName a rdf:Property ;
+  rdfs:label "has generation model name"@en ;
+  rdfs:domain prov:Activity ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Names the model used by a generative activity." .
+
+sheaf:coverImage a rdf:Property ;
+  rdfs:label "has cover image"@en ;
+  rdfs:domain sheaf:Document ;
+  rdfs:range fabio:ComputerFile ;
+  rdfs:comment "Links a document to the image selected as its representative cover." .
+
 sheaf:sourceKey a rdf:Property ;
   rdfs:label "has source key"@en ;
   rdfs:range xsd:string ;

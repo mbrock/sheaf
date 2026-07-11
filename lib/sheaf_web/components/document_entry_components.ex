@@ -39,14 +39,26 @@ defmodule SheafWeb.DocumentEntryComponents do
 
   def document_row(assigns) do
     ~H"""
-    <div class={["leading-5", if(@nested, do: "px-2 py-1.5", else: "px-2 py-0.5")]}>
-      <.document_title_line
-        document={@document}
-        show_checkbox={@show_checkbox}
-        nested={@nested}
-        link_title={@link_title}
+    <div class={[
+      "flex min-w-0 items-center",
+      if(@nested, do: "gap-2 px-2 py-1.5", else: "gap-3 px-2 py-1")
+    ]}>
+      <img
+        :if={Map.get(@document, :cover_path)}
+        src={@document.cover_path}
+        alt=""
+        loading="lazy"
+        class="h-14 w-10 shrink-0 rounded-sm object-cover shadow-sm ring-1 ring-black/10 dark:ring-white/10"
       />
-      <.document_metadata_lines document={@document} />
+      <div class="min-w-0 flex-1 leading-5">
+        <.document_title_line
+          document={@document}
+          show_checkbox={@show_checkbox}
+          nested={@nested}
+          link_title={@link_title}
+        />
+        <.document_metadata_lines document={@document} />
+      </div>
     </div>
     """
   end

@@ -67,6 +67,37 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert tool_text(result) =~ "https://doi.org/10.1/example"
   end
 
+  test "cover image tool passes researched art direction to the generator" do
+    test_pid = self()
+
+    tools =
+      CorpusTools.tools(
+        cover_generator: fn document_id, prompt ->
+          send(test_pid, {:cover_generation, document_id, prompt})
+
+          {:ok,
+           %{
+             document_id: document_id,
+             path: "/covers/#{document_id}",
+             prompt: prompt
+           }}
+        end
+      )
+
+    tool = Enum.find(tools, &(&1.name == "generate_cover_image"))
+
+    assert {:ok, result} =
+             Tool.execute(tool, %{
+               "document_id" => "DOC123",
+               "prompt" =>
+                 "An archipelago of paper islands under a copper moon"
+             })
+
+    assert_received {:cover_generation, "DOC123", prompt}
+    assert prompt =~ "paper islands"
+    assert result =~ "/covers/DOC123"
+  end
+
   test "import metadata tool applies verified document fields" do
     test_pid = self()
 
