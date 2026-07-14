@@ -10,6 +10,10 @@ import Config
 config :sheaf,
   generators: [timestamp_type: :utc_datetime]
 
+config :sheaf, Sheaf.MCP,
+  token: nil,
+  allowed_origins: []
+
 # Configure the endpoint
 config :sheaf, SheafWeb.Endpoint,
   url: [host: "localhost"],

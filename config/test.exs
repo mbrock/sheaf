@@ -10,6 +10,8 @@ config :sheaf, SheafWeb.Endpoint,
 
 config :sheaf, Sheaf.Repo, start?: false, path: ":memory:"
 
+config :sheaf, Sheaf.MCP, token: "test-mcp-token", allowed_origins: []
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

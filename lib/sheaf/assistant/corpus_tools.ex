@@ -31,6 +31,8 @@ defmodule Sheaf.Assistant.CorpusTools do
   }
 
   alias Sheaf.NS.AS
+  alias Sheaf.NS.DOC
+  alias RDF.NS.RDFS
 
   @search_result_limit 10
   @spreadsheet_list_limit 50
@@ -163,6 +165,12 @@ defmodule Sheaf.Assistant.CorpusTools do
           ]
         ],
         callback: instrument(notify, "read", &read_tool/1)
+      ),
+      Tool.new!(
+        name: "list_notes",
+        description:
+          "List persisted research notes, newest first. Returns each note's id, title, publication time, text, and explicitly mentioned block ids.",
+        callback: instrument(notify, "list_notes", &list_notes_tool/1)
       ),
       Tool.new!(
         name: "search_text",
@@ -1497,6 +1505,47 @@ defmodule Sheaf.Assistant.CorpusTools do
       end
     end
   end
+
+  defp list_notes_tool(_args) do
+    case Notes.list() do
+      {:ok, notes} ->
+        notes
+        |> Enum.map(&research_note_summary/1)
+        |> then(&%ToolResults.ListNotes{notes: &1})
+        |> rendered_result()
+        |> then(&{:ok, &1})
+
+      {:error, reason} ->
+        {:error, "could not list research notes: #{inspect(reason)}"}
+    end
+  end
+
+  defp research_note_summary(%RDF.Description{} = note) do
+    %ToolResults.ResearchNoteSummary{
+      id: Id.id_from_iri(note.subject),
+      iri: to_string(note.subject),
+      title: description_value(note, RDFS.label()),
+      text: description_value(note, AS.content()),
+      published:
+        description_value(note, AS.published()) |> format_note_value(),
+      mentions:
+        note
+        |> RDF.Description.get(DOC.mentions(), [])
+        |> Enum.map(&Id.id_from_iri/1)
+    }
+  end
+
+  defp description_value(description, predicate) do
+    description
+    |> RDF.Description.first(predicate)
+    |> case do
+      nil -> nil
+      term -> RDF.Term.value(term)
+    end
+  end
+
+  defp format_note_value(%DateTime{} = value), do: DateTime.to_iso8601(value)
+  defp format_note_value(value), do: value
 
   defp search_text_tool(args, search, exact_search) do
     query = arg(args, :query)

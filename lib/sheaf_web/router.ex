@@ -22,6 +22,10 @@ defmodule SheafWeb.Router do
     plug :export_basic_auth
   end
 
+  pipeline :mcp do
+    plug SheafWeb.MCPAuthPlug
+  end
+
   pipeline :dashboard do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -51,6 +55,13 @@ defmodule SheafWeb.Router do
     get "/documents/:id/blocks/:block_id", DocumentController, :block
     get "/notes", NoteController, :index
     get "/docs", DocsController, :index
+  end
+
+  scope "/", SheafWeb do
+    pipe_through :mcp
+
+    get "/mcp", MCPController, :index
+    post "/mcp", MCPController, :create
   end
 
   scope "/api", SheafWeb.API do

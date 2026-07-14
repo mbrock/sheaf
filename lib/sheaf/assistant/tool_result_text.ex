@@ -17,6 +17,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     DocumentSummary,
     GeneratedImage,
     ListDocuments,
+    ListNotes,
     Note,
     OutlineEntry,
     ParagraphTags,
@@ -30,6 +31,7 @@ defmodule Sheaf.Assistant.ToolResultText do
     SpreadsheetSearch,
     SpreadsheetSheet,
     ListSpreadsheets,
+    ResearchNoteSummary,
     WebSearch
   }
 
@@ -277,6 +279,12 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
+  def to_text(%ListNotes{notes: []}), do: "RESEARCH NOTES\n(none)"
+
+  def to_text(%ListNotes{notes: notes}) do
+    "RESEARCH NOTES\n" <> Enum.map_join(notes, "\n\n", &research_note_text/1)
+  end
+
   def to_text(%ParagraphTags{} = result) do
     """
     PARAGRAPH TAGS ATTACHED
@@ -309,6 +317,17 @@ defmodule Sheaf.Assistant.ToolResultText do
     FTS rows: #{result.search_count}
     """
     |> String.trim()
+  end
+
+  defp research_note_text(%ResearchNoteSummary{} = note) do
+    mentions =
+      case note.mentions do
+        [] -> ""
+        ids -> "\nMentions: " <> Enum.map_join(ids, ", ", &("#" <> &1))
+      end
+
+    "##{note.id} #{note.title || "Untitled research note"}\n" <>
+      "Published: #{note.published || "unknown"}#{mentions}\n#{note.text}"
   end
 
   def selected_block_text(%Block{} = block) do

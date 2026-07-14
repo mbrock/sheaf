@@ -55,6 +55,21 @@ resource_base =
     if String.ends_with?(value, "/"), do: value, else: value <> "/"
   end)
 
+mcp_config = Application.get_env(:sheaf, Sheaf.MCP, [])
+
+mcp_allowed_origins =
+  case System.get_env("SHEAF_MCP_ALLOWED_ORIGINS") do
+    nil ->
+      mcp_config[:allowed_origins] || []
+
+    origins ->
+      origins |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+  end
+
+config :sheaf, Sheaf.MCP,
+  token: System.get_env("SHEAF_MCP_TOKEN") || mcp_config[:token],
+  allowed_origins: mcp_allowed_origins
+
 gemini_api_key =
   ["GOOGLE_API_KEY", "GEMINI_API_KEY"]
   |> Enum.map(&System.get_env/1)

@@ -874,6 +874,51 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              "String figures ask Sheaf to carry citation with care."
   end
 
+  test "list_notes returns persisted notes newest first with mentions" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-corpus-tools-list-notes-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    start_supervised!({Sheaf.Repo, path: path})
+
+    assert {:ok, _note} =
+             Notes.write(
+               %{
+                 text: "A durable observation linked to #BLOCK1.",
+                 title: "Linked observation",
+                 block_ids: ["BLOCK1"],
+                 agent_id: "AGT999",
+                 session_id: "SES999"
+               },
+               note_iri: Id.iri("NOTE98"),
+               published_at: ~U[2026-05-07 12:00:00Z]
+             )
+
+    tool =
+      CorpusTools.tools(include_notes?: false)
+      |> Enum.find(&(&1.name == "list_notes"))
+
+    assert {:ok, %ToolResult{} = result} = Tool.execute(tool, %{})
+
+    assert %ToolResults.ListNotes{
+             notes: [
+               %ToolResults.ResearchNoteSummary{
+                 id: "NOTE98",
+                 title: "Linked observation",
+                 text: "A durable observation linked to #BLOCK1.",
+                 published: "2026-05-07T12:00:00Z",
+                 mentions: ["BLOCK1"]
+               }
+             ]
+           } = sheaf_result(result)
+
+    assert tool_text(result) =~ "RESEARCH NOTES"
+    assert tool_text(result) =~ "#NOTE98 Linked observation"
+    assert tool_text(result) =~ "Mentions: #BLOCK1"
+  end
+
   test "expanded read text keeps block tags on every rendered block" do
     text =
       ToolResultText.to_text(%ToolResults.Blocks{

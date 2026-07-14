@@ -244,6 +244,21 @@ defmodule Sheaf.Assistant.ToolResults do
     ]
   end
 
+  defmodule ListNotes do
+    defstruct notes: []
+  end
+
+  defmodule ResearchNoteSummary do
+    defstruct [
+      :id,
+      :iri,
+      :title,
+      :text,
+      :published,
+      mentions: []
+    ]
+  end
+
   defmodule ParagraphTags do
     defstruct block_ids: [],
               tags: [],
