@@ -4,7 +4,9 @@ defmodule SheafWeb.CoverController do
   def show(conn, %{"id" => id}) do
     with {:ok, image_id} <- Sheaf.DocumentMetadata.cover_image_id(id),
          {:ok, _image} <- Sheaf.OpenAI.Images.fetch(image_id) do
-      redirect(conn, to: "/images/#{image_id}")
+      conn
+      |> put_resp_header("cache-control", "public, max-age=300")
+      |> redirect(to: "/images/#{image_id}/cover.webp")
     else
       {:error, _reason} ->
         conn |> put_status(:not_found) |> text("Cover not found")

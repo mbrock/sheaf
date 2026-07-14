@@ -51,7 +51,8 @@ defmodule Sheaf.OpenAI.ImagesTest do
     assert opts[:json].model == "gpt-image-2"
     assert opts[:json].size == "1024x1536"
     assert opts[:json].quality == "medium"
-    assert opts[:json].output_format == "png"
+    assert opts[:json].output_format == "webp"
+    assert opts[:json].output_compression == 82
 
     assert_received {:assert_graph, graph}
     assert RDF.Data.statement_count(graph) >= 14

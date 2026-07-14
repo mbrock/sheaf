@@ -10,7 +10,9 @@ defmodule Sheaf.OpenAI.Images do
 
   @endpoint "https://api.openai.com/v1/images/generations"
   @default_model "gpt-image-2"
-  @mime_type "image/png"
+  @output_format "webp"
+  @output_compression 82
+  @mime_type "image/webp"
 
   def generate(prompt, opts \\ []) when is_binary(prompt) do
     prompt = String.trim(prompt)
@@ -53,7 +55,8 @@ defmodule Sheaf.OpenAI.Images do
          image_id: image_id,
          iri: file.subject,
          path: path,
-         mime_type: first_value(file, DCAT.mediaType())
+         mime_type: first_value(file, DCAT.mediaType()),
+         sha256: first_value(file, DOC.sha256())
        }}
     else
       {:error, reason} -> {:error, reason}
@@ -71,7 +74,8 @@ defmodule Sheaf.OpenAI.Images do
         prompt: prompt,
         size: size,
         quality: quality,
-        output_format: "png"
+        output_format: @output_format,
+        output_compression: @output_compression
       },
       receive_timeout: Keyword.get(opts, :receive_timeout, 300_000)
     )
@@ -103,12 +107,12 @@ defmodule Sheaf.OpenAI.Images do
     image_id = Id.id_from_iri(image_iri)
     activity_iri = Keyword.get_lazy(opts, :activity_iri, &Sheaf.mint/0)
     generated_at = Keyword.get_lazy(opts, :generated_at, &now/0)
-    filename = "#{image_id}.png"
+    filename = "#{image_id}.webp"
 
     path =
       Path.join(
         System.tmp_dir!(),
-        "sheaf-#{System.unique_integer([:positive])}.png"
+        "sheaf-#{System.unique_integer([:positive])}.webp"
       )
 
     try do

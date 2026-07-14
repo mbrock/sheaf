@@ -44,6 +44,7 @@ defmodule SheafWeb.Router do
     get "/read/:id", ReadController, :show
     get "/covers/:id", CoverController, :show
     get "/images/:id", ImageController, :show
+    get "/images/:id/cover.webp", ImageController, :cover
   end
 
   scope "/api", SheafWeb.API do

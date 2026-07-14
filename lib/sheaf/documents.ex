@@ -922,7 +922,9 @@ defmodule Sheaf.Documents do
       folder: value(rows, "folderName"),
       micro_abstract: value(rows, "microAbstract"),
       cover_path:
-        if(value(rows, "coverImage"), do: "/covers/#{Id.id_from_iri(iri)}"),
+        if(cover_image = value(rows, "coverImage"),
+          do: "/images/#{Id.id_from_iri(cover_image)}/cover.webp"
+        ),
       title: metadata[:title] || title(row["title"], iri)
     }
   end
