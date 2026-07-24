@@ -951,6 +951,29 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
     assert tool_text(search_result) =~ "Size: #{byte_size} bytes, 200 lines"
     assert tool_text(search_result) =~ ~s(read blocks=["#{block}"])
 
+    fallback_tools =
+      CorpusTools.tools(
+        include_notes?: false,
+        exact_search: fn _query, _opts -> {:ok, []} end,
+        search: fn _query, _opts ->
+          {:ok, [%{result_shape | match_text: nil}]}
+        end
+      )
+
+    fallback_search = Enum.find(fallback_tools, &(&1.name == "search_text"))
+
+    assert {:ok, %ToolResult{} = fallback_result} =
+             Tool.execute(fallback_search, %{"query" => "line 120"})
+
+    assert %ToolResults.SearchResults{
+             approximate_results: [
+               %ToolResults.SearchHit{text: fallback_excerpt}
+             ]
+           } = sheaf_result(fallback_result)
+
+    assert fallback_excerpt =~ "line 120: renderer source implementation"
+    refute fallback_excerpt == text
+
     read = Enum.find(tools, &(&1.name == "read"))
 
     assert {:ok, %ToolResult{} = read_result} =

@@ -2239,8 +2239,7 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp search_hit_kind(kind), do: kind
 
   defp search_hit_text(%{kind: "sourceFile"} = result, query) do
-    result
-    |> Map.get(:match_text, result.text)
+    (Map.get(result, :match_text) || result.text)
     |> source_file_excerpt(query)
   end
 
