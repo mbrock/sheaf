@@ -320,25 +320,54 @@ defmodule Sheaf.TextUnits do
   defp retrieval_context(%Graph{name: nil}, _root), do: %{}
 
   defp retrieval_context(%Graph{} = graph, root) do
-    chunks =
-      graph
-      |> Document.text_chunks(root)
-      |> Enum.reject(&(&1.type == :section))
+    hierarchy = Document.hierarchy_index(graph)
 
-    chunks
-    |> Enum.with_index()
-    |> Map.new(fn {chunk, index} ->
-      previous = chunk_at(chunks, index - 1)
-      following = chunk_at(chunks, index + 1)
+    if Document.kind(graph, root) == :git_repository do
+      source_retrieval_context(graph, hierarchy)
+    else
+      chunks =
+        graph
+        |> Document.text_chunks(root)
+        |> Enum.reject(&(&1.type == :section))
 
-      {chunk.iri,
-       %{
-         "searchText" => chunk.text,
-         "breadcrumbs" => breadcrumb_titles(graph, chunk.iri),
-         "previous" => neighbor(previous),
-         "following" => neighbor(following)
-       }}
+      chunks
+      |> Enum.with_index()
+      |> Map.new(fn {chunk, index} ->
+        previous = chunk_at(chunks, index - 1)
+        following = chunk_at(chunks, index + 1)
+
+        {chunk.iri,
+         %{
+           "searchText" => chunk.text,
+           "breadcrumbs" => breadcrumb_titles(graph, chunk.iri, hierarchy),
+           "previous" => neighbor(previous),
+           "following" => neighbor(following)
+         }}
+      end)
+    end
+  end
+
+  defp source_retrieval_context(graph, hierarchy) do
+    source_file_block_type = RDF.iri(DOC.SourceFileBlock)
+    type_predicate = RDF.type()
+
+    graph
+    |> Graph.triples()
+    |> Enum.flat_map(fn
+      {iri, ^type_predicate, ^source_file_block_type} ->
+        [
+          {iri,
+           %{
+             "breadcrumbs" => breadcrumb_titles(graph, iri, hierarchy),
+             "previous" => nil,
+             "following" => nil
+           }}
+        ]
+
+      _triple ->
+        []
     end)
+    |> Map.new()
   end
 
   defp add_retrieval_context(row, iri, contexts) do
@@ -378,9 +407,9 @@ defmodule Sheaf.TextUnits do
     |> Enum.join("\n")
   end
 
-  defp breadcrumb_titles(graph, iri) do
+  defp breadcrumb_titles(graph, iri, hierarchy) do
     graph
-    |> Document.breadcrumbs(iri)
+    |> Document.breadcrumbs(iri, hierarchy)
     |> Enum.map(& &1.title)
     |> Enum.reject(&(&1 in [nil, ""]))
   end

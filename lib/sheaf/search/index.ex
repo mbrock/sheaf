@@ -7,6 +7,7 @@ defmodule Sheaf.Search.Index do
   """
 
   require Logger
+  require OpenTelemetry.Tracer, as: Tracer
 
   alias Exqlite.Sqlite3
   alias Sheaf.{Embedding, Id}
@@ -121,6 +122,11 @@ defmodule Sheaf.Search.Index do
              conn,
              "CREATE INDEX IF NOT EXISTS search_text_units_kind_idx ON search_text_units(kind)"
            ),
+         :ok <-
+           Sqlite3.execute(
+             conn,
+             "CREATE INDEX IF NOT EXISTS search_text_units_doc_kind_idx ON search_text_units(doc_iri, kind)"
+           ),
          :ok <- ensure_metadata_columns(conn) do
       Sqlite3.execute(conn, search_text_units_fts_sql())
     end
@@ -223,15 +229,18 @@ defmodule Sheaf.Search.Index do
     limit = Keyword.get(opts, :limit, 20)
 
     candidate_limit =
-      Keyword.get(opts, :candidate_limit, max(limit * 10, 500))
+      Keyword.get(opts, :candidate_limit, max(limit * 4, 40))
 
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
     document_id = Keyword.get(opts, :document_id)
     phrase = String.downcase(String.trim(query))
 
-    {where, params} =
+    {conditions, params} =
       fts_expression(query)
       |> add_document_filter(document_id)
+      |> add_kind_filter(kinds)
+
+    where = Enum.join(conditions, " AND ")
 
     sql = """
     SELECT u.iri, u.doc_iri, u.kind, u.text, u.text_hash, u.doc_title, u.source_page,
@@ -246,14 +255,32 @@ defmodule Sheaf.Search.Index do
     LIMIT ?
     """
 
-    with {:ok, rows} <-
-           query(conn, sql, [phrase] ++ params ++ [candidate_limit]) do
-      {:ok,
-       rows
-       |> rows_to_results(search_terms(query), phrase)
-       |> Enum.filter(&(&1.kind in kinds))
-       |> Enum.sort_by(&{-&1.score, &1.iri})
-       |> Enum.take(limit)}
+    Tracer.with_span "Sheaf.Search.Index.search_loaded", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.search.query", query},
+        {"sheaf.search.limit", limit},
+        {"sheaf.search.candidate_limit", candidate_limit},
+        {"sheaf.search.document_id", document_id || ""},
+        {"sheaf.search.kinds", Enum.join(kinds, ",")}
+      ]
+    } do
+      with {:ok, rows} <-
+             query(conn, sql, [phrase] ++ params ++ [candidate_limit]) do
+        results =
+          rows
+          |> rows_to_results(search_terms(query), phrase)
+          |> Enum.filter(&(&1.kind in kinds))
+          |> Enum.sort_by(&{-&1.score, &1.iri})
+          |> Enum.take(limit)
+
+        Tracer.set_attributes([
+          {"sheaf.search.candidate_count", length(rows)},
+          {"sheaf.search.result_count", length(results)}
+        ])
+
+        {:ok, results}
+      end
     end
   end
 
@@ -298,14 +325,24 @@ defmodule Sheaf.Search.Index do
   end
 
   defp add_document_filter({conditions, params}, nil),
-    do: {Enum.join(conditions, " AND "), params}
+    do: {conditions, params}
 
   defp add_document_filter({conditions, params}, ""),
-    do: {Enum.join(conditions, " AND "), params}
+    do: {conditions, params}
 
   defp add_document_filter({conditions, params}, document_id) do
-    {Enum.join(conditions ++ ["u.doc_iri = ?"], " AND "),
+    {conditions ++ ["u.doc_iri = ?"],
      params ++ [document_id |> Id.iri() |> to_string()]}
+  end
+
+  defp add_kind_filter({conditions, params}, []) do
+    {conditions ++ ["1 = 0"], params}
+  end
+
+  defp add_kind_filter({conditions, params}, kinds) do
+    placeholders = kinds |> Enum.map(fn _kind -> "?" end) |> Enum.join(", ")
+
+    {conditions ++ ["u.kind IN (#{placeholders})"], params ++ kinds}
   end
 
   defp fts_expression(query) do

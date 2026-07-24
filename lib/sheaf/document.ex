@@ -168,7 +168,18 @@ defmodule Sheaf.Document do
   sections. When `iri` is a section, that section itself is not included.
   """
   def breadcrumbs(%Graph{} = graph, iri) do
-    parents = parent_index(graph)
+    breadcrumbs(graph, iri, hierarchy_index(graph))
+  end
+
+  @doc """
+  Builds the reusable child-to-parent index for a document hierarchy.
+  """
+  def hierarchy_index(%Graph{} = graph), do: parent_index(graph)
+
+  @doc """
+  Returns breadcrumbs using a previously built hierarchy index.
+  """
+  def breadcrumbs(%Graph{} = graph, iri, parents) when is_map(parents) do
     root = hierarchy_root(RDF.iri(iri), parents)
 
     section_iris =

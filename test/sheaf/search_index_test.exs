@@ -192,6 +192,42 @@ defmodule Sheaf.Search.IndexTest do
     end
   end
 
+  test "kind filtering happens before the FTS candidate limit", %{
+    db_path: db_path
+  } do
+    {:ok, conn} = Index.open(db_path: db_path)
+    doc = Sheaf.Id.iri("DOC1") |> to_string()
+
+    try do
+      assert {:ok, %{count: 2}} =
+               Index.rebuild(conn, [
+                 %{
+                   iri: "https://sheaf.less.rest/AAA-ROW",
+                   doc_iri: doc,
+                   kind: "row",
+                   text: "Shared repair infrastructure"
+                 },
+                 %{
+                   iri: "https://sheaf.less.rest/ZZZ-PARAGRAPH",
+                   doc_iri: doc,
+                   kind: "paragraph",
+                   text: "Shared repair infrastructure"
+                 }
+               ])
+
+      assert {:ok, [hit]} =
+               Index.search_loaded(conn, "repair",
+                 kinds: ["paragraph"],
+                 candidate_limit: 1,
+                 limit: 1
+               )
+
+      assert hit.iri == "https://sheaf.less.rest/ZZZ-PARAGRAPH"
+    after
+      Index.close(conn)
+    end
+  end
+
   test "scores multi-term exact matches by coverage instead of flattening", %{
     db_path: db_path
   } do

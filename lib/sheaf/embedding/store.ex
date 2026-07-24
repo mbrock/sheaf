@@ -8,6 +8,8 @@ defmodule Sheaf.Embedding.Store do
 
   alias Exqlite.Sqlite3
 
+  require OpenTelemetry.Tracer, as: Tracer
+
   @default_path "var/sheaf-embeddings.sqlite3"
   @valid_read_statuses ["completed", "partial"]
 
@@ -436,6 +438,34 @@ defmodule Sheaf.Embedding.Store do
         limit,
         source \\ nil
       ) do
+    Tracer.with_span "Sheaf.Embedding.Store.search_vectors", %{
+      kind: :internal,
+      attributes: [
+        {"sheaf.embedding.model", model},
+        {"sheaf.embedding.dimensions", dimensions},
+        {"sheaf.embedding.candidate_limit", limit},
+        {"sheaf.embedding.source", source || ""}
+      ]
+    } do
+      do_search_vectors(
+        conn,
+        query_values,
+        model,
+        dimensions,
+        limit,
+        source
+      )
+    end
+  end
+
+  defp do_search_vectors(
+         conn,
+         query_values,
+         model,
+         dimensions,
+         limit,
+         source
+       ) do
     with :ok <- ensure_vector_table(conn, dimensions),
          {:ok, count} <- vector_index_count(conn, model, dimensions, source),
          {:ok, _count} <-
@@ -463,15 +493,22 @@ defmodule Sheaf.Embedding.Store do
                source
              ]
            ) do
-      {:ok,
-       Enum.map(rows, fn [iri, run_iri, distance] ->
-         %{
-           iri: iri,
-           run_iri: run_iri,
-           score: 1.0 - distance,
-           distance: distance
-         }
-       end)}
+      results =
+        Enum.map(rows, fn [iri, run_iri, distance] ->
+          %{
+            iri: iri,
+            run_iri: run_iri,
+            score: 1.0 - distance,
+            distance: distance
+          }
+        end)
+
+      Tracer.set_attributes([
+        {"sheaf.embedding.index_count", count},
+        {"sheaf.embedding.candidate_count", length(results)}
+      ])
+
+      {:ok, results}
     end
   end
 

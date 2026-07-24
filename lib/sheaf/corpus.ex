@@ -4,7 +4,7 @@ defmodule Sheaf.Corpus do
   ancestry within a loaded document graph.
   """
 
-  alias RDF.Graph
+  alias RDF.{Description, Graph}
   alias Sheaf.{Document, Documents, Id}
   alias Sheaf.NS.DOC
 
@@ -58,36 +58,33 @@ defmodule Sheaf.Corpus do
       kind: :internal,
       attributes: [{"sheaf.document", to_string(root)}]
     } do
-      with {:ok, graph} <- Sheaf.fetch_graph(root) do
-        if RDF.Data.include?(
-             graph,
-             {root, RDF.type(), RDF.iri(DOC.GitRepository)}
-           ) do
-          load_git_text_graph(root)
-        else
+      case git_text_graph(root) do
+        nil ->
           Tracer.set_attribute("sheaf.graph.kind", "document")
-          {:ok, graph}
-        end
+          Sheaf.fetch_graph(root)
+
+        text_graph ->
+          Tracer.set_attribute("sheaf.graph.kind", "git_source_tree")
+          Tracer.set_attribute("sheaf.git.text_graph", to_string(text_graph))
+          Sheaf.fetch_graph(text_graph)
       end
     end
   end
 
-  defp load_git_text_graph(repository) do
-    case Sheaf.Repo.match_rows(
-           {repository, DOC.hasGitTextGraph(), nil,
-            RDF.iri(Sheaf.Workspace.graph())}
-         ) do
-      {:ok, [{_graph, _subject, _predicate, text_graph} | _]} ->
-        Tracer.set_attribute("sheaf.graph.kind", "git_source_tree")
-        Tracer.set_attribute("sheaf.git.text_graph", to_string(text_graph))
-        Sheaf.fetch_graph(text_graph)
+  defp git_text_graph(repository) do
+    Sheaf.Repo.ask(fn dataset ->
+      dataset
+      |> RDF.Dataset.graph(Sheaf.Workspace.graph())
+      |> case do
+        %Graph{} = workspace ->
+          workspace
+          |> Graph.description(repository)
+          |> Description.first(DOC.hasGitTextGraph())
 
-      {:ok, []} ->
-        Sheaf.fetch_graph(repository)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+        nil ->
+          nil
+      end
+    end)
   end
 
   @doc """

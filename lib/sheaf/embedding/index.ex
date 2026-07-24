@@ -1122,7 +1122,8 @@ defmodule Sheaf.Embedding.Index do
   defp sidecar_descriptions_for_iris([], _opts), do: {:ok, %{}}
 
   defp sidecar_descriptions_for_iris(iris, opts) when is_list(iris) do
-    with {:ok, units} <- Sheaf.Search.Index.units_by_iris(iris, opts),
+    with {:ok, loaded_units} <- Sheaf.Search.Index.units_by_iris(iris, opts),
+         units <- filter_sidecar_units(loaded_units, opts),
          {:ok, documents} <-
            units
            |> Map.values()
@@ -1140,6 +1141,23 @@ defmodule Sheaf.Embedding.Index do
        |> Enum.reject(&is_nil/1)
        |> Map.new(&{&1.iri, &1})}
     end
+  end
+
+  defp filter_sidecar_units(units, opts) do
+    kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
+
+    document_iri =
+      case Keyword.get(opts, :document_id) do
+        document_id when document_id in [nil, ""] -> nil
+        document_id -> document_id |> Sheaf.Id.iri() |> to_string()
+      end
+
+    units
+    |> Enum.filter(fn {_iri, unit} ->
+      unit.kind in kinds and
+        (is_nil(document_iri) or unit.doc_iri == document_iri)
+    end)
+    |> Map.new()
   end
 
   @doc false
@@ -1469,26 +1487,60 @@ defmodule Sheaf.Embedding.Index do
     |> Enum.flat_map(fn {doc_iri, doc_units} ->
       case Sheaf.Corpus.graph_iri(doc_iri) do
         {:ok, %Graph{} = graph} ->
-          chunks =
-            graph
-            |> Document.text_chunks(RDF.iri(doc_iri))
-            |> Enum.reject(&(&1.type == :section))
+          hierarchy = Document.hierarchy_index(graph)
 
-          positions =
-            chunks
-            |> Enum.with_index()
-            |> Map.new(fn {chunk, index} -> {to_string(chunk.iri), index} end)
+          {source_units, document_units} =
+            Enum.split_with(doc_units, &(&1.kind == "sourceFile"))
 
-          Enum.map(doc_units, fn unit ->
-            index = Map.get(positions, unit.iri)
+          source_contexts =
+            Enum.map(source_units, fn unit ->
+              {unit.iri,
+               %{
+                 breadcrumbs:
+                   Document.breadcrumbs(
+                     graph,
+                     RDF.iri(unit.iri),
+                     hierarchy
+                   ),
+                 previous: nil,
+                 following: nil
+               }}
+            end)
 
-            {unit.iri,
-             %{
-               breadcrumbs: Document.breadcrumbs(graph, RDF.iri(unit.iri)),
-               previous: retrieval_neighbor(chunks, index, -1),
-               following: retrieval_neighbor(chunks, index, 1)
-             }}
-          end)
+          document_contexts =
+            if document_units == [] do
+              []
+            else
+              chunks =
+                graph
+                |> Document.text_chunks(RDF.iri(doc_iri))
+                |> Enum.reject(&(&1.type == :section))
+
+              positions =
+                chunks
+                |> Enum.with_index()
+                |> Map.new(fn {chunk, index} ->
+                  {to_string(chunk.iri), index}
+                end)
+
+              Enum.map(document_units, fn unit ->
+                index = Map.get(positions, unit.iri)
+
+                {unit.iri,
+                 %{
+                   breadcrumbs:
+                     Document.breadcrumbs(
+                       graph,
+                       RDF.iri(unit.iri),
+                       hierarchy
+                     ),
+                   previous: retrieval_neighbor(chunks, index, -1),
+                   following: retrieval_neighbor(chunks, index, 1)
+                 }}
+              end)
+            end
+
+          source_contexts ++ document_contexts
 
         _error ->
           Enum.map(doc_units, &{&1.iri, %{breadcrumbs: []}})
@@ -1912,10 +1964,15 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp exact_candidate_limit(limit, opts) do
-    if Keyword.get(opts, :document_kind) in [nil, ""] do
-      max(limit * 4, 60)
-    else
-      max(limit * 20, 500)
+    cond do
+      Keyword.get(opts, :document_id) not in [nil, ""] ->
+        max(limit * 2, 20)
+
+      Keyword.get(opts, :document_kind) in [nil, ""] ->
+        max(limit * 4, 60)
+
+      true ->
+        max(limit * 20, 500)
     end
   end
 
