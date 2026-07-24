@@ -17,9 +17,11 @@ defmodule Sheaf.Embedding.Index do
   @default_batch_size 32
   @default_source "openai-text-embedding-3-large-v1"
   @valid_kinds ~w(paragraph sourceHtml row note gitCommit sourceFile)
-  @default_max_source_file_embedding_bytes 8_000
+  @default_source_file_segment_bytes 8_000
+  @default_source_file_segment_overlap_bytes 512
   @semantic_min_words 20
   @context_variant_fragment "#sheaf-context"
+  @source_file_segment_fragment "#sheaf-embedding-segment-"
 
   @type text_unit :: %{
           required(:iri) => String.t(),
@@ -28,6 +30,8 @@ defmodule Sheaf.Embedding.Index do
           required(:text_hash) => String.t(),
           required(:text_chars) => non_neg_integer(),
           optional(:embedding_input_bytes) => non_neg_integer(),
+          optional(:citation_iri) => String.t(),
+          optional(:embedding_variant) => atom(),
           optional(:doc_iri) => String.t() | nil,
           optional(:doc_title) => String.t() | nil,
           optional(:doc_authors) => [String.t()],
@@ -114,17 +118,10 @@ defmodule Sheaf.Embedding.Index do
 
     source = source(opts)
 
-    plan_opts =
-      opts
-      |> Keyword.merge(model: model, source: source)
-      |> Keyword.put(:include_oversized_source_files, true)
-
-    with {:ok, all_units} <- text_units(plan_opts),
+    with {:ok, units} <-
+           text_units(Keyword.merge(opts, model: model, source: source)),
          {:ok, conn} <- Store.open(opts) do
       try do
-        {units, oversized_source_files} =
-          Enum.split_with(all_units, &embedding_eligible?(&1, opts))
-
         reusable = Store.reusable_hashes(conn, model, dimensions, source)
 
         {missing, skipped} =
@@ -141,7 +138,6 @@ defmodule Sheaf.Embedding.Index do
            reusable_count: length(skipped),
            missing_count: length(missing),
            missing_kinds: Enum.frequencies_by(missing, & &1.kind),
-           oversized_source_file_count: length(oversized_source_files),
            sample: Enum.take(missing, Keyword.get(opts, :sample, 20))
          }}
       after
@@ -182,9 +178,8 @@ defmodule Sheaf.Embedding.Index do
     source = source(opts)
 
     rows
-    |> Enum.flat_map(&units_from_row(&1, model, dimensions, source))
+    |> Enum.flat_map(&units_from_row(&1, model, dimensions, source, opts))
     |> Enum.reject(&(&1.text == ""))
-    |> Enum.filter(&embedding_eligible?(&1, opts))
     |> Enum.sort_by(& &1.iri)
     |> maybe_limit_units(opts)
   end
@@ -800,15 +795,16 @@ defmodule Sheaf.Embedding.Index do
     |> MapSet.new()
   end
 
-  defp units_from_row(row, model, dimensions, source) do
+  defp units_from_row(row, model, dimensions, source, opts) do
     text = row |> Map.fetch!("text") |> term_value()
     search_text = Map.get(row, "searchText") || text
     doc_title = row |> Map.get("docTitle") |> term_value()
     prepared = embedding_document_text(search_text, doc_title, model)
+    kind = row |> Map.fetch!("kind") |> term_value()
 
     unit = %{
       iri: row |> Map.fetch!("iri") |> term_value(),
-      kind: row |> Map.fetch!("kind") |> term_value(),
+      kind: kind,
       text: text,
       embedding_text: search_text,
       embedding_title: doc_title,
@@ -829,7 +825,17 @@ defmodule Sheaf.Embedding.Index do
       following: Map.get(row, "following")
     }
 
-    [unit | contextual_units(unit, row, model, dimensions, source)]
+    if kind == "sourceFile" do
+      source_file_embedding_units(
+        unit,
+        model,
+        dimensions,
+        source,
+        opts
+      )
+    else
+      [unit | contextual_units(unit, row, model, dimensions, source)]
+    end
   end
 
   defp contextual_units(%{kind: kind} = unit, row, model, dimensions, source)
@@ -858,20 +864,157 @@ defmodule Sheaf.Embedding.Index do
 
   defp contextual_units(_unit, _row, _model, _dimensions, _source), do: []
 
-  defp embedding_eligible?(
-         %{kind: "sourceFile", embedding_input_bytes: bytes},
+  defp source_file_embedding_units(
+         unit,
+         model,
+         dimensions,
+         source,
          opts
        ) do
-    Keyword.get(opts, :include_oversized_source_files, false) or
-      bytes <=
-        Keyword.get(
-          opts,
-          :max_source_file_embedding_bytes,
-          @default_max_source_file_embedding_bytes
-        )
+    segments = source_file_segments(unit.text, unit.doc_title, opts)
+
+    case segments do
+      [%{embedding_text: embedding_text, text: text}] ->
+        prepared =
+          embedding_document_text(embedding_text, unit.doc_title, model)
+
+        [
+          %{
+            unit
+            | text: text,
+              embedding_text: embedding_text,
+              text_hash: text_hash(prepared, model, dimensions, source),
+              text_chars: String.length(text),
+              embedding_input_bytes: byte_size(prepared)
+          }
+        ]
+
+      segments ->
+        Enum.map(segments, fn segment ->
+          prepared =
+            embedding_document_text(
+              segment.embedding_text,
+              unit.doc_title,
+              model
+            )
+
+          %{
+            unit
+            | iri: source_file_segment_iri(unit.iri, segment.index),
+              text: segment.text,
+              embedding_text: segment.embedding_text,
+              text_hash: text_hash(prepared, model, dimensions, source),
+              text_chars: String.length(segment.text),
+              embedding_input_bytes: byte_size(prepared),
+              embedding_variant: :segment
+          }
+          |> Map.put(:citation_iri, unit.iri)
+        end)
+    end
   end
 
-  defp embedding_eligible?(_unit, _opts), do: true
+  @doc false
+  def source_file_segments(text, title, opts \\ [])
+      when is_binary(text) do
+    context =
+      case title do
+        title when is_binary(title) and title != "" -> "Path: #{title}\n"
+        _other -> ""
+      end
+
+    max_bytes =
+      Keyword.get(
+        opts,
+        :source_file_segment_bytes,
+        @default_source_file_segment_bytes
+      )
+
+    overlap_bytes =
+      Keyword.get(
+        opts,
+        :source_file_segment_overlap_bytes,
+        @default_source_file_segment_overlap_bytes
+      )
+
+    payload_bytes = max(max_bytes - byte_size(context), 1)
+
+    text
+    |> split_utf8_segments(
+      payload_bytes,
+      min(overlap_bytes, payload_bytes - 1)
+    )
+    |> Enum.with_index()
+    |> Enum.map(fn {segment, index} ->
+      %{index: index, text: segment, embedding_text: context <> segment}
+    end)
+  end
+
+  defp split_utf8_segments(text, max_bytes, _overlap_bytes)
+       when byte_size(text) <= max_bytes,
+       do: [text]
+
+  defp split_utf8_segments(text, max_bytes, overlap_bytes) do
+    {segment, rest} = take_utf8_segment(text, max_bytes)
+    overlap = utf8_suffix(segment, overlap_bytes)
+    [segment | split_utf8_segments(overlap <> rest, max_bytes, overlap_bytes)]
+  end
+
+  defp take_utf8_segment(text, max_bytes) do
+    prefix =
+      case valid_utf8_prefix(text, max_bytes) do
+        "" ->
+          <<codepoint::utf8, _rest::binary>> = text
+          <<codepoint::utf8>>
+
+        prefix ->
+          prefix
+      end
+
+    split_at =
+      prefix
+      |> :binary.matches("\n")
+      |> List.last()
+      |> case do
+        {position, length} when position >= div(byte_size(prefix), 2) ->
+          position + length
+
+        _other ->
+          byte_size(prefix)
+      end
+
+    {
+      binary_part(text, 0, split_at),
+      binary_part(text, split_at, byte_size(text) - split_at)
+    }
+  end
+
+  defp valid_utf8_prefix(text, max_bytes) do
+    size = min(byte_size(text), max_bytes)
+    do_valid_utf8_prefix(text, size)
+  end
+
+  defp do_valid_utf8_prefix(text, size) do
+    prefix = binary_part(text, 0, size)
+
+    if String.valid?(prefix),
+      do: prefix,
+      else: do_valid_utf8_prefix(text, size - 1)
+  end
+
+  defp utf8_suffix(_text, bytes) when bytes <= 0, do: ""
+
+  defp utf8_suffix(text, bytes) do
+    start = max(byte_size(text) - bytes, 0)
+    do_utf8_suffix(text, start)
+  end
+
+  defp do_utf8_suffix(text, start) do
+    suffix = binary_part(text, start, byte_size(text) - start)
+
+    if String.valid?(suffix),
+      do: suffix,
+      else: do_utf8_suffix(text, start + 1)
+  end
 
   defp contextual_embedding_text(unit, row) do
     [
@@ -897,22 +1040,55 @@ defmodule Sheaf.Embedding.Index do
   defp context_variant_iri(iri), do: iri <> @context_variant_fragment
 
   defp citation_iri(iri) do
-    String.replace_suffix(iri, @context_variant_fragment, "")
+    cond do
+      String.ends_with?(iri, @context_variant_fragment) ->
+        String.replace_suffix(iri, @context_variant_fragment, "")
+
+      source_file_segment_index(iri) != nil ->
+        Regex.replace(
+          ~r/#{Regex.escape(@source_file_segment_fragment)}\d+$/,
+          iri,
+          "#content"
+        )
+
+      true ->
+        iri
+    end
   end
 
   defp embedding_variant(iri) do
-    if String.ends_with?(iri, @context_variant_fragment),
-      do: :context,
-      else: :precise
+    cond do
+      String.ends_with?(iri, @context_variant_fragment) -> :context
+      source_file_segment_index(iri) != nil -> :segment
+      true -> :precise
+    end
   end
 
   defp embedding_variant_allowed?(iri, opts) do
     allowed =
       opts
-      |> Keyword.get(:embedding_variants, [:precise, :context])
+      |> Keyword.get(:embedding_variants, [:precise, :context, :segment])
       |> List.wrap()
 
     embedding_variant(iri) in allowed
+  end
+
+  defp source_file_segment_iri(iri, index) do
+    base = String.replace_suffix(iri, "#content", "")
+
+    base <>
+      @source_file_segment_fragment <>
+      (index |> Integer.to_string() |> String.pad_leading(4, "0"))
+  end
+
+  defp source_file_segment_index(iri) do
+    case Regex.run(
+           ~r/#{Regex.escape(@source_file_segment_fragment)}(\d+)$/,
+           iri
+         ) do
+      [_whole, index] -> String.to_integer(index)
+      _other -> nil
+    end
   end
 
   @doc false
@@ -1211,7 +1387,8 @@ defmodule Sheaf.Embedding.Index do
                 match: :semantic,
                 run_iri: ranked.run_iri,
                 embedding_variant: embedding_variant(ranked.iri),
-                embedding_iri: ranked.iri
+                embedding_iri: ranked.iri,
+                match_text: semantic_match_text(unit, ranked.iri, opts)
               })
               |> searchable_result(opts)
           end
@@ -1359,6 +1536,24 @@ defmodule Sheaf.Embedding.Index do
     do: word_count(text) >= @semantic_min_words
 
   defp semantic_content_allowed?(_result), do: true
+
+  defp semantic_match_text(%{kind: "sourceFile"} = unit, embedding_iri, opts) do
+    case source_file_segment_index(embedding_iri) do
+      nil ->
+        nil
+
+      index ->
+        unit.text
+        |> source_file_segments(unit.doc_title, opts)
+        |> Enum.at(index)
+        |> case do
+          %{text: text} -> text
+          _other -> nil
+        end
+    end
+  end
+
+  defp semantic_match_text(_unit, _embedding_iri, _opts), do: nil
 
   defp kind_allowed?(result, opts) do
     result.kind in (opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap())

@@ -220,7 +220,8 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              "paragraph",
              "sourceHtml",
              "row",
-             "note"
+             "note",
+             "sourceFile"
            ]
 
     assert Keyword.get(opts, :exact_limit) == 0
@@ -234,7 +235,8 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              "paragraph",
              "sourceHtml",
              "row",
-             "note"
+             "note",
+             "sourceFile"
            ]
 
     assert exact_hit == %ToolResults.SearchHit{
@@ -814,7 +816,7 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              type: {:list, :string},
              required: true,
              doc:
-               "Sheaf resource ids to read, without leading #. Supports document roots, document blocks, and research notes."
+               "Sheaf resource handles to read. Use ids without leading # for ordinary documents and blocks; use the complete IRI for a source-file #content block."
            ] = tool.parameter_schema[:blocks]
 
     assert [
@@ -872,6 +874,98 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
 
     assert tool_text(result) =~
              "String figures ask Sheaf to carry citation with care."
+  end
+
+  test "source-file search is compact and its content IRI is readable" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-corpus-tools-source-file-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    start_supervised!({Sheaf.Repo, path: path})
+
+    source_file = RDF.iri("https://sheaf.less.rest/REPO/source-files/abc")
+    block = RDF.iri(to_string(source_file) <> "#content")
+
+    text =
+      Enum.map_join(1..200, "\n", fn line ->
+        "line #{line}: renderer source implementation"
+      end)
+
+    assert :ok =
+             Sheaf.Repo.assert(
+               RDF.Graph.new(
+                 [
+                   {source_file, RDF.type(), DOC.GitSourceFile},
+                   {source_file, DOC.sourcePath(), "src/renderer.cc"},
+                   {source_file, DOC.hasSourceFileBlock(), block},
+                   {block, RDF.type(), DOC.SourceFileBlock},
+                   {block, DOC.inSourceFile(), source_file},
+                   {block, DOC.text(), text}
+                 ],
+                 name: RDF.iri("https://sheaf.less.rest/REPO/text")
+               )
+             )
+
+    result_shape = %{
+      iri: to_string(block),
+      doc_iri: to_string(source_file),
+      doc_title: "src/renderer.cc",
+      kind: "sourceFile",
+      text: text,
+      match_text: "line 120: renderer source implementation",
+      source_page: nil,
+      match: :semantic,
+      score: 0.91
+    }
+
+    tools =
+      CorpusTools.tools(
+        include_notes?: false,
+        exact_search: fn _query, _opts -> {:ok, []} end,
+        search: fn _query, _opts -> {:ok, [result_shape]} end
+      )
+
+    search = Enum.find(tools, &(&1.name == "search_text"))
+
+    assert {:ok, %ToolResult{} = search_result} =
+             Tool.execute(search, %{"query" => "renderer"})
+
+    assert %ToolResults.SearchResults{
+             approximate_results: [
+               %ToolResults.SearchHit{
+                 kind: :sourceFile,
+                 resource_iri: resource_iri,
+                 byte_size: byte_size,
+                 line_count: 200,
+                 text: excerpt
+               }
+             ]
+           } = sheaf_result(search_result)
+
+    assert resource_iri == to_string(block)
+    assert byte_size == byte_size(text)
+    assert excerpt == "line 120: renderer source implementation"
+    refute tool_text(search_result) =~ text
+    assert tool_text(search_result) =~ "Size: #{byte_size} bytes, 200 lines"
+    assert tool_text(search_result) =~ ~s(read blocks=["#{block}"])
+
+    read = Enum.find(tools, &(&1.name == "read"))
+
+    assert {:ok, %ToolResult{} = read_result} =
+             Tool.execute(read, %{"blocks" => [to_string(block)]})
+
+    assert %ToolResults.Block{
+             type: :source_file,
+             resource_iri: ^resource_iri,
+             title: "src/renderer.cc",
+             byte_size: ^byte_size,
+             line_count: 200,
+             text: ^text
+           } = sheaf_result(read_result)
+
+    assert tool_text(read_result) =~ text
   end
 
   test "list_notes returns persisted notes newest first with mentions" do

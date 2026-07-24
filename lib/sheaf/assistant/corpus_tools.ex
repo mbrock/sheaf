@@ -36,7 +36,7 @@ defmodule Sheaf.Assistant.CorpusTools do
 
   @search_result_limit 10
   @spreadsheet_list_limit 50
-  @default_search_kinds ~w(paragraph sourceHtml row note)
+  @default_search_kinds ~w(paragraph sourceHtml row note sourceFile)
 
   @doc """
   Builds the tool list used by corpus assistant conversations.
@@ -145,8 +145,8 @@ defmodule Sheaf.Assistant.CorpusTools do
       Tool.new!(
         name: "read",
         description:
-          "Read one or more Sheaf resources by id. Pass blocks as a list of 6-character ids. " <>
-            "IDs may be document roots, document blocks, or research notes. Blocks may come from different documents; their documents are resolved automatically. " <>
+          "Read one or more Sheaf resources by id or IRI. Pass blocks as a list. " <>
+            "Handles may be 6-character document, block, or research-note ids, or complete source-file #content IRIs returned by search_text. Blocks may come from different documents; their documents are resolved automatically. " <>
             "By default sections and documents are returned collapsed with child handles. " <>
             "Set expand=true to read the full descendant contents of sections or whole documents. " <>
             "Expanded output still tags every section, paragraph, excerpt, and row with its block id.",
@@ -155,7 +155,7 @@ defmodule Sheaf.Assistant.CorpusTools do
             type: {:list, :string},
             required: true,
             doc:
-              "Sheaf resource ids to read, without leading #. Supports document roots, document blocks, and research notes."
+              "Sheaf resource handles to read. Use ids without leading # for ordinary documents and blocks; use the complete IRI for a source-file #content block."
           ],
           expand: [
             type: :boolean,
@@ -175,12 +175,12 @@ defmodule Sheaf.Assistant.CorpusTools do
       Tool.new!(
         name: "search_text",
         description:
-          "Hybrid exact and semantic search over paragraph, extracted-block, and RDF row " <>
-            "text. Searches the RDF document corpus; pass document_id to scope to one " <>
+          "Hybrid exact and semantic search over paragraphs, extracted blocks, RDF rows, notes, and synchronized source files. " <>
+            "Source-file hits return a bounded match excerpt, byte and line counts, and a complete #content IRI that can be passed to read. Searches the RDF corpus; pass document_id to scope to one " <>
             "document or document_kind to scope to a document type such as thesis, literature, " <>
             "spreadsheet, transcript, or document. " <>
             "Exact text matches contribute to ranking alongside embedding similarity. " <>
-            "Returns hits with their document id, block id, kind, and full text.",
+            "Ordinary document hits include their text; source-file hits never dump the complete file.",
         parameter_schema: [
           query: [
             type: :string,
@@ -1562,10 +1562,12 @@ defmodule Sheaf.Assistant.CorpusTools do
              search.(query, Keyword.put(opts, :exact_limit, 0)) do
         %ToolResults.SearchResults{
           exact_results:
-            exact_results |> Enum.map(&search_hit/1) |> add_search_contexts(),
+            exact_results
+            |> Enum.map(&search_hit(&1, query))
+            |> add_search_contexts(),
           approximate_results:
             approximate_results
-            |> Enum.map(&search_hit/1)
+            |> Enum.map(&search_hit(&1, query))
             |> add_search_contexts()
         }
         |> rendered_result()
@@ -2204,15 +2206,25 @@ defmodule Sheaf.Assistant.CorpusTools do
     }
   end
 
-  defp search_hit(result) do
+  defp search_hit(result, query) do
+    source_file? = result.kind == "sourceFile"
+
     %ToolResults.SearchHit{
-      document_id: result.doc_iri && Id.id_from_iri(result.doc_iri),
+      document_id:
+        if(source_file?,
+          do: result.doc_iri,
+          else: result.doc_iri && Id.id_from_iri(result.doc_iri)
+        ),
       document_title: result.doc_title,
       document_authors: Map.get(result, :doc_authors, []),
       document_status: Map.get(result, :doc_status),
-      block_id: Id.id_from_iri(result.iri),
+      block_id:
+        if(source_file?, do: result.iri, else: Id.id_from_iri(result.iri)),
+      resource_iri: if(source_file?, do: result.iri),
       kind: search_hit_kind(result.kind),
-      text: search_hit_text(result),
+      text: search_hit_text(result, query),
+      byte_size: if(source_file?, do: byte_size(result.text)),
+      line_count: if(source_file?, do: text_line_count(result.text)),
       source_page: result.source_page,
       match: result.match,
       score: result.score
@@ -2226,10 +2238,45 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp search_hit_kind(kind) when is_binary(kind), do: String.to_atom(kind)
   defp search_hit_kind(kind), do: kind
 
-  defp search_hit_text(%{kind: "sourceHtml", text: text}),
+  defp search_hit_text(%{kind: "sourceFile"} = result, query) do
+    result
+    |> Map.get(:match_text, result.text)
+    |> source_file_excerpt(query)
+  end
+
+  defp search_hit_text(%{kind: "sourceHtml", text: text}, _query),
     do: plain_text(text)
 
-  defp search_hit_text(%{text: text}), do: normalize_text(text)
+  defp search_hit_text(%{text: text}, _query), do: normalize_text(text)
+
+  defp source_file_excerpt(text, query) do
+    text = normalize_text(text)
+    query = query |> to_string() |> String.trim() |> String.downcase()
+    radius = 600
+
+    case query == "" || :binary.match(String.downcase(text), query) do
+      true ->
+        String.slice(text, 0, radius * 2)
+
+      {index, length} ->
+        lower = String.downcase(text)
+        match_start = lower |> binary_part(0, index) |> String.length()
+
+        match_length =
+          lower
+          |> binary_part(index, length)
+          |> String.length()
+
+        start = max(match_start - radius, 0)
+        finish = min(match_start + match_length + radius, String.length(text))
+        prefix = if start > 0, do: "... ", else: ""
+        suffix = if finish < String.length(text), do: " ...", else: ""
+        prefix <> String.slice(text, start, finish - start) <> suffix
+
+      :nomatch ->
+        String.slice(text, 0, radius * 2)
+    end
+  end
 
   defp maybe_add_search_coding(hit, %{kind: "row"} = result) do
     Map.put(hit, :coding, %ToolResults.Coding{
@@ -2355,13 +2402,78 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp read_block(block_id, expanded?) do
-    case ResourceResolver.resolve(block_id) do
-      {:ok, %{kind: :research_note, id: note_id}} ->
-        read_note(note_id)
+    if absolute_iri?(block_id) do
+      read_source_file_block(block_id)
+    else
+      case ResourceResolver.resolve(block_id) do
+        {:ok, %{kind: :research_note, id: note_id}} ->
+          read_note(note_id)
+
+        _other ->
+          read_document_block(block_id, expanded?)
+      end
+    end
+  end
+
+  defp read_source_file_block(block_iri) do
+    block = RDF.iri(block_iri)
+
+    with {:ok, source_files} <-
+           Sheaf.Repo.match_rows({block, DOC.inSourceFile(), nil, nil}),
+         source_file when not is_nil(source_file) <-
+           first_row_object(source_files),
+         {:ok, texts} <- Sheaf.Repo.match_rows({block, DOC.text(), nil, nil}),
+         text when is_binary(text) <- first_row_value(texts),
+         {:ok, paths} <-
+           Sheaf.Repo.match_rows({source_file, DOC.sourcePath(), nil, nil}) do
+      path = first_row_value(paths) || to_string(source_file)
+
+      {:ok,
+       %ToolResults.Block{
+         document_id: to_string(source_file),
+         id: block_iri,
+         resource_iri: block_iri,
+         type: :source_file,
+         kind: :source_file,
+         title: path,
+         text: text,
+         byte_size: byte_size(text),
+         line_count: text_line_count(text)
+       }}
+    else
+      nil -> {:error, {:not_found, block_iri}}
+      {:error, reason} -> {:error, {reason, block_iri}}
+    end
+  end
+
+  defp absolute_iri?(value) do
+    case URI.parse(value) do
+      %URI{scheme: scheme, host: host}
+      when scheme in ["http", "https"] and is_binary(host) ->
+        true
 
       _other ->
-        read_document_block(block_id, expanded?)
+        false
     end
+  end
+
+  defp first_row_object([{_graph, _subject, _predicate, object} | _]),
+    do: object
+
+  defp first_row_object(_rows), do: nil
+
+  defp first_row_value(rows) do
+    case first_row_object(rows) do
+      nil -> nil
+      term -> term |> RDF.Term.value() |> to_string()
+    end
+  end
+
+  defp text_line_count(""), do: 0
+
+  defp text_line_count(text) do
+    length(:binary.matches(text, "\n")) +
+      if(String.ends_with?(text, "\n"), do: 0, else: 1)
   end
 
   defp read_document_block(block_id, expanded?) do

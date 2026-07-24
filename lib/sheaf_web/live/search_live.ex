@@ -236,7 +236,12 @@ defmodule SheafWeb.SearchLive do
 
   defp context_label(%{kind: "note"}), do: "note"
   defp context_label(%{kind: "gitCommit"}), do: "commit"
-  defp context_label(%{kind: "sourceFile"}), do: "source"
+
+  defp context_label(%{kind: "sourceFile", text: text}) do
+    ["source", format_byte_size(byte_size(text)), format_line_count(text)]
+    |> Enum.join(" · ")
+  end
+
   defp context_label(_result), do: nil
 
   defp row_label(nil), do: nil
@@ -244,6 +249,25 @@ defmodule SheafWeb.SearchLive do
 
   defp score_percent(score) when is_float(score), do: "#{round(score * 100)}%"
   defp score_percent(_score), do: ""
+
+  defp format_byte_size(bytes) when bytes < 1_000, do: "#{bytes} B"
+
+  defp format_byte_size(bytes),
+    do: "#{Float.round(bytes / 1_000, 1)} KB"
+
+  defp format_line_count(text) do
+    count =
+      case text do
+        "" ->
+          0
+
+        text ->
+          length(:binary.matches(text, "\n")) +
+            if(String.ends_with?(text, "\n"), do: 0, else: 1)
+      end
+
+    "#{count} #{if(count == 1, do: "line", else: "lines")}"
+  end
 
   defp authors_line(%{doc_authors: authors})
        when is_list(authors) and authors != [] do

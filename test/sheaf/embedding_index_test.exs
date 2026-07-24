@@ -96,28 +96,52 @@ defmodule Sheaf.Embedding.IndexTest do
     refute Enum.any?(units, &(&1.iri == to_string(paragraph)))
   end
 
-  test "never truncates or chunks oversized source-file embeddings" do
+  test "segments large source files into private vectors with one citation" do
+    text =
+      "first line with renderer setup\n" <>
+        "middle line with terrain details\n" <>
+        "last line with presentation code\n"
+
     row = %{
       "iri" => RDF.iri("https://sheaf.less.rest/SOURCE#content"),
       "kind" => RDF.literal("sourceFile"),
-      "text" => RDF.literal("complete source text"),
-      "searchText" => "Path: src/large.cc\ncomplete source text",
+      "text" => RDF.literal(text),
+      "searchText" => "Path: src/large.cc\n" <> text,
       "doc" => RDF.iri("https://sheaf.less.rest/SOURCE"),
       "docTitle" => RDF.literal("src/large.cc")
     }
 
-    assert [] =
-             Index.units_from_rows([row],
-               model: "text-embedding-3-large",
-               max_source_file_embedding_bytes: 20
+    units =
+      Index.units_from_rows([row],
+        model: "text-embedding-3-large",
+        source_file_segment_bytes: 48,
+        source_file_segment_overlap_bytes: 8
+      )
+
+    assert length(units) > 1
+    assert Enum.all?(units, &(&1.kind == "sourceFile"))
+    assert Enum.all?(units, &(&1.embedding_variant == :segment))
+
+    assert Enum.all?(
+             units,
+             &(&1.citation_iri ==
+                 "https://sheaf.less.rest/SOURCE#content")
+           )
+
+    assert Enum.all?(
+             units,
+             &(byte_size(&1.embedding_text) <= 48)
+           )
+
+    assert Enum.map(units, & &1.iri) ==
+             Enum.map(
+               0..(length(units) - 1),
+               &("https://sheaf.less.rest/SOURCE#sheaf-embedding-segment-" <>
+                   String.pad_leading(Integer.to_string(&1), 4, "0"))
              )
 
-    assert [%{text: "complete source text", kind: "sourceFile"}] =
-             Index.units_from_rows([row],
-               model: "text-embedding-3-large",
-               max_source_file_embedding_bytes: 20,
-               include_oversized_source_files: true
-             )
+    assert List.first(units).text =~ "first line"
+    assert Enum.any?(units, &String.contains?(&1.text, "last line"))
   end
 
   test "builds precise and contextual vectors for a stable citation IRI" do

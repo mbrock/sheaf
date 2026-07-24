@@ -78,15 +78,18 @@ document and file resources continue to describe the literature itself.
 Git commits and complete source-file blocks are exposed by `Sheaf.TextUnits` as
 the `gitCommit` and `sourceFile` kinds, so the existing SQLite full-text and
 embedding pipelines can consume them without a second indexing architecture.
-Each accepted file contributes one search row and one embedding input. Commit
-author and time, and source path and inferred language, are included in
+Each accepted file contributes one full-text search row. A file that does not
+fit in one embedding request is divided into overlapping, bounded segments only
+inside the derived vector index. Those segment identities are not RDF
+resources: all segment matches hydrate and deduplicate to the file's single
+`#content` block. Commit author and time, and the source path, are included in
 embedding context. Stable citation targets are commit IRIs and source-file
 `#content` block IRIs.
 
-Embedding input is never truncated or secretly divided. A source file whose
-complete prepared input exceeds the conservative 8,000-byte embedding limit
-remains available in RDF and full-text search but is omitted from semantic
-indexing. The embedding plan reports the number of such files.
+Search results show a bounded matching excerpt plus the file's byte and line
+counts. Agents can pass the returned complete `#content` IRI to the ordinary
+`read` tool to retrieve the full file. The full content is therefore available
+without being copied wholesale into every search result.
 
 The usual commands work for only repository text:
 

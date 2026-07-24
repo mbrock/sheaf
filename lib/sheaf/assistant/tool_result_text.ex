@@ -181,6 +181,18 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
+  def to_text(%Block{type: :source_file} = block) do
+    """
+    SOURCE FILE
+    Path: #{block.title}
+    Resource: #{block.resource_iri}
+    Size: #{block.byte_size} bytes, #{block.line_count} lines
+
+    #{block.text}
+    """
+    |> String.trim()
+  end
+
   def to_text(%Blocks{expanded?: true, blocks: blocks}) do
     blocks
     |> Enum.map(&expanded_block_text/1)
@@ -581,6 +593,23 @@ defmodule Sheaf.Assistant.ToolResultText do
     #{lines}
     """
     |> String.trim()
+  end
+
+  defp search_hit_lines(%SearchHit{kind: :sourceFile} = hit, index, mode) do
+    score = if mode == :approximate, do: score(hit.score), else: nil
+    label = if mode == :exact, do: "Matching excerpt", else: "Related excerpt"
+
+    [
+      "#{index}. Source file: #{hit.document_title}",
+      "   Resource: #{hit.resource_iri}",
+      "   Size: #{hit.byte_size} bytes, #{hit.line_count} lines",
+      line(score, 1),
+      "   #{label}:",
+      indent_text(hit.text, 3),
+      "   Read the complete file with read blocks=[\"#{hit.resource_iri}\"]"
+    ]
+    |> Enum.reject(&blank?/1)
+    |> Enum.join("\n")
   end
 
   defp search_hit_lines(%SearchHit{} = hit, index, mode) do
