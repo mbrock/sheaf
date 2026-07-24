@@ -414,6 +414,62 @@ defmodule QuadlogTest do
     refute RDF.Data.include?(Quadlog.dataset(log), triple)
   end
 
+  @tag :tmp_dir
+  test "transaction changes preserve replacement order for shared statements",
+       %{tmp_dir: tmp_dir} do
+    path = Path.join(tmp_dir, "quadlog.sqlite3")
+    graph_name = ~I<https://example.com/replaced>
+    subject = ~I<https://example.com/subject>
+    predicate = ~I<https://example.com/predicate>
+    shared = {subject, predicate, "shared"}
+    removed = {subject, predicate, "removed"}
+    added = {subject, predicate, "added"}
+
+    old_graph = RDF.Graph.new([shared, removed], name: graph_name)
+    new_graph = RDF.Graph.new([shared, added], name: graph_name)
+
+    {:ok, log} = Quadlog.start_link(path)
+    assert :ok = Quadlog.assert(log, "initial", old_graph)
+
+    assert :ok =
+             Quadlog.transact(log, "replace", [
+               {:retract, old_graph},
+               {:assert, new_graph}
+             ])
+
+    graph = RDF.Dataset.graph(Quadlog.dataset(log), graph_name)
+    assert RDF.Data.include?(graph, shared)
+    assert RDF.Data.include?(graph, added)
+    refute RDF.Data.include?(graph, removed)
+  end
+
+  @tag :tmp_dir
+  test "writes document-sized graphs without hitting the old call timeout", %{
+    tmp_dir: tmp_dir
+  } do
+    path = Path.join(tmp_dir, "quadlog.sqlite3")
+    graph_name = ~I<https://example.com/large-document>
+    predicate = ~I<https://example.com/text>
+
+    graph =
+      1..15_000
+      |> Enum.map(fn index ->
+        {RDF.iri("https://example.com/block/#{index}"), predicate,
+         RDF.literal("block #{index}")}
+      end)
+      |> RDF.Graph.new(name: graph_name)
+
+    {:ok, log} = Quadlog.start_link(path)
+
+    {elapsed_us, result} =
+      :timer.tc(fn -> Quadlog.assert(log, "large-document", graph) end)
+
+    assert :ok = result
+    assert elapsed_us < 5_000_000
+    assert 15_000 == sqlite_scalar(path, "SELECT COUNT(*) FROM quads")
+    assert 15_000 == sqlite_scalar(path, "SELECT COUNT(*) FROM changes")
+  end
+
   defp sqlite_scalar(path, sql) do
     {:ok, conn} = Exqlite.start_link(database: path)
     {:ok, %{rows: [[value]]}} = Exqlite.query(conn, sql)

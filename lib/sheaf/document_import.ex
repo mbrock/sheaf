@@ -127,10 +127,26 @@ defmodule Sheaf.DocumentImport do
 
   def import_run(%{"run_id" => run_id}) do
     with {:ok, job} <- DatalabJobs.get_job(run_iri(run_id)),
-         {:ok, imported_sources} <- imported_source_files() do
-      results =
-        Enum.map(job.file_jobs, fn file_job ->
-          import_file_job(file_job, imported_sources)
+         {:ok, imported_sources} <- imported_source_documents() do
+      {results, _imported_sources} =
+        Enum.map_reduce(job.file_jobs, imported_sources, fn file_job,
+                                                            imported_sources ->
+          result = import_file_job(file_job, imported_sources)
+
+          imported_sources =
+            case result do
+              %{document_iri: document_iri} ->
+                Map.put(
+                  imported_sources,
+                  file_job.source_file,
+                  RDF.iri(document_iri)
+                )
+
+              _other ->
+                imported_sources
+            end
+
+          {result, imported_sources}
         end)
 
       errors = Enum.filter(results, &Map.has_key?(&1, :error))
@@ -414,8 +430,13 @@ defmodule Sheaf.DocumentImport do
 
   defp import_file_job(file_job, imported_sources) do
     cond do
-      MapSet.member?(imported_sources, file_job.source_file) ->
-        %{file_id: source_id(file_job), status: "already_imported"}
+      document = Map.get(imported_sources, file_job.source_file) ->
+        %{
+          file_id: source_id(file_job),
+          status: "already_imported",
+          document_id: Sheaf.Id.id_from_iri(document),
+          document_iri: to_string(document)
+        }
 
       not DatalabJobs.completed?(file_job) ->
         %{file_id: source_id(file_job), error: "extraction_not_completed"}
@@ -450,11 +471,13 @@ defmodule Sheaf.DocumentImport do
 
   defp quality_report(_path), do: nil
 
-  defp imported_source_files do
+  defp imported_source_documents do
     with {:ok, rows} <-
            Sheaf.Repo.match_rows({nil, DOC.sourceFile(), nil, nil}) do
       {:ok,
-       rows |> Enum.map(fn {_g, _s, _p, file} -> file end) |> MapSet.new()}
+       Map.new(rows, fn {_graph, document, _predicate, file} ->
+         {file, document}
+       end)}
     end
   end
 

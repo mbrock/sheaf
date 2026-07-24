@@ -38,7 +38,12 @@ defmodule Quadlog do
   def retract(pid, tx, graph), do: transact(pid, tx, [{:retract, graph}])
 
   def transact(pid, tx, changes),
-    do: GenServer.call(pid, {:transact, :otel_ctx.get_current(), tx, changes})
+    do:
+      GenServer.call(
+        pid,
+        {:transact, :otel_ctx.get_current(), tx, changes},
+        :infinity
+      )
 
   def stream_nquads(path, pattern, emit, opts \\ [])
       when is_function(emit, 1) do
@@ -179,8 +184,9 @@ defmodule Quadlog do
     case Exqlite.transaction(
            state.conn,
            fn conn ->
-             with :ok <- insert_rows(conn, rows),
-                  do: apply_quad_rows(conn, rows)
+             with {:ok, term_ids} <- intern_row_terms(conn, rows),
+                  :ok <- insert_rows(conn, rows),
+                  do: apply_quad_rows(conn, rows, term_ids)
            end,
            timeout: :infinity
          ) do
@@ -654,66 +660,261 @@ defmodule Quadlog do
   end
 
   defp insert_rows(conn, rows) do
-    Enum.reduce_while(rows, :ok, fn row, :ok ->
-      case insert_row(conn, row) do
-        :ok -> {:cont, :ok}
-        error -> {:halt, error}
-      end
-    end)
-  end
-
-  defp insert_row(conn, row) do
-    execute(
+    insert_many(
       conn,
       """
       INSERT INTO changes
         (tx, polarity, graph_iri, subject_iri, subject_bnode, predicate_iri,
          object_iri, object_bnode, object_text, object_datatype, object_lang)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """,
-      row
+      rows,
+      11
     )
   end
 
-  defp apply_quad_rows(conn, rows) do
-    Enum.reduce_while(rows, :ok, fn row, :ok ->
-      case apply_quad_row(conn, row) do
+  defp apply_quad_rows(conn, rows, term_ids) do
+    rows
+    |> Enum.map(&quad_id_row(&1, term_ids))
+    |> Enum.chunk_by(&elem(&1, 0))
+    |> Enum.reduce_while(:ok, fn [{polarity, _ids} | _] = chunk, :ok ->
+      ids = Enum.map(chunk, &elem(&1, 1))
+
+      result =
+        case polarity do
+          1 ->
+            insert_many(
+              conn,
+              "INSERT OR IGNORE INTO quads (graph_id, subject_id, predicate_id, object_id)",
+              ids,
+              4
+            )
+
+          -1 ->
+            delete_quads(conn, ids)
+        end
+
+      case result do
         :ok -> {:cont, :ok}
         error -> {:halt, error}
       end
     end)
   end
 
-  defp apply_quad_row(conn, row) do
+  defp quad_id_row(row, term_ids) do
     {polarity, graph, subject, predicate, object} = row_quad(row)
 
-    with {:ok, graph_id} <- term_id(conn, graph),
-         {:ok, subject_id} <- term_id(conn, subject),
-         {:ok, predicate_id} <- term_id(conn, predicate),
-         {:ok, object_id} <- term_id(conn, object) do
-      case polarity do
-        1 ->
-          execute(
-            conn,
-            """
-            INSERT OR IGNORE INTO quads
-              (graph_id, subject_id, predicate_id, object_id)
-            VALUES (?, ?, ?, ?)
-            """,
-            [graph_id, subject_id, predicate_id, object_id]
-          )
+    {polarity,
+     [
+       term_id!(term_ids, graph),
+       term_id!(term_ids, subject),
+       term_id!(term_ids, predicate),
+       term_id!(term_ids, object)
+     ]}
+  end
 
-        -1 ->
-          execute(
-            conn,
-            """
-            DELETE FROM quads
-            WHERE graph_id = ? AND subject_id = ? AND predicate_id = ? AND object_id = ?
-            """,
-            [graph_id, subject_id, predicate_id, object_id]
-          )
-      end
+  defp intern_row_terms(conn, rows) do
+    terms =
+      rows
+      |> Enum.flat_map(fn row ->
+        {_polarity, graph, subject, predicate, object} = row_quad(row)
+        [graph, subject, predicate, object]
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq_by(&term_key/1)
+
+    {literal_terms, simple_terms} =
+      Enum.split_with(terms, &match?(%RDF.Literal{}, &1))
+
+    datatype_terms =
+      literal_terms
+      |> Enum.map(&RDF.Literal.datatype_id/1)
+      |> Enum.reject(&is_nil/1)
+
+    simple_terms =
+      (simple_terms ++ datatype_terms)
+      |> Enum.uniq_by(&term_key/1)
+
+    with :ok <- insert_simple_terms(conn, simple_terms),
+         {:ok, simple_ids} <- select_simple_term_ids(conn, simple_terms),
+         :ok <- insert_literal_terms(conn, literal_terms, simple_ids),
+         {:ok, literal_ids} <-
+           select_literal_term_ids(conn, literal_terms, simple_ids) do
+      {:ok, Map.merge(simple_ids, literal_ids)}
     end
+  end
+
+  defp insert_simple_terms(conn, terms) do
+    rows =
+      Enum.map(terms, fn
+        %RDF.IRI{} = term -> ["iri", value(term), nil, nil]
+        %RDF.BlankNode{} = term -> ["bnode", value(term), nil, nil]
+      end)
+
+    insert_many(
+      conn,
+      "INSERT OR IGNORE INTO terms (kind, value, datatype_id, lang)",
+      rows,
+      4
+    )
+  end
+
+  defp select_simple_term_ids(conn, terms) do
+    terms
+    |> Enum.chunk_every(400)
+    |> Enum.reduce_while({:ok, %{}}, fn chunk, {:ok, ids} ->
+      clauses =
+        Enum.map_join(chunk, " OR ", fn _ -> "(kind = ? AND value = ?)" end)
+
+      params =
+        Enum.flat_map(chunk, fn
+          %RDF.IRI{} = term -> ["iri", value(term)]
+          %RDF.BlankNode{} = term -> ["bnode", value(term)]
+        end)
+
+      case select(
+             conn,
+             "SELECT id, kind, value FROM terms WHERE #{clauses}",
+             params
+           ) do
+        {:ok, result} ->
+          found =
+            Map.new(result.rows, fn
+              [id, "iri", value] -> {{:iri, value}, id}
+              [id, "bnode", value] -> {{:bnode, value}, id}
+            end)
+
+          {:cont, {:ok, Map.merge(ids, found)}}
+
+        error ->
+          {:halt, error}
+      end
+    end)
+  end
+
+  defp insert_literal_terms(conn, terms, term_ids) do
+    rows =
+      Enum.map(terms, fn term ->
+        [
+          "literal",
+          RDF.Literal.lexical(term),
+          term_id!(term_ids, RDF.Literal.datatype_id(term)),
+          RDF.Literal.language(term)
+        ]
+      end)
+
+    insert_many(
+      conn,
+      "INSERT OR IGNORE INTO terms (kind, value, datatype_id, lang)",
+      rows,
+      4
+    )
+  end
+
+  defp select_literal_term_ids(conn, terms, term_ids) do
+    terms
+    |> Enum.chunk_every(200)
+    |> Enum.reduce_while({:ok, %{}}, fn chunk, {:ok, ids} ->
+      clauses =
+        Enum.map_join(chunk, " OR ", fn _ ->
+          "(kind = 'literal' AND value = ? AND COALESCE(datatype_id, 0) = ? AND COALESCE(lang, '') = ?)"
+        end)
+
+      params =
+        Enum.flat_map(chunk, fn term ->
+          [
+            RDF.Literal.lexical(term),
+            term_id!(term_ids, RDF.Literal.datatype_id(term)),
+            RDF.Literal.language(term) || ""
+          ]
+        end)
+
+      case select(
+             conn,
+             "SELECT id, value, datatype_id, COALESCE(lang, '') FROM terms WHERE #{clauses}",
+             params
+           ) do
+        {:ok, result} ->
+          found =
+            Map.new(result.rows, fn [id, value, datatype_id, lang] ->
+              {{:literal, value, datatype_id, lang}, id}
+            end)
+
+          {:cont, {:ok, Map.merge(ids, found)}}
+
+        error ->
+          {:halt, error}
+      end
+    end)
+  end
+
+  defp delete_quads(_conn, []), do: :ok
+
+  defp delete_quads(conn, rows) do
+    rows
+    |> Enum.chunk_every(500)
+    |> Enum.reduce_while(:ok, fn chunk, :ok ->
+      placeholders =
+        Enum.map_join(chunk, ", ", fn _ -> "(?, ?, ?, ?)" end)
+
+      case execute(
+             conn,
+             """
+             DELETE FROM quads
+             WHERE (graph_id, subject_id, predicate_id, object_id)
+               IN (#{placeholders})
+             """,
+             List.flatten(chunk)
+           ) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp insert_many(_conn, _prefix, [], _column_count), do: :ok
+
+  defp insert_many(conn, prefix, rows, column_count) do
+    rows
+    |> Enum.chunk_every(500)
+    |> Enum.reduce_while(:ok, fn chunk, :ok ->
+      row_placeholders =
+        List.duplicate("?", column_count) |> Enum.join(", ")
+
+      placeholders =
+        Enum.map_join(chunk, ", ", fn _ -> "(#{row_placeholders})" end)
+
+      case execute(
+             conn,
+             "#{prefix} VALUES #{placeholders}",
+             List.flatten(chunk)
+           ) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp term_id!(_term_ids, nil), do: 0
+
+  defp term_id!(term_ids, %RDF.Literal{} = term) do
+    datatype_id = term_id!(term_ids, RDF.Literal.datatype_id(term))
+
+    Map.fetch!(
+      term_ids,
+      {:literal, RDF.Literal.lexical(term), datatype_id,
+       RDF.Literal.language(term) || ""}
+    )
+  end
+
+  defp term_id!(term_ids, term), do: Map.fetch!(term_ids, term_key(term))
+
+  defp term_key(%RDF.IRI{} = term), do: {:iri, value(term)}
+  defp term_key(%RDF.BlankNode{} = term), do: {:bnode, value(term)}
+
+  defp term_key(%RDF.Literal{} = term) do
+    {:literal, RDF.Literal.lexical(term),
+     term_key(RDF.Literal.datatype_id(term)),
+     RDF.Literal.language(term) || ""}
   end
 
   defp row_quad([
@@ -942,26 +1143,6 @@ defmodule Quadlog do
     end
   end
 
-  defp term_id(_conn, nil), do: {:ok, 0}
-
-  defp term_id(conn, %RDF.IRI{} = term),
-    do: intern_term(conn, "iri", value(term), nil, nil)
-
-  defp term_id(conn, %RDF.BlankNode{} = term),
-    do: intern_term(conn, "bnode", value(term), nil, nil)
-
-  defp term_id(conn, %RDF.Literal{} = term) do
-    with {:ok, datatype_id} <- term_id(conn, RDF.Literal.datatype_id(term)) do
-      intern_term(
-        conn,
-        "literal",
-        RDF.Literal.lexical(term),
-        datatype_id,
-        RDF.Literal.language(term)
-      )
-    end
-  end
-
   defp find_term_id(conn, %RDF.IRI{} = term),
     do: find_term_id(conn, "iri", value(term), nil, nil)
 
@@ -981,20 +1162,6 @@ defmodule Quadlog do
     else
       {:ok, nil} -> {:ok, nil}
       error -> error
-    end
-  end
-
-  defp intern_term(conn, kind, value, datatype_id, lang) do
-    with :ok <-
-           execute(
-             conn,
-             """
-             INSERT OR IGNORE INTO terms (kind, value, datatype_id, lang)
-             VALUES (?, ?, ?, ?)
-             """,
-             [kind, value, datatype_id, lang]
-           ) do
-      find_term_id(conn, kind, value, datatype_id, lang)
     end
   end
 

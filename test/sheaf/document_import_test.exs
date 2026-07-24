@@ -55,4 +55,76 @@ defmodule Sheaf.DocumentImportTest do
 
     assert status.status.counts == %{"pending" => 1}
   end
+
+  test "retries reuse the document already committed for a source file", %{
+    blob_root: root
+  } do
+    pdf_path =
+      Path.join(
+        System.tmp_dir!(),
+        "document-import-idempotent-#{System.unique_integer([:positive])}.pdf"
+      )
+
+    output_path =
+      Path.join(
+        System.tmp_dir!(),
+        "document-import-idempotent-#{System.unique_integer([:positive])}.json"
+      )
+
+    File.write!(pdf_path, "%PDF-1.7\n")
+
+    File.write!(
+      output_path,
+      Jason.encode!(%{"children" => [], "metadata" => %{}})
+    )
+
+    on_exit(fn ->
+      File.rm(pdf_path)
+      File.rm(output_path)
+    end)
+
+    assert {:ok, stored} =
+             Sheaf.Files.ingest(pdf_path,
+               blob_root: root,
+               filename: "paper.pdf",
+               mime_type: "application/pdf"
+             )
+
+    assert {:ok, staged} =
+             Sheaf.DocumentImport.stage(%{
+               "file_ids" => [Sheaf.Id.id_from_iri(stored.iri)],
+               "name" => "Idempotent import"
+             })
+
+    assert {:ok, _file_job} =
+             Sheaf.DatalabJobs.update_file_job(
+               staged.run_iri,
+               stored.iri,
+               output_path: output_path,
+               completed_at: DateTime.utc_now()
+             )
+
+    assert {:ok, first} =
+             Sheaf.DocumentImport.import_run(%{"run_id" => staged.run_id})
+
+    assert [%{status: "imported", document_id: document_id}] =
+             first.documents
+
+    assert {:ok, second} =
+             Sheaf.DocumentImport.import_run(%{"run_id" => staged.run_id})
+
+    assert [
+             %{
+               status: "already_imported",
+               document_id: ^document_id
+             }
+           ] = second.documents
+
+    assert {:ok, source_rows} =
+             Sheaf.Repo.match_rows(
+               {nil, Sheaf.NS.DOC.sourceFile(), stored.iri, nil}
+             )
+
+    assert [_single_source_link] = source_rows
+  end
 end

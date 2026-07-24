@@ -18,12 +18,11 @@ defmodule Sheaf.PDF do
           |> put_source_file(source_file)
         )
 
-      :ok = Sheaf.put_graph(result.document, result.graph)
-
       :ok =
-        Sheaf.Repo.assert(
-          "import PDF metadata #{result.document}",
-          result.metadata_graph
+        Sheaf.put_graph(
+          result.document,
+          result.graph,
+          assert: result.metadata_graph
         )
 
       {:ok, result}

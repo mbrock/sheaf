@@ -48,6 +48,17 @@ defmodule Sheaf do
   Replaces a named graph in Quadlog.
   """
   def put_graph(graph_name, %Graph{} = graph) do
+    put_graph(graph_name, graph, [])
+  end
+
+  @doc """
+  Replaces a named graph and applies related RDF changes atomically.
+
+  This is useful when the graph is not valid without accompanying metadata:
+  callers either observe the complete resource or no change at all.
+  """
+  def put_graph(graph_name, %Graph{} = graph, related_changes)
+      when is_list(related_changes) do
     graph_name = RDF.iri(graph_name)
     graph = Graph.change_name(graph, graph_name)
 
@@ -57,10 +68,11 @@ defmodule Sheaf do
         {"db.system", "quadlog"},
         {"db.operation", "put_graph"},
         {"sheaf.graph", to_string(graph_name)},
-        {"sheaf.statement_count", Data.statement_count(graph)}
+        {"sheaf.statement_count", Data.statement_count(graph)},
+        {"sheaf.related_change_count", length(related_changes)}
       ]
     } do
-      replace_graph(graph_name, graph)
+      replace_graph(graph_name, graph, related_changes)
     end
   end
 
@@ -95,16 +107,19 @@ defmodule Sheaf do
     end
   end
 
-  defp replace_graph(graph_name, %Graph{} = graph) do
+  defp replace_graph(graph_name, %Graph{} = graph, related_changes) do
     with :ok <- Sheaf.Repo.load_once({nil, nil, nil, graph_name}) do
       old_graph =
         Dataset.graph(Sheaf.Repo.dataset(), graph_name) ||
           Graph.new(name: graph_name)
 
-      Sheaf.Repo.transact("replace #{graph_name}", [
-        {:retract, old_graph},
-        {:assert, graph}
-      ])
+      Sheaf.Repo.transact(
+        "replace #{graph_name}",
+        [
+          {:retract, old_graph},
+          {:assert, graph}
+        ] ++ related_changes
+      )
     end
   end
 end
