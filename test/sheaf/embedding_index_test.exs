@@ -96,6 +96,30 @@ defmodule Sheaf.Embedding.IndexTest do
     refute Enum.any?(units, &(&1.iri == to_string(paragraph)))
   end
 
+  test "never truncates or chunks oversized source-file embeddings" do
+    row = %{
+      "iri" => RDF.iri("https://sheaf.less.rest/SOURCE#content"),
+      "kind" => RDF.literal("sourceFile"),
+      "text" => RDF.literal("complete source text"),
+      "searchText" => "Path: src/large.cc\ncomplete source text",
+      "doc" => RDF.iri("https://sheaf.less.rest/SOURCE"),
+      "docTitle" => RDF.literal("src/large.cc")
+    }
+
+    assert [] =
+             Index.units_from_rows([row],
+               model: "text-embedding-3-large",
+               max_source_file_embedding_bytes: 20
+             )
+
+    assert [%{text: "complete source text", kind: "sourceFile"}] =
+             Index.units_from_rows([row],
+               model: "text-embedding-3-large",
+               max_source_file_embedding_bytes: 20,
+               include_oversized_source_files: true
+             )
+  end
+
   test "builds precise and contextual vectors for a stable citation IRI" do
     iri = "https://sheaf.less.rest/BLOCK-CONTEXT"
 

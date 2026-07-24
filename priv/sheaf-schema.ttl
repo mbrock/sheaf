@@ -138,10 +138,15 @@ sheaf:GitReference a rdfs:Class ;
   rdfs:subClassOf prov:Entity ;
   rdfs:comment "A mutable named Git reference that points to an object." .
 
-sheaf:GitTextFragment a rdfs:Class ;
-  rdfs:label "Git text fragment"@en ;
+sheaf:GitSourceFile a rdfs:Class ;
+  rdfs:label "Git source file"@en ;
   rdfs:subClassOf prov:Entity ;
-  rdfs:comment "A bounded, line-addressable portion of UTF-8 text materialized from a Git blob." .
+  rdfs:comment "A source file at one repository-relative path in the synchronized Git HEAD tree." .
+
+sheaf:SourceFileBlock a rdfs:Class ;
+  rdfs:label "source file block"@en ;
+  rdfs:subClassOf sheaf:Block ;
+  rdfs:comment "The single block containing the complete materialized text of a source file." .
 
 sheaf:GitSynchronization a rdfs:Class ;
   rdfs:label "Git synchronization"@en ;
@@ -290,24 +295,38 @@ sheaf:gitFileMode a rdf:Property ;
 
 sheaf:inGitBlob a rdf:Property ;
   rdfs:label "is in Git blob"@en ;
-  rdfs:domain sheaf:GitTextFragment ;
+  rdfs:domain sheaf:SourceFileBlock ;
   rdfs:range sheaf:GitBlob .
 
 sheaf:sourcePath a rdf:Property ;
   rdfs:label "has source path"@en ;
-  rdfs:domain sheaf:GitTextFragment ;
+  rdfs:domain sheaf:GitSourceFile ;
   rdfs:range xsd:string ;
-  rdfs:comment "A repository-relative path at which the containing blob was materialized." .
+  rdfs:comment "The repository-relative path represented by a source file." .
 
-sheaf:startLine a rdf:Property ;
-  rdfs:label "has start line"@en ;
-  rdfs:domain sheaf:GitTextFragment ;
-  rdfs:range xsd:integer .
+sheaf:hasGitBlob a rdf:Property ;
+  rdfs:label "has Git blob"@en ;
+  rdfs:domain sheaf:GitSourceFile ;
+  rdfs:range sheaf:GitBlob ;
+  rdfs:comment "Links a synchronized source file to the immutable Git blob containing its bytes." .
 
-sheaf:endLine a rdf:Property ;
-  rdfs:label "has end line"@en ;
-  rdfs:domain sheaf:GitTextFragment ;
-  rdfs:range xsd:integer .
+sheaf:atGitCommit a rdf:Property ;
+  rdfs:label "is at Git commit"@en ;
+  rdfs:domain sheaf:GitSourceFile ;
+  rdfs:range sheaf:GitCommit ;
+  rdfs:comment "Links a synchronized source file to the Git commit whose tree supplies its current path and content." .
+
+sheaf:hasSourceFileBlock a rdf:Property ;
+  rdfs:label "has source file block"@en ;
+  rdfs:domain sheaf:GitSourceFile ;
+  rdfs:range sheaf:SourceFileBlock ;
+  rdfs:comment "Links a source file to its single complete-content block." .
+
+sheaf:inSourceFile a rdf:Property ;
+  rdfs:label "is in source file"@en ;
+  rdfs:domain sheaf:SourceFileBlock ;
+  rdfs:range sheaf:GitSourceFile ;
+  rdfs:comment "Links a source file block to the file whose complete materialized text it contains." .
 
 sheaf:sourceLanguage a rdf:Property ;
   rdfs:label "has source language"@en ;

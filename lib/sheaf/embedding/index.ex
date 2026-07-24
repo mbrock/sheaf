@@ -16,7 +16,8 @@ defmodule Sheaf.Embedding.Index do
   @default_max_concurrency 8
   @default_batch_size 32
   @default_source "openai-text-embedding-3-large-v1"
-  @valid_kinds ~w(paragraph sourceHtml row note gitCommit gitText)
+  @valid_kinds ~w(paragraph sourceHtml row note gitCommit sourceFile)
+  @default_max_source_file_embedding_bytes 8_000
   @semantic_min_words 20
   @context_variant_fragment "#sheaf-context"
 
@@ -26,6 +27,7 @@ defmodule Sheaf.Embedding.Index do
           required(:text) => String.t(),
           required(:text_hash) => String.t(),
           required(:text_chars) => non_neg_integer(),
+          optional(:embedding_input_bytes) => non_neg_integer(),
           optional(:doc_iri) => String.t() | nil,
           optional(:doc_title) => String.t() | nil,
           optional(:doc_authors) => [String.t()],
@@ -112,10 +114,17 @@ defmodule Sheaf.Embedding.Index do
 
     source = source(opts)
 
-    with {:ok, units} <-
-           text_units(Keyword.merge(opts, model: model, source: source)),
+    plan_opts =
+      opts
+      |> Keyword.merge(model: model, source: source)
+      |> Keyword.put(:include_oversized_source_files, true)
+
+    with {:ok, all_units} <- text_units(plan_opts),
          {:ok, conn} <- Store.open(opts) do
       try do
+        {units, oversized_source_files} =
+          Enum.split_with(all_units, &embedding_eligible?(&1, opts))
+
         reusable = Store.reusable_hashes(conn, model, dimensions, source)
 
         {missing, skipped} =
@@ -132,6 +141,7 @@ defmodule Sheaf.Embedding.Index do
            reusable_count: length(skipped),
            missing_count: length(missing),
            missing_kinds: Enum.frequencies_by(missing, & &1.kind),
+           oversized_source_file_count: length(oversized_source_files),
            sample: Enum.take(missing, Keyword.get(opts, :sample, 20))
          }}
       after
@@ -174,6 +184,7 @@ defmodule Sheaf.Embedding.Index do
     rows
     |> Enum.flat_map(&units_from_row(&1, model, dimensions, source))
     |> Enum.reject(&(&1.text == ""))
+    |> Enum.filter(&embedding_eligible?(&1, opts))
     |> Enum.sort_by(& &1.iri)
     |> maybe_limit_units(opts)
   end
@@ -793,7 +804,7 @@ defmodule Sheaf.Embedding.Index do
     text = row |> Map.fetch!("text") |> term_value()
     search_text = Map.get(row, "searchText") || text
     doc_title = row |> Map.get("docTitle") |> term_value()
-    embedding_text = embedding_document_text(search_text, doc_title, model)
+    prepared = embedding_document_text(search_text, doc_title, model)
 
     unit = %{
       iri: row |> Map.fetch!("iri") |> term_value(),
@@ -802,8 +813,9 @@ defmodule Sheaf.Embedding.Index do
       embedding_text: search_text,
       embedding_title: doc_title,
       embedding_variant: :precise,
-      text_hash: text_hash(embedding_text, model, dimensions, source),
+      text_hash: text_hash(prepared, model, dimensions, source),
       text_chars: String.length(text),
+      embedding_input_bytes: byte_size(prepared),
       doc_iri: row |> Map.get("doc") |> term_value(),
       doc_title: doc_title,
       source_page: row |> Map.get("sourcePage") |> integer_value(),
@@ -845,6 +857,21 @@ defmodule Sheaf.Embedding.Index do
   end
 
   defp contextual_units(_unit, _row, _model, _dimensions, _source), do: []
+
+  defp embedding_eligible?(
+         %{kind: "sourceFile", embedding_input_bytes: bytes},
+         opts
+       ) do
+    Keyword.get(opts, :include_oversized_source_files, false) or
+      bytes <=
+        Keyword.get(
+          opts,
+          :max_source_file_embedding_bytes,
+          @default_max_source_file_embedding_bytes
+        )
+  end
+
+  defp embedding_eligible?(_unit, _opts), do: true
 
   defp contextual_embedding_text(unit, row) do
     [

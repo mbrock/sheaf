@@ -39,16 +39,19 @@ defmodule Sheaf.Git.RDF do
   end
 
   @doc """
-  Returns the deterministic IRI for a text fragment of an immutable blob.
+  Returns the stable repository-scoped IRI for a current source file.
   """
-  def fragment_iri(object_format, blob_oid, start_line, end_line) do
-    deterministic_iri([
-      "git",
-      "fragments",
-      object_format,
-      blob_oid,
-      "#{start_line}-#{end_line}"
-    ])
+  def source_file_iri(repository_iri, path) do
+    suffix = Base.url_encode64(path, padding: false)
+    RDF.iri(to_string(repository_iri) <> "/source-files/" <> suffix)
+  end
+
+  @doc """
+  Returns the fragment IRI for the single complete-content block of a source
+  file.
+  """
+  def source_file_block_iri(source_file_iri) do
+    RDF.iri(to_string(source_file_iri) <> "#content")
   end
 
   @doc """
@@ -77,10 +80,13 @@ defmodule Sheaf.Git.RDF do
   Builds the replaceable graph of searchable text at the current `HEAD`.
   """
   def text_graph(%Snapshot{} = snapshot, repository_iri, graph_name) do
-    Enum.reduce(snapshot.fragments, Graph.new(name: graph_name), fn fragment,
-                                                                    graph ->
-      add_fragment(graph, snapshot, repository_iri, fragment)
-    end)
+    Enum.reduce(
+      snapshot.source_files,
+      Graph.new(name: graph_name),
+      fn source_file, graph ->
+        add_source_file(graph, snapshot, repository_iri, source_file)
+      end
+    )
   end
 
   @doc """
@@ -202,41 +208,39 @@ defmodule Sheaf.Git.RDF do
   defp add_object_details(graph, _snapshot, _repository_iri, _object),
     do: graph
 
-  defp add_fragment(graph, snapshot, repository_iri, fragment) do
-    blob_iri = object_iri(snapshot.object_format, fragment.oid)
-
-    fragment_iri =
-      fragment_iri(
-        snapshot.object_format,
-        fragment.oid,
-        fragment.start_line,
-        fragment.end_line
-      )
+  defp add_source_file(graph, snapshot, repository_iri, source_file) do
+    blob_iri = object_iri(snapshot.object_format, source_file.oid)
+    source_file_iri = source_file_iri(repository_iri, source_file.path)
+    block_iri = source_file_block_iri(source_file_iri)
 
     graph
-    |> Graph.add({fragment_iri, RDF.type(), DOC.GitTextFragment})
+    |> Graph.add({source_file_iri, RDF.type(), DOC.GitSourceFile})
+    |> Graph.add({source_file_iri, RDFS.label(), source_file.path})
+    |> Graph.add({source_file_iri, DOC.sourcePath(), source_file.path})
+    |> Graph.add({source_file_iri, DOC.inGitRepository(), repository_iri})
     |> Graph.add(
-      {fragment_iri, RDFS.label(),
-       fragment_label(fragment.paths, fragment.start_line, fragment.end_line)}
+      {source_file_iri, DOC.atGitCommit(),
+       object_iri(snapshot.object_format, snapshot.head)}
     )
-    |> Graph.add({fragment_iri, DOC.inGitBlob(), blob_iri})
-    |> Graph.add({fragment_iri, DOC.inGitRepository(), repository_iri})
-    |> Graph.add({fragment_iri, DOC.startLine(), fragment.start_line})
-    |> Graph.add({fragment_iri, DOC.endLine(), fragment.end_line})
-    |> Graph.add({fragment_iri, DOC.text(), fragment.text})
-    |> add_optional(fragment_iri, DOC.sourceLanguage(), fragment.language)
-    |> add_each(fragment.paths, fn path ->
-      {fragment_iri, DOC.sourcePath(), path}
-    end)
-    |> add_blob_content_metadata(blob_iri, fragment)
+    |> Graph.add({source_file_iri, DOC.hasGitBlob(), blob_iri})
+    |> Graph.add({source_file_iri, DOC.hasSourceFileBlock(), block_iri})
+    |> add_optional(
+      source_file_iri,
+      DOC.sourceLanguage(),
+      source_file.language
+    )
+    |> Graph.add({block_iri, RDF.type(), DOC.SourceFileBlock})
+    |> Graph.add({block_iri, RDFS.label(), "#{source_file.path} content"})
+    |> Graph.add({block_iri, DOC.inSourceFile(), source_file_iri})
+    |> Graph.add({block_iri, DOC.inGitBlob(), blob_iri})
+    |> Graph.add({block_iri, DOC.text(), source_file.text})
+    |> add_blob_content_metadata(blob_iri, source_file)
   end
 
-  defp add_blob_content_metadata(graph, blob_iri, fragment) do
-    path = List.first(fragment.paths)
-
+  defp add_blob_content_metadata(graph, blob_iri, source_file) do
     graph
-    |> add_optional(blob_iri, DOC.sourceLanguage(), fragment.language)
-    |> add_optional(blob_iri, DOC.mimeType(), mime_type(path))
+    |> add_optional(blob_iri, DOC.sourceLanguage(), source_file.language)
+    |> add_optional(blob_iri, DOC.mimeType(), mime_type(source_file.path))
   end
 
   defp add_each(graph, values, statement) do
@@ -261,12 +265,6 @@ defmodule Sheaf.Git.RDF do
   defp object_label(%{type: type, oid: oid}) do
     "Git #{type} #{String.slice(oid, 0, 12)}"
   end
-
-  defp fragment_label([path | _paths], start_line, end_line),
-    do: "#{path}:#{start_line}-#{end_line}"
-
-  defp fragment_label([], start_line, end_line),
-    do: "Git text lines #{start_line}-#{end_line}"
 
   defp mime_type(nil), do: nil
   defp mime_type(path), do: MIME.from_path(path)

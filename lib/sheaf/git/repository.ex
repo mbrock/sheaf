@@ -4,7 +4,7 @@ defmodule Sheaf.Git.Repository do
 
   Git remains authoritative for object payloads. The snapshot returned here
   contains immutable object metadata and topology, mutable references, and
-  bounded UTF-8 text fragments from blobs present at `HEAD`.
+  complete UTF-8 source files from blobs present at `HEAD`.
   """
 
   require OpenTelemetry.Tracer, as: Tracer
@@ -24,7 +24,7 @@ defmodule Sheaf.Git.Repository do
       commits: %{},
       trees: %{},
       refs: [],
-      fragments: []
+      source_files: []
     ]
   end
 
@@ -33,8 +33,6 @@ defmodule Sheaf.Git.Repository do
   end
 
   @default_max_text_bytes 512_000
-  @default_max_chunk_bytes 8_000
-  @default_max_chunk_lines 120
   @default_concurrency 8
 
   @text_extensions MapSet.new(~w[
@@ -127,7 +125,7 @@ defmodule Sheaf.Git.Repository do
           {"sheaf.git.commit_count", map_size(snapshot.commits)},
           {"sheaf.git.tree_count", map_size(snapshot.trees)},
           {"sheaf.git.reference_count", length(snapshot.refs)},
-          {"sheaf.git.text_fragment_count", length(snapshot.fragments)},
+          {"sheaf.git.source_file_count", length(snapshot.source_files)},
           {"sheaf.git.head", snapshot.head || ""}
         ])
 
@@ -186,9 +184,9 @@ defmodule Sheaf.Git.Repository do
       )
       |> Map.new(&{&1.oid, &1})
 
-    fragments =
+    source_files =
       if Keyword.get(opts, :include_text, true) and is_binary(head) do
-        materialized_fragments(root, head, objects, opts)
+        materialized_source_files(root, head, objects, opts)
       else
         []
       end
@@ -205,7 +203,7 @@ defmodule Sheaf.Git.Repository do
       commits: commits,
       trees: trees,
       refs: refs,
-      fragments: fragments
+      source_files: source_files
     }
   end
 
@@ -349,7 +347,7 @@ defmodule Sheaf.Git.Repository do
     end
   end
 
-  defp materialized_fragments(root, head, objects, opts) do
+  defp materialized_source_files(root, head, objects, opts) do
     paths_by_blob =
       root
       |> git!(["ls-tree", "-r", "-z", "--full-tree", head])
@@ -386,83 +384,29 @@ defmodule Sheaf.Git.Repository do
     candidates
     |> parallel_map(
       fn %{object: object, paths: paths} ->
-        text_fragments(root, object, paths, opts)
+        source_files(root, object, paths)
       end,
       concurrency: concurrency(opts)
     )
     |> List.flatten()
-    |> Enum.sort_by(&{&1.oid, &1.start_line})
+    |> Enum.sort_by(& &1.path)
   end
 
-  defp text_fragments(root, object, paths, opts) do
+  defp source_files(root, object, paths) do
     text = git!(root, ["cat-file", "blob", object.oid])
 
     if String.valid?(text) and not String.contains?(text, <<0>>) do
-      text
-      |> chunk_text(opts)
-      |> Enum.map(fn chunk ->
-        Map.merge(chunk, %{
+      Enum.map(paths, fn path ->
+        %{
           oid: object.oid,
-          paths: paths,
-          language: source_language(List.first(paths))
-        })
+          path: path,
+          language: source_language(path),
+          text: text
+        }
       end)
     else
       []
     end
-  end
-
-  @doc false
-  def chunk_text(text, opts \\ []) when is_binary(text) do
-    max_bytes =
-      Keyword.get(opts, :max_chunk_bytes, @default_max_chunk_bytes)
-
-    max_lines =
-      Keyword.get(opts, :max_chunk_lines, @default_max_chunk_lines)
-
-    text
-    |> String.split("\n", trim: false)
-    |> Enum.with_index(1)
-    |> Enum.reduce({[], []}, fn {line, line_number}, {chunks, current} ->
-      candidate = current ++ [{line_number, line}]
-
-      if current != [] and
-           (chunk_bytes(candidate) > max_bytes or
-              length(candidate) > max_lines) do
-        {[finish_chunk(current) | chunks], [{line_number, line}]}
-      else
-        {chunks, candidate}
-      end
-    end)
-    |> then(fn {chunks, current} ->
-      chunks =
-        case current do
-          [] -> chunks
-          current -> [finish_chunk(current) | chunks]
-        end
-
-      chunks
-      |> Enum.reverse()
-      |> Enum.reject(&(&1.text == ""))
-    end)
-  end
-
-  defp chunk_bytes(lines) do
-    lines
-    |> Enum.map(fn {_line_number, line} -> byte_size(line) end)
-    |> Enum.sum()
-    |> Kernel.+(max(length(lines) - 1, 0))
-  end
-
-  defp finish_chunk(lines) do
-    {start_line, _first} = List.first(lines)
-    {end_line, _last} = List.last(lines)
-
-    %{
-      start_line: start_line,
-      end_line: end_line,
-      text: Enum.map_join(lines, "\n", &elem(&1, 1))
-    }
   end
 
   defp text_path?(path) do

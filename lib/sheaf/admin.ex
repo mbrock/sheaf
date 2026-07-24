@@ -84,7 +84,7 @@ defmodule Sheaf.Admin do
         action = if summary.created?, do: "registered", else: "updated"
 
         info(
-          "Git repository #{action}: #{summary.repository} head=#{summary.head || "unborn"} objects=#{summary.object_count} new_objects=#{summary.new_object_count} refs=#{summary.reference_count} text_fragments=#{summary.text_fragment_count} asserted_statements=#{summary.asserted_statement_count}"
+          "Git repository #{action}: #{summary.repository} head=#{summary.head || "unborn"} objects=#{summary.object_count} new_objects=#{summary.new_object_count} refs=#{summary.reference_count} source_files=#{summary.source_file_count} asserted_statements=#{summary.asserted_statement_count}"
         )
 
       {:error, reason} ->
@@ -215,7 +215,7 @@ defmodule Sheaf.Admin do
     case Sheaf.Embedding.Index.plan(embedding_opts(opts)) do
       {:ok, plan} ->
         info(
-          "Embedding plan: model=#{plan.model} dimensions=#{plan.dimensions} source=#{plan.source} target=#{plan.target_count} reusable=#{plan.reusable_count} would_embed=#{plan.missing_count}#{kind_summary(plan.missing_kinds)}"
+          "Embedding plan: model=#{plan.model} dimensions=#{plan.dimensions} source=#{plan.source} target=#{plan.target_count} reusable=#{plan.reusable_count} would_embed=#{plan.missing_count} oversized_source_files=#{plan.oversized_source_file_count}#{kind_summary(plan.missing_kinds)}"
         )
 
         Enum.each(plan.sample, fn unit ->

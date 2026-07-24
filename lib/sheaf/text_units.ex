@@ -11,7 +11,7 @@ defmodule Sheaf.TextUnits do
   alias Sheaf.Document
   alias Sheaf.NS.{AS, DCTERMS, DOC, FABIO, PROV}
 
-  @valid_kinds ~w(paragraph sourceHtml row note gitCommit gitText)
+  @valid_kinds ~w(paragraph sourceHtml row note gitCommit sourceFile)
 
   def fetch_rows(opts \\ []) do
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
@@ -87,13 +87,12 @@ defmodule Sheaf.TextUnits do
         else
           []
         end ++
-        if MapSet.member?(kinds, "gitText") do
+        if MapSet.member?(kinds, "sourceFile") do
           [
-            {nil, RDF.type(), RDF.iri(DOC.GitTextFragment), nil},
+            {nil, RDF.type(), RDF.iri(DOC.SourceFileBlock), nil},
             {nil, DOC.text(), nil, nil},
+            {nil, DOC.inSourceFile(), nil, nil},
             {nil, DOC.sourcePath(), nil, nil},
-            {nil, DOC.startLine(), nil, nil},
-            {nil, DOC.endLine(), nil, nil},
             {nil, DOC.sourceLanguage(), nil, nil}
           ]
         else
@@ -140,7 +139,7 @@ defmodule Sheaf.TextUnits do
     type_predicate = RDF.type()
     note_type = RDF.iri(AS.Note)
     git_commit_type = RDF.iri(DOC.GitCommit)
-    git_text_type = RDF.iri(DOC.GitTextFragment)
+    source_file_block_type = RDF.iri(DOC.SourceFileBlock)
     active_subjects = active_subjects(graph, index)
     retrieval_context = retrieval_context(graph)
 
@@ -170,28 +169,28 @@ defmodule Sheaf.TextUnits do
           []
         end
 
-      {iri, ^type_predicate, ^git_text_type} ->
-        if MapSet.member?(kinds, "gitText") do
+      {iri, ^type_predicate, ^source_file_block_type} ->
+        if MapSet.member?(kinds, "sourceFile") do
           case first(index, iri, DOC.text()) do
             nil ->
               []
 
             text ->
-              paths = all(index, iri, DOC.sourcePath())
-              language = first(index, iri, DOC.sourceLanguage())
+              source_file = first(index, iri, DOC.inSourceFile())
+              path = first(index, source_file, DOC.sourcePath())
+              language = first(index, source_file, DOC.sourceLanguage())
 
               [
                 %{
                   "iri" => iri,
-                  "kind" => RDF.literal("gitText"),
+                  "kind" => RDF.literal("sourceFile"),
                   "text" => text,
-                  "searchText" => git_search_text(paths, language, text),
-                  "doc" =>
-                    first(index, iri, DOC.inGitRepository()) || graph.name,
-                  "docTitle" => first(index, iri, RDFS.label()) || doc_title,
-                  "sourcePath" => List.first(paths),
-                  "startLine" => first(index, iri, DOC.startLine()),
-                  "endLine" => first(index, iri, DOC.endLine()),
+                  "searchText" =>
+                    source_file_search_text(path, language, text),
+                  "doc" => source_file || graph.name,
+                  "docTitle" =>
+                    first(index, source_file, RDFS.label()) || doc_title,
+                  "sourcePath" => path,
                   "sourceLanguage" => language
                 }
               ]
@@ -338,10 +337,10 @@ defmodule Sheaf.TextUnits do
     Map.merge(row, Map.get(contexts, iri, %{}))
   end
 
-  defp git_search_text(paths, language, text) do
+  defp source_file_search_text(path, language, text) do
     context =
       [
-        if(paths == [], do: nil, else: "Paths: " <> Enum.join(paths, ", ")),
+        if(path, do: "Path: " <> term_value(path), else: nil),
         if(language, do: "Language: " <> term_value(language), else: nil)
       ]
       |> Enum.reject(&is_nil/1)
@@ -393,12 +392,6 @@ defmodule Sheaf.TextUnits do
     index
     |> Map.get({subject, predicate}, [])
     |> List.first()
-  end
-
-  defp all(index, subject, predicate) do
-    index
-    |> Map.get({subject, predicate}, [])
-    |> Enum.sort_by(&term_value/1)
   end
 
   defp metadata_title(_index, nil), do: nil

@@ -462,7 +462,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   defp result_path(%{kind: "note", iri: iri}), do: "/#{block_id(iri)}"
 
   defp result_path(%{kind: kind, iri: iri})
-       when kind in ["gitCommit", "gitText"],
+       when kind in ["gitCommit", "sourceFile"],
        do: "/rdf/quads?" <> URI.encode_query(%{"s" => iri})
 
   defp result_path(%{iri: iri}), do: "/b/#{block_id(iri)}"
@@ -490,7 +490,7 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
   defp context_label(%{kind: "note"}), do: "note"
   defp context_label(%{kind: "gitCommit"}), do: "commit"
-  defp context_label(%{kind: "gitText"}), do: "source"
+  defp context_label(%{kind: "sourceFile"}), do: "source"
   defp context_label(_result), do: nil
 
   defp row_label(nil), do: nil

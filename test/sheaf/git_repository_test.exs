@@ -6,16 +6,13 @@ defmodule Sheaf.Git.RepositoryTest do
   alias Sheaf.NS.DOC
 
   @tag :tmp_dir
-  test "reads standard Git history and materializes bounded HEAD text", %{
-    tmp_dir: tmp_dir
-  } do
+  test "reads standard Git history and materializes one block per HEAD file",
+       %{
+         tmp_dir: tmp_dir
+       } do
     repository = git_fixture!(tmp_dir)
 
-    assert {:ok, snapshot} =
-             Repository.snapshot(repository,
-               max_chunk_lines: 2,
-               max_chunk_bytes: 1_000
-             )
+    assert {:ok, snapshot} = Repository.snapshot(repository)
 
     assert snapshot.identity == "remote:https://example.com/moppe.git"
     assert snapshot.object_format == "sha1"
@@ -36,13 +33,17 @@ defmodule Sheaf.Git.RepositoryTest do
              Enum.any?(tree.entries, &(&1.name == "README.md"))
            end)
 
-    assert Enum.any?(snapshot.fragments, fn fragment ->
-             "README.md" in fragment.paths and
-               String.contains?(fragment.text, "small repository")
-           end)
+    assert [%{text: readme_text}] =
+             Enum.filter(snapshot.source_files, &(&1.path == "README.md"))
 
-    refute Enum.any?(snapshot.fragments, &("image.bin" in &1.paths))
-    assert Enum.all?(snapshot.fragments, &(&1.end_line - &1.start_line < 2))
+    assert readme_text ==
+             "# A small repository\n\nOne line.\nTwo lines.\nThree lines.\n"
+
+    readme = Enum.find(snapshot.source_files, &(&1.path == "README.md"))
+    copy = Enum.find(snapshot.source_files, &(&1.path == "README-copy.md"))
+    assert readme.oid == copy.oid
+
+    refute Enum.any?(snapshot.source_files, &(&1.path == "image.bin"))
   end
 
   @tag :tmp_dir
@@ -57,6 +58,9 @@ defmodule Sheaf.Git.RepositoryTest do
     text_graph = GitRDF.text_graph(snapshot, repository_iri, repository_iri)
     head_iri = GitRDF.object_iri(snapshot.object_format, snapshot.head)
     triples = MapSet.new(RDF.Graph.triples(graph))
+    text_triples = MapSet.new(RDF.Graph.triples(text_graph))
+    source_file_iri = GitRDF.source_file_iri(repository_iri, "README.md")
+    block_iri = GitRDF.source_file_block_iri(source_file_iri)
 
     assert MapSet.member?(
              triples,
@@ -84,6 +88,31 @@ defmodule Sheaf.Git.RepositoryTest do
            end)
 
     assert RDF.Data.statement_count(text_graph) > 0
+
+    assert MapSet.member?(
+             text_triples,
+             {source_file_iri, RDF.type(), RDF.iri(DOC.GitSourceFile)}
+           )
+
+    assert MapSet.member?(
+             text_triples,
+             {source_file_iri, DOC.hasSourceFileBlock(), block_iri}
+           )
+
+    assert MapSet.member?(
+             text_triples,
+             {block_iri, RDF.type(), RDF.iri(DOC.SourceFileBlock)}
+           )
+
+    assert MapSet.member?(
+             text_triples,
+             {block_iri, DOC.text(),
+              RDF.literal(
+                "# A small repository\n\nOne line.\nTwo lines.\nThree lines.\n"
+              )}
+           )
+
+    assert to_string(block_iri) == to_string(source_file_iri) <> "#content"
   end
 
   defp git_fixture!(tmp_dir) do
@@ -104,6 +133,11 @@ defmodule Sheaf.Git.RepositoryTest do
     File.write!(
       Path.join(repository, "README.md"),
       "# A small repository\n\nOne line.\nTwo lines.\nThree lines.\n"
+    )
+
+    File.cp!(
+      Path.join(repository, "README.md"),
+      Path.join(repository, "README-copy.md")
     )
 
     File.write!(
@@ -169,7 +203,7 @@ defmodule Sheaf.Git.SyncTest do
     assert {:ok, first} = Sync.sync(repository, opts)
     assert first.created?
     assert first.new_object_count == first.object_count
-    assert first.text_fragment_count > 0
+    assert first.source_file_count > 0
     assert first.references_changed?
 
     assert {:ok, second} = Sync.sync(repository, opts)
@@ -189,15 +223,30 @@ defmodule Sheaf.Git.SyncTest do
            end)
 
     assert {:ok, text_rows} =
-             Sheaf.TextUnits.fetch_rows(kinds: ["gitText"])
+             Sheaf.TextUnits.fetch_rows(kinds: ["sourceFile"])
 
     assert Enum.any?(text_rows, fn row ->
-             row["kind"] == RDF.literal("gitText") and
+             row["kind"] == RDF.literal("sourceFile") and
                String.contains?(
                  to_string(row["searchText"]),
                  "README.md"
                )
            end)
+
+    readme_row =
+      Enum.find(text_rows, &(to_string(&1["sourcePath"]) == "README.md"))
+
+    assert to_string(readme_row["iri"]) ==
+             to_string(
+               Sheaf.Git.RDF.source_file_iri(
+                 mirrored_repository,
+                 "README.md"
+               )
+             ) <> "#content"
+
+    assert to_string(readme_row["text"]) == "# Searchable project\n"
+    refute Map.has_key?(readme_row, "startLine")
+    refute Map.has_key?(readme_row, "endLine")
 
     assert {:ok, commit_rows} =
              Sheaf.TextUnits.fetch_rows(kinds: ["gitCommit"])
@@ -220,7 +269,7 @@ defmodule Sheaf.Git.SyncTest do
     assert third.text_changed?
 
     assert {:ok, current_text_rows} =
-             Sheaf.TextUnits.fetch_rows(kinds: ["gitText"])
+             Sheaf.TextUnits.fetch_rows(kinds: ["sourceFile"])
 
     current_text =
       current_text_rows

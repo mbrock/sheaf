@@ -80,7 +80,8 @@ defmodule Sheaf.Git.Sync do
                  {"sheaf.git.identity", snapshot.identity},
                  {"sheaf.git.new_object_count",
                   new_object_count(snapshot, known_object_ids)},
-                 {"sheaf.git.text_fragment_count", length(snapshot.fragments)}
+                 {"sheaf.git.source_file_count",
+                  length(snapshot.source_files)}
                ]
              ) do
         summary = %{
@@ -94,7 +95,7 @@ defmodule Sheaf.Git.Sync do
           object_count: map_size(snapshot.objects),
           new_object_count: new_object_count(snapshot, known_object_ids),
           reference_count: length(snapshot.refs),
-          text_fragment_count: length(snapshot.fragments),
+          source_file_count: length(snapshot.source_files),
           asserted_statement_count:
             RDF.Data.statement_count(object_graph) +
               RDF.Data.statement_count(text_assertions),
@@ -110,7 +111,7 @@ defmodule Sheaf.Git.Sync do
           {"sheaf.git.object_count", summary.object_count},
           {"sheaf.git.new_object_count", summary.new_object_count},
           {"sheaf.git.reference_count", summary.reference_count},
-          {"sheaf.git.text_fragment_count", summary.text_fragment_count},
+          {"sheaf.git.source_file_count", summary.source_file_count},
           {"sheaf.git.asserted_statement_count",
            summary.asserted_statement_count}
         ])
