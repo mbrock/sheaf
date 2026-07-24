@@ -125,17 +125,17 @@ defmodule SheafWeb.DocumentIndexLive do
             {@document_error}
           </p>
 
-          <div :if={@documents != []} class="space-y-8 px-3 py-4 sm:px-4 lg:px-6">
+          <div :if={@documents != []} class="space-y-6 px-3 py-3 sm:px-4 lg:px-5">
             <section :for={{folder, documents} <- @document_groups} class="min-w-0">
-              <div class="mb-3 flex items-baseline gap-3">
-                <h2 class="font-sans text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+              <div class="mb-2 flex items-baseline gap-2.5">
+                <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
                   {folder_label(folder)}
                 </h2>
-                <span class="shrink-0 font-sans text-xs tabular-nums text-stone-500 dark:text-stone-400">
+                <span class="shrink-0 font-sans text-[11px] tabular-nums text-stone-500 dark:text-stone-400">
                   {length(documents)}
                 </span>
               </div>
-              <div class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              <div class="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                 <.document_card :for={document <- documents} document={document} />
               </div>
             </section>

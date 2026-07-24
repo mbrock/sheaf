@@ -125,7 +125,7 @@ defmodule SheafWeb.DocumentEntryComponentsTest do
     assert html =~ "A covered paper"
     assert html =~ "Lovelace, Babbage"
     assert html =~ "Explains a compact approach to generated terrain."
-    assert html =~ "line-clamp-4"
+    assert html =~ "line-clamp-3"
     refute html =~ "Ada Lovelace"
     assert html =~ "2026"
     refute html =~ "12 pp."

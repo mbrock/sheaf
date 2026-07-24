@@ -78,17 +78,17 @@ defmodule SheafWeb.DocumentEntryComponents do
         <.icon name="hero-document-text" class="size-10" />
       </div>
 
-      <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-3 pb-3 pt-28">
-        <h3 class="font-sans text-base/5 font-medium text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.75)]">
+      <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-2.5 pb-2.5 pt-20">
+        <h3 class="font-sans text-sm/4 font-medium text-white [text-shadow:0_1px_3px_rgb(0_0_0/0.75)]">
           {@document.title}
         </h3>
-        <div class="mt-1.5 flex min-w-0 items-center justify-between gap-3 font-sans text-xs/4 text-white/80 [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">
+        <div class="mt-1 flex min-w-0 items-center justify-between gap-2 font-sans text-[11px]/4 text-white/80 [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">
           <span class="min-w-0 truncate">
             {compact_authors_str(@document) || authors_str(@document) || ""}
           </span>
           <span class="shrink-0 tabular-nums">{year_str(@document)}</span>
         </div>
-        <p class="mt-3 line-clamp-4 font-sans text-xs/4 text-white/90 [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">
+        <p class="mt-2 line-clamp-3 font-sans text-[11px]/4 text-white/90 [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">
           {Map.get(@document, :micro_abstract) || ""}
         </p>
       </div>
