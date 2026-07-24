@@ -148,6 +148,7 @@ defmodule Sheaf.Document do
       typed?(description, DOC.Transcript) -> :transcript
       typed?(description, DOC.Paper) -> :paper
       typed?(description, DOC.Spreadsheet) -> :spreadsheet
+      typed?(description, DOC.GitRepository) -> :git_repository
       kind = metadata_kind(graph, iri) -> kind
       true -> :document
     end
@@ -168,12 +169,18 @@ defmodule Sheaf.Document do
   """
   def breadcrumbs(%Graph{} = graph, iri) do
     parents = parent_index(graph)
-    root = graph.name && RDF.iri(graph.name)
+    root = hierarchy_root(RDF.iri(iri), parents)
 
     section_iris =
       graph
       |> breadcrumb_iris(RDF.iri(iri), parents, [])
-      |> Enum.filter(&(block_type(graph, &1) == :section))
+      |> Enum.filter(
+        &(block_type(graph, &1) in [
+            :section,
+            :source_directory,
+            :source_file
+          ])
+      )
 
     [root | section_iris]
     |> Enum.reject(&is_nil/1)
@@ -207,6 +214,9 @@ defmodule Sheaf.Document do
       typed?(description, DOC.ParagraphBlock) -> :paragraph
       typed?(description, DOC.ExtractedBlock) -> :extracted
       typed?(description, DOC.Row) -> :row
+      typed?(description, DOC.GitSourceDirectory) -> :source_directory
+      typed?(description, DOC.GitSourceFile) -> :source_file
+      typed?(description, DOC.SourceFileBlock) -> :source_file_block
       true -> nil
     end
   end
@@ -330,6 +340,9 @@ defmodule Sheaf.Document do
       :row ->
         chunk(graph, iri, :row, text(graph, iri))
 
+      :source_file_block ->
+        chunk(graph, iri, :source_file, text(graph, iri))
+
       _other ->
         nil
     end
@@ -448,6 +461,13 @@ defmodule Sheaf.Document do
     end)
   end
 
+  defp hierarchy_root(iri, parents) do
+    case Map.get(parents, iri) do
+      nil -> iri
+      parent -> hierarchy_root(parent, parents)
+    end
+  end
+
   defp breadcrumb_iris(graph, iri, parents, acc) do
     case Map.get(parents, iri) do
       nil ->
@@ -455,9 +475,13 @@ defmodule Sheaf.Document do
 
       parent ->
         acc =
-          if block_type(graph, parent) == :section,
-            do: [parent | acc],
-            else: acc
+          if block_type(graph, parent) in [
+               :section,
+               :source_directory,
+               :source_file
+             ],
+             do: [parent | acc],
+             else: acc
 
         breadcrumb_iris(graph, parent, parents, acc)
     end

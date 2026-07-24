@@ -100,8 +100,8 @@ sheaf:SoftwareProject a rdfs:Class ;
 
 sheaf:GitRepository a rdfs:Class ;
   rdfs:label "Git repository"@en ;
-  rdfs:subClassOf prov:Entity ;
-  rdfs:comment "A Git object database together with its named references." .
+  rdfs:subClassOf sheaf:Document ;
+  rdfs:comment "A Git object database together with its named references, represented as a document whose current source tree is navigable through its block hierarchy." .
 
 sheaf:GitObject a rdfs:Class ;
   rdfs:label "Git object"@en ;
@@ -140,8 +140,13 @@ sheaf:GitReference a rdfs:Class ;
 
 sheaf:GitSourceFile a rdfs:Class ;
   rdfs:label "Git source file"@en ;
-  rdfs:subClassOf prov:Entity ;
+  rdfs:subClassOf sheaf:Block ;
   rdfs:comment "A source file at one repository-relative path in the synchronized Git HEAD tree." .
+
+sheaf:GitSourceDirectory a rdfs:Class ;
+  rdfs:label "Git source directory"@en ;
+  rdfs:subClassOf sheaf:Block ;
+  rdfs:comment "A directory in the materialized source tree at the synchronized Git HEAD." .
 
 sheaf:SourceFileBlock a rdfs:Class ;
   rdfs:label "source file block"@en ;

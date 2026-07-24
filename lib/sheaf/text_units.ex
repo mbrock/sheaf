@@ -90,8 +90,12 @@ defmodule Sheaf.TextUnits do
         if MapSet.member?(kinds, "sourceFile") do
           [
             {nil, RDF.type(), RDF.iri(DOC.SourceFileBlock), nil},
+            {nil, RDF.type(), RDF.iri(DOC.GitRepository), nil},
+            {nil, RDF.type(), RDF.iri(DOC.GitSourceDirectory), nil},
+            {nil, RDF.type(), RDF.iri(DOC.GitSourceFile), nil},
             {nil, DOC.text(), nil, nil},
             {nil, DOC.inSourceFile(), nil, nil},
+            {nil, DOC.inGitRepository(), nil, nil},
             {nil, DOC.sourcePath(), nil, nil},
             {nil, DOC.sourceLanguage(), nil, nil}
           ]
@@ -129,9 +133,11 @@ defmodule Sheaf.TextUnits do
     triples = Graph.triples(graph)
     index = index(triples)
 
+    root = hierarchy_root(graph, index)
+
     doc_title =
-      first(index, graph.name, RDFS.label()) ||
-        metadata_title(metadata_index, graph.name)
+      first(index, root, RDFS.label()) ||
+        metadata_title(metadata_index, root)
 
     paragraph_predicate = DOC.paragraph()
     source_html_predicate = DOC.sourceHtml()
@@ -140,8 +146,8 @@ defmodule Sheaf.TextUnits do
     note_type = RDF.iri(AS.Note)
     git_commit_type = RDF.iri(DOC.GitCommit)
     source_file_block_type = RDF.iri(DOC.SourceFileBlock)
-    active_subjects = active_subjects(graph, index)
-    retrieval_context = retrieval_context(graph)
+    active_subjects = active_subjects(root, index)
+    retrieval_context = retrieval_context(graph, root)
 
     triples
     |> Enum.flat_map(fn
@@ -187,12 +193,14 @@ defmodule Sheaf.TextUnits do
                   "text" => text,
                   "searchText" =>
                     source_file_search_text(path, language, text),
-                  "doc" => source_file || graph.name,
+                  "doc" =>
+                    first(index, source_file, DOC.inGitRepository()) || root,
                   "docTitle" =>
                     first(index, source_file, RDFS.label()) || doc_title,
                   "sourcePath" => path,
                   "sourceLanguage" => language
                 }
+                |> add_source_retrieval_context(iri, retrieval_context)
               ]
           end
         else
@@ -309,19 +317,19 @@ defmodule Sheaf.TextUnits do
     end)
   end
 
-  defp retrieval_context(%Graph{name: nil}), do: %{}
+  defp retrieval_context(%Graph{name: nil}, _root), do: %{}
 
-  defp retrieval_context(%Graph{} = graph) do
+  defp retrieval_context(%Graph{} = graph, root) do
     chunks =
       graph
-      |> Document.text_chunks(graph.name)
+      |> Document.text_chunks(root)
       |> Enum.reject(&(&1.type == :section))
 
     chunks
     |> Enum.with_index()
     |> Map.new(fn {chunk, index} ->
-      previous = Enum.at(chunks, index - 1)
-      following = Enum.at(chunks, index + 1)
+      previous = chunk_at(chunks, index - 1)
+      following = chunk_at(chunks, index + 1)
 
       {chunk.iri,
        %{
@@ -335,6 +343,15 @@ defmodule Sheaf.TextUnits do
 
   defp add_retrieval_context(row, iri, contexts) do
     Map.merge(row, Map.get(contexts, iri, %{}))
+  end
+
+  defp add_source_retrieval_context(row, iri, contexts) do
+    context =
+      contexts
+      |> Map.get(iri, %{})
+      |> Map.delete("searchText")
+
+    Map.merge(row, context)
   end
 
   defp source_file_search_text(path, language, text) do
@@ -379,6 +396,9 @@ defmodule Sheaf.TextUnits do
     }
   end
 
+  defp chunk_at(_chunks, index) when index < 0, do: nil
+  defp chunk_at(chunks, index), do: Enum.at(chunks, index)
+
   defp index(triples) do
     Enum.reduce(triples, %{}, fn {subject, predicate, object}, index ->
       Map.update(index, {subject, predicate}, [object], &[object | &1])
@@ -408,14 +428,27 @@ defmodule Sheaf.TextUnits do
   defp present?(index, subject, predicate),
     do: Map.has_key?(index, {subject, predicate})
 
-  defp active_subjects(%Graph{name: nil}, _index), do: nil
+  defp active_subjects(nil, _index), do: nil
 
-  defp active_subjects(%Graph{name: root}, index) do
+  defp active_subjects(root, index) do
     if present?(index, root, DOC.children()) do
       reachable_subjects(index, [root], MapSet.new())
     else
       nil
     end
+  end
+
+  defp hierarchy_root(%Graph{name: graph_name}, index) do
+    repository_type = RDF.iri(DOC.GitRepository)
+    type_predicate = RDF.type()
+
+    Enum.find_value(index, RDF.iri(graph_name), fn
+      {{subject, ^type_predicate}, objects} ->
+        if repository_type in objects, do: subject
+
+      _entry ->
+        nil
+    end)
   end
 
   defp reachable_subjects(_index, [], visited), do: visited

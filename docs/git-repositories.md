@@ -21,6 +21,7 @@ minted Sheaf resources. Immutable Git-derived resources use deterministic IRIs:
 ```text
 {resource-base}git/objects/{object-format}/{object-id}
 {resource-base}git/tree-entries/{object-format}/{tree-id}/{encoded-name}
+{repository-iri}/source-directories/{encoded-path}
 {repository-iri}/source-files/{encoded-path}
 {repository-iri}/source-files/{encoded-path}#content
 ```
@@ -38,8 +39,10 @@ The projection uses four graph roles:
   incrementally.
 - A separately named reference graph contains current heads, tags, remotes,
   and `HEAD`. This small graph is atomically replaced when references move.
-- A current-source graph contains selected source files from `HEAD`, each with
-  one complete-content block.
+- A current-source graph represents the repository as a `sheaf:Document`.
+  Its ordered `sheaf:children` hierarchy follows the current source directory
+  tree: directories contain directories and files, and each file contains one
+  complete-content block.
   Synchronization applies statement-level additions and retractions so
   unchanged files stay put and text from old revisions stops appearing in
   search.
@@ -69,6 +72,12 @@ oversized files retain only Git blob metadata. If several paths point to the
 same blob, each path is represented as a distinct source file linked to that
 shared immutable blob.
 
+This navigable source hierarchy is a replaceable view of the current `HEAD`;
+it does not replace or duplicate the immutable Git commit/tree/blob graph.
+Directories and files use stable, repository-scoped path identities, while
+their content blocks continue to point at the immutable blobs that supplied
+their text.
+
 This makes moving large literature files to git-annex or another object store
 compatible with the model: Git can retain a small pointer blob while Sheaf's
 document and file resources continue to describe the literature itself.
@@ -78,6 +87,10 @@ document and file resources continue to describe the literature itself.
 Git commits and complete source-file blocks are exposed by `Sheaf.TextUnits` as
 the `gitCommit` and `sourceFile` kinds, so the existing SQLite full-text and
 embedding pipelines can consume them without a second indexing architecture.
+Every current source-file row is scoped to the repository document rather
+than to an isolated file pseudo-document. Repository-scoped search can
+therefore filter directly by the repository ID, and hydrated results derive
+breadcrumbs and neighboring files from the same document hierarchy.
 Each accepted file contributes one full-text search row. A file that does not
 fit in one embedding request is divided into overlapping, bounded segments only
 inside the derived vector index. Those segment identities are not RDF

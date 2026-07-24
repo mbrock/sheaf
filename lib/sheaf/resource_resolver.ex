@@ -14,7 +14,8 @@ defmodule Sheaf.ResourceResolver do
     DOC.Paper,
     DOC.Thesis,
     DOC.Transcript,
-    DOC.Spreadsheet
+    DOC.Spreadsheet,
+    DOC.GitRepository
   ]
 
   @type resolution ::
@@ -77,7 +78,7 @@ defmodule Sheaf.ResourceResolver do
   defp document?(id) do
     root = Id.iri(id)
 
-    case Sheaf.fetch_graph(root) do
+    case Corpus.graph(id) do
       {:ok, %Graph{} = graph} ->
         document_graph?(graph) and document_type?(root, graph)
 

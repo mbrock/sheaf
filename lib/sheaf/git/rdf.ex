@@ -47,6 +47,14 @@ defmodule Sheaf.Git.RDF do
   end
 
   @doc """
+  Returns the stable repository-scoped IRI for a current source directory.
+  """
+  def source_directory_iri(repository_iri, path) do
+    suffix = Base.url_encode64(path, padding: false)
+    RDF.iri(to_string(repository_iri) <> "/source-directories/" <> suffix)
+  end
+
+  @doc """
   Returns the fragment IRI for the single complete-content block of a source
   file.
   """
@@ -80,13 +88,15 @@ defmodule Sheaf.Git.RDF do
   Builds the replaceable graph of searchable text at the current `HEAD`.
   """
   def text_graph(%Snapshot{} = snapshot, repository_iri, graph_name) do
-    Enum.reduce(
-      snapshot.source_files,
-      Graph.new(name: graph_name),
-      fn source_file, graph ->
-        add_source_file(graph, snapshot, repository_iri, source_file)
-      end
-    )
+    directories = source_directories(snapshot.source_files)
+
+    Graph.new(name: graph_name)
+    |> Graph.add({repository_iri, RDF.type(), DOC.Document})
+    |> Graph.add({repository_iri, RDF.type(), DOC.GitRepository})
+    |> Graph.add({repository_iri, RDFS.label(), snapshot.label})
+    |> add_source_directories(repository_iri, directories)
+    |> add_source_files(snapshot, repository_iri)
+    |> add_source_children(repository_iri, directories, snapshot.source_files)
   end
 
   @doc """
@@ -224,6 +234,7 @@ defmodule Sheaf.Git.RDF do
     )
     |> Graph.add({source_file_iri, DOC.hasGitBlob(), blob_iri})
     |> Graph.add({source_file_iri, DOC.hasSourceFileBlock(), block_iri})
+    |> add_children(source_file_iri, [block_iri])
     |> add_optional(
       source_file_iri,
       DOC.sourceLanguage(),
@@ -235,6 +246,104 @@ defmodule Sheaf.Git.RDF do
     |> Graph.add({block_iri, DOC.inGitBlob(), blob_iri})
     |> Graph.add({block_iri, DOC.text(), source_file.text})
     |> add_blob_content_metadata(blob_iri, source_file)
+  end
+
+  defp source_directories(source_files) do
+    source_files
+    |> Enum.flat_map(fn source_file ->
+      source_file.path
+      |> Path.dirname()
+      |> directory_ancestors()
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp directory_ancestors("."), do: []
+
+  defp directory_ancestors(path) do
+    parts = Path.split(path)
+
+    1..length(parts)
+    |> Enum.map(fn count -> parts |> Enum.take(count) |> Path.join() end)
+  end
+
+  defp add_source_directories(graph, repository_iri, directories) do
+    Enum.reduce(directories, graph, fn path, graph ->
+      directory = source_directory_iri(repository_iri, path)
+
+      graph
+      |> Graph.add({directory, RDF.type(), DOC.GitSourceDirectory})
+      |> Graph.add({directory, RDFS.label(), Path.basename(path)})
+      |> Graph.add({directory, DOC.sourcePath(), path})
+      |> Graph.add({directory, DOC.inGitRepository(), repository_iri})
+    end)
+  end
+
+  defp add_source_files(graph, snapshot, repository_iri) do
+    Enum.reduce(snapshot.source_files, graph, fn source_file, graph ->
+      add_source_file(graph, snapshot, repository_iri, source_file)
+    end)
+  end
+
+  defp add_source_children(
+         graph,
+         repository_iri,
+         directories,
+         source_files
+       ) do
+    parents = [nil | directories]
+
+    Enum.reduce(parents, graph, fn parent_path, graph ->
+      parent =
+        if parent_path,
+          do: source_directory_iri(repository_iri, parent_path),
+          else: repository_iri
+
+      child_directories =
+        directories
+        |> Enum.filter(&(parent_directory(&1) == parent_path))
+        |> Enum.map(&source_directory_iri(repository_iri, &1))
+
+      child_files =
+        source_files
+        |> Enum.filter(&(parent_directory(&1.path) == parent_path))
+        |> Enum.sort_by(& &1.path)
+        |> Enum.map(&source_file_iri(repository_iri, &1.path))
+
+      add_children(graph, parent, child_directories ++ child_files)
+    end)
+  end
+
+  defp parent_directory(path) do
+    case Path.dirname(path) do
+      "." -> nil
+      parent -> parent
+    end
+  end
+
+  defp add_children(graph, parent, []) do
+    Graph.add(graph, {parent, DOC.children(), RDF.NS.RDF.nil()})
+  end
+
+  defp add_children(graph, parent, children) do
+    list_nodes =
+      Enum.with_index(children, fn _child, index ->
+        suffix = if index == 0, do: "#children", else: "#children-#{index}"
+        RDF.iri(to_string(parent) <> suffix)
+      end)
+
+    graph = Graph.add(graph, {parent, DOC.children(), hd(list_nodes)})
+
+    children
+    |> Enum.with_index()
+    |> Enum.reduce(graph, fn {child, index}, graph ->
+      rest = Enum.at(list_nodes, index + 1) || RDF.NS.RDF.nil()
+
+      graph
+      |> Graph.add({Enum.at(list_nodes, index), RDF.first(), child})
+      |> Graph.add({Enum.at(list_nodes, index), RDF.rest(), rest})
+    end)
   end
 
   defp add_blob_content_metadata(graph, blob_iri, source_file) do

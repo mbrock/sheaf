@@ -1240,7 +1240,7 @@ defmodule Sheaf.Embedding.Index do
   defp fetch_document_graphs(doc_iris) do
     doc_iris
     |> Enum.reduce_while({:ok, []}, fn doc, {:ok, graphs} ->
-      case Sheaf.fetch_graph(doc) do
+      case Sheaf.Corpus.graph_iri(doc) do
         {:ok, graph} -> {:cont, {:ok, [{doc, graph} | graphs]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -1467,11 +1467,11 @@ defmodule Sheaf.Embedding.Index do
     |> Enum.reject(&is_nil(&1.doc_iri))
     |> Enum.group_by(& &1.doc_iri)
     |> Enum.flat_map(fn {doc_iri, doc_units} ->
-      case Sheaf.fetch_graph(RDF.iri(doc_iri)) do
+      case Sheaf.Corpus.graph_iri(doc_iri) do
         {:ok, %Graph{} = graph} ->
           chunks =
             graph
-            |> Document.text_chunks(graph.name)
+            |> Document.text_chunks(RDF.iri(doc_iri))
             |> Enum.reject(&(&1.type == :section))
 
           positions =
@@ -1500,7 +1500,9 @@ defmodule Sheaf.Embedding.Index do
   defp retrieval_neighbor(_chunks, nil, _offset), do: nil
 
   defp retrieval_neighbor(chunks, index, offset) do
-    case Enum.at(chunks, index + offset) do
+    position = index + offset
+
+    case if(position < 0, do: nil, else: Enum.at(chunks, position)) do
       nil ->
         nil
 

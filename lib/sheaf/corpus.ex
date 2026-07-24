@@ -17,7 +17,10 @@ defmodule Sheaf.Corpus do
     DOC.ExtractedBlock,
     DOC.Row,
     DOC.Segment,
-    DOC.Utterance
+    DOC.Utterance,
+    DOC.GitSourceDirectory,
+    DOC.GitSourceFile,
+    DOC.SourceFileBlock
   ]
 
   @document_classes [
@@ -26,7 +29,8 @@ defmodule Sheaf.Corpus do
     DOC.Transcript,
     DOC.Paper,
     DOC.Spreadsheet,
-    DOC.Interview
+    DOC.Interview,
+    DOC.GitRepository
   ]
 
   @contained_resource_classes @document_classes ++ @block_classes
@@ -44,7 +48,46 @@ defmodule Sheaf.Corpus do
   Fetches a single document's graph by id. Raises if fetch fails.
   """
   def graph(doc_id) when is_binary(doc_id) do
-    Sheaf.fetch_graph(Id.iri(doc_id))
+    graph_iri(Id.iri(doc_id))
+  end
+
+  def graph_iri(root) do
+    root = RDF.iri(root)
+
+    Tracer.with_span "Sheaf.Corpus.graph", %{
+      kind: :internal,
+      attributes: [{"sheaf.document", to_string(root)}]
+    } do
+      with {:ok, graph} <- Sheaf.fetch_graph(root) do
+        if RDF.Data.include?(
+             graph,
+             {root, RDF.type(), RDF.iri(DOC.GitRepository)}
+           ) do
+          load_git_text_graph(root)
+        else
+          Tracer.set_attribute("sheaf.graph.kind", "document")
+          {:ok, graph}
+        end
+      end
+    end
+  end
+
+  defp load_git_text_graph(repository) do
+    case Sheaf.Repo.match_rows(
+           {repository, DOC.hasGitTextGraph(), nil,
+            RDF.iri(Sheaf.Workspace.graph())}
+         ) do
+      {:ok, [{_graph, _subject, _predicate, text_graph} | _]} ->
+        Tracer.set_attribute("sheaf.graph.kind", "git_source_tree")
+        Tracer.set_attribute("sheaf.git.text_graph", to_string(text_graph))
+        Sheaf.fetch_graph(text_graph)
+
+      {:ok, []} ->
+        Sheaf.fetch_graph(repository)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """
@@ -154,5 +197,10 @@ defmodule Sheaf.Corpus do
 
   defp ancestry_title(graph, iri, :document), do: Document.title(graph, iri)
   defp ancestry_title(graph, iri, :section), do: Document.heading(graph, iri)
+
+  defp ancestry_title(graph, iri, type)
+       when type in [:source_directory, :source_file],
+       do: Document.heading(graph, iri)
+
   defp ancestry_title(_graph, _iri, _type), do: nil
 end

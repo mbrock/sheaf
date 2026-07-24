@@ -62,6 +62,12 @@ defmodule Sheaf.Git.RepositoryTest do
     source_file_iri = GitRDF.source_file_iri(repository_iri, "README.md")
     block_iri = GitRDF.source_file_block_iri(source_file_iri)
 
+    source_directory_iri =
+      GitRDF.source_directory_iri(repository_iri, "src")
+
+    nested_source_file_iri =
+      GitRDF.source_file_iri(repository_iri, "src/demo.cpp")
+
     assert MapSet.member?(
              triples,
              {head_iri, RDF.type(), RDF.iri(DOC.GitCommit)}
@@ -88,6 +94,33 @@ defmodule Sheaf.Git.RepositoryTest do
            end)
 
     assert RDF.Data.statement_count(text_graph) > 0
+
+    assert MapSet.member?(
+             text_triples,
+             {repository_iri, RDF.type(), RDF.iri(DOC.Document)}
+           )
+
+    assert MapSet.member?(
+             text_triples,
+             {repository_iri, RDF.type(), RDF.iri(DOC.GitRepository)}
+           )
+
+    assert source_directory_iri in Sheaf.Document.children(
+             text_graph,
+             repository_iri
+           )
+
+    assert nested_source_file_iri in Sheaf.Document.children(
+             text_graph,
+             source_directory_iri
+           )
+
+    nested_block_iri = GitRDF.source_file_block_iri(nested_source_file_iri)
+
+    assert Enum.map(
+             Sheaf.Document.breadcrumbs(text_graph, nested_block_iri),
+             & &1.title
+           ) == ["project", "src", "src/demo.cpp"]
 
     assert MapSet.member?(
              text_triples,
@@ -245,8 +278,39 @@ defmodule Sheaf.Git.SyncTest do
              ) <> "#content"
 
     assert to_string(readme_row["text"]) == "# Searchable project\n"
+    assert readme_row["doc"] == mirrored_repository
+    assert readme_row["breadcrumbs"] == ["sync-project", "README.md"]
+    assert readme_row["previous"] == nil
+    assert readme_row["following"] == nil
     refute Map.has_key?(readme_row, "startLine")
     refute Map.has_key?(readme_row, "endLine")
+
+    assert {:ok, logical_graph} =
+             Sheaf.Corpus.graph_iri(mirrored_repository)
+
+    assert logical_graph.name == text_graph
+
+    assert Sheaf.Git.RDF.source_file_iri(mirrored_repository, "README.md") in Sheaf.Document.children(
+             logical_graph,
+             mirrored_repository
+           )
+
+    search_path = Path.join(tmp_dir, "source-search.sqlite3")
+
+    assert {:ok, %{kinds: %{"sourceFile" => 1}}} =
+             Sheaf.Search.Index.sync(
+               db_path: search_path,
+               kinds: ["sourceFile"]
+             )
+
+    assert {:ok, [scoped_hit]} =
+             Sheaf.Search.Index.search("searchable project",
+               db_path: search_path,
+               document_id: "TEST-REPOSITORY",
+               kinds: ["sourceFile"]
+             )
+
+    assert scoped_hit.doc_iri == to_string(mirrored_repository)
 
     assert {:ok, commit_rows} =
              Sheaf.TextUnits.fetch_rows(kinds: ["gitCommit"])
