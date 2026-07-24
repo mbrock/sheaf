@@ -11,7 +11,7 @@ defmodule Sheaf.TextUnits do
   alias Sheaf.Document
   alias Sheaf.NS.{AS, DCTERMS, DOC, FABIO, PROV}
 
-  @valid_kinds ~w(paragraph sourceHtml row note)
+  @valid_kinds ~w(paragraph sourceHtml row note gitCommit gitText)
 
   def fetch_rows(opts \\ []) do
     kinds = opts |> Keyword.get(:kinds, @valid_kinds) |> List.wrap()
@@ -86,6 +86,29 @@ defmodule Sheaf.TextUnits do
           ]
         else
           []
+        end ++
+        if MapSet.member?(kinds, "gitText") do
+          [
+            {nil, RDF.type(), RDF.iri(DOC.GitTextFragment), nil},
+            {nil, DOC.text(), nil, nil},
+            {nil, DOC.sourcePath(), nil, nil},
+            {nil, DOC.startLine(), nil, nil},
+            {nil, DOC.endLine(), nil, nil},
+            {nil, DOC.sourceLanguage(), nil, nil}
+          ]
+        else
+          []
+        end ++
+        if MapSet.member?(kinds, "gitCommit") do
+          [
+            {nil, RDF.type(), RDF.iri(DOC.GitCommit), nil},
+            {nil, DOC.commitMessage(), nil, nil},
+            {nil, DOC.authorName(), nil, nil},
+            {nil, DOC.authoredAt(), nil, nil},
+            {nil, DOC.inGitRepository(), nil, nil}
+          ]
+        else
+          []
         end
 
     patterns
@@ -116,6 +139,8 @@ defmodule Sheaf.TextUnits do
     text_predicate = DOC.text()
     type_predicate = RDF.type()
     note_type = RDF.iri(AS.Note)
+    git_commit_type = RDF.iri(DOC.GitCommit)
+    git_text_type = RDF.iri(DOC.GitTextFragment)
     active_subjects = active_subjects(graph, index)
     retrieval_context = retrieval_context(graph)
 
@@ -139,6 +164,64 @@ defmodule Sheaf.TextUnits do
                       RDF.literal("Research note")
                 }
                 |> add_retrieval_context(iri, retrieval_context)
+              ]
+          end
+        else
+          []
+        end
+
+      {iri, ^type_predicate, ^git_text_type} ->
+        if MapSet.member?(kinds, "gitText") do
+          case first(index, iri, DOC.text()) do
+            nil ->
+              []
+
+            text ->
+              paths = all(index, iri, DOC.sourcePath())
+              language = first(index, iri, DOC.sourceLanguage())
+
+              [
+                %{
+                  "iri" => iri,
+                  "kind" => RDF.literal("gitText"),
+                  "text" => text,
+                  "searchText" => git_search_text(paths, language, text),
+                  "doc" =>
+                    first(index, iri, DOC.inGitRepository()) || graph.name,
+                  "docTitle" => first(index, iri, RDFS.label()) || doc_title,
+                  "sourcePath" => List.first(paths),
+                  "startLine" => first(index, iri, DOC.startLine()),
+                  "endLine" => first(index, iri, DOC.endLine()),
+                  "sourceLanguage" => language
+                }
+              ]
+          end
+        else
+          []
+        end
+
+      {iri, ^type_predicate, ^git_commit_type} ->
+        if MapSet.member?(kinds, "gitCommit") do
+          case first(index, iri, DOC.commitMessage()) do
+            nil ->
+              []
+
+            text ->
+              [
+                %{
+                  "iri" => iri,
+                  "kind" => RDF.literal("gitCommit"),
+                  "text" => text,
+                  "searchText" =>
+                    git_commit_search_text(
+                      first(index, iri, DOC.authorName()),
+                      first(index, iri, DOC.authoredAt()),
+                      text
+                    ),
+                  "doc" =>
+                    first(index, iri, DOC.inGitRepository()) || graph.name,
+                  "docTitle" => first(index, iri, RDFS.label()) || doc_title
+                }
               ]
           end
         else
@@ -255,6 +338,30 @@ defmodule Sheaf.TextUnits do
     Map.merge(row, Map.get(contexts, iri, %{}))
   end
 
+  defp git_search_text(paths, language, text) do
+    context =
+      [
+        if(paths == [], do: nil, else: "Paths: " <> Enum.join(paths, ", ")),
+        if(language, do: "Language: " <> term_value(language), else: nil)
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    Enum.join(context ++ [term_value(text)], "\n")
+  end
+
+  defp git_commit_search_text(author, authored_at, text) do
+    [
+      if(author, do: "Author: " <> term_value(author), else: nil),
+      if(authored_at,
+        do: "Authored: " <> term_value(authored_at),
+        else: nil
+      ),
+      term_value(text)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n")
+  end
+
   defp breadcrumb_titles(graph, iri) do
     graph
     |> Document.breadcrumbs(iri)
@@ -286,6 +393,12 @@ defmodule Sheaf.TextUnits do
     index
     |> Map.get({subject, predicate}, [])
     |> List.first()
+  end
+
+  defp all(index, subject, predicate) do
+    index
+    |> Map.get({subject, predicate}, [])
+    |> Enum.sort_by(&term_value/1)
   end
 
   defp metadata_title(_index, nil), do: nil

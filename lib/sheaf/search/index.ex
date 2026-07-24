@@ -13,7 +13,7 @@ defmodule Sheaf.Search.Index do
 
   @default_path "var/sheaf-embeddings.sqlite3"
   @log_every 5_000
-  @valid_kinds ~w(paragraph sourceHtml row note)
+  @valid_kinds ~w(paragraph sourceHtml row note gitCommit gitText)
 
   @type conn :: Sqlite3.db()
 

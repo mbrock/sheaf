@@ -7,6 +7,7 @@ defmodule Sheaf.Admin.CLI do
   Usage:
     sheaf-admin backup [--output PATH]
     sheaf-admin schema upload
+    sheaf-admin git sync PATH [--project NAME] [--identity ID] [--no-text] [--max-text-bytes N] [--no-backup]
     sheaf-admin ingest files PATH... [--recursive] [--extensions pdf,docx] [--dry-run] [--no-backup]
     sheaf-admin import datalab-json PATH [--title TITLE] [--pdf PDF] [--document IRI] [--source-file IRI] [--no-backup]
     sheaf-admin import inspect-datalab PATH [--json]
@@ -65,6 +66,9 @@ defmodule Sheaf.Admin.CLI do
 
   defp dispatch(["schema", "upload" | args]),
     do: run(fn -> Sheaf.Admin.upload_schema(args) end)
+
+  defp dispatch(["git", "sync" | args]),
+    do: run(fn -> Sheaf.Admin.sync_git_repository(args) end)
 
   defp dispatch(["ingest", "files" | args]),
     do: run(fn -> Sheaf.Admin.ingest_files(args) end)

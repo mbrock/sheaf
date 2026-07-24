@@ -48,6 +48,50 @@ defmodule Sheaf.Admin do
     info("Uploaded imported ontology graph #{imported_ontologies_graph()}")
   end
 
+  def sync_git_repository(args) do
+    {opts, paths, invalid} =
+      OptionParser.parse(args,
+        strict: [
+          project: :string,
+          identity: :string,
+          text: :boolean,
+          max_text_bytes: :integer,
+          backup: :boolean
+        ]
+      )
+
+    reject_invalid!(invalid)
+
+    if length(paths) != 1 do
+      fail!(
+        "Usage: sheaf-admin git sync PATH [--project NAME] [--identity ID] [--no-text] [--max-text-bytes N] [--no-backup]"
+      )
+    end
+
+    if Keyword.get(opts, :backup, true) do
+      backup([])
+    end
+
+    sync_opts =
+      []
+      |> put_if_present(:project, Keyword.get(opts, :project))
+      |> put_if_present(:identity, Keyword.get(opts, :identity))
+      |> put_if_present(:max_text_bytes, Keyword.get(opts, :max_text_bytes))
+      |> Keyword.put(:include_text, Keyword.get(opts, :text, true))
+
+    case Sheaf.Git.Sync.sync(List.first(paths), sync_opts) do
+      {:ok, summary} ->
+        action = if summary.created?, do: "registered", else: "updated"
+
+        info(
+          "Git repository #{action}: #{summary.repository} head=#{summary.head || "unborn"} objects=#{summary.object_count} new_objects=#{summary.new_object_count} refs=#{summary.reference_count} text_fragments=#{summary.text_fragment_count} asserted_statements=#{summary.asserted_statement_count}"
+        )
+
+      {:error, reason} ->
+        fail!("Git repository sync failed: #{inspect(reason)}")
+    end
+  end
+
   def sync_search(args) do
     {opts, _positional, invalid} =
       OptionParser.parse(args,

@@ -16,7 +16,7 @@ defmodule Sheaf.Embedding.Index do
   @default_max_concurrency 8
   @default_batch_size 32
   @default_source "openai-text-embedding-3-large-v1"
-  @valid_kinds ~w(paragraph sourceHtml row note)
+  @valid_kinds ~w(paragraph sourceHtml row note gitCommit gitText)
   @semantic_min_words 20
   @context_variant_fragment "#sheaf-context"
 

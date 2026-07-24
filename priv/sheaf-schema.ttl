@@ -93,6 +93,227 @@ sheaf:Workspace a rdfs:Class ;
     co:Set ;
   rdfs:comment "A persistent context for local reading and research preferences." .
 
+sheaf:SoftwareProject a rdfs:Class ;
+  rdfs:label "software project"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "An enduring undertaking that develops and maintains a software system." .
+
+sheaf:GitRepository a rdfs:Class ;
+  rdfs:label "Git repository"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "A Git object database together with its named references." .
+
+sheaf:GitObject a rdfs:Class ;
+  rdfs:label "Git object"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "An immutable content-addressed object in a Git repository." .
+
+sheaf:GitCommit a rdfs:Class ;
+  rdfs:label "Git commit"@en ;
+  rdfs:subClassOf sheaf:GitObject ;
+  rdfs:comment "A Git object that records a root tree, parent commits, authorship, and a commit message." .
+
+sheaf:GitTree a rdfs:Class ;
+  rdfs:label "Git tree"@en ;
+  rdfs:subClassOf sheaf:GitObject ;
+  rdfs:comment "A Git object containing named entries that point to other Git objects." .
+
+sheaf:GitBlob a rdfs:Class ;
+  rdfs:label "Git blob"@en ;
+  rdfs:subClassOf sheaf:GitObject ;
+  rdfs:comment "A Git object containing an uninterpreted byte sequence." .
+
+sheaf:GitTag a rdfs:Class ;
+  rdfs:label "Git tag object"@en ;
+  rdfs:subClassOf sheaf:GitObject ;
+  rdfs:comment "An annotated Git tag object." .
+
+sheaf:GitTreeEntry a rdfs:Class ;
+  rdfs:label "Git tree entry"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "A named and mode-bearing entry in one immutable Git tree." .
+
+sheaf:GitReference a rdfs:Class ;
+  rdfs:label "Git reference"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "A mutable named Git reference that points to an object." .
+
+sheaf:GitTextFragment a rdfs:Class ;
+  rdfs:label "Git text fragment"@en ;
+  rdfs:subClassOf prov:Entity ;
+  rdfs:comment "A bounded, line-addressable portion of UTF-8 text materialized from a Git blob." .
+
+sheaf:GitSynchronization a rdfs:Class ;
+  rdfs:label "Git synchronization"@en ;
+  rdfs:subClassOf prov:Activity ;
+  rdfs:comment "An activity that projects the reachable state of a Git repository into Sheaf." .
+
+sheaf:hasSoftwareProject a rdf:Property ;
+  rdfs:label "has software project"@en ;
+  rdfs:domain sheaf:Workspace ;
+  rdfs:range sheaf:SoftwareProject ;
+  rdfs:comment "Links a workspace to a software project considered within it." .
+
+sheaf:hasSourceRepository a rdf:Property ;
+  rdfs:label "has source repository"@en ;
+  rdfs:domain sheaf:SoftwareProject ;
+  rdfs:range sheaf:GitRepository ;
+  rdfs:comment "Links a software project to a Git repository that contains its source material." .
+
+sheaf:repositoryIdentity a rdf:Property ;
+  rdfs:label "has repository identity"@en ;
+  rdfs:domain sheaf:GitRepository ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Stable synchronization key derived from a repository remote or local Git directory." .
+
+sheaf:checkoutPath a rdf:Property ;
+  rdfs:label "has checkout path"@en ;
+  rdfs:domain sheaf:GitRepository ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Machine-local path of the working tree used to synchronize a Git repository." .
+
+sheaf:remoteUrl a rdf:Property ;
+  rdfs:label "has remote URL"@en ;
+  rdfs:domain sheaf:GitRepository ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Configured Git remote location, retained as text because Git accepts non-URL transport syntax." .
+
+sheaf:gitObjectFormat a rdf:Property ;
+  rdfs:label "has Git object format"@en ;
+  rdfs:domain sheaf:GitRepository ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Names the object identifier format used by a Git repository, such as sha1 or sha256." .
+
+sheaf:hasGitReferenceGraph a rdf:Property ;
+  rdfs:label "has Git reference graph"@en ;
+  rdfs:domain sheaf:GitRepository ;
+  rdfs:range rdfs:Resource ;
+  rdfs:comment "Names the replaceable RDF graph containing the repository's synchronized Git references." .
+
+sheaf:hasGitTextGraph a rdf:Property ;
+  rdfs:label "has Git text graph"@en ;
+  rdfs:domain sheaf:GitRepository ;
+  rdfs:range rdfs:Resource ;
+  rdfs:comment "Names the incrementally replaced RDF graph containing searchable text from the synchronized HEAD tree." .
+
+sheaf:gitHead a rdf:Property ;
+  rdfs:label "has Git HEAD"@en ;
+  rdfs:range sheaf:GitCommit ;
+  rdfs:comment "Links a repository projection or synchronization activity to the commit resolved by HEAD." .
+
+sheaf:gitObjectId a rdf:Property ;
+  rdfs:label "has Git object identifier"@en ;
+  rdfs:domain sheaf:GitObject ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Full lowercase hexadecimal identifier of a Git object." .
+
+sheaf:inGitRepository a rdf:Property ;
+  rdfs:label "is in Git repository"@en ;
+  rdfs:range sheaf:GitRepository ;
+  rdfs:comment "Records a repository from whose reachable object graph a Git resource was synchronized." .
+
+sheaf:hasGitReference a rdf:Property ;
+  rdfs:label "has Git reference"@en ;
+  rdfs:domain sheaf:GitRepository ;
+  rdfs:range sheaf:GitReference .
+
+sheaf:gitReferenceName a rdf:Property ;
+  rdfs:label "has Git reference name"@en ;
+  rdfs:domain sheaf:GitReference ;
+  rdfs:range xsd:string .
+
+sheaf:pointsToGitObject a rdf:Property ;
+  rdfs:label "points to Git object"@en ;
+  rdfs:range sheaf:GitObject ;
+  rdfs:comment "Links a Git reference or tree entry to its target object." .
+
+sheaf:hasRootTree a rdf:Property ;
+  rdfs:label "has root tree"@en ;
+  rdfs:domain sheaf:GitCommit ;
+  rdfs:range sheaf:GitTree .
+
+sheaf:hasParentCommit a rdf:Property ;
+  rdfs:label "has parent commit"@en ;
+  rdfs:domain sheaf:GitCommit ;
+  rdfs:range sheaf:GitCommit ;
+  rdfs:subPropertyOf prov:wasDerivedFrom .
+
+sheaf:commitMessage a rdf:Property ;
+  rdfs:label "has commit message"@en ;
+  rdfs:domain sheaf:GitCommit ;
+  rdfs:range xsd:string .
+
+sheaf:authorName a rdf:Property ;
+  rdfs:label "has author name"@en ;
+  rdfs:domain sheaf:GitCommit ;
+  rdfs:range xsd:string .
+
+sheaf:authorEmail a rdf:Property ;
+  rdfs:label "has author email"@en ;
+  rdfs:domain sheaf:GitCommit ;
+  rdfs:range xsd:string .
+
+sheaf:authoredAt a rdf:Property ;
+  rdfs:label "was authored at"@en ;
+  rdfs:domain sheaf:GitCommit ;
+  rdfs:range xsd:dateTime .
+
+sheaf:committerName a rdf:Property ;
+  rdfs:label "has committer name"@en ;
+  rdfs:domain sheaf:GitCommit ;
+  rdfs:range xsd:string .
+
+sheaf:committerEmail a rdf:Property ;
+  rdfs:label "has committer email"@en ;
+  rdfs:domain sheaf:GitCommit ;
+  rdfs:range xsd:string .
+
+sheaf:committedAt a rdf:Property ;
+  rdfs:label "was committed at"@en ;
+  rdfs:domain sheaf:GitCommit ;
+  rdfs:range xsd:dateTime .
+
+sheaf:hasGitTreeEntry a rdf:Property ;
+  rdfs:label "has Git tree entry"@en ;
+  rdfs:domain sheaf:GitTree ;
+  rdfs:range sheaf:GitTreeEntry .
+
+sheaf:gitEntryName a rdf:Property ;
+  rdfs:label "has Git entry name"@en ;
+  rdfs:domain sheaf:GitTreeEntry ;
+  rdfs:range xsd:string .
+
+sheaf:gitFileMode a rdf:Property ;
+  rdfs:label "has Git file mode"@en ;
+  rdfs:domain sheaf:GitTreeEntry ;
+  rdfs:range xsd:string .
+
+sheaf:inGitBlob a rdf:Property ;
+  rdfs:label "is in Git blob"@en ;
+  rdfs:domain sheaf:GitTextFragment ;
+  rdfs:range sheaf:GitBlob .
+
+sheaf:sourcePath a rdf:Property ;
+  rdfs:label "has source path"@en ;
+  rdfs:domain sheaf:GitTextFragment ;
+  rdfs:range xsd:string ;
+  rdfs:comment "A repository-relative path at which the containing blob was materialized." .
+
+sheaf:startLine a rdf:Property ;
+  rdfs:label "has start line"@en ;
+  rdfs:domain sheaf:GitTextFragment ;
+  rdfs:range xsd:integer .
+
+sheaf:endLine a rdf:Property ;
+  rdfs:label "has end line"@en ;
+  rdfs:domain sheaf:GitTextFragment ;
+  rdfs:range xsd:integer .
+
+sheaf:sourceLanguage a rdf:Property ;
+  rdfs:label "has source language"@en ;
+  rdfs:range xsd:string ;
+  rdfs:comment "Names the programming, markup, configuration, or prose language inferred for a text-bearing source resource." .
+
 sheaf:Folder a rdfs:Class ;
   rdfs:label "folder"@en ;
   rdfs:subClassOf co:Set,

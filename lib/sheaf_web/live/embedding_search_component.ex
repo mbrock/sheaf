@@ -460,6 +460,11 @@ defmodule SheafWeb.EmbeddingSearchComponent do
 
   defp block_id(iri), do: Id.id_from_iri(iri)
   defp result_path(%{kind: "note", iri: iri}), do: "/#{block_id(iri)}"
+
+  defp result_path(%{kind: kind, iri: iri})
+       when kind in ["gitCommit", "gitText"],
+       do: "/rdf/quads?" <> URI.encode_query(%{"s" => iri})
+
   defp result_path(%{iri: iri}), do: "/b/#{block_id(iri)}"
 
   defp result_title(%{kind: "note", doc_title: title}) when is_binary(title),
@@ -484,6 +489,8 @@ defmodule SheafWeb.EmbeddingSearchComponent do
   end
 
   defp context_label(%{kind: "note"}), do: "note"
+  defp context_label(%{kind: "gitCommit"}), do: "commit"
+  defp context_label(%{kind: "gitText"}), do: "source"
   defp context_label(_result), do: nil
 
   defp row_label(nil), do: nil
