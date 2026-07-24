@@ -20,6 +20,7 @@ defmodule Sheaf.ResourceResolver do
   @type resolution ::
           {:ok, %{kind: :document, id: String.t()}}
           | {:ok, %{kind: :research_note, id: String.t()}}
+          | {:ok, %{kind: :software_project, id: String.t()}}
           | {:ok, %{kind: :assistant_conversation, id: String.t()}}
           | {:ok, %{kind: :spreadsheet_query_result, id: String.t()}}
           | {:ok, %{kind: :block, id: String.t(), document_id: String.t()}}
@@ -49,6 +50,9 @@ defmodule Sheaf.ResourceResolver do
 
           research_note?(id) ->
             {:ok, %{kind: :research_note, id: id}}
+
+          software_project?(id) ->
+            {:ok, %{kind: :software_project, id: id}}
 
           document?(id) ->
             {:ok, %{kind: :document, id: id}}
@@ -126,6 +130,10 @@ defmodule Sheaf.ResourceResolver do
 
   defp research_note?(id) do
     workspace_resource?(id, DOC.ResearchNote)
+  end
+
+  defp software_project?(id) do
+    workspace_resource?(id, DOC.SoftwareProject)
   end
 
   defp workspace_resource?(id, type) do

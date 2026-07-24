@@ -9,6 +9,7 @@ defmodule SheafWeb.DocumentIndexLive do
 
   alias SheafWeb.AppChrome
   import SheafWeb.DocumentEntryComponents, only: [document_card: 1]
+  import SheafWeb.WorkspaceEntryComponents, only: [software_project_card: 1]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -19,9 +20,11 @@ defmodule SheafWeb.DocumentIndexLive do
       ]
     } do
       {documents, document_error} = fetch_documents()
+      {software_projects, project_error} = fetch_software_projects()
 
       Tracer.set_attributes([
-        {"sheaf.document_count", length(documents)}
+        {"sheaf.document_count", length(documents)},
+        {"sheaf.software_project_count", length(software_projects)}
       ])
 
       socket =
@@ -29,6 +32,8 @@ defmodule SheafWeb.DocumentIndexLive do
         |> assign(:page_title, "Sheaf")
         |> assign(:documents, documents)
         |> assign(:document_error, document_error)
+        |> assign(:software_projects, software_projects)
+        |> assign(:project_error, project_error)
 
       {:ok, socket}
     end
@@ -89,6 +94,17 @@ defmodule SheafWeb.DocumentIndexLive do
 
   defp index_document?(_document), do: true
 
+  defp fetch_software_projects do
+    Tracer.with_span "SheafWeb.DocumentIndexLive.fetch_software_projects", %{
+      kind: :internal
+    } do
+      case Sheaf.SoftwareProjects.list() do
+        {:ok, projects} -> {projects, nil}
+        {:error, reason} -> {[], inspect(reason)}
+      end
+    end
+  end
+
   @impl true
   def render(assigns) do
     Tracer.with_span "SheafWeb.DocumentIndexLive.render", %{
@@ -119,11 +135,31 @@ defmodule SheafWeb.DocumentIndexLive do
 
         <div class="min-w-0">
           <p
-            :if={@document_error}
+            :if={@document_error || @project_error}
             class="py-2 text-sm text-rose-700"
           >
-            {@document_error}
+            {@document_error || @project_error}
           </p>
+
+          <section
+            :if={@software_projects != []}
+            class="min-w-0 px-3 pt-3 sm:px-4 lg:px-5"
+          >
+            <div class="mb-2 flex items-baseline gap-2.5">
+              <h2 class="font-sans text-[11px] font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400">
+                Projects
+              </h2>
+              <span class="shrink-0 font-sans text-[11px] tabular-nums text-stone-500 dark:text-stone-400">
+                {length(@software_projects)}
+              </span>
+            </div>
+            <div class="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+              <.software_project_card
+                :for={project <- @software_projects}
+                project={project}
+              />
+            </div>
+          </section>
 
           <div :if={@documents != []} class="space-y-6 px-3 py-3 sm:px-4 lg:px-5">
             <section :for={{folder, documents} <- @document_groups} class="min-w-0">

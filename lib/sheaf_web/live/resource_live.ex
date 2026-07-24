@@ -12,6 +12,7 @@ defmodule SheafWeb.ResourceLive do
   alias SheafWeb.AssistantMarkdownComponents
   alias SheafWeb.DataTableComponents
   alias SheafWeb.DocumentLive
+  alias SheafWeb.SoftwareProjectLive
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
@@ -156,6 +157,9 @@ defmodule SheafWeb.ResourceLive do
     """
   end
 
+  def render(%{resource_kind: :software_project} = assigns),
+    do: SoftwareProjectLive.render(assigns)
+
   def render(%{resource_kind: :spreadsheet_query_result} = assigns) do
     ~H"""
     <main class="grid min-h-dvh grid-rows-[auto_1fr_auto] bg-stone-100 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
@@ -256,8 +260,27 @@ defmodule SheafWeb.ResourceLive do
       {:ok, %{kind: :research_note, id: note_id}} ->
         load_research_note(socket, id, note_id)
 
+      {:ok, %{kind: :software_project, id: project_id}} ->
+        load_software_project(socket, id, project_id)
+
       {:error, reason} ->
         {:ok, assign_not_found(socket, id, reason)}
+    end
+  end
+
+  defp load_software_project(socket, resource_id, project_id) do
+    case Sheaf.SoftwareProjects.get(project_id) do
+      {:ok, project} ->
+        {:ok,
+         socket
+         |> assign(:page_title, project.title)
+         |> assign(:resource_id, resource_id)
+         |> assign(:resource_kind, :software_project)
+         |> assign(:project, project)
+         |> assign(:selected_block_id, nil)}
+
+      {:error, reason} ->
+        {:ok, assign_not_found(socket, resource_id, reason)}
     end
   end
 

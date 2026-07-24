@@ -16,6 +16,7 @@ defmodule Sheaf.ResourceResolverTest do
     conversation = Sheaf.Id.iri("CHAT01")
     note = Sheaf.Id.iri("NOTE01")
     query_result = Sheaf.Id.iri("RES111")
+    project = Sheaf.Id.iri("PROJ01")
     workspace_graph = RDF.iri(Sheaf.Repo.workspace_graph())
     metadata_graph = RDF.iri(Sheaf.Repo.metadata_graph())
 
@@ -29,6 +30,8 @@ defmodule Sheaf.ResourceResolverTest do
           {note, RDF.type(), DOC.ResearchNote},
           {note, RDF.type(), AS.Note},
           {note, AS.content(), RDF.literal("A durable note.")},
+          {project, RDF.type(), DOC.SoftwareProject},
+          {project, RDFS.label(), RDF.literal("Example software project")},
           {query_result, RDF.type(), DOC.SpreadsheetQueryResult},
           {query_result, RDFS.label(),
            RDF.literal("Spreadsheet query result")}
@@ -76,6 +79,9 @@ defmodule Sheaf.ResourceResolverTest do
 
     assert {:ok, %{kind: :research_note, id: "NOTE01"}} =
              ResourceResolver.resolve("NOTE01")
+
+    assert {:ok, %{kind: :software_project, id: "PROJ01"}} =
+             ResourceResolver.resolve("PROJ01")
 
     assert {:error, :not_found} = ResourceResolver.resolve("MISSING")
   end
