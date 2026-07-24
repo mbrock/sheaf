@@ -103,6 +103,20 @@ search synchronization then updates both the full-text and embedding indexes.
 Synchronizing the repository itself never calls an embedding provider; it only
 writes the RDF source material.
 
+## Updating a registered checkout
+
+The software-project page exposes an **Update repository** action for a
+registered checkout. It is deliberately constrained: the checkout path comes
+from the repository's RDF registration, the worktree must be clean, the current
+branch must have an upstream, terminal credential prompts are disabled, and Git
+is invoked with `pull --ff-only`.
+
+After a successful pull, Sheaf backs up Quadlog, synchronizes the Git object,
+reference, and current-source graphs, rebuilds the lexical search mirror, and
+incrementally refreshes embeddings. The page reports whether HEAD advanced or
+was already current. The work continues under the application task supervisor
+if the browser leaves the page.
+
 ## Future semantic analyzers
 
 Language servers, clangd, Doxygen, build-system readers, and other analyzers can

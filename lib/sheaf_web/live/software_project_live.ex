@@ -33,17 +33,61 @@ defmodule SheafWeb.SoftwareProjectLive do
               </p>
             </div>
 
-            <a
-              :if={remote_web_url(@project.repository.remote_url)}
-              href={remote_web_url(@project.repository.remote_url)}
-              target="_blank"
-              rel="noreferrer"
-              class="inline-flex shrink-0 items-center gap-2 border border-stone-300 bg-white px-3 py-2 font-sans text-sm font-medium hover:border-stone-400 hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-600 dark:hover:bg-stone-800"
-            >
-              <.icon name="hero-arrow-top-right-on-square" class="size-4" />
-              Open remote
-            </a>
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button
+                :if={@project.repository.checkout_path}
+                type="button"
+                phx-click="update_repository"
+                disabled={@repository_update.status == :running}
+                data-confirm="Fast-forward the registered checkout and refresh Sheaf's repository indexes?"
+                class="inline-flex items-center gap-2 border border-cyan-700 bg-cyan-700 px-3 py-2 font-sans text-sm font-medium text-white hover:border-cyan-800 hover:bg-cyan-800 disabled:cursor-wait disabled:opacity-60 dark:border-cyan-600 dark:bg-cyan-700 dark:hover:bg-cyan-600"
+              >
+                <.icon
+                  name={
+                    if(@repository_update.status == :running,
+                      do: "hero-arrow-path",
+                      else: "hero-arrow-down-tray"
+                    )
+                  }
+                  class={[
+                    "size-4",
+                    @repository_update.status == :running && "animate-spin"
+                  ]}
+                />
+                {if(@repository_update.status == :running,
+                  do: "Updating…",
+                  else: "Update repository"
+                )}
+              </button>
+
+              <a
+                :if={remote_web_url(@project.repository.remote_url)}
+                href={remote_web_url(@project.repository.remote_url)}
+                target="_blank"
+                rel="noreferrer"
+                class="inline-flex items-center gap-2 border border-stone-300 bg-white px-3 py-2 font-sans text-sm font-medium hover:border-stone-400 hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-900 dark:hover:border-stone-600 dark:hover:bg-stone-800"
+              >
+                <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+                Open remote
+              </a>
+            </div>
           </div>
+
+          <p
+            :if={@repository_update.message}
+            role="status"
+            class={[
+              "mt-4 border px-3 py-2 font-sans text-sm",
+              @repository_update.status == :running &&
+                "border-cyan-200 bg-cyan-50 text-cyan-900 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-200",
+              @repository_update.status == :ok &&
+                "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200",
+              @repository_update.status == :error &&
+                "border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200"
+            ]}
+          >
+            {@repository_update.message}
+          </p>
         </header>
 
         <section class="grid grid-cols-2 gap-2 py-5 sm:grid-cols-4">

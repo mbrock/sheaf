@@ -125,6 +125,49 @@ defmodule SheafWeb.ResourceLive do
   def handle_event("save_paragraph_edit", _params, socket),
     do: {:noreply, socket}
 
+  def handle_event(
+        "update_repository",
+        _params,
+        %{assigns: %{resource_kind: :software_project}} = socket
+      ) do
+    if socket.assigns.repository_update.status == :running do
+      {:noreply, socket}
+    else
+      live_view = self()
+      project_id = socket.assigns.project.id
+
+      case Task.Supervisor.start_child(
+             Sheaf.Assistant.TaskSupervisor,
+             fn ->
+               result = Sheaf.Git.Update.pull_and_sync(project_id)
+
+               send(
+                 live_view,
+                 {:repository_update_finished, project_id, result}
+               )
+             end
+           ) do
+        {:ok, _pid} ->
+          {:noreply,
+           assign(socket, :repository_update, %{
+             status: :running,
+             message:
+               "Pulling the upstream branch and refreshing repository indexes…"
+           })}
+
+        {:error, reason} ->
+          {:noreply,
+           assign(socket, :repository_update, %{
+             status: :error,
+             message: "Could not start repository update: #{inspect(reason)}"
+           })}
+      end
+    end
+  end
+
+  def handle_event("update_repository", _params, socket),
+    do: {:noreply, socket}
+
   @impl true
   def handle_info(
         {:document_changed, %{document_id: document_id}},
@@ -135,6 +178,54 @@ defmodule SheafWeb.ResourceLive do
   end
 
   def handle_info({:document_changed, _event}, socket), do: {:noreply, socket}
+
+  def handle_info(
+        {:repository_update_finished, project_id, {:ok, summary}},
+        %{assigns: %{resource_kind: :software_project, project: project}} =
+          socket
+      )
+      when project.id == project_id do
+    message =
+      if summary.changed?,
+        do:
+          "Updated to #{String.slice(summary.after_head, 0, 10)} and refreshed search.",
+        else: "Already up to date; repository indexes were refreshed."
+
+    case Sheaf.SoftwareProjects.get(project_id) do
+      {:ok, project} ->
+        {:noreply,
+         socket
+         |> assign(:project, project)
+         |> assign(:repository_update, %{status: :ok, message: message})}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket, :repository_update, %{
+           status: :error,
+           message:
+             "Repository updated, but the project view could not reload: #{inspect(reason)}"
+         })}
+    end
+  end
+
+  def handle_info(
+        {:repository_update_finished, project_id, {:error, reason}},
+        %{assigns: %{resource_kind: :software_project, project: project}} =
+          socket
+      )
+      when project.id == project_id do
+    {:noreply,
+     assign(socket, :repository_update, %{
+       status: :error,
+       message: repository_update_error(reason)
+     })}
+  end
+
+  def handle_info(
+        {:repository_update_finished, _project_id, _result},
+        socket
+      ),
+      do: {:noreply, socket}
 
   @impl true
   def render(%{resource_kind: :document} = assigns),
@@ -277,6 +368,9 @@ defmodule SheafWeb.ResourceLive do
          |> assign(:resource_id, resource_id)
          |> assign(:resource_kind, :software_project)
          |> assign(:project, project)
+         |> assign_new(:repository_update, fn ->
+           %{status: :idle, message: nil}
+         end)
          |> assign(:selected_block_id, nil)}
 
       {:error, reason} ->
@@ -492,4 +586,24 @@ defmodule SheafWeb.ResourceLive do
   defp block_path(doc_id, block_id) do
     ~p"/#{doc_id}?block=#{block_id}" <> "#block-#{block_id}"
   end
+
+  defp repository_update_error({:dirty_worktree, _output}),
+    do:
+      "The checkout has local changes. Commit or stash them before updating."
+
+  defp repository_update_error(:missing_upstream),
+    do: "The current branch has no configured upstream."
+
+  defp repository_update_error({:git_command_failed, failure}),
+    do: "Git update failed: #{failure.output}"
+
+  defp repository_update_error({:backup_failed, reason}),
+    do:
+      "The repository was pulled, but the Quadlog backup failed: #{inspect(reason)}"
+
+  defp repository_update_error({:update_exception, message}),
+    do: "Repository update failed: #{message}"
+
+  defp repository_update_error(reason),
+    do: "Repository update failed: #{inspect(reason)}"
 end
