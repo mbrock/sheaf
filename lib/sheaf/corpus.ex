@@ -186,11 +186,17 @@ defmodule Sheaf.Corpus do
     type = Document.block_type(graph, iri) || :document
 
     %{
-      id: Id.id_from_iri(iri),
+      id: ancestry_id(iri, type),
       type: type,
       title: ancestry_title(graph, iri, type)
     }
   end
+
+  defp ancestry_id(iri, type)
+       when type in [:source_directory, :source_file, :source_file_block],
+       do: to_string(iri)
+
+  defp ancestry_id(iri, _type), do: Id.id_from_iri(iri)
 
   defp ancestry_title(graph, iri, :document), do: Document.title(graph, iri)
   defp ancestry_title(graph, iri, :section), do: Document.heading(graph, iri)

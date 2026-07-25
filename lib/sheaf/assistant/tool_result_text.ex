@@ -143,6 +143,18 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
+  def to_text(%Block{type: :source_directory} = block) do
+    """
+    SOURCE DIRECTORY
+    Path: #{block.title}
+    Resource: #{resource_handle(block.resource_iri)}
+
+    Children:
+    #{children_lines(block.children)}
+    """
+    |> String.trim()
+  end
+
   def to_text(%Block{type: :paragraph} = block) do
     """
     THESIS PARAGRAPH ##{block.id}
@@ -181,14 +193,27 @@ defmodule Sheaf.Assistant.ToolResultText do
     |> String.trim()
   end
 
-  def to_text(%Block{type: :source_file} = block) do
+  def to_text(%Block{type: :source_file, text: text} = block)
+      when is_binary(text) do
     """
     SOURCE FILE
     Path: #{block.title}
-    Resource: #{block.resource_iri}
+    Resource: #{resource_handle(block.resource_iri)}
     Size: #{block.byte_size} bytes, #{block.line_count} lines
 
     #{block.text}
+    """
+    |> String.trim()
+  end
+
+  def to_text(%Block{type: :source_file} = block) do
+    """
+    SOURCE FILE ENTRY
+    Path: #{block.title}
+    Resource: #{resource_handle(block.resource_iri)}
+
+    Contents:
+    #{children_lines(block.children)}
     """
     |> String.trim()
   end
@@ -511,6 +536,7 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp document_heading(:paper), do: "DOCUMENT"
   defp document_heading(:transcript), do: "TRANSCRIPT"
   defp document_heading(:spreadsheet), do: "SPREADSHEET"
+  defp document_heading(:git_repository), do: "GIT REPOSITORY"
   defp document_heading(_), do: "DOCUMENT"
 
   defp outline_lines([]), do: "  (no outline)"
@@ -523,7 +549,7 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp outline_entry_lines(%OutlineEntry{} = entry, level) do
     label =
-      [entry.number, "##{entry.id}", entry.title]
+      [entry.number, resource_handle(entry.id), entry.title]
       |> Enum.reject(&blank?/1)
       |> Enum.join(" ")
 
@@ -556,7 +582,7 @@ defmodule Sheaf.Assistant.ToolResultText do
         title -> title
       end
 
-    "##{entry.id} " <> title
+    resource_handle(entry.id) <> " " <> title
   end
 
   defp children_lines([]), do: "  (no children)"
@@ -575,7 +601,7 @@ defmodule Sheaf.Assistant.ToolResultText do
 
     preview = if blank?(child.preview), do: "", else: " - " <> child.preview
 
-    "  - ##{child.id} #{label}#{preview}"
+    "  - #{resource_handle(child.id)} #{label}#{preview}"
   end
 
   defp search_section(_title, [], _mode), do: nil
@@ -662,6 +688,31 @@ defmodule Sheaf.Assistant.ToolResultText do
 
   defp expanded_block_text(%Block{type: :section} = block) do
     "SECTION ##{block.id} #{block.title}"
+  end
+
+  defp expanded_block_text(%Block{type: :source_directory} = block) do
+    "SOURCE DIRECTORY #{resource_handle(block.resource_iri)} #{block.title}"
+  end
+
+  defp expanded_block_text(%Block{type: :source_file, text: text} = block)
+       when is_binary(text) do
+    """
+    SOURCE FILE #{block.resource_iri} #{block.title}
+    #{indent_text(text, 1)}
+    """
+    |> String.trim()
+  end
+
+  defp expanded_block_text(%Block{type: :source_file} = block) do
+    content =
+      block.children
+      |> List.first()
+      |> case do
+        %Child{id: id} -> resource_handle(id)
+        _other -> resource_handle(block.resource_iri)
+      end
+
+    "SOURCE FILE #{content} #{block.title}"
   end
 
   defp expanded_block_text(%Block{type: :note} = block) do
@@ -1005,8 +1056,40 @@ defmodule Sheaf.Assistant.ToolResultText do
   defp type_label(:section), do: "section"
   defp type_label(:document), do: "document"
   defp type_label(:row), do: "coded excerpt"
+  defp type_label(:source_directory), do: "source directory"
+  defp type_label(:source_file), do: "source file"
+  defp type_label(:source_file_block), do: "source-file contents"
   defp type_label(type) when is_atom(type), do: Atom.to_string(type)
   defp type_label(type), do: to_string(type)
+
+  defp resource_handle(id) do
+    cond do
+      not is_binary(id) ->
+        "##{id}"
+
+      String.starts_with?(id, Sheaf.Id.base_iri()) ->
+        "/" <> String.replace_prefix(id, Sheaf.Id.base_iri(), "")
+
+      absolute_iri?(id) ->
+        id
+
+      true ->
+        "##{id}"
+    end
+  end
+
+  defp absolute_iri?(value) when is_binary(value) do
+    case URI.parse(value) do
+      %URI{scheme: scheme, host: host}
+      when scheme in ["http", "https"] and is_binary(host) ->
+        true
+
+      _other ->
+        false
+    end
+  end
+
+  defp absolute_iri?(_value), do: false
 
   defp indent(level), do: String.duplicate("  ", level)
 

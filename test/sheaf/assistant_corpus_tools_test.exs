@@ -816,14 +816,14 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
              type: {:list, :string},
              required: true,
              doc:
-               "Sheaf resource handles to read. Use ids without leading # for ordinary documents and blocks; use the complete IRI for a source-file #content block."
+               "Sheaf resource handles to read. Use ids without leading # for ordinary documents and blocks; use site-relative or complete IRIs for repository directories, files, and source-file #content blocks."
            ] = tool.parameter_schema[:blocks]
 
     assert [
              type: :boolean,
              default: false,
              doc:
-               "When true, sections and document roots are expanded into their full descendant contents."
+               "When true, ordinary sections/documents expand into full descendant contents; repositories expand only their directory/file tree."
            ] = tool.parameter_schema[:expand]
 
     refute Keyword.has_key?(tool.parameter_schema, :document_id)
@@ -989,6 +989,176 @@ defmodule Sheaf.Assistant.CorpusToolsTest do
            } = sheaf_result(read_result)
 
     assert tool_text(read_result) =~ text
+  end
+
+  test "repository tools list and navigate source trees without expanding contents" do
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "sheaf-corpus-tools-repository-#{System.unique_integer([:positive])}.sqlite3"
+      )
+
+    start_supervised!({Sheaf.Repo, path: path})
+    on_exit(&Sheaf.Documents.clear_cache/0)
+
+    repository = Id.iri("REPO01")
+    text_graph = Id.iri("TREE01")
+    root_list = Id.iri("LIST01")
+    directory_list = Id.iri("LIST02")
+    file_list = Id.iri("LIST03")
+
+    directory =
+      RDF.iri(to_string(repository) <> "/source-directories/c3Jj")
+
+    source_file =
+      RDF.iri(to_string(repository) <> "/source-files/c3JjL2RlbW8uZXg")
+
+    content = RDF.iri(to_string(source_file) <> "#content")
+    source_text = "defmodule Demo do\n  def hello, do: :world\nend\n"
+
+    graph =
+      RDF.Graph.new(
+        [
+          {repository, RDF.type(), DOC.Document},
+          {repository, RDF.type(), DOC.GitRepository},
+          {repository, RDF.NS.RDFS.label(), "demo"},
+          {repository, DOC.children(), root_list},
+          {directory, RDF.type(), DOC.GitSourceDirectory},
+          {directory, RDF.NS.RDFS.label(), "src"},
+          {directory, DOC.inGitRepository(), repository},
+          {directory, DOC.children(), directory_list},
+          {source_file, RDF.type(), DOC.GitSourceFile},
+          {source_file, RDF.NS.RDFS.label(), "src/demo.ex"},
+          {source_file, DOC.sourcePath(), "src/demo.ex"},
+          {source_file, DOC.inGitRepository(), repository},
+          {source_file, DOC.children(), file_list},
+          {source_file, DOC.hasSourceFileBlock(), content},
+          {content, RDF.type(), DOC.SourceFileBlock},
+          {content, DOC.inSourceFile(), source_file},
+          {content, DOC.text(), source_text}
+        ],
+        name: text_graph
+      )
+      |> then(fn graph ->
+        RDF.list([directory], graph: graph, head: root_list).graph
+      end)
+      |> then(fn graph ->
+        RDF.list([source_file], graph: graph, head: directory_list).graph
+      end)
+      |> then(fn graph ->
+        RDF.list([content], graph: graph, head: file_list).graph
+      end)
+
+    workspace =
+      RDF.Graph.new(
+        [{repository, DOC.hasGitTextGraph(), text_graph}],
+        name: Sheaf.Workspace.graph()
+      )
+
+    assert :ok = Sheaf.Repo.assert(graph)
+    assert :ok = Sheaf.Repo.assert(workspace)
+    assert :ok = Sheaf.Documents.clear_cache()
+
+    tools = CorpusTools.tools(include_notes?: false)
+    list_documents = Enum.find(tools, &(&1.name == "list_documents"))
+    get_document = Enum.find(tools, &(&1.name == "get_document"))
+    read = Enum.find(tools, &(&1.name == "read"))
+
+    assert {:ok, list_result} = Tool.execute(list_documents, %{})
+
+    assert %ToolResults.DocumentSummary{kind: :git_repository} =
+             list_result
+             |> sheaf_result()
+             |> Map.fetch!(:documents)
+             |> Enum.find(&(&1.id == "REPO01"))
+
+    assert {:ok, get_result} =
+             Tool.execute(get_document, %{"id" => "REPO01"})
+
+    assert %ToolResults.Document{
+             kind: :git_repository,
+             outline: [
+               %ToolResults.OutlineEntry{
+                 id: directory_id,
+                 children: []
+               }
+             ]
+           } = sheaf_result(get_result)
+
+    assert directory_id == to_string(directory)
+    assert tool_text(get_result) =~ "GIT REPOSITORY #REPO01"
+    assert tool_text(get_result) =~ "/REPO01/source-directories/c3Jj"
+    refute tool_text(get_result) =~ to_string(source_file)
+    refute tool_text(get_result) =~ source_text
+
+    assert {:ok, root_result} =
+             Tool.execute(read, %{"blocks" => ["REPO01"]})
+
+    assert %ToolResults.Block{
+             type: :document,
+             kind: :git_repository,
+             outline: [_directory]
+           } = sheaf_result(root_result)
+
+    assert {:ok, directory_result} =
+             Tool.execute(read, %{"blocks" => [to_string(directory)]})
+
+    assert %ToolResults.Block{
+             type: :source_directory,
+             resource_iri: ^directory_id,
+             children: [
+               %ToolResults.Child{
+                 id: source_file_id,
+                 type: :source_file
+               }
+             ]
+           } = sheaf_result(directory_result)
+
+    assert source_file_id == to_string(source_file)
+
+    assert {:ok, file_result} =
+             Tool.execute(read, %{
+               "blocks" => ["/REPO01/source-files/c3JjL2RlbW8uZXg"]
+             })
+
+    assert %ToolResults.Block{
+             type: :source_file,
+             text: nil,
+             children: [
+               %ToolResults.Child{
+                 id: content_id,
+                 type: :source_file_block
+               }
+             ]
+           } = sheaf_result(file_result)
+
+    assert content_id == to_string(content)
+    refute tool_text(file_result) =~ source_text
+
+    assert {:ok, expanded_result} =
+             Tool.execute(read, %{
+               "blocks" => ["REPO01"],
+               "expand" => true
+             })
+
+    assert %ToolResults.Blocks{
+             expanded?: true,
+             blocks: [
+               %ToolResults.Block{type: :document},
+               %ToolResults.Block{type: :source_directory},
+               %ToolResults.Block{type: :source_file, text: nil}
+             ]
+           } = sheaf_result(expanded_result)
+
+    refute tool_text(expanded_result) =~ source_text
+
+    assert {:ok, content_result} =
+             Tool.execute(read, %{"blocks" => [to_string(content)]})
+
+    assert %ToolResults.Block{text: ^source_text} =
+             sheaf_result(content_result)
+
+    assert tool_text(content_result) =~ String.trim(source_text)
   end
 
   test "list_notes returns persisted notes newest first with mentions" do

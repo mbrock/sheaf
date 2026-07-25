@@ -891,7 +891,8 @@ defmodule Sheaf.Documents do
       RDF.iri(DOC.Paper),
       RDF.iri(DOC.Thesis),
       RDF.iri(DOC.Transcript),
-      RDF.iri(DOC.Spreadsheet)
+      RDF.iri(DOC.Spreadsheet),
+      RDF.iri(DOC.GitRepository)
     ]
   end
 
@@ -1052,6 +1053,7 @@ defmodule Sheaf.Documents do
   defp kind(term_to_iri(DOC.Thesis)), do: :thesis
   defp kind(term_to_iri(DOC.Transcript)), do: :transcript
   defp kind(term_to_iri(DOC.Spreadsheet)), do: :spreadsheet
+  defp kind(term_to_iri(DOC.GitRepository)), do: :git_repository
   defp kind(_term), do: :document
 
   defp path(_iri, true), do: nil
@@ -1069,7 +1071,8 @@ defmodule Sheaf.Documents do
   defp kind_order(:paper), do: 1
   defp kind_order(:transcript), do: 2
   defp kind_order(:spreadsheet), do: 3
-  defp kind_order(:document), do: 4
+  defp kind_order(:git_repository), do: 4
+  defp kind_order(:document), do: 5
 
   defp term_value(term), do: term |> RDF.Term.value() |> to_string()
 end

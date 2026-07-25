@@ -132,6 +132,7 @@ defmodule Sheaf.Assistant.CorpusTools do
         name: "get_document",
         description:
           "Return a document's metadata and full section outline. " <>
+            "Repositories return their root directory and file handles without file contents; read a directory handle to drill deeper. " <>
             "Call this before drilling into a document so you know the structure.",
         parameter_schema: [
           id: [
@@ -146,22 +147,23 @@ defmodule Sheaf.Assistant.CorpusTools do
         name: "read",
         description:
           "Read one or more Sheaf resources by id or IRI. Pass blocks as a list. " <>
-            "Handles may be 6-character document, block, or research-note ids, or complete source-file #content IRIs returned by search_text. Blocks may come from different documents; their documents are resolved automatically. " <>
+            "Handles may be 6-character document, block, or research-note ids, site-relative or complete repository directory/file IRIs, or source-file #content IRIs returned by search_text. Blocks may come from different documents; their documents are resolved automatically. " <>
             "By default sections and documents are returned collapsed with child handles. " <>
             "Set expand=true to read the full descendant contents of sections or whole documents. " <>
+            "Repository expansion is bounded to directory and file entries and never expands file contents. " <>
             "Expanded output still tags every section, paragraph, excerpt, and row with its block id.",
         parameter_schema: [
           blocks: [
             type: {:list, :string},
             required: true,
             doc:
-              "Sheaf resource handles to read. Use ids without leading # for ordinary documents and blocks; use the complete IRI for a source-file #content block."
+              "Sheaf resource handles to read. Use ids without leading # for ordinary documents and blocks; use site-relative or complete IRIs for repository directories, files, and source-file #content blocks."
           ],
           expand: [
             type: :boolean,
             default: false,
             doc:
-              "When true, sections and document roots are expanded into their full descendant contents."
+              "When true, ordinary sections/documents expand into full descendant contents; repositories expand only their directory/file tree."
           ]
         ],
         callback: instrument(notify, "read", &read_tool/1)
@@ -1468,7 +1470,7 @@ defmodule Sheaf.Assistant.CorpusTools do
             id: id,
             title: Document.title(graph, root),
             kind: Document.kind(graph, root),
-            outline: Enum.map(Document.toc(graph, root), &outline_entry/1)
+            outline: Enum.map(Document.outline(graph, root), &outline_entry/1)
           }
           |> rendered_result()
           |> then(&{:ok, &1})
@@ -2401,16 +2403,55 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp read_block(block_id, expanded?) do
+    block_id = expand_site_relative_handle(block_id)
+
     if absolute_iri?(block_id) do
-      read_source_file_block(block_id)
+      read_absolute_block(block_id, expanded?)
     else
       case ResourceResolver.resolve(block_id) do
         {:ok, %{kind: :research_note, id: note_id}} ->
           read_note(note_id)
 
+        {:ok, %{kind: :document, id: document_id}} ->
+          read_document_block(block_id, document_id, expanded?)
+
+        {:ok, %{kind: :block, document_id: document_id}} ->
+          read_document_block(block_id, document_id, expanded?)
+
         _other ->
-          read_document_block(block_id, expanded?)
+          {:error, {:not_found, block_id}}
       end
+    end
+  end
+
+  defp expand_site_relative_handle("/" <> path),
+    do: Id.base_iri() <> path
+
+  defp expand_site_relative_handle(handle), do: handle
+
+  defp read_absolute_block(block_iri, expanded?) do
+    block = RDF.iri(block_iri)
+
+    with {:ok, source_files} <-
+           Sheaf.Repo.match_rows({block, DOC.inSourceFile(), nil, nil}) do
+      case first_row_object(source_files) do
+        nil -> read_source_tree_block(block, expanded?)
+        _source_file -> read_source_file_block(block_iri)
+      end
+    end
+  end
+
+  defp read_source_tree_block(block, expanded?) do
+    with {:ok, repositories} <-
+           Sheaf.Repo.match_rows({block, DOC.inGitRepository(), nil, nil}),
+         repository when not is_nil(repository) <-
+           first_row_object(repositories),
+         {:ok, graph} <- Corpus.graph_iri(repository) do
+      document_id = Id.id_from_iri(repository)
+      read_repository_block(graph, document_id, repository, block, expanded?)
+    else
+      nil -> {:error, {:not_found, to_string(block)}}
+      {:error, reason} -> {:error, {reason, to_string(block)}}
     end
   end
 
@@ -2475,29 +2516,70 @@ defmodule Sheaf.Assistant.CorpusTools do
       if(String.ends_with?(text, "\n"), do: 0, else: 1)
   end
 
-  defp read_document_block(block_id, expanded?) do
-    with {:ok, document_id} <- document_for_block(block_id),
-         {:ok, graph} <- Corpus.graph(document_id) do
+  defp read_document_block(block_id, document_id, expanded?) do
+    with {:ok, graph} <- Corpus.graph(document_id) do
       root = Id.iri(document_id)
       tags_by_block = tags_for_document(graph, root)
 
-      if expanded? do
-        graph
-        |> expanded_blocks_from_graph(
+      if Document.kind(graph, root) == :git_repository do
+        read_repository_block(
+          graph,
           document_id,
           root,
           Id.iri(block_id),
-          tags_by_block
+          expanded?
         )
-        |> prepend_document_header(graph, document_id, root)
       else
-        block_from_graph(graph, document_id, root, block_id, tags_by_block)
+        if expanded? do
+          graph
+          |> expanded_blocks_from_graph(
+            document_id,
+            root,
+            Id.iri(block_id),
+            tags_by_block
+          )
+          |> prepend_document_header(graph, document_id, root)
+        else
+          block_from_graph(graph, document_id, root, block_id, tags_by_block)
+        end
       end
     else
       {:error, :not_found} -> {:error, {:not_found, block_id}}
       {:error, reason} -> {:error, {reason, block_id}}
     end
   end
+
+  defp read_repository_block(
+         graph,
+         document_id,
+         root,
+         iri,
+         expanded?
+       ) do
+    tags_by_block = %{}
+
+    if expanded? do
+      graph
+      |> expanded_repository_blocks(
+        document_id,
+        root,
+        iri,
+        tags_by_block
+      )
+      |> prepend_document_header(graph, document_id, root)
+    else
+      block_from_graph(
+        graph,
+        document_id,
+        root,
+        repository_block_id(root, iri),
+        tags_by_block
+      )
+    end
+  end
+
+  defp repository_block_id(root, root), do: Id.id_from_iri(root)
+  defp repository_block_id(_root, iri), do: to_string(iri)
 
   defp read_note(note_id) do
     with {:ok, note, _graph} <- Notes.get(note_id) do
@@ -2537,13 +2619,6 @@ defmodule Sheaf.Assistant.CorpusTools do
     case RDF.Term.value(term) do
       %DateTime{} = value -> DateTime.to_iso8601(value)
       value -> to_string(value)
-    end
-  end
-
-  defp document_for_block(block_id) do
-    case Corpus.find_document(block_id) do
-      nil -> {:error, :not_found}
-      document_id -> {:ok, document_id}
     end
   end
 
@@ -2607,6 +2682,51 @@ defmodule Sheaf.Assistant.CorpusTools do
     end
   end
 
+  defp expanded_repository_blocks(
+         graph,
+         document_id,
+         root,
+         iri,
+         tags_by_block
+       ) do
+    block_id = repository_block_id(root, iri)
+
+    case block_from_graph(graph, document_id, root, block_id, tags_by_block) do
+      {:ok, block} ->
+        descendants =
+          if iri == root or
+               Document.block_type(graph, iri) == :source_directory do
+            graph
+            |> Document.children(iri)
+            |> Enum.flat_map(fn child ->
+              case Document.block_type(graph, child) do
+                type when type in [:source_directory, :source_file] ->
+                  case expanded_repository_blocks(
+                         graph,
+                         document_id,
+                         root,
+                         child,
+                         tags_by_block
+                       ) do
+                    {:ok, blocks} -> blocks
+                    {:error, _reason} -> []
+                  end
+
+                _other ->
+                  []
+              end
+            end)
+          else
+            []
+          end
+
+        {:ok, [block | descendants]}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   defp block_from_graph(graph, document_id, root, block_id) do
     block_from_graph(
       graph,
@@ -2618,7 +2738,12 @@ defmodule Sheaf.Assistant.CorpusTools do
   end
 
   defp block_from_graph(graph, document_id, root, block_id, tags_by_block) do
-    iri = Id.iri(block_id)
+    iri =
+      if absolute_iri?(block_id) do
+        RDF.iri(block_id)
+      else
+        Id.iri(block_id)
+      end
 
     cond do
       iri == root ->
@@ -2636,7 +2761,7 @@ defmodule Sheaf.Assistant.CorpusTools do
                title: Document.title(graph, root)
              }
            ],
-           outline: Enum.map(Document.toc(graph, root), &outline_entry/1)
+           outline: Enum.map(Document.outline(graph, root), &outline_entry/1)
          }}
 
       type = Document.block_type(graph, iri) ->
@@ -2658,7 +2783,8 @@ defmodule Sheaf.Assistant.CorpusTools do
   defp render_block(graph, document_id, iri, type, tags_by_block) do
     base = %ToolResults.Block{
       document_id: document_id,
-      id: Id.id_from_iri(iri),
+      id: block_handle(iri, type),
+      resource_iri: source_resource_iri(iri, type),
       type: type,
       title: block_title(graph, iri, type),
       source: block_source(graph, iri),
@@ -2667,6 +2793,20 @@ defmodule Sheaf.Assistant.CorpusTools do
 
     case type do
       :section ->
+        Map.put(
+          base,
+          :children,
+          Enum.map(Document.children(graph, iri), &child_handle(graph, &1))
+        )
+
+      :source_directory ->
+        Map.put(
+          base,
+          :children,
+          Enum.map(Document.children(graph, iri), &child_handle(graph, &1))
+        )
+
+      :source_file ->
         Map.put(
           base,
           :children,
@@ -2690,18 +2830,36 @@ defmodule Sheaf.Assistant.CorpusTools do
     type = Document.block_type(graph, iri)
 
     %ToolResults.Child{
-      id: Id.id_from_iri(iri),
+      id: block_handle(iri, type),
       type: type,
       title: block_title(graph, iri, type),
       preview: block_preview(graph, iri, type)
     }
   end
 
+  defp block_handle(iri, type)
+       when type in [:source_directory, :source_file, :source_file_block],
+       do: to_string(iri)
+
+  defp block_handle(iri, _type), do: Id.id_from_iri(iri)
+
+  defp source_resource_iri(iri, type)
+       when type in [:source_directory, :source_file, :source_file_block],
+       do: to_string(iri)
+
+  defp source_resource_iri(_iri, _type), do: nil
+
   defp context_entry(%{id: id, type: type, title: title}) do
     %ToolResults.ContextEntry{id: id, type: type, title: title}
   end
 
   defp block_title(graph, iri, :section), do: Document.heading(graph, iri)
+
+  defp block_title(graph, iri, :source_directory),
+    do: Document.heading(graph, iri)
+
+  defp block_title(graph, iri, :source_file), do: Document.heading(graph, iri)
+  defp block_title(_graph, _iri, :source_file_block), do: "contents"
   defp block_title(_graph, _iri, _type), do: nil
 
   defp block_preview(graph, iri, :paragraph),

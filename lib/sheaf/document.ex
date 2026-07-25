@@ -217,6 +217,24 @@ defmodule Sheaf.Document do
     |> toc_entries(graph, [])
   end
 
+  @doc """
+  Returns the navigable outline for a document.
+
+  Ordinary documents use their section table of contents. Git repositories
+  expose their immediate root directory and file entries; agents can read a
+  directory handle to continue drilling into the tree. Source-file contents
+  remain behind the file's separate content resource.
+  """
+  def outline(%Graph{} = graph, root) do
+    if kind(graph, root) == :git_repository do
+      graph
+      |> children(root)
+      |> source_outline_entries(graph)
+    else
+      toc(graph, root)
+    end
+  end
+
   def block_type(%Graph{} = graph, iri) do
     description = Graph.description(graph, iri)
 
@@ -456,6 +474,37 @@ defmodule Sheaf.Document do
       number: number,
       children: graph |> children(iri) |> toc_entries(graph, number)
     }
+  end
+
+  defp source_outline_entries(iris, graph) do
+    Enum.flat_map(iris, fn iri ->
+      case block_type(graph, iri) do
+        :source_directory ->
+          [
+            %{
+              iri: iri,
+              id: to_string(iri),
+              title: heading(graph, iri),
+              number: [],
+              children: []
+            }
+          ]
+
+        :source_file ->
+          [
+            %{
+              iri: iri,
+              id: to_string(iri),
+              title: heading(graph, iri),
+              number: [],
+              children: []
+            }
+          ]
+
+        _other ->
+          []
+      end
+    end)
   end
 
   defp parent_index(%Graph{} = graph) do

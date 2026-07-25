@@ -1519,13 +1519,17 @@ defmodule Sheaf.Assistant.Chat.Server do
     Tool guidance:
       * Use list_documents when you need to know what's in the corpus.
       * Use get_document before drilling into a document; it returns the
-        outline so you can pick the right section.
+        outline so you can pick the right section. For a Git repository it
+        returns the root source-tree entries; read directory handles to descend.
       * Use read for one or more sections, paragraphs, extracted blocks, or
         RDF row blocks. Pass blocks as a list of block ids. Sections and
         documents return child handles by default; set expand=true to read
         their full descendant contents. Paragraphs, extracted blocks, and rows
         return text. Every block comes back with its ancestry or inline block
         tag so you can orient yourself and cite it.
+        Repository directory and file handles may be site-relative IRIs.
+        Repository expansion returns directory/file entries without source
+        text; read a file's explicit #content handle to retrieve its contents.
       * Use search_text to find where a concept or phrase appears. It combines
         exact text matching with embedding search over the RDF document corpus,
         including imported coded rows; pass document_id to scope to one
