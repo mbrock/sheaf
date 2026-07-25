@@ -104,8 +104,17 @@ defmodule Sheaf.DocumentImportTest do
                completed_at: DateTime.utc_now()
              )
 
+    test_pid = self()
+
     assert {:ok, first} =
-             Sheaf.DocumentImport.import_run(%{"run_id" => staged.run_id})
+             Sheaf.DocumentImport.import_run(
+               %{"run_id" => staged.run_id},
+               notify: &send(test_pid, {:progress, &1})
+             )
+
+    assert_receive {:progress,
+                    "Importing document 1/1 · " <>
+                      _source_id}
 
     assert [%{status: "imported", document_id: document_id}] =
              first.documents

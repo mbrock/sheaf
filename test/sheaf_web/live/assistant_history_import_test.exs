@@ -47,4 +47,31 @@ defmodule SheafWeb.AssistantHistoryImportTest do
     assert html =~ ~s(value="claude-opus-4-8" selected)
     refute html =~ ~s(name="chat[mode]")
   end
+
+  test "shows background embedding progress in the assistant toolbar", %{
+    conn: conn
+  } do
+    {:ok, view, _html} = live(conn, ~p"/history")
+
+    Phoenix.PubSub.broadcast(
+      Sheaf.PubSub,
+      Sheaf.SearchIndexWorker.topic(),
+      {:search_index_status,
+       %{
+         running?: true,
+         queued?: false,
+         phase: :embedding,
+         completed_count: 24,
+         total_count: 80,
+         message: "Creating search embeddings",
+         error: nil,
+         reasons: ["PDF import TEST"]
+       }}
+    )
+
+    html = render(view)
+    assert html =~ "Creating search embeddings"
+    assert html =~ "24/80"
+    assert has_element?(view, "#search-index-status[role=status]")
+  end
 end

@@ -16,6 +16,25 @@ defmodule SheafWeb.ResourceLive do
 
   @impl true
   def mount(%{"id" => id} = params, _session, socket) do
+    socket =
+      if connected?(socket) do
+        Phoenix.PubSub.subscribe(
+          Sheaf.PubSub,
+          Sheaf.SearchIndexWorker.topic()
+        )
+
+        socket
+      else
+        socket
+      end
+
+    socket =
+      assign(
+        socket,
+        :search_index_status,
+        Sheaf.SearchIndexWorker.status()
+      )
+
     load_resource(socket, id, params)
   end
 
@@ -169,6 +188,10 @@ defmodule SheafWeb.ResourceLive do
     do: {:noreply, socket}
 
   @impl true
+  def handle_info({:search_index_status, status}, socket) do
+    {:noreply, assign(socket, :search_index_status, status)}
+  end
+
   def handle_info(
         {:document_changed, %{document_id: document_id}},
         %{assigns: %{resource_kind: :document, document_id: document_id}} =
@@ -243,7 +266,11 @@ defmodule SheafWeb.ResourceLive do
   def render(%{resource_kind: :assistant_conversation} = assigns) do
     ~H"""
     <main class="min-h-dvh bg-white text-stone-950 dark:bg-stone-950 dark:text-stone-50">
-      <AppChrome.toolbar section={:document} search?={false} />
+      <AppChrome.toolbar
+        section={:document}
+        search?={false}
+        search_index_status={@search_index_status}
+      />
 
       <section class="min-w-0">
         <.live_component

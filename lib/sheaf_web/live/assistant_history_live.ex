@@ -38,6 +38,18 @@ defmodule SheafWeb.AssistantHistoryLive do
         {"sheaf.history_group_count", length(groups)}
       ])
 
+      socket =
+        if connected?(socket) do
+          Phoenix.PubSub.subscribe(
+            Sheaf.PubSub,
+            Sheaf.SearchIndexWorker.topic()
+          )
+
+          socket
+        else
+          socket
+        end
+
       {:ok,
        socket
        |> allow_upload(:pdfs,
@@ -49,6 +61,7 @@ defmodule SheafWeb.AssistantHistoryLive do
        )
        |> assign(:page_title, "Assistant history")
        |> assign(:notes_error, notes_error)
+       |> assign(:search_index_status, Sheaf.SearchIndexWorker.status())
        |> assign(:uploaded_pdfs, [])
        |> assign(:rows, rows)}
     end
@@ -62,6 +75,10 @@ defmodule SheafWeb.AssistantHistoryLive do
     )
 
     {:noreply, assign(socket, :uploaded_pdfs, [])}
+  end
+
+  def handle_info({:search_index_status, status}, socket) do
+    {:noreply, assign(socket, :search_index_status, status)}
   end
 
   @impl true
@@ -110,7 +127,10 @@ defmodule SheafWeb.AssistantHistoryLive do
   def render(assigns) do
     ~H"""
     <main class="min-h-dvh bg-stone-50 text-stone-950 dark:bg-stone-950 dark:text-stone-50">
-      <AppChrome.toolbar section={:history} />
+      <AppChrome.toolbar
+        section={:history}
+        search_index_status={@search_index_status}
+      />
 
       <div class="mx-auto w-full max-w-5xl px-2 py-2 sm:px-4 sm:py-4">
         <section class="mb-3">

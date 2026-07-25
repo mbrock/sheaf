@@ -34,7 +34,7 @@ defmodule Sheaf.DocumentImport do
         "status" -> status(args)
         "extract" -> extract(args, opts)
         "inspect" -> inspect_run(args)
-        "import" -> import_run(args)
+        "import" -> import_run(args, opts)
         "metadata" -> resolve_metadata(args, opts)
         "validate" -> validate(args, opts)
         _ -> {:error, {:unknown_action, action}}
@@ -125,12 +125,22 @@ defmodule Sheaf.DocumentImport do
 
   def inspect_run(_args), do: {:error, :run_id_required}
 
-  def import_run(%{"run_id" => run_id}) do
+  def import_run(args, opts \\ [])
+
+  def import_run(%{"run_id" => run_id}, opts) do
+    notify = Keyword.get(opts, :notify, fn _message -> :ok end)
+
     with {:ok, job} <- DatalabJobs.get_job(run_iri(run_id)),
          {:ok, imported_sources} <- imported_source_documents() do
       {results, _imported_sources} =
-        Enum.map_reduce(job.file_jobs, imported_sources, fn file_job,
-                                                            imported_sources ->
+        job.file_jobs
+        |> Enum.with_index(1)
+        |> Enum.map_reduce(imported_sources, fn {file_job, index},
+                                                imported_sources ->
+          notify.(
+            "Importing document #{index}/#{length(job.file_jobs)} · #{source_id(file_job)}"
+          )
+
           result = import_file_job(file_job, imported_sources)
 
           imported_sources =
@@ -152,13 +162,15 @@ defmodule Sheaf.DocumentImport do
       errors = Enum.filter(results, &Map.has_key?(&1, :error))
 
       if errors == [] do
+        :ok = Sheaf.SearchIndexWorker.enqueue("PDF import #{run_id}")
+
         {:ok,
          %{
            action: "import",
            run_id: run_id,
            documents: results,
            next:
-             "Resolve metadata, rebuild indexes, and validate reader pages."
+             "Resolve metadata and validate reader pages. Search indexing is continuing in the background."
          }}
       else
         {:error, {:import_failed, results}}
@@ -166,51 +178,70 @@ defmodule Sheaf.DocumentImport do
     end
   end
 
-  def import_run(_args), do: {:error, :run_id_required}
+  def import_run(_args, _opts), do: {:error, :run_id_required}
 
   def resolve_metadata(args, opts \\ [])
 
   def resolve_metadata(%{"run_id" => run_id}, opts) do
+    notify = Keyword.get(opts, :notify, fn _message -> :ok end)
+
     with {:ok, job} <- DatalabJobs.get_job(run_iri(run_id)),
          {:ok, documents} <- documents_for_job(job) do
       results =
-        Enum.map(documents, fn document ->
-          with {:ok, [candidate]} <-
-                 Sheaf.MetadataResolver.candidates(
-                   document: document,
-                   missing_only: true
-                 ),
-               {:ok, result} <-
-                 Sheaf.MetadataResolver.resolve(candidate,
-                   pdf_fallback: true,
-                   llm_options: Keyword.get(opts, :llm_options, [])
-                 ) do
-            %{
-              document_id: Sheaf.Id.id_from_iri(document),
-              wrote: result.wrote?,
-              metadata: Map.from_struct(result.metadata),
-              match: Map.get(result, :match)
-            }
-          else
-            {:ok, []} ->
-              %{
-                document_id: Sheaf.Id.id_from_iri(document),
-                status: "already_resolved"
-              }
+        documents
+        |> Enum.with_index(1)
+        |> Enum.map(fn {document, index} ->
+          document_id = Sheaf.Id.id_from_iri(document)
 
-            {:error, reason} ->
-              %{
-                document_id: Sheaf.Id.id_from_iri(document),
-                error: inspect(reason)
-              }
+          notify.(
+            "Resolving metadata #{index}/#{length(documents)} · #{document_id}"
+          )
 
-            other ->
+          result =
+            with {:ok, [candidate]} <-
+                   Sheaf.MetadataResolver.candidates(
+                     document: document,
+                     missing_only: true
+                   ),
+                 {:ok, result} <-
+                   Sheaf.MetadataResolver.resolve(candidate,
+                     pdf_fallback: true,
+                     llm_options: Keyword.get(opts, :llm_options, [])
+                   ) do
               %{
-                document_id: Sheaf.Id.id_from_iri(document),
-                error: inspect(other)
+                document_id: document_id,
+                wrote: result.wrote?,
+                metadata: Map.from_struct(result.metadata),
+                match: Map.get(result, :match)
               }
-          end
+            else
+              {:ok, []} ->
+                %{
+                  document_id: document_id,
+                  status: "already_resolved"
+                }
+
+              {:error, reason} ->
+                %{
+                  document_id: document_id,
+                  error: inspect(reason)
+                }
+
+              other ->
+                %{
+                  document_id: document_id,
+                  error: inspect(other)
+                }
+            end
+
+          notify.(metadata_result_message(result, index, length(documents)))
+          result
         end)
+
+      :ok =
+        Sheaf.SearchIndexWorker.enqueue(
+          "Metadata resolved for import #{run_id}"
+        )
 
       {:ok, %{action: "metadata", run_id: run_id, documents: results}}
     end
@@ -220,21 +251,29 @@ defmodule Sheaf.DocumentImport do
 
   def validate(args, opts \\ [])
 
-  def validate(%{"run_id" => run_id}, _opts) do
+  def validate(%{"run_id" => run_id}, opts) do
+    notify = Keyword.get(opts, :notify, fn _message -> :ok end)
+    notify.("Checking imported reader pages")
+
     with {:ok, job} <- DatalabJobs.get_job(run_iri(run_id)),
-         {:ok, documents} <- documents_for_job(job),
-         {:ok, search} <- Sheaf.Search.Index.sync(),
-         {:ok, embeddings} <- Sheaf.Embedding.Index.sync() do
+         {:ok, documents} <- documents_for_job(job) do
       checks = Enum.map(documents, &validate_document/1)
+
+      :ok =
+        Sheaf.SearchIndexWorker.enqueue("Validation of PDF import #{run_id}")
+
+      search_status = Sheaf.SearchIndexWorker.status()
 
       {:ok,
        %{
          action: "validate",
          run_id: run_id,
          documents: checks,
-         search_rows: search.count,
-         embedding_status: embeddings.status,
-         embedding_errors: embeddings.error_count
+         search_index_status: search_status.phase,
+         search_index_message: search_status.message,
+         embedding_status:
+           if(search_status.running?, do: "updating", else: "queued"),
+         embedding_errors: 0
        }}
     end
   end
@@ -352,6 +391,8 @@ defmodule Sheaf.DocumentImport do
     with {:ok, job} <- DatalabJobs.get_job(job_iri),
          {:ok, completed_now} <- poll_submitted(job, notify),
          {:ok, refreshed} <- DatalabJobs.get_job(job_iri) do
+      notify.(extraction_progress_message(refreshed))
+
       cond do
         Enum.any?(refreshed.file_jobs, &DatalabJobs.failed?/1) ->
           {:error, {:datalab_failed, summarize(refreshed)}}
@@ -525,6 +566,21 @@ defmodule Sheaf.DocumentImport do
     with {:ok, graph} <- Files.list_graph() do
       graph |> RDF.Graph.description(file_iri) |> Files.local_path()
     end
+  end
+
+  defp metadata_result_message(%{error: _error}, index, total),
+    do: "Metadata resolution #{index}/#{total} finished with an error"
+
+  defp metadata_result_message(%{status: "already_resolved"}, index, total),
+    do: "Metadata #{index}/#{total} was already complete"
+
+  defp metadata_result_message(_result, index, total),
+    do: "Resolved metadata #{index}/#{total}"
+
+  defp extraction_progress_message(job) do
+    completed = Enum.count(job.file_jobs, &DatalabJobs.completed?/1)
+    total = length(job.file_jobs)
+    "Extracting PDFs with Datalab · #{completed}/#{total} complete"
   end
 
   defp summarize_job(job_iri) do

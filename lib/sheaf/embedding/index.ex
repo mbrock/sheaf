@@ -273,6 +273,8 @@ defmodule Sheaf.Embedding.Index do
         !MapSet.member?(reusable, {unit.iri, unit.text_hash})
       end)
 
+    notify(opts, {:planned, length(units), length(missing), length(skipped)})
+
     metadata = %{
       kinds: Enum.frequencies_by(units, & &1.kind),
       limit: Keyword.get(opts, :limit),
@@ -338,6 +340,8 @@ defmodule Sheaf.Embedding.Index do
                  vector_current_hashes,
                  opts
                ) do
+          notify(opts, {:vectors, vector_count})
+
           Logger.info(
             "Embedding sync #{run_iri}: refreshed sqlite-vec index with #{vector_count} vectors"
           )
@@ -556,6 +560,7 @@ defmodule Sheaf.Embedding.Index do
           end)
 
           embedded = stats.embedded + length(pairs)
+          notify(opts, {:progress, embedded, total, stats.errors})
 
           if rem(embedded, 100) == 0 or embedded == total,
             do:
@@ -570,9 +575,12 @@ defmodule Sheaf.Embedding.Index do
             "Embedding sync #{run_iri}: failed batch starting #{List.first(units).iri}: #{inspect(reason)}"
           )
 
+          errors = stats.errors + length(units)
+          notify(opts, {:progress, stats.embedded, total, errors})
+
           %{
             stats
-            | errors: stats.errors + length(units),
+            | errors: errors,
               error_details:
                 Enum.map(units, &%{iri: &1.iri, reason: inspect(reason)}) ++
                   stats.error_details
@@ -583,9 +591,12 @@ defmodule Sheaf.Embedding.Index do
             "Embedding sync #{run_iri}: task exited: #{inspect(reason)}"
           )
 
+          errors = stats.errors + 1
+          notify(opts, {:progress, stats.embedded, total, errors})
+
           %{
             stats
-            | errors: stats.errors + 1,
+            | errors: errors,
               error_details: [
                 %{reason: inspect(reason)} | stats.error_details
               ]
@@ -637,6 +648,8 @@ defmodule Sheaf.Embedding.Index do
         Logger.info(
           "Embedding sync #{run_iri}: stored #{length(embeddings)}/#{total}"
         )
+
+        notify(opts, {:progress, length(embeddings), total, 0})
 
         %{
           embedded: length(embeddings),
@@ -790,6 +803,13 @@ defmodule Sheaf.Embedding.Index do
 
   defp async_batch_api_mode?(opts) do
     batch_api_mode?(opts) and Sheaf.Embedding.provider(opts) == :gemini
+  end
+
+  defp notify(opts, event) do
+    case Keyword.get(opts, :notify) do
+      callback when is_function(callback, 1) -> callback.(event)
+      _other -> :ok
+    end
   end
 
   defp maybe_limit_units(units, opts) do

@@ -22,6 +22,7 @@ defmodule Sheaf.Application do
          repo_children() ++
          [
            {Task.Supervisor, name: Sheaf.Assistant.TaskSupervisor},
+           search_index_worker_child(),
            {Registry, keys: :unique, name: Sheaf.Assistant.ChatRegistry},
            {DynamicSupervisor,
             strategy: :one_for_one, name: Sheaf.Assistant.ChatSupervisor},
@@ -83,6 +84,14 @@ defmodule Sheaf.Application do
 
     if Keyword.get(opts, :enabled, false) do
       {Sheaf.Expert, Keyword.delete(opts, :enabled)}
+    end
+  end
+
+  defp search_index_worker_child do
+    opts = Application.get_env(:sheaf, Sheaf.SearchIndexWorker, [])
+
+    if Keyword.get(opts, :enabled, true) do
+      Sheaf.SearchIndexWorker
     end
   end
 

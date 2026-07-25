@@ -9,6 +9,7 @@ config :sheaf, SheafWeb.Endpoint,
   server: false
 
 config :sheaf, Sheaf.Repo, start?: false, path: ":memory:"
+config :sheaf, Sheaf.SearchIndexWorker, enabled: false
 
 config :sheaf, Sheaf.MCP, token: "test-mcp-token", allowed_origins: []
 

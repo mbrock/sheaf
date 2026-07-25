@@ -11,6 +11,7 @@ defmodule SheafWeb.AppChrome do
   attr :copy_markdown?, :boolean, default: false
   attr :pdf_export_path, :string, default: nil
   attr :search?, :boolean, default: true
+  attr :search_index_status, :map, default: nil
   slot :inner_block
 
   def toolbar(assigns) do
@@ -57,6 +58,46 @@ defmodule SheafWeb.AppChrome do
         >
         </div>
 
+        <span
+          :if={show_search_index_status?(@search_index_status)}
+          id="search-index-status"
+          class={[
+            "flex min-w-0 items-center gap-1 font-sans text-[10px] tabular-nums",
+            @search_index_status.phase == :error &&
+              "text-rose-700 dark:text-rose-300",
+            @search_index_status.phase != :error &&
+              "text-stone-500 dark:text-stone-400"
+          ]}
+          title={@search_index_status.error || @search_index_status.message}
+          role="status"
+        >
+          <.icon
+            name={
+              if(@search_index_status.phase == :error,
+                do: "hero-exclamation-triangle",
+                else: "hero-arrow-path"
+              )
+            }
+            class={[
+              "size-3 shrink-0",
+              @search_index_status.running? && "animate-spin"
+            ]}
+          />
+          <span class="hidden max-w-56 truncate sm:inline">
+            {@search_index_status.message}
+          </span>
+          <span
+            :if={
+              @search_index_status.running? &&
+                is_integer(@search_index_status.total_count) &&
+                @search_index_status.total_count > 0
+            }
+            class="shrink-0"
+          >
+            {@search_index_status.completed_count}/{@search_index_status.total_count}
+          </span>
+        </span>
+
         <.link
           :if={@search?}
           navigate={~p"/search"}
@@ -102,6 +143,11 @@ defmodule SheafWeb.AppChrome do
     </div>
     """
   end
+
+  defp show_search_index_status?(nil), do: false
+
+  defp show_search_index_status?(status),
+    do: status.running? || status.queued? || status.phase == :error
 
   slot :inner_block
   attr :assistant_id, :string, default: "app-assistant"
