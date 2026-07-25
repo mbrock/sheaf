@@ -16,6 +16,7 @@ defmodule Sheaf.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
+      consolidate_protocols: Mix.env() != :dev,
       listeners: [Phoenix.CodeReloader]
     ]
   end

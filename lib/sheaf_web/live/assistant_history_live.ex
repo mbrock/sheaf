@@ -150,6 +150,19 @@ defmodule SheafWeb.AssistantHistoryLive do
                 class="mt-1 truncate text-stone-700 dark:text-stone-300"
               >
                 {entry.client_name} · {entry.progress}%
+                <span
+                  :for={error <- upload_errors(@uploads.pdfs, entry)}
+                  class="ml-1 text-rose-700 dark:text-rose-300"
+                >
+                  · {upload_error_message(error)}
+                </span>
+              </div>
+              <div
+                :for={error <- upload_errors(@uploads.pdfs)}
+                class="mt-1 text-rose-700 dark:text-rose-300"
+                role="alert"
+              >
+                {upload_error_message(error)}
               </div>
               <div
                 :for={file <- @uploaded_pdfs}
@@ -360,6 +373,20 @@ defmodule SheafWeb.AssistantHistoryLive do
     do: "size-4 text-emerald-600 dark:text-emerald-300"
 
   defp row_icon_class(_mode), do: "size-4 text-stone-400 dark:text-stone-500"
+
+  defp upload_error_message(:too_large),
+    do: "PDF is larger than the 50 MB limit"
+
+  defp upload_error_message(:not_accepted),
+    do: "Only PDF files are accepted"
+
+  defp upload_error_message(:too_many_files),
+    do: "Choose no more than 10 PDFs at a time"
+
+  defp upload_error_message(:external_client_failure),
+    do: "Upload connection failed; please try again"
+
+  defp upload_error_message(error), do: "Upload failed: #{inspect(error)}"
 
   defp time_label(%DateTime{} = datetime) do
     Calendar.strftime(datetime, "%Y-%m-%d %H:%M")

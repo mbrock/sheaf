@@ -38,7 +38,8 @@ defmodule SheafWeb.AssistantHistoryImportTest do
         }
       ])
 
-    assert render_upload(upload, "paper.pdf") =~ "paper.pdf · ready"
+    assert render_upload(upload, "paper.pdf", 50) =~ "paper.pdf · 50%"
+    assert render_upload(upload, "paper.pdf", 50) =~ "paper.pdf · ready"
     html = render(view)
 
     assert html =~ "paper.pdf · ready"
