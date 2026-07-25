@@ -606,10 +606,6 @@ defmodule SheafWeb.ResourceLive do
   defp repository_update_error({:git_command_failed, failure}),
     do: "Git update failed: #{failure.output}"
 
-  defp repository_update_error({:backup_failed, reason}),
-    do:
-      "The repository was pulled, but the Quadlog backup failed: #{inspect(reason)}"
-
   defp repository_update_error({:update_exception, message}),
     do: "Repository update failed: #{message}"
 

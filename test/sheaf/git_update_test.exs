@@ -47,7 +47,6 @@ defmodule Sheaf.Git.UpdateTest do
 
     assert {:ok, summary} =
              Update.pull_and_sync("PROJECT",
-               backup?: false,
                sync_search?: false,
                sync_embeddings?: false
              )
@@ -56,7 +55,7 @@ defmodule Sheaf.Git.UpdateTest do
     assert summary.before_head == first_sync.head
     assert summary.after_head != summary.before_head
     assert summary.upstream == "origin/main"
-    assert summary.backup_path == nil
+    refute Map.has_key?(summary, :backup_path)
 
     assert File.read!(Path.join(checkout, "README.md")) ==
              "# Updated upstream\n"
@@ -65,11 +64,8 @@ defmodule Sheaf.Git.UpdateTest do
     assert loaded.head.object_id == summary.after_head
     assert loaded.head.message == "Update upstream"
 
-    no_op_backup = Path.join(tmp_dir, "no-op-backup.sqlite3")
-
     assert {:ok, no_op} =
              Update.pull_and_sync("PROJECT",
-               backup_path: no_op_backup,
                sync_search?: false,
                sync_embeddings?: false
              )
@@ -80,17 +76,15 @@ defmodule Sheaf.Git.UpdateTest do
     refute no_op.mirror_stale?
     assert no_op.before_head == no_op.after_head
     assert no_op.pull_output == "Already up to date."
-    assert no_op.backup_path == nil
+    refute Map.has_key?(no_op, :backup_path)
     assert no_op.git == nil
     assert no_op.search == nil
     assert no_op.embeddings == nil
-    refute File.exists?(no_op_backup)
 
     File.write!(Path.join(checkout, "LOCAL.txt"), "uncommitted\n")
 
     assert {:error, {:dirty_worktree, output}} =
              Update.pull_and_sync("PROJECT",
-               backup?: false,
                sync_search?: false,
                sync_embeddings?: false
              )

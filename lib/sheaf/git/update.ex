@@ -156,8 +156,7 @@ defmodule Sheaf.Git.Update do
          pull_output,
          opts
        ) do
-    with {:ok, backup_path} <- maybe_backup(opts),
-         {:ok, git_summary} <-
+    with {:ok, git_summary} <-
            Sync.sync(project.repository.checkout_path,
              project_iri: project.iri
            ),
@@ -174,7 +173,6 @@ defmodule Sheaf.Git.Update do
           pull_output
         )
         |> Map.merge(%{
-          backup_path: backup_path,
           git: git_summary,
           search: index_summary.search,
           embeddings: index_summary.embedding
@@ -208,7 +206,6 @@ defmodule Sheaf.Git.Update do
       refs_changed?: refs_changed?,
       mirror_stale?: mirror_stale?,
       pull_output: String.trim(pull_output),
-      backup_path: nil,
       git: nil,
       search: nil,
       embeddings: nil
@@ -276,52 +273,5 @@ defmodule Sheaf.Git.Update do
   rescue
     error in ErlangError ->
       {:error, {:git_executable_failed, Exception.message(error)}}
-  end
-
-  defp maybe_backup(opts) do
-    if Keyword.get(opts, :backup?, true),
-      do: backup_dataset(opts),
-      else: {:ok, nil}
-  end
-
-  defp backup_dataset(opts) do
-    source = Sheaf.Repo.path()
-
-    path =
-      Keyword.get_lazy(opts, :backup_path, fn ->
-        name =
-          "sheaf-#{System.system_time(:second)}-#{System.unique_integer([:positive])}.sqlite3"
-
-        Path.join(["output", "backups", name])
-      end)
-
-    Tracer.with_span "sheaf.git.update.backup", %{
-      kind: :internal,
-      attributes: [
-        {"db.system", "sqlite"},
-        {"db.operation", "backup"},
-        {"db.name", source},
-        {"sheaf.backup.path", path}
-      ]
-    } do
-      File.mkdir_p!(Path.dirname(path))
-
-      case Exqlite.start_link(database: source) do
-        {:ok, conn} ->
-          try do
-            case Exqlite.query(conn, "VACUUM main INTO ?", [path],
-                   timeout: :infinity
-                 ) do
-              {:ok, _result} -> {:ok, path}
-              {:error, reason} -> {:error, {:backup_failed, reason}}
-            end
-          after
-            GenServer.stop(conn)
-          end
-
-        {:error, reason} ->
-          {:error, {:backup_failed, reason}}
-      end
-    end
   end
 end
