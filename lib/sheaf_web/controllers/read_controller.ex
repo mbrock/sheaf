@@ -8,55 +8,79 @@ defmodule SheafWeb.ReadController do
   alias RDF.{Description, Graph}
   alias Sheaf.Assistant.ToolResults
   alias Sheaf.{Document, Id, ResourceResolver}
+  alias SheafWeb.LibraryMarkdown
   alias Sheaf.NS.{BIBO, DCTERMS, FABIO, FOAF, PRISM}
 
-  def show(conn, %{"id" => id}) do
-    case read_page(id) do
-      {:ok, body} ->
-        conn
-        |> put_resp_content_type("text/html", "utf-8")
-        |> send_resp(200, body)
+  require OpenTelemetry.Tracer, as: Tracer
 
-      {:error, _reason} ->
-        conn
-        |> put_status(:not_found)
-        |> put_resp_content_type("text/plain", "utf-8")
-        |> send_resp(404, "Not found\n")
+  def show(conn, %{"id" => id}) do
+    representation = representation(conn)
+
+    Tracer.with_span "SheafWeb.ReadController.show", %{
+      kind: :internal,
+      attributes: [
+        {"url.path", conn.request_path},
+        {"sheaf.resource_id", id},
+        {"sheaf.representation", to_string(representation)}
+      ]
+    } do
+      case read_page(id, representation) do
+        {:ok, body} ->
+          conn
+          |> put_resp_header("vary", "Accept")
+          |> put_resp_content_type(content_type(representation), "utf-8")
+          |> send_resp(200, body)
+
+        {:error, reason} ->
+          Tracer.set_attribute("error.type", inspect(reason))
+
+          conn
+          |> put_resp_header("vary", "Accept")
+          |> put_status(:not_found)
+          |> put_resp_content_type("text/plain", "utf-8")
+          |> send_resp(404, "Not found\n")
+      end
     end
   end
 
-  defp read_page(id) do
+  defp read_page(id, representation) do
     case ResourceResolver.resolve(id) do
       {:ok, %{kind: :document, id: document_id}} ->
-        document_page(document_id)
+        document_page(document_id, representation)
 
       {:ok, %{kind: :block, id: block_id, document_id: document_id}} ->
-        block_page(document_id, block_id)
+        block_page(document_id, block_id, representation)
 
       _other ->
         {:error, :not_found}
     end
   end
 
-  defp document_page(document_id) do
+  defp document_page(document_id, representation) do
     root = Id.iri(document_id)
 
     with {:ok, %Graph{} = graph} <- Sheaf.fetch_graph(root) do
       metadata = metadata(root, graph)
 
-      {:ok,
-       page(metadata,
-         main: [
-           ~s(<section aria-labelledby="contents-heading">),
-           ~s(<h2 id="contents-heading">Contents</h2>),
-           document_toc_html(Document.toc(graph, root)),
-           ~s(</section>)
-         ]
-       )}
+      case representation do
+        :markdown ->
+          {:ok, LibraryMarkdown.document(metadata, graph, root)}
+
+        :html ->
+          {:ok,
+           page(metadata,
+             main: [
+               ~s(<section aria-labelledby="contents-heading">),
+               ~s(<h2 id="contents-heading">Contents</h2>),
+               document_toc_html(Document.toc(graph, root)),
+               ~s(</section>)
+             ]
+           )}
+      end
     end
   end
 
-  defp block_page(document_id, block_id) do
+  defp block_page(document_id, block_id, representation) do
     root = Id.iri(document_id)
     block = Id.iri(block_id)
 
@@ -65,11 +89,24 @@ defmodule SheafWeb.ReadController do
       metadata = metadata(root, graph)
       breadcrumbs = Document.breadcrumbs(graph, block)
 
-      {:ok,
-       page(metadata,
-         breadcrumbs: breadcrumbs,
-         main: render_resource(graph, block, type)
-       )}
+      case representation do
+        :markdown ->
+          {:ok,
+           LibraryMarkdown.resource(
+             metadata,
+             graph,
+             block,
+             type,
+             breadcrumbs
+           )}
+
+        :html ->
+          {:ok,
+           page(metadata,
+             breadcrumbs: breadcrumbs,
+             main: render_resource(graph, block, type)
+           )}
+      end
     else
       nil -> {:error, :not_found}
       error -> error
@@ -388,6 +425,23 @@ defmodule SheafWeb.ReadController do
   end
 
   defp read_path(id), do: "/read/#{URI.encode(id, &URI.char_unreserved?/1)}"
+
+  defp representation(conn) do
+    if markdown_requested?(conn), do: :markdown, else: :html
+  end
+
+  defp content_type(:markdown), do: "text/markdown"
+  defp content_type(:html), do: "text/html"
+
+  defp markdown_requested?(conn) do
+    conn
+    |> get_req_header("accept")
+    |> Enum.any?(fn accept ->
+      accept
+      |> String.downcase()
+      |> String.contains?("text/markdown")
+    end)
+  end
 
   @doc false
   def escape(value) do

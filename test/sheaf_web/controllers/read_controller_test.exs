@@ -68,6 +68,26 @@ defmodule SheafWeb.ReadControllerTest do
     assert html =~ "Ada Example"
     assert html =~ ~s(<a href="/read/CHP777">1 Interesting Chapter</a>)
     assert html =~ ~s(<a href="/read/SEC777">1.1 Section about Tigers</a>)
+
+    markdown_conn =
+      conn
+      |> recycle()
+      |> put_req_header("accept", "text/markdown")
+      |> get("/read/DOC777")
+
+    assert get_resp_header(markdown_conn, "content-type") == [
+             "text/markdown; charset=utf-8"
+           ]
+
+    assert markdown = response(markdown_conn, 200)
+    assert markdown =~ "# Metadata Book"
+    assert markdown =~ "Book · Ada Example · 2026"
+
+    assert markdown =~
+             "[1 Interesting Chapter](#{read_url("CHP777")})"
+
+    assert markdown =~
+             "[1.1 Section about Tigers](#{read_url("SEC777")})"
   end
 
   @tag :tmp_dir
@@ -131,5 +151,23 @@ defmodule SheafWeb.ReadControllerTest do
     assert html =~ "Main section paragraph."
     assert html =~ ~s(<a href="/read/SUB888">Subsection</a>)
     refute html =~ "Nested paragraph should be linked"
+
+    markdown_conn =
+      conn
+      |> recycle()
+      |> put_req_header("accept", "text/markdown")
+      |> get("/read/SEC888")
+
+    assert markdown = response(markdown_conn, 200)
+    assert markdown =~ "# Book"
+    assert markdown =~ "[Book](#{read_url("DOC888")})"
+    assert markdown =~ "## Section about Tigers"
+    assert markdown =~ "Main section paragraph."
+    assert markdown =~ "### [Subsection](#{read_url("SUB888")})"
+    refute markdown =~ "Nested paragraph should be linked"
+  end
+
+  defp read_url(id) do
+    URI.merge(Id.base_iri(), "/read/#{id}") |> URI.to_string()
   end
 end
