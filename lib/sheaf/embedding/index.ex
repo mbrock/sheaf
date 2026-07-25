@@ -685,8 +685,18 @@ defmodule Sheaf.Embedding.Index do
          current_hashes,
          opts
        ) do
-    case Keyword.get(opts, :vector_iris) do
-      iris when is_list(iris) ->
+    cond do
+      citation_iris = Keyword.get(opts, :vector_citation_iris) ->
+        Store.sync_vector_index_for_citations(
+          conn,
+          model,
+          dimensions,
+          source,
+          citation_iris,
+          current_hashes: current_hashes
+        )
+
+      iris = Keyword.get(opts, :vector_iris) ->
         Store.sync_vector_index_for_iris(
           conn,
           model,
@@ -696,7 +706,7 @@ defmodule Sheaf.Embedding.Index do
           current_hashes: current_hashes
         )
 
-      _all ->
+      true ->
         Store.sync_vector_index(conn, model, dimensions, source,
           current_hashes: current_hashes
         )

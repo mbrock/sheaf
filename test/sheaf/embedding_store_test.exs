@@ -200,4 +200,97 @@ defmodule Sheaf.Embedding.StoreTest do
     assert hit.iri == block
     assert hit.run_iri == "https://sheaf.less.rest/RUN-NEW"
   end
+
+  test "syncing citation vectors replaces changing segment sets", %{
+    conn: conn
+  } do
+    citation = "https://sheaf.less.rest/SOURCE#content"
+    source = String.replace_suffix(citation, "#content", "")
+    segment_0 = source <> "#sheaf-embedding-segment-0"
+    segment_1 = source <> "#sheaf-embedding-segment-1"
+    unrelated = "https://sheaf.less.rest/OTHER"
+
+    :ok =
+      Store.create_run(conn, %{
+        iri: "https://sheaf.less.rest/RUN-SEGMENTS-OLD",
+        model: "gemini-embedding-2",
+        dimensions: 3,
+        target_count: 3
+      })
+
+    for {iri, hash, values} <- [
+          {segment_0, "old-0", [1.0, 0.0, 0.0]},
+          {segment_1, "old-1", [0.9, 0.1, 0.0]},
+          {unrelated, "other", [0.0, 1.0, 0.0]}
+        ] do
+      :ok =
+        Store.insert_embedding(conn, %{
+          iri: iri,
+          run_iri: "https://sheaf.less.rest/RUN-SEGMENTS-OLD",
+          text_hash: hash,
+          text_chars: 3,
+          values: values
+        })
+    end
+
+    :ok =
+      Store.finish_run(conn, "https://sheaf.less.rest/RUN-SEGMENTS-OLD", %{
+        status: "completed",
+        embedded_count: 3,
+        skipped_count: 0,
+        error_count: 0
+      })
+
+    assert {:ok, 3} =
+             Store.sync_vector_index(conn, "gemini-embedding-2", 3)
+
+    :ok =
+      Store.create_run(conn, %{
+        iri: "https://sheaf.less.rest/RUN-SEGMENTS-NEW",
+        model: "gemini-embedding-2",
+        dimensions: 3,
+        target_count: 1
+      })
+
+    :ok =
+      Store.insert_embedding(conn, %{
+        iri: segment_0,
+        run_iri: "https://sheaf.less.rest/RUN-SEGMENTS-NEW",
+        text_hash: "new-0",
+        text_chars: 3,
+        values: [0.0, 0.0, 1.0]
+      })
+
+    :ok =
+      Store.finish_run(conn, "https://sheaf.less.rest/RUN-SEGMENTS-NEW", %{
+        status: "completed",
+        embedded_count: 1,
+        skipped_count: 0,
+        error_count: 0
+      })
+
+    assert {:ok, 1} =
+             Store.sync_vector_index_for_citations(
+               conn,
+               "gemini-embedding-2",
+               3,
+               nil,
+               [citation],
+               current_hashes: MapSet.new([{segment_0, "new-0"}])
+             )
+
+    assert {:ok, hits} =
+             Store.search_vectors(
+               conn,
+               [0.0, 0.0, 1.0],
+               "gemini-embedding-2",
+               3,
+               3
+             )
+
+    assert Enum.map(hits, & &1.iri) |> MapSet.new() ==
+             MapSet.new([segment_0, unrelated])
+
+    refute Enum.any?(hits, &(&1.iri == segment_1))
+  end
 end

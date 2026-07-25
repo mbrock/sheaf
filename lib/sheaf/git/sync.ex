@@ -99,6 +99,9 @@ defmodule Sheaf.Git.Sync do
           asserted_statement_count:
             RDF.Data.statement_count(object_graph) +
               RDF.Data.statement_count(text_assertions),
+          changed_source_file_iris:
+            changed_source_file_iris(text_retractions, text_assertions),
+          new_commit_iris: new_commit_iris(object_graph),
           references_changed?: not graph_equal?(old_refs_graph, refs_graph),
           text_changed?:
             RDF.Data.statement_count(text_retractions) > 0 or
@@ -409,6 +412,36 @@ defmodule Sheaf.Git.Sync do
         name: new_graph.name
       )
     }
+  end
+
+  defp changed_source_file_iris(text_retractions, text_assertions) do
+    text_predicate = DOC.text()
+
+    [text_retractions, text_assertions]
+    |> Enum.flat_map(&Graph.triples/1)
+    |> Enum.flat_map(fn
+      {iri, ^text_predicate, _text} ->
+        [to_string(iri)]
+
+      _triple ->
+        []
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp new_commit_iris(object_graph) do
+    commit_type = RDF.iri(DOC.GitCommit)
+    type_predicate = RDF.type()
+
+    object_graph
+    |> Graph.triples()
+    |> Enum.flat_map(fn
+      {iri, ^type_predicate, ^commit_type} -> [to_string(iri)]
+      _triple -> []
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   defp maybe_replace_graph(changes, old_graph, new_graph) do

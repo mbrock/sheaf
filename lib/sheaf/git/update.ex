@@ -9,9 +9,8 @@ defmodule Sheaf.Git.Update do
 
   require OpenTelemetry.Tracer, as: Tracer
 
-  alias Sheaf.Embedding
   alias Sheaf.Git.Sync
-  alias Sheaf.Search
+  alias Sheaf.SearchMaintenance
 
   @doc """
   Pulls and synchronizes a registered software project's repository.
@@ -30,6 +29,7 @@ defmodule Sheaf.Git.Update do
            :ok <- require_clean_worktree(project.repository.checkout_path),
            {:ok, upstream} <- upstream(project.repository.checkout_path),
            {:ok, before_head} <- head(project.repository.checkout_path),
+           {:ok, before_refs} <- refs(project.repository.checkout_path),
            {:ok, pull_output} <-
              git(project.repository.checkout_path, [
                "pull",
@@ -37,40 +37,38 @@ defmodule Sheaf.Git.Update do
                "--no-stat"
              ]),
            {:ok, after_head} <- head(project.repository.checkout_path),
-           {:ok, backup_path} <- maybe_backup(opts),
-           {:ok, git_summary} <-
-             Sync.sync(project.repository.checkout_path,
-               project_iri: project.iri
-             ),
-           {:ok, search_summary} <- maybe_sync_search(opts),
-           {:ok, embedding_summary} <- maybe_sync_embeddings(opts) do
-        summary = %{
-          project_id: project.id,
-          project_title: project.title,
-          checkout_path: project.repository.checkout_path,
-          upstream: upstream,
-          before_head: before_head,
-          after_head: after_head,
-          changed?: before_head != after_head,
-          pull_output: String.trim(pull_output),
-          backup_path: backup_path,
-          git: git_summary,
-          search: search_summary,
-          embeddings: embedding_summary
-        }
+           {:ok, after_refs} <- refs(project.repository.checkout_path) do
+        changed? = before_head != after_head
+        refs_changed? = before_refs != after_refs
+        mirror_stale? = mirrored_head(project) != after_head
 
-        Tracer.set_attributes([
-          {"sheaf.git.checkout_path", project.repository.checkout_path},
-          {"sheaf.git.upstream", upstream},
-          {"sheaf.git.before_head", before_head},
-          {"sheaf.git.after_head", after_head},
-          {"sheaf.git.changed", summary.changed?},
-          {"sheaf.git.pull_output", summary.pull_output},
-          {"sheaf.git.source_file_count", git_summary.source_file_count},
-          {"sheaf.git.new_object_count", git_summary.new_object_count}
-        ])
+        if changed? or refs_changed? or mirror_stale? do
+          refresh_changed_repository(
+            project,
+            upstream,
+            before_head,
+            after_head,
+            refs_changed?,
+            mirror_stale?,
+            pull_output,
+            opts
+          )
+        else
+          summary =
+            update_summary(
+              project,
+              upstream,
+              before_head,
+              after_head,
+              refs_changed?,
+              mirror_stale?,
+              pull_output
+            )
 
-        {:ok, summary}
+          set_update_attributes(summary, nil)
+          Tracer.set_attribute("sheaf.git.maintenance_skipped", true)
+          {:ok, summary}
+        end
       else
         {:error, reason} = error ->
           Tracer.set_attribute("error.type", inspect(reason))
@@ -140,6 +138,106 @@ defmodule Sheaf.Git.Update do
       {:ok, String.trim(output)}
     end
   end
+
+  defp refs(path) do
+    git(path, [
+      "for-each-ref",
+      "--format=%(refname)%00%(objectname)"
+    ])
+  end
+
+  defp refresh_changed_repository(
+         project,
+         upstream,
+         before_head,
+         after_head,
+         refs_changed?,
+         mirror_stale?,
+         pull_output,
+         opts
+       ) do
+    with {:ok, backup_path} <- maybe_backup(opts),
+         {:ok, git_summary} <-
+           Sync.sync(project.repository.checkout_path,
+             project_iri: project.iri
+           ),
+         {:ok, index_summary} <-
+           SearchMaintenance.refresh_git_sync(git_summary, opts) do
+      summary =
+        project
+        |> update_summary(
+          upstream,
+          before_head,
+          after_head,
+          refs_changed?,
+          mirror_stale?,
+          pull_output
+        )
+        |> Map.merge(%{
+          backup_path: backup_path,
+          git: git_summary,
+          search: index_summary.search,
+          embeddings: index_summary.embedding
+        })
+
+      set_update_attributes(summary, git_summary)
+      Tracer.set_attribute("sheaf.git.maintenance_skipped", false)
+      {:ok, summary}
+    end
+  end
+
+  defp update_summary(
+         project,
+         upstream,
+         before_head,
+         after_head,
+         refs_changed?,
+         mirror_stale?,
+         pull_output
+       ) do
+    %{
+      project_id: project.id,
+      project_title: project.title,
+      checkout_path: project.repository.checkout_path,
+      upstream: upstream,
+      before_head: before_head,
+      after_head: after_head,
+      changed?: before_head != after_head,
+      repository_changed?:
+        before_head != after_head or refs_changed? or mirror_stale?,
+      refs_changed?: refs_changed?,
+      mirror_stale?: mirror_stale?,
+      pull_output: String.trim(pull_output),
+      backup_path: nil,
+      git: nil,
+      search: nil,
+      embeddings: nil
+    }
+  end
+
+  defp set_update_attributes(summary, git_summary) do
+    Tracer.set_attributes([
+      {"sheaf.git.checkout_path", summary.checkout_path},
+      {"sheaf.git.upstream", summary.upstream},
+      {"sheaf.git.before_head", summary.before_head},
+      {"sheaf.git.after_head", summary.after_head},
+      {"sheaf.git.changed", summary.changed?},
+      {"sheaf.git.refs_changed", summary.refs_changed?},
+      {"sheaf.git.mirror_stale", summary.mirror_stale?},
+      {"sheaf.git.repository_changed", summary.repository_changed?},
+      {"sheaf.git.pull_output", summary.pull_output},
+      {"sheaf.git.source_file_count",
+       if(git_summary, do: git_summary.source_file_count, else: 0)},
+      {"sheaf.git.new_object_count",
+       if(git_summary, do: git_summary.new_object_count, else: 0)}
+    ])
+  end
+
+  defp mirrored_head(%{head: %{object_id: object_id}})
+       when is_binary(object_id),
+       do: object_id
+
+  defp mirrored_head(_project), do: nil
 
   defp git(path, args) do
     Tracer.with_span "sheaf.git.command", %{
@@ -225,17 +323,5 @@ defmodule Sheaf.Git.Update do
           {:error, {:backup_failed, reason}}
       end
     end
-  end
-
-  defp maybe_sync_search(opts) do
-    if Keyword.get(opts, :sync_search?, true),
-      do: Search.Index.sync(),
-      else: {:ok, nil}
-  end
-
-  defp maybe_sync_embeddings(opts) do
-    if Keyword.get(opts, :sync_embeddings?, true),
-      do: Embedding.Index.sync(),
-      else: {:ok, nil}
   end
 end

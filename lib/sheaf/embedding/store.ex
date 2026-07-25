@@ -419,6 +419,69 @@ defmodule Sheaf.Embedding.Store do
   end
 
   @doc """
+  Replaces sqlite-vec rows for bounded citation IRIs and their derived
+  embedding variants.
+
+  A citation may have a precise vector, a context vector, or several
+  source-file segment vectors. Matching the citation prefix keeps incremental
+  maintenance correct when the number of variants changes.
+  """
+  def sync_vector_index_for_citations(
+        conn,
+        model,
+        dimensions,
+        source,
+        citation_iris,
+        opts \\ []
+      )
+      when is_binary(source) or is_nil(source) do
+    citation_iris =
+      citation_iris
+      |> List.wrap()
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq()
+
+    current_hashes = Keyword.get(opts, :current_hashes)
+
+    with :ok <- ensure_vector_table(conn, dimensions),
+         {:ok, rows} <-
+           latest_embedding_rows_for_citations(
+             conn,
+             model,
+             dimensions,
+             source,
+             citation_iris
+           ),
+         {:ok, existing_iris} <-
+           vector_iris_for_citations(
+             conn,
+             model,
+             dimensions,
+             source,
+             citation_iris
+           ) do
+      rows = filter_current_hashes(rows, current_hashes)
+
+      affected_iris =
+        (existing_iris ++ Enum.map(rows, fn [iri | _rest] -> iri end))
+        |> Enum.uniq()
+
+      transaction(conn, fn ->
+        with :ok <-
+               delete_vector_index_for_iris(
+                 conn,
+                 model,
+                 dimensions,
+                 source,
+                 affected_iris
+               ) do
+          insert_vector_rows(conn, model, dimensions, source, rows)
+        end
+      end)
+    end
+  end
+
+  @doc """
   Returns nearest embeddings using sqlite-vec cosine distance.
   """
   @spec search_vectors(
@@ -548,6 +611,109 @@ defmodule Sheaf.Embedding.Store do
       """,
       [model, dimensions, source, source]
     )
+  end
+
+  defp latest_embedding_rows_for_citations(
+         _conn,
+         _model,
+         _dimensions,
+         _source,
+         []
+       ),
+       do: {:ok, []}
+
+  defp latest_embedding_rows_for_citations(
+         conn,
+         model,
+         dimensions,
+         source,
+         citation_iris
+       ) do
+    {condition, citation_params} = citation_condition("e.iri", citation_iris)
+
+    query(
+      conn,
+      """
+      SELECT iri, run_iri, text_hash, text_chars, embedding
+      FROM (
+        SELECT e.iri,
+               e.run_iri,
+               e.text_hash,
+               e.text_chars,
+               e.embedding,
+               ROW_NUMBER() OVER (
+                 PARTITION BY e.iri, e.text_hash
+                 ORDER BY COALESCE(r.finished_at, r.started_at) DESC, e.inserted_at DESC
+               ) AS row_number
+        FROM embeddings e
+        JOIN embedding_runs r ON r.iri = e.run_iri
+        WHERE r.model = ?
+          AND r.dimensions = ?
+          AND (? IS NULL OR r.source = ?)
+          AND r.status IN ('completed', 'partial')
+          AND (#{condition})
+      )
+      WHERE row_number = 1
+      """,
+      [model, dimensions, source, source] ++ citation_params
+    )
+  end
+
+  defp vector_iris_for_citations(
+         _conn,
+         _model,
+         _dimensions,
+         _source,
+         []
+       ),
+       do: {:ok, []}
+
+  defp vector_iris_for_citations(
+         conn,
+         model,
+         dimensions,
+         source,
+         citation_iris
+       ) do
+    {condition, citation_params} =
+      citation_condition("iri", citation_iris)
+
+    with {:ok, rows} <-
+           query(
+             conn,
+             """
+             SELECT iri
+             FROM embedding_vector_items
+             WHERE model = ?
+               AND dimensions = ?
+               AND (? IS NULL OR source = ?)
+               AND (#{condition})
+             """,
+             [model, dimensions, source, source] ++ citation_params
+           ) do
+      {:ok, Enum.map(rows, fn [iri] -> iri end)}
+    end
+  end
+
+  defp citation_condition(column, citation_iris) do
+    citation_iris
+    |> Enum.map(fn citation_iri ->
+      prefix =
+        if String.ends_with?(citation_iri, "#content") do
+          String.replace_suffix(citation_iri, "#content", "#sheaf-")
+        else
+          citation_iri <> "#sheaf-"
+        end
+
+      {
+        "(#{column} = ? OR substr(#{column}, 1, ?) = ?)",
+        [citation_iri, String.length(prefix), prefix]
+      }
+    end)
+    |> Enum.unzip()
+    |> then(fn {conditions, params} ->
+      {Enum.join(conditions, " OR "), List.flatten(params)}
+    end)
   end
 
   defp filter_current_hashes(rows, nil), do: rows

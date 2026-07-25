@@ -332,6 +332,49 @@ defmodule Sheaf.Git.SyncTest do
     assert third.new_object_count > 0
     assert third.text_changed?
 
+    readme_content_iri =
+      mirrored_repository
+      |> Sheaf.Git.RDF.source_file_iri("README.md")
+      |> Sheaf.Git.RDF.source_file_block_iri()
+      |> to_string()
+
+    assert third.changed_source_file_iris == [readme_content_iri]
+    assert length(third.new_commit_iris) == 1
+
+    assert {:ok, incremental} =
+             Sheaf.SearchMaintenance.refresh_git_sync(third,
+               db_path: search_path,
+               sync_embeddings?: false
+             )
+
+    assert incremental.affected_iris ==
+             Enum.sort(
+               third.changed_source_file_iris ++ third.new_commit_iris
+             )
+
+    assert incremental.search.count == 2
+
+    assert {:ok, [updated_hit]} =
+             Sheaf.Search.Index.search("Only current source",
+               db_path: search_path,
+               document_id: "TEST-REPOSITORY",
+               kinds: ["sourceFile"]
+             )
+
+    assert updated_hit.iri == readme_content_iri
+
+    assert {:ok, stale_phrase_hits} =
+             Sheaf.Search.Index.search("Searchable project",
+               db_path: search_path,
+               document_id: "TEST-REPOSITORY",
+               kinds: ["sourceFile"]
+             )
+
+    refute Enum.any?(
+             stale_phrase_hits,
+             &(&1.text == "# Searchable project\n")
+           )
+
     assert {:ok, current_text_rows} =
              Sheaf.TextUnits.fetch_rows(kinds: ["sourceFile"])
 

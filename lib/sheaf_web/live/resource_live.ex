@@ -186,10 +186,19 @@ defmodule SheafWeb.ResourceLive do
       )
       when project.id == project_id do
     message =
-      if summary.changed?,
-        do:
-          "Updated to #{String.slice(summary.after_head, 0, 10)} and refreshed search.",
-        else: "Already up to date; repository indexes were refreshed."
+      cond do
+        summary.changed? ->
+          "Updated to #{String.slice(summary.after_head, 0, 10)} and refreshed search."
+
+        summary.refs_changed? ->
+          "Repository references changed and indexes were refreshed."
+
+        summary.mirror_stale? ->
+          "Repository mirror caught up and indexes were refreshed."
+
+        true ->
+          "Already up to date."
+      end
 
     case Sheaf.SoftwareProjects.get(project_id) do
       {:ok, project} ->

@@ -65,6 +65,27 @@ defmodule Sheaf.Git.UpdateTest do
     assert loaded.head.object_id == summary.after_head
     assert loaded.head.message == "Update upstream"
 
+    no_op_backup = Path.join(tmp_dir, "no-op-backup.sqlite3")
+
+    assert {:ok, no_op} =
+             Update.pull_and_sync("PROJECT",
+               backup_path: no_op_backup,
+               sync_search?: false,
+               sync_embeddings?: false
+             )
+
+    refute no_op.changed?
+    refute no_op.repository_changed?
+    refute no_op.refs_changed?
+    refute no_op.mirror_stale?
+    assert no_op.before_head == no_op.after_head
+    assert no_op.pull_output == "Already up to date."
+    assert no_op.backup_path == nil
+    assert no_op.git == nil
+    assert no_op.search == nil
+    assert no_op.embeddings == nil
+    refute File.exists?(no_op_backup)
+
     File.write!(Path.join(checkout, "LOCAL.txt"), "uncommitted\n")
 
     assert {:error, {:dirty_worktree, output}} =
