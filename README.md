@@ -1,7 +1,8 @@
 # Sheaf
 
 External coding agents can search and read the library and create durable
-research notes through the authenticated [MCP endpoint](docs/mcp.md).
+research notes through the standalone [Sheaf CLI](docs/cli.md) or the
+authenticated [MCP endpoint](docs/mcp.md).
 
 *A workshop for cooperative figure-making, in which paragraphs are first-class
 objects, citations are string figures, and the agent is another pair of hands.*

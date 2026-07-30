@@ -1,7 +1,8 @@
 {
   "scripts": {
     "format:js": "prettier --write \"{assets/js,bin,tools}/**/*.{js,jsx,ts,tsx}\"",
-    "format:js:check": "prettier --check \"{assets/js,bin,tools}/**/*.{js,jsx,ts,tsx}\""
+    "format:js:check": "prettier --check \"{assets/js,bin,tools}/**/*.{js,jsx,ts,tsx}\"",
+    "test:cli": "bun test tools/sheaf-cli.test.ts"
   },
   "dependencies": {
     "@types/bun": "^1.3.13",

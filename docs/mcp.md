@@ -12,6 +12,10 @@ The endpoint uses Streamable HTTP and supports MCP protocol revisions
 event stream because all current Sheaf operations complete in the POST
 response.
 
+Agents without reliable native MCP support can use the standalone
+[Sheaf CLI](cli.md). It exposes the same bounded capabilities as ordinary
+commands while using this endpoint only as a transport.
+
 ## Configuration
 
 Set a long random bearer token in the Sheaf environment and restart the
