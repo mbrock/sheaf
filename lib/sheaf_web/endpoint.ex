@@ -54,6 +54,7 @@ defmodule SheafWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
+  plug SheafWeb.DocumentMarkdownPlug
   plug SheafWeb.LibraryMarkdownPlug
   plug SheafWeb.ResourceRDFPlug
   plug SheafWeb.ResourceJSONPlug

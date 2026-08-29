@@ -91,6 +91,99 @@ defmodule SheafWeb.ReadControllerTest do
   end
 
   @tag :tmp_dir
+  test "exports a complete document with Markdown structure and LaTeX math",
+       %{
+         conn: conn,
+         tmp_dir: tmp_dir
+       } do
+    start_supervised!({Sheaf.Repo, path: Path.join(tmp_dir, "repo.sqlite3")})
+
+    document = Id.iri("DOCMD1")
+    section = Id.iri("SECMD1")
+    paragraph = Id.iri("PARMD1")
+    revision = Id.iri("REVMD1")
+    equation = Id.iri("EQNMD1")
+    list = Id.iri("LSTMD1")
+    table = Id.iri("TBLMD1")
+    footnote = Id.iri("FTNMD1")
+    document_list = Id.iri("RDFMD1")
+    section_list = Id.iri("RDFMD2")
+
+    graph =
+      RDF.Graph.new(
+        [
+          {document, RDF.type(), DOC.Document},
+          {document, RDFS.label(), "Markdown Paper"},
+          {document, DOC.children(), document_list},
+          {section, RDF.type(), DOC.Section},
+          {section, RDFS.label(), "Method"},
+          {section, DOC.children(), section_list},
+          {paragraph, RDF.type(), DOC.ParagraphBlock},
+          {paragraph, DOC.paragraph(), revision},
+          {paragraph, DOC.markup(), "The complete paragraph.<sup>1</sup>"},
+          {revision, DOC.text(), "The complete paragraph."},
+          {equation, RDF.type(), DOC.ExtractedBlock},
+          {equation, DOC.sourceBlockType(), "Equation"},
+          {equation, DOC.sourceHtml(),
+           ~s(<p><math display="block">\\frac{x}{y} &amp;= 2</math></p>)},
+          {list, RDF.type(), DOC.ExtractedBlock},
+          {list, DOC.sourceBlockType(), "ListGroup"},
+          {list, DOC.sourceHtml(),
+           ~s(<ul><li>First <math>x</math></li><li>Second</li></ul>)},
+          {table, RDF.type(), DOC.ExtractedBlock},
+          {table, DOC.sourceBlockType(), "Table"},
+          {table, DOC.sourceHtml(),
+           ~s(<table><tr><th rowspan="2">Name</th><th colspan="2">Values</th></tr><tr><th>Left</th><th>Right</th></tr><tr><td>alpha</td><td><math>a</math></td><td><math>b</math></td></tr></table>)},
+          {footnote, RDF.type(), DOC.ExtractedBlock},
+          {footnote, DOC.sourceBlockType(), "Footnote"},
+          {footnote, DOC.sourceHtml(), "<p><sup>1</sup>A useful note.</p>"}
+        ],
+        name: document
+      )
+      |> then(&RDF.list([section], graph: &1, head: document_list).graph)
+      |> then(
+        &RDF.list([paragraph, equation, list, table, footnote],
+          graph: &1,
+          head: section_list
+        ).graph
+      )
+
+    assert :ok = Sheaf.Repo.assert(graph)
+
+    conn = get(conn, "/DOCMD1.md")
+
+    assert get_resp_header(conn, "content-type") == [
+             "text/markdown; charset=utf-8"
+           ]
+
+    assert markdown = response(conn, 200)
+    assert markdown =~ "# Markdown Paper"
+    assert markdown =~ "## Method"
+    assert markdown =~ "The complete paragraph.[^1]"
+    assert markdown =~ "$$\n\\frac{x}{y} &= 2\n$$"
+    assert markdown =~ "- First $x$\n- Second"
+    assert markdown =~ "| Name | Values<br>Left | Values<br>Right |"
+    assert markdown =~ "| alpha | $a$ | $b$ |"
+    assert markdown =~ "[^1]: A useful note."
+  end
+
+  @tag :tmp_dir
+  test "returns not found for a non-document Markdown export", %{
+    conn: conn,
+    tmp_dir: tmp_dir
+  } do
+    start_supervised!({Sheaf.Repo, path: Path.join(tmp_dir, "repo.sqlite3")})
+
+    conn = get(conn, "/NOTDOC.md")
+
+    assert response(conn, 404) == "Not found\n"
+
+    assert get_resp_header(conn, "content-type") == [
+             "text/plain; charset=utf-8"
+           ]
+  end
+
+  @tag :tmp_dir
   test "renders a section with block text and subsection links only", %{
     conn: conn,
     tmp_dir: tmp_dir

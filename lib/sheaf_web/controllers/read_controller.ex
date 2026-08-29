@@ -8,10 +8,41 @@ defmodule SheafWeb.ReadController do
   alias RDF.{Description, Graph}
   alias Sheaf.Assistant.ToolResults
   alias Sheaf.{Document, Id, ResourceResolver}
+  alias Sheaf.Document.Markdown
   alias SheafWeb.LibraryMarkdown
   alias Sheaf.NS.{BIBO, DCTERMS, FABIO, FOAF, PRISM}
 
   require OpenTelemetry.Tracer, as: Tracer
+
+  def export(conn, %{"id" => id}) do
+    Tracer.with_span "SheafWeb.ReadController.export", %{
+      kind: :internal,
+      attributes: [
+        {"url.path", conn.request_path},
+        {"sheaf.resource_id", id},
+        {"sheaf.representation", "markdown"}
+      ]
+    } do
+      case ResourceResolver.resolve(id, skip_block?: true) do
+        {:ok, %{kind: :document, id: document_id}} ->
+          root = Id.iri(document_id)
+
+          with {:ok, %Graph{} = graph} <- Sheaf.fetch_graph(root) do
+            body =
+              Markdown.render(graph, root, metadata: metadata(root, graph))
+
+            conn
+            |> put_resp_content_type("text/markdown", "utf-8")
+            |> send_resp(200, body)
+          else
+            error -> export_not_found(conn, error)
+          end
+
+        error ->
+          export_not_found(conn, error)
+      end
+    end
+  end
 
   def show(conn, %{"id" => id}) do
     representation = representation(conn)
@@ -54,6 +85,14 @@ defmodule SheafWeb.ReadController do
       _other ->
         {:error, :not_found}
     end
+  end
+
+  defp export_not_found(conn, reason) do
+    Tracer.set_attribute("error.type", inspect(reason))
+
+    conn
+    |> put_resp_content_type("text/plain", "utf-8")
+    |> send_resp(404, "Not found\n")
   end
 
   defp document_page(document_id, representation) do
