@@ -19,6 +19,7 @@ defmodule Sheaf.Document.Markdown do
     metadata = Keyword.get(opts, :metadata, %{})
     title = metadata[:title] || Document.title(graph, root)
     children = Document.children(graph, root)
+    footnotes_by_page = footnotes_by_page(graph, root)
 
     Tracer.with_span "Sheaf.Document.Markdown.render", %{
       kind: :internal,
@@ -29,7 +30,7 @@ defmodule Sheaf.Document.Markdown do
         {"sheaf.root_block_count", length(children)}
       ]
     } do
-      body = render_blocks(children, graph, 0)
+      body = render_blocks(children, graph, 0, footnotes_by_page)
 
       markdown =
         [
@@ -46,20 +47,22 @@ defmodule Sheaf.Document.Markdown do
     end
   end
 
-  defp render_blocks(blocks, graph, depth) do
+  defp render_blocks(blocks, graph, depth, footnotes_by_page) do
     blocks
-    |> Enum.map(&render_block(&1, graph, depth))
+    |> Enum.map(&render_block(&1, graph, depth, footnotes_by_page))
     |> Enum.reject(&blank?/1)
     |> Enum.join("\n\n")
   end
 
-  defp render_block(iri, graph, depth) do
+  defp render_block(iri, graph, depth, footnotes_by_page) do
     case Document.block_type(graph, iri) do
       :section ->
         heading = String.duplicate("#", min(depth + 2, 6))
 
         children =
-          graph |> Document.children(iri) |> render_blocks(graph, depth + 1)
+          graph
+          |> Document.children(iri)
+          |> render_blocks(graph, depth + 1, footnotes_by_page)
 
         Enum.join(
           [
@@ -73,7 +76,7 @@ defmodule Sheaf.Document.Markdown do
         render_paragraph(graph, iri)
 
       :extracted ->
-        render_extracted(graph, iri)
+        render_extracted(graph, iri, footnotes_by_page)
 
       :row ->
         Document.text(graph, iri) |> plain_block()
@@ -82,7 +85,9 @@ defmodule Sheaf.Document.Markdown do
         heading = String.duplicate("#", min(depth + 2, 6))
 
         children =
-          graph |> Document.children(iri) |> render_blocks(graph, depth + 1)
+          graph
+          |> Document.children(iri)
+          |> render_blocks(graph, depth + 1, footnotes_by_page)
 
         Enum.join(
           [
@@ -121,25 +126,32 @@ defmodule Sheaf.Document.Markdown do
     |> Enum.join("\n\n")
   end
 
-  defp render_extracted(graph, iri) do
+  defp render_extracted(graph, iri, footnotes_by_page) do
     html = Document.source_html(graph, iri)
 
+    footnote_markers =
+      Map.get(
+        footnotes_by_page,
+        Document.source_page(graph, iri),
+        MapSet.new()
+      )
+
     case Document.source_block_type(graph, iri) do
-      "Equation" -> render_equation(html)
-      "Table" -> render_table(html)
-      "ListGroup" -> render_list(html)
+      "Equation" -> render_equation(html, footnote_markers)
+      "Table" -> render_table(html, footnote_markers)
+      "ListGroup" -> render_list(html, footnote_markers)
       "Footnote" -> render_extracted_footnote(html)
       "Figure" -> render_figure(html)
       "Picture" -> render_figure(html)
-      _other -> html_fragment(html)
+      _other -> html_fragment(html, footnote_markers)
     end
   end
 
-  defp render_equation(html) do
-    html_fragment(html)
+  defp render_equation(html, footnote_markers) do
+    html_fragment(html, footnote_markers)
   end
 
-  defp render_list(html) do
+  defp render_list(html, footnote_markers) do
     {_protected, math} = extract_math(html)
 
     items =
@@ -147,23 +159,23 @@ defmodule Sheaf.Document.Markdown do
       |> List.flatten()
       |> Enum.map(fn item ->
         item
-        |> html_fragment()
+        |> html_fragment(footnote_markers)
         |> String.replace(~r/^\s*[•‣◦]\s*/u, "")
         |> indent_continuation()
         |> then(&("- " <> &1))
       end)
 
     case items do
-      [] -> restore_math(html_fragment(html), math)
+      [] -> restore_math(html_fragment(html, footnote_markers), math)
       _items -> Enum.join(items, "\n")
     end
   end
 
-  defp render_table(html) do
+  defp render_table(html, footnote_markers) do
     rows =
       Regex.scan(~r/<tr\b[^>]*>(.*?)<\/tr>/is, html, capture: :all_but_first)
       |> List.flatten()
-      |> Enum.map(&table_row/1)
+      |> Enum.map(&table_row(&1, footnote_markers))
       |> Enum.reject(&(elem(&1, 0) == []))
       |> table_grid()
 
@@ -173,14 +185,14 @@ defmodule Sheaf.Document.Markdown do
     end
   end
 
-  defp table_row(row) do
+  defp table_row(row, footnote_markers) do
     cells =
       Regex.scan(~r/<t(h|d)\b([^>]*)>(.*?)<\/t(?:h|d)>/is, row)
       |> Enum.map(fn [_whole, kind, attrs, content] ->
         %{
           content:
             content
-            |> html_fragment()
+            |> html_fragment(footnote_markers)
             |> String.replace("|", "\\|")
             |> String.replace(~r/\s*\n\s*/, "<br>"),
           colspan: span_value(attrs, "colspan"),
@@ -321,9 +333,11 @@ defmodule Sheaf.Document.Markdown do
     end
   end
 
-  defp html_fragment(nil), do: ""
+  defp html_fragment(html, footnote_markers \\ MapSet.new())
 
-  defp html_fragment(html) do
+  defp html_fragment(nil, _footnote_markers), do: ""
+
+  defp html_fragment(html, footnote_markers) do
     {html, math} = extract_math(to_string(html))
 
     html
@@ -335,7 +349,7 @@ defmodule Sheaf.Document.Markdown do
     )
     |> String.replace(~r/<(?:em|i)\b[^>]*>(.*?)<\/(?:em|i)>/is, "*\\1*")
     |> String.replace(~r/<code\b[^>]*>(.*?)<\/code>/is, "`\\1`")
-    |> String.replace(~r/<sup\b[^>]*>\s*(\d+)\s*<\/sup>/is, "[^\\1]")
+    |> replace_numeric_footnote_markers(footnote_markers)
     |> String.replace(~r/<br\s*\/?>/i, "\n")
     |> String.replace(~r/<\/p\s*>/i, "\n\n")
     |> String.replace(~r/<p\b[^>]*>/i, "")
@@ -389,6 +403,47 @@ defmodule Sheaf.Document.Markdown do
       html,
       fn _match, marker -> "[^#{marker}]" end
     )
+  end
+
+  defp replace_numeric_footnote_markers(html, footnote_markers) do
+    Regex.replace(
+      ~r/(^|[\p{L}\p{N}\p{Pe}.,;:!?…"'”’])<sup\b[^>]*>\s*(\d+)\s*<\/sup>(?=$|[<\s,.;:!?…\p{Pe}])/isu,
+      html,
+      fn _whole, prefix, marker ->
+        if MapSet.member?(footnote_markers, marker),
+          do: "#{prefix}[^#{marker}]",
+          else: prefix <> marker
+      end
+    )
+  end
+
+  defp footnotes_by_page(graph, root) do
+    graph
+    |> Document.text_chunks(root)
+    |> Enum.filter(&(&1.source_type == "Footnote"))
+    |> Enum.reduce(%{}, fn footnote, pages ->
+      case extracted_footnote_marker(
+             Document.source_html(graph, footnote.iri)
+           ) do
+        nil ->
+          pages
+
+        marker ->
+          Map.update(
+            pages,
+            footnote.source_page,
+            MapSet.new([marker]),
+            &MapSet.put(&1, marker)
+          )
+      end
+    end)
+  end
+
+  defp extracted_footnote_marker(html) do
+    case Regex.run(~r/^\s*<p\b[^>]*>\s*<sup\b[^>]*>([^<]+)<\/sup>/is, html) do
+      [_match, marker] -> clean_fragment(marker)
+      _other -> nil
+    end
   end
 
   defp footnote_marker(%{source_key: source_key, id: id}) do

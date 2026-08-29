@@ -106,6 +106,9 @@ defmodule SheafWeb.ReadControllerTest do
     list = Id.iri("LSTMD1")
     table = Id.iri("TBLMD1")
     footnote = Id.iri("FTNMD1")
+    extracted_reference = Id.iri("REFMD1")
+    extracted_footnote = Id.iri("FTNMD2")
+    diagram = Id.iri("DIAMD1")
     document_list = Id.iri("RDFMD1")
     section_list = Id.iri("RDFMD2")
 
@@ -120,7 +123,8 @@ defmodule SheafWeb.ReadControllerTest do
           {section, DOC.children(), section_list},
           {paragraph, RDF.type(), DOC.ParagraphBlock},
           {paragraph, DOC.paragraph(), revision},
-          {paragraph, DOC.markup(), "The complete paragraph.<sup>1</sup>"},
+          {paragraph, DOC.markup(),
+           ~s(The complete paragraph.<sup data-footnote="1">1</sup>)},
           {revision, DOC.text(), "The complete paragraph."},
           {equation, RDF.type(), DOC.ExtractedBlock},
           {equation, DOC.sourceBlockType(), "Equation"},
@@ -136,13 +140,38 @@ defmodule SheafWeb.ReadControllerTest do
            ~s(<table><tr><th rowspan="2">Name</th><th colspan="2">Values</th></tr><tr><th>Left</th><th>Right</th></tr><tr><td>alpha</td><td><math>a</math></td><td><math>b</math></td></tr></table>)},
           {footnote, RDF.type(), DOC.ExtractedBlock},
           {footnote, DOC.sourceBlockType(), "Footnote"},
-          {footnote, DOC.sourceHtml(), "<p><sup>1</sup>A useful note.</p>"}
+          {footnote, DOC.sourceHtml(), "<p><sup>1</sup>A useful note.</p>"},
+          {extracted_reference, RDF.type(), DOC.ExtractedBlock},
+          {extracted_reference, DOC.sourceBlockType(), "Text"},
+          {extracted_reference, DOC.sourcePage(), 1},
+          {extracted_reference, DOC.sourceHtml(),
+           "<p>An extracted reference.<sup>2</sup></p>"},
+          {extracted_footnote, RDF.type(), DOC.ExtractedBlock},
+          {extracted_footnote, DOC.sourceBlockType(), "Footnote"},
+          {extracted_footnote, DOC.sourcePage(), 1},
+          {extracted_footnote, DOC.sourceHtml(),
+           "<p><sup>2</sup>An extracted note.</p>"},
+          {diagram, RDF.type(), DOC.ExtractedBlock},
+          {diagram, DOC.sourceBlockType(), "Text"},
+          {diagram, DOC.sourcePage(), 1},
+          {diagram, DOC.sourceHtml(),
+           "<pre>1 ←<sup>2</sup>→= func(...)</pre>"}
         ],
         name: document
       )
       |> then(&RDF.list([section], graph: &1, head: document_list).graph)
       |> then(
-        &RDF.list([paragraph, equation, list, table, footnote],
+        &RDF.list(
+          [
+            paragraph,
+            equation,
+            list,
+            table,
+            footnote,
+            extracted_reference,
+            extracted_footnote,
+            diagram
+          ],
           graph: &1,
           head: section_list
         ).graph
@@ -165,6 +194,10 @@ defmodule SheafWeb.ReadControllerTest do
     assert markdown =~ "| Name | Values<br>Left | Values<br>Right |"
     assert markdown =~ "| alpha | $a$ | $b$ |"
     assert markdown =~ "[^1]: A useful note."
+    assert markdown =~ "An extracted reference.[^2]"
+    assert markdown =~ "[^2]: An extracted note."
+    assert markdown =~ "1 ← 2 →= func(...)"
+    refute markdown =~ "1 ←[^2]→= func(...)"
   end
 
   @tag :tmp_dir
